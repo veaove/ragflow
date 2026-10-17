@@ -332,9 +332,19 @@ export interface IPipeLineListRequest {
 
 export interface IBuiltinPipeline {
   id: string;
+  /** Canonical English title. Use the localized value for display. */
   title: string;
+  /** Canonical English description. Use the localized value for display. */
   description?: string;
   filename?: string;
+  /**
+   * Every translation of the title keyed by bare language subtag ("zh", "de").
+   * The API normalises the template keys this way so the client only has to
+   * reduce its own locale code. Absent when a template has a single language.
+   */
+  title_i18n?: Record<string, string>;
+  /** Translations of the description, same shape as {@link title_i18n}. */
+  description_i18n?: Record<string, string>;
 }
 
 export interface IBuiltinPipelineListResponse {

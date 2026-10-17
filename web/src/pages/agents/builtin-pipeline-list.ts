@@ -5,6 +5,11 @@ import {
   IBuiltinPipeline,
   IBuiltinPipelineListItem,
 } from '@/interfaces/database/agent';
+import {
+  resolveBuiltinDescription,
+  resolveBuiltinTitle,
+  useBuiltinPipelineLabels,
+} from '@/utils/builtin-pipeline-i18n';
 import { useMemo } from 'react';
 
 // Whether the built-in pipeline section should be shown for the given
@@ -39,19 +44,47 @@ export function shouldShowBuiltinForRaw(
 // Filters built-in pipelines by a case-insensitive keyword over title and
 // description. An empty/whitespace/undefined keyword returns the list
 // unchanged.
+//
+// `lang` makes the filter match what the user can actually read on screen:
+// without it a Chinese keyword would never match, because the API's canonical
+// title/description are English. Matching spans the active translation, the
+// English canonical text, and every other translation, so switching language
+// never makes a previously findable pipeline unfindable.
 export function filterBuiltinByKeyword(
   items: IBuiltinPipeline[],
   keywords?: string,
+  lang?: string,
 ): IBuiltinPipeline[] {
   if (!keywords || keywords.trim() === '') {
     return items;
   }
   const kw = keywords.trim().toLowerCase();
   return items.filter((item) => {
-    const title = (item.title ?? '').toLowerCase();
-    const description = (item.description ?? '').toLowerCase();
-    return title.includes(kw) || description.includes(kw);
+    const haystack = [
+      item.title,
+      item.description,
+      ...builtinPipelineSearchText(item, lang),
+    ]
+      .filter((x): x is string => typeof x === 'string' && x !== '')
+      .join('\n')
+      .toLowerCase();
+    return haystack.includes(kw);
   });
+}
+
+// Collects every searchable string for one pipeline: the localized title and
+// description for the active language plus the canonical English ones. The
+// other translations are intentionally left out — a user searching in Chinese
+// should not hit a pipeline because some unrelated language happens to contain
+// the same substring.
+function builtinPipelineSearchText(
+  item: IBuiltinPipeline,
+  lang?: string,
+): string[] {
+  return [
+    resolveBuiltinTitle(item, lang),
+    resolveBuiltinDescription(item, lang),
+  ];
 }
 
 // Normalises a built-in pipeline catalog entry into the list-item shape the
@@ -76,14 +109,14 @@ export function useBuiltinItems(
   searchString?: string,
 ): { items: IBuiltinPipelineListItem[]; loading: boolean } {
   const { data: builtinData, loading } = useFetchBuiltinPipelines();
+  const { lang } = useBuiltinPipelineLabels();
   const items = useMemo(() => {
     if (!shouldShowBuiltinForRaw(rawCategory)) {
       return [];
     }
-    return filterBuiltinByKeyword(builtinData?.canvas ?? [], searchString).map(
-      toBuiltinListItem,
-    );
-  }, [rawCategory, builtinData, searchString]);
+    return filterBuiltinByKeyword(builtinData?.canvas ?? [], searchString, lang)
+      .map(toBuiltinListItem);
+  }, [rawCategory, builtinData, searchString, lang]);
   return { items, loading };
 }
 

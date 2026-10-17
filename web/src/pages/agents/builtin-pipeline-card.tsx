@@ -7,6 +7,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { IBuiltinPipelineListItem } from '@/interfaces/database/agent';
+import { useBuiltinPipelineLabels } from '@/utils/builtin-pipeline-i18n';
 import { Copy } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +17,8 @@ import { useCopyBuiltinPipeline } from './use-copy-builtin-pipeline';
 // agents list. Built-in pipelines are static, non-user resources: clicking the
 // card opens them on the read-only canvas (view only, no editing or autosave),
 // and the Copy action turns them into a user-owned editable dataflow canvas.
+// Title and description resolve through the catalogue's own translations so the
+// card follows the UI language switch instead of always showing English.
 export function BuiltinPipelineCard({
   data,
 }: {
@@ -24,18 +27,21 @@ export function BuiltinPipelineCard({
   const { t } = useTranslation();
   const { copy, copying } = useCopyBuiltinPipeline();
   const { navigateToBuiltinPipeline } = useNavigatePage();
+  const { title, description } = useBuiltinPipelineLabels();
 
   const handleCopyClick = (e: MouseEvent) => {
     e.stopPropagation();
-    copy({ id: data.id, title: data.title ?? '' });
+    // The copy is named after what the user actually sees on the card, so the
+    // new canvas reads the same way in the current language.
+    copy({ id: data.id, title: title(data) });
   };
 
   return (
     <HomeCard
       testId="builtin-pipeline-card"
       data={{
-        name: data.title ?? '',
-        description: data.description || '',
+        name: title(data),
+        description: description(data),
       }}
       // Read-only: clicking opens the built-in pipeline on the view-only
       // canvas; the template itself can never be edited.

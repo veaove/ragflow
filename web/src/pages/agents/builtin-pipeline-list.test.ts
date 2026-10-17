@@ -128,6 +128,47 @@ describe('filterBuiltinByKeyword', () => {
   });
 });
 
+describe('filterBuiltinByKeyword with translations', () => {
+  const translated = [
+    {
+      id: 'general',
+      title: 'General',
+      description: 'Segments parsed files by token count.',
+      filename: 'ingestion_pipeline_general.json',
+      title_i18n: { en: 'General', zh: '通用' },
+      description_i18n: {
+        en: 'Segments parsed files by token count.',
+        zh: '按照 token 数量对解析后的文件进行切片。',
+      },
+    },
+  ];
+
+  it('matches the translation shown in the active language', () => {
+    // The regression this guards: with English-only matching, a Chinese UI
+    // search for "通用" returned nothing even though that is what the card shows.
+    const result = filterBuiltinByKeyword(translated, '通用', 'zh-Hans');
+    expect(result.map((r) => r.id)).toEqual(['general']);
+  });
+
+  it('matches a Chinese description fragment', () => {
+    const result = filterBuiltinByKeyword(translated, '切片', 'zh-Hans');
+    expect(result.map((r) => r.id)).toEqual(['general']);
+  });
+
+  it('keeps matching the canonical English text while a translation is active', () => {
+    // Switching language must not make a previously findable pipeline vanish.
+    const result = filterBuiltinByKeyword(translated, 'General', 'zh-Hans');
+    expect(result.map((r) => r.id)).toEqual(['general']);
+  });
+
+  it('does not match a translation that is not the active language', () => {
+    // Searching in English must not surface pipelines only because some other
+    // locale happens to contain the substring.
+    const result = filterBuiltinByKeyword(translated, '通用', 'en');
+    expect(result).toEqual([]);
+  });
+});
+
 describe('toBuiltinListItem', () => {
   it('tags the item as a read-only builtin dataflow canvas', () => {
     const item = toBuiltinListItem(sample[0]);

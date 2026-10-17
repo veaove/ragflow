@@ -41,11 +41,20 @@ var builtinTemplateFS embed.FS
 // parser_id column for built-in pipelines.
 // JSON tag "id" aligns with AgentItem.id for format consistency with
 // GET /api/v1/agents?canvas_category=dataflow_canvas.
+//
+// Title/Description carry the English text so they stay the canonical,
+// language-independent values used for matching and copy operations.
+// TitleI18N/DescriptionI18N carry every translation declared by the template so
+// the web client can render the catalog in the active UI language; it picks the
+// entry for the current locale and falls back to the English Title/Description
+// when a language has no translation.
 type BuiltinPipelineMeta struct {
-	ParserID    string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
-	Filename    string `json:"filename"`
+	ParserID        string            `json:"id"`
+	Title           string            `json:"title"`
+	Description     string            `json:"description,omitempty"`
+	Filename        string            `json:"filename"`
+	TitleI18N       map[string]string `json:"title_i18n,omitempty"`
+	DescriptionI18N map[string]string `json:"description_i18n,omitempty"`
 }
 
 // BuiltinPipelineListResponse wraps the builtin pipeline list for
@@ -232,10 +241,12 @@ func parseTemplate(filename string, raw []byte) (*BuiltinPipeline, error) {
 	}
 	tpl := &BuiltinPipeline{
 		BuiltinPipelineMeta: BuiltinPipelineMeta{
-			ParserID:    ref,
-			Title:       englishText(data["title"], ref),
-			Description: englishText(data["description"], ""),
-			Filename:    filename,
+			ParserID:        ref,
+			Title:           englishText(data["title"], ref),
+			Description:     englishText(data["description"], ""),
+			Filename:        filename,
+			TitleI18N:       localizedText(data["title"]),
+			DescriptionI18N: localizedText(data["description"]),
 		},
 		DSL: dsl,
 	}
@@ -269,12 +280,12 @@ func LoadBuiltinDSL(parserID string) (string, error) {
 	return string(dslBytes), nil
 }
 
-// englishText extracts the English text from a localized template field.
-// The API must return English so it aligns with the front-end's hardcoded
-// parser labels (web/src/locales/en.ts parserLabel.*); the front end does
-// its own i18n and only uses this as the canonical value. When the field
-// is a plain string it is returned as-is; when "en" is missing, any
-// available translation is used as a last resort.
+// englishText extracts the English text from a localized template field. It
+// backs the canonical Title/Description, which stay English so server-side
+// matching and the copy flow never depend on the requester's locale. The
+// front end renders its own translation out of TitleI18N/DescriptionI18N.
+// When the field is a plain string it is returned as-is; when "en" is missing,
+// any available translation is used as a last resort.
 func englishText(v any, fallback string) string {
 	switch x := v.(type) {
 	case string:
@@ -290,4 +301,53 @@ func englishText(v any, fallback string) string {
 		}
 	}
 	return fallback
+}
+
+// localizedText collects every translation of a localized template field so the
+// API can serve the catalog in the caller's language. Keys are normalised to
+// their bare language subtag ("zh-Hans" => "zh") because the web client's
+// locale codes carry script/region subtags the templates do not use. A plain
+// string field yields nil: there is nothing to choose between.
+func localizedText(v any) map[string]string {
+	m, ok := v.(map[string]any)
+	if !ok || len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for lang, raw := range m {
+		s, ok := raw.(string)
+		if !ok {
+			continue
+		}
+		if s = strings.TrimSpace(s); s == "" {
+			continue
+		}
+		key := normalizeTemplateLang(lang)
+		if key == "" {
+			continue
+		}
+		// "en" is the canonical key: an explicit English entry always wins so
+		// TitleI18N["en"] agrees with Title.
+		if key == "en" || out[key] == "" {
+			out[key] = s
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// normalizeTemplateLang reduces a template language key to its bare lowercase
+// subtag. "zh-Hans", "zh_Hant" and "ZH" all collapse to "zh", which is what the
+// templates actually key on; an empty result means the key is unusable.
+func normalizeTemplateLang(lang string) string {
+	lang = strings.ToLower(strings.TrimSpace(lang))
+	if lang == "" {
+		return ""
+	}
+	if i := strings.IndexAny(lang, "-_"); i >= 0 {
+		lang = lang[:i]
+	}
+	return lang
 }

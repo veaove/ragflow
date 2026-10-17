@@ -15,6 +15,7 @@
  */
 
 import message from '@/components/ui/message';
+import type { IBuiltinPipeline } from '@/interfaces/database/agent';
 import { ResponseGetType } from '@/interfaces/database/base';
 import { IToken } from '@/interfaces/database/chat';
 import { ITenantInfo } from '@/interfaces/database/dataset';
@@ -34,6 +35,10 @@ import userService, {
   listTenant,
   listTenantUser,
 } from '@/services/user-service';
+import {
+  resolveBuiltinTitle,
+  useBuiltinPipelineLabels,
+} from '@/utils/builtin-pipeline-i18n';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -107,6 +112,7 @@ export const useSelectParserList = (): Array<{
   label: string;
 }> => {
   const { t } = useTranslation();
+  const { lang } = useBuiltinPipelineLabels();
 
   // Fetch the pipeline catalog dynamically.
   const { data: pipelineListData } = useQuery({
@@ -155,27 +161,23 @@ export const useSelectParserList = (): Array<{
     // Prefer the dynamic pipeline catalog from the API.
     // GET /api/v1/pipelines?type=builtin responds with
     // { code, data: { canvas: [{ id, title, description, filename }], total } }.
-    const pipelineList: Array<{
-      id: string;
-      title: string;
-      description?: string;
-      filename?: string;
-    }> = pipelineListData?.data?.canvas ?? [];
+    const pipelineList: IBuiltinPipeline[] = pipelineListData?.data?.canvas ?? [];
     if (pipelineList.length > 0) {
-      const labelFromAPI = (parserId: string, title: string) => {
-        const key = `knowledgeConfiguration.parserLabel.${parserId}`;
-        const translated = t(key);
-        return translated !== key ? translated : title;
-      };
       return pipelineList.map((item) => ({
         value: item.id,
-        label: labelFromAPI(item.id, item.title),
+        // Resolve through the catalogue's own translations so the dropdown
+        // follows the UI language. The locale files' parserLabel entries are
+        // only a fallback: several locales (zh, zh-traditional, es, ...) never
+        // defined them, and the templates ship translations for those already.
+        label:
+          resolveBuiltinTitle(item, lang) ||
+          t(`knowledgeConfiguration.parserLabel.${item.id}`),
       }));
     }
 
     // Fallback: the hardcoded default parsers.
     return defaultParsers;
-  }, [defaultParsers, pipelineListData, t]);
+  }, [defaultParsers, pipelineListData, t, lang]);
 
   return parserList;
 };

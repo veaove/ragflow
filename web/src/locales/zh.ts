@@ -638,6 +638,26 @@ export default {
       builtInSuffix: '内置',
       builtInBadge: '内置',
       builtInPipelines: '内置解析流程',
+      // Fallback labels for the builtin parsers. The builtin catalogue ships
+      // its own zh titles, so these only apply to the hardcoded fallback list
+      // and to templates that declare no translation.
+      parserLabel: {
+        naive: '通用',
+        general: '通用',
+        qa: '问答',
+        resume: '简历',
+        manual: '手动',
+        table: '表格',
+        paper: '论文',
+        book: '书籍',
+        laws: '法律',
+        presentation: '演示文稿',
+        picture: '图片',
+        one: '单文件',
+        audio: '音频',
+        email: '邮件',
+        tag: '标签',
+      },
       parserSelectPlaceholder: '选择解析方式',
       parserOptionUnavailable: '不可用',
       randomSeedTip:

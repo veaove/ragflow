@@ -63,6 +63,94 @@ func TestRegistryRefsMatchList(t *testing.T) {
 	}
 }
 
+func TestRegistryLocalizesMeta(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	mustWrite("ingestion_pipeline_general.json", `{
+		"title": {"en":"General","zh":"通用","zh-Hans":"通用变体","de":"Allgemein"},
+		"description": {"en":"Segments by token count.","zh":"按照 token 数量切片。"},
+		"dsl": {"components": {}}
+	}`)
+	// A template with a single language must expose no i18n map at all, so the
+	// client keeps rendering its canonical text unchanged.
+	mustWrite("ingestion_pipeline_book.json", `{"title":"Book","description":"Plain","dsl":{"components":{}}}`)
+
+	r, err := NewRegistryFromDir(dir)
+	if err != nil {
+		t.Fatalf("NewRegistryFromDir: %v", err)
+	}
+
+	general, ok := r.Get("general")
+	if !ok {
+		t.Fatal("expected general template")
+	}
+	// English stays canonical for matching / copy naming.
+	if general.Title != "General" {
+		t.Fatalf("Title = %q, want General", general.Title)
+	}
+	wantTitle := map[string]string{"en": "General", "zh": "通用", "de": "Allgemein"}
+	if len(general.TitleI18N) != len(wantTitle) {
+		t.Fatalf("TitleI18N = %#v, want %#v", general.TitleI18N, wantTitle)
+	}
+	for lang, want := range wantTitle {
+		if got := general.TitleI18N[lang]; got != want {
+			t.Errorf("TitleI18N[%q] = %q, want %q", lang, got, want)
+		}
+	}
+	// "zh-Hans" normalises onto the "zh" key the templates actually use; an
+	// explicit bare "zh" must not be clobbered by it.
+	if got := general.TitleI18N["zh"]; got != "通用" {
+		t.Errorf("TitleI18N[zh] = %q, want 通用", got)
+	}
+	if got := general.DescriptionI18N["zh"]; got != "按照 token 数量切片。" {
+		t.Errorf("DescriptionI18N[zh] = %q", got)
+	}
+	if got := general.DescriptionI18N["en"]; got != "Segments by token count." {
+		t.Errorf("DescriptionI18N[en] = %q", got)
+	}
+
+	book, ok := r.Get("book")
+	if !ok {
+		t.Fatal("expected book template")
+	}
+	if book.TitleI18N != nil {
+		t.Errorf("TitleI18N = %#v, want nil for a plain-string field", book.TitleI18N)
+	}
+	if book.DescriptionI18N != nil {
+		t.Errorf("DescriptionI18N = %#v, want nil for a plain-string field", book.DescriptionI18N)
+	}
+}
+
+// The localized maps must reach the API response, otherwise the web client has
+// nothing to switch on.
+func TestRegistryListCarriesTranslations(t *testing.T) {
+	r, err := DefaultRegistry()
+	if err != nil {
+		t.Fatalf("DefaultRegistry: %v", err)
+	}
+	for _, meta := range r.List().BuiltinPipelines {
+		if meta.TitleI18N["en"] != meta.Title {
+			t.Errorf("%s: TitleI18N[en] = %q, want it to equal Title %q", meta.ParserID, meta.TitleI18N["en"], meta.Title)
+		}
+	}
+	// The shipped templates all declare zh, so the Chinese UI has something to
+	// render; without it the built-in agents list stays English-only.
+	var found bool
+	for _, meta := range r.List().BuiltinPipelines {
+		if meta.TitleI18N["zh"] != "" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("no shipped template declares a zh title; the Chinese UI would fall back to English")
+	}
+}
+
 func TestRegistryCanonicalOrderAppendsUnknownTemplates(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite := func(name, body string) {

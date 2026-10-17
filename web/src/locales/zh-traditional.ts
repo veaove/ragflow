@@ -218,6 +218,26 @@ export default {
     },
     knowledgeConfiguration: {
       builtInSuffix: ' (built in)',
+      // Fallback labels for the builtin parsers. The builtin catalogue ships
+      // its own zh titles, so these only apply to the hardcoded fallback list
+      // and to templates that declare no translation.
+      parserLabel: {
+        naive: '通用',
+        general: '通用',
+        qa: '問答',
+        resume: '履歷',
+        manual: '手動',
+        table: '表格',
+        paper: '論文',
+        book: '書籍',
+        laws: '法律',
+        presentation: '簡報',
+        picture: '圖片',
+        one: '單一文件',
+        audio: '音訊',
+        email: '郵件',
+        tag: '標籤',
+      },
       settings: '設置',
       autoMetadataTip:
         '自動生成元數據。適用於解析新文件。現有文件需要重新解析才能更新（ chunk 將保留）。請注意，配置中指定的索引模型將消耗額外的 Token。',

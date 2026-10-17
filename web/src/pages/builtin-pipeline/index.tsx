@@ -11,6 +11,7 @@ import {
 import { Spin } from '@/components/ui/spin';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchBuiltinPipelines } from '@/hooks/use-agent-request';
+import { useBuiltinPipelineLabels } from '@/utils/builtin-pipeline-i18n';
 import { ReactFlowProvider } from '@xyflow/react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
@@ -31,7 +32,9 @@ export default function BuiltinPipelinePage() {
   const { navigateToAgents } = useNavigatePage();
   const { loading } = useFetchBuiltinPipelineDataOnMount();
   const { data } = useFetchBuiltinPipelines();
-  const title = data.canvas.find((x) => x.id === id)?.title ?? '';
+  const { title: localizeTitle } = useBuiltinPipelineLabels();
+  const pipeline = data.canvas.find((x) => x.id === id);
+  const title = pipeline ? localizeTitle(pipeline) : '';
 
   return (
     <section className="h-full" data-testid="builtin-pipeline-page">
