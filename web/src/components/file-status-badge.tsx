@@ -35,7 +35,7 @@ const FileStatusBadge: FC<StatusBadgeProps> = ({ status, name, className }) => {
     // so the badge matches the status dot in the document list.
     // #3ba05c  → rgb(59, 160, 92)   // state-success
     // #d8494b  → rgb(216, 73, 75)   // state-error
-    // #00beb4  → rgb(0, 190, 180)   // accent-primary
+    // #065bc1  → rgb(6, 91, 193)    // accent-primary
     // #faad14  → rgb(250, 173, 20)  // state-warning
     // #5c96c8  → rgb(92, 150, 200)  // team-member
     switch (status) {

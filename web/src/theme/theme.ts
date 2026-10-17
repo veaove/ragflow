@@ -15,12 +15,12 @@
  */
 
 module.exports = {
-  'primary-color': '#338AFF', // '#338AFF',
+  'primary-color': '#065BC1', // 和君纵达品牌蓝
   'border-radius-base': '4px',
   // 'menu-dark-color': '',
   // 'menu-dark-danger-color': '',
-  'menu-dark-bg': '#092140',
-  'menu-dark-item-active-bg': '#092140',
+  'menu-dark-bg': '#062A63',
+  'menu-dark-item-active-bg': '#062A63',
 
   // 'menu-dark-arrow-color': '',
   // 'menu-dark-inline-submenu-bg': '',
