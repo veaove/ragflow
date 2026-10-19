@@ -1094,13 +1094,15 @@ func discardOrphanedColumnValues(ctx context.Context, db *gorm.DB, spec columnSp
 // (scope / group_type / status / weight) that AutoMigrate adds. Because GORM
 // writes the Go zero value "" instead of the column DEFAULT when a struct field
 // is empty, rows created by a process predating these columns — or any row whose
-// in-memory struct left the field blank — can carry '' where the retrieval path
+// in-memory struct left the field blank — can carry ” where the retrieval path
 // expects the live/kb/synonym defaults. Normalize them so the live-only filter
 // in GetDictionaryByDataset does not silently drop vocabulary.
 func migrateSynonymLifecycleDefaults(ctx context.Context, db *gorm.DB) error {
 	migrator := db.WithContext(ctx).Migrator()
 
-	if migrator.HasTable("synonym_group") && migrator.HasColumn("synonym_group", "status") {
+	// HasColumn 需要 struct 指针来解析表名与字段；传字符串表名会在 GORM 内部
+	// 解引用 nil 而 panic。
+	if migrator.HasTable(&entity.SynonymGroup{}) && migrator.HasColumn(&entity.SynonymGroup{}, "status") {
 		for col, def := range map[string]string{
 			"status":     entity.SynonymStatusLive,
 			"scope":      entity.SynonymScopeKB,
@@ -1114,7 +1116,7 @@ func migrateSynonymLifecycleDefaults(ctx context.Context, db *gorm.DB) error {
 		}
 	}
 
-	if migrator.HasTable("synonym_word") && migrator.HasColumn("synonym_word", "status") {
+	if migrator.HasTable(&entity.SynonymWord{}) && migrator.HasColumn(&entity.SynonymWord{}, "status") {
 		if err := db.WithContext(ctx).Exec(
 			"UPDATE synonym_word SET status = ? WHERE status = '' OR status IS NULL",
 			entity.SynonymStatusLive,
