@@ -1,4 +1,3 @@
-import { IconFontFill } from '@/components/icon-font';
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,23 +12,27 @@ import {
   useListTenant,
 } from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
+import { headerLanguages } from '@/locales/config';
 import { TenantRole } from '@/pages/user-setting/constants';
 import { Routes } from '@/routes';
-import {
-  LucideChevronDown,
-  LucideCircleHelp,
-  LucideLanguages,
-} from 'lucide-react';
+import { BellButton } from './bell-button';
+import { MobileMenuFooter } from './mobile-menu-footer';
+import { MobileNavbar } from './mobile-nav-drawer';
+import ThemeButton from './theme-button';
+import { LucideLanguages } from 'lucide-react';
 import React, { useMemo } from 'react';
 import { Link, useLocation } from 'react-router';
-import { BellButton } from './bell-button';
-import { DesktopNavbar, MobileNavbar } from './global-navbar';
-import { MobileMenuFooter } from './mobile-menu-footer';
-import ThemeButton from './theme-button';
-import { useHeaderNavLayout } from './use-header-nav-layout';
 
-import { supportedLanguages } from '@/locales/config';
-
+/**
+ * 顶栏。左右两端分别是品牌入口与账号/偏好操作。
+ *
+ * 移动端额外渲染汉堡按钮打开抽屉导航；lg 以上导航已迁至左侧固定栏
+ * （见 AppSidebar），此处的汉堡自动隐藏。
+ *
+ * 历史背景：导航从顶栏胶囊迁移到左侧固定栏时，曾把本组件拆成「移动端专用」
+ * 并把语言/主题/头像塞进侧栏底部。那两个位置不符合常规后台的使用习惯，
+ * 现统一回到顶栏右侧。
+ */
 export function Header({
   className,
   ...props
@@ -47,187 +50,89 @@ export function Header({
     [tenantData],
   );
 
-  const currentLanguage = supportedLanguages.find((x) => x.code === language);
-
-  const {
-    headerRef,
-    logoRef,
-    expandedRightMeasureRef,
-    navMeasureRef,
-    isCompact,
-  } = useHeaderNavLayout(`${hasNotification}-${language}`);
+  // Falls back to the first offered language so a stored preference outside
+  // the switcher's subset still shows a valid label instead of a blank button.
+  const currentLanguage =
+    headerLanguages.find((x) => x.code === language) ?? headerLanguages[0];
 
   return (
-    <>
-      <header
-        ref={headerRef}
-        key="app-navbar"
-        className={cn(
-          'w-full min-w-0 flex items-center gap-2 sm:gap-4',
-          className,
-        )}
-        {...props}
-      >
-        <div className="inline-flex shrink-0 items-center gap-2">
-          {isCompact && (
-            <MobileNavbar
-              renderFooter={(close) => <MobileMenuFooter onClose={close} />}
-            />
-          )}
-          <div ref={logoRef} className="inline-flex shrink-0 items-center">
-            <Link
-              to={Routes.Root}
-              aria-current={pathname === Routes.Root ? 'page' : undefined}
-              className="flex size-10 shrink-0 items-center justify-center"
-            >
-              <img src={'/logo.svg'} alt="和君纵达 logo" className="size-10" />
-            </Link>
-          </div>
+    <header
+      key="app-navbar"
+      className={cn(
+        'flex w-full min-w-0 items-center gap-2 sm:gap-4',
+        className,
+      )}
+      {...props}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        {/* 窄屏才需要汉堡：宽屏导航在左侧固定栏 */}
+        <div className="lg:hidden">
+          <MobileNavbar
+            renderFooter={(close) => <MobileMenuFooter onClose={close} />}
+          />
         </div>
-
-        {!isCompact && (
-          <div className="flex min-w-0 flex-1 justify-center overflow-hidden">
-            <DesktopNavbar />
-          </div>
-        )}
-
-        {isCompact && <div className="flex-1" aria-hidden />}
-
-        <div
-          className={cn(
-            'flex shrink-0 items-center justify-end text-text-badge',
-            isCompact ? 'gap-0.5' : 'gap-4',
-          )}
-          data-testid="auth-status"
+        <Link
+          to={Routes.Root}
+          aria-current={pathname === Routes.Root ? 'page' : undefined}
+          className="flex size-9 shrink-0 items-center justify-center"
         >
-          {!isCompact && (
-            <>
-              <a
-                className="inline-flex p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
-                target="_blank"
-                href="https://discord.com/invite/NjYzJD3GM3"
-                rel="noreferrer noopener"
-              >
-                <IconFontFill name="a-DiscordIconSVGVectorIcon" />
-              </a>
+          <img src="/logo.svg" alt="和君纵达 logo" className="size-9" />
+        </Link>
+      </div>
 
-              <a
-                className="inline-flex p-2 text-text-secondary hover:text-text-primary focus-visible:text-text-primary"
-                target="_blank"
-                href="https://github.com/infiniflow/ragflow"
-                rel="noreferrer noopener"
-              >
-                <IconFontFill name="GitHub" />
-              </a>
-            </>
-          )}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className={cn(
-                  'size-10 shrink-0 px-0',
-                  !isCompact && 'size-auto gap-1 px-4',
-                )}
-                aria-label={currentLanguage?.displayName}
-              >
-                {isCompact && <LucideLanguages className="size-5" />}
-                {!isCompact && (
-                  <>
-                    {currentLanguage?.displayName}
-                    <LucideChevronDown className="size-[1em]" />
-                  </>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent align="end">
-              {supportedLanguages.map((x) => (
-                <DropdownMenuItem
-                  key={x.code}
-                  onClick={() => changeLanguage(x.code)}
-                >
-                  {x.displayName}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {!isCompact && (
-            <>
-              <Button
-                asLink
-                variant="ghost"
-                size="icon"
-                className="size-8"
-                to="https://ragflow.io/docs/dev/category/user-guides"
-                target="_blank"
-                rel="noreferrer noopener"
-              >
-                <LucideCircleHelp className="size-[1em]" />
-              </Button>
-
-              {hasNotification && <BellButton className="!size-8" />}
-            </>
-          )}
-
-          <ThemeButton className={cn(!isCompact && '!size-8')} />
-
-          <Link
-            to={Routes.UserSetting}
-            className={cn(
-              'relative flex size-10 shrink-0 items-center justify-center',
-              !isCompact && 'ms-3',
-            )}
-            data-testid="settings-entrypoint"
-          >
-            <RAGFlowAvatar
-              name={nickname}
-              avatar={avatar}
-              isPerson
-              className="size-8"
-            />
-          </Link>
-        </div>
-      </header>
+      <div className="flex-1" aria-hidden />
 
       <div
-        className="pointer-events-none invisible fixed -left-[9999px] top-0"
-        aria-hidden
+        className="flex shrink-0 items-center justify-end gap-0.5 text-text-badge sm:gap-1"
+        data-testid="auth-status"
       >
-        <div ref={navMeasureRef}>
-          <DesktopNavbar />
-        </div>
-        <div
-          ref={expandedRightMeasureRef}
-          className="inline-flex shrink-0 items-center justify-end gap-4 text-text-badge"
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              className={cn(
+                'size-9 shrink-0 px-0',
+                'lg:size-auto lg:gap-1 lg:px-3',
+              )}
+              aria-label={currentLanguage?.displayName}
+            >
+              <LucideLanguages className="size-5" />
+              {/* 宽屏显示语言名，窄屏只留图标节省空间 */}
+              <span className="hidden text-sm lg:inline">
+                {currentLanguage?.displayName}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+
+          <DropdownMenuContent align="end">
+            {headerLanguages.map((x) => (
+              <DropdownMenuItem
+                key={x.code}
+                onClick={() => changeLanguage(x.code)}
+              >
+                {x.displayName}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {hasNotification && <BellButton className="!size-9" />}
+
+        <ThemeButton className="!size-9" />
+
+        <Link
+          to={Routes.UserSetting}
+          className="relative flex size-9 shrink-0 items-center justify-center ms-1"
+          data-testid="settings-entrypoint"
         >
-          <a className="inline-flex p-2">
-            <IconFontFill name="a-DiscordIconSVGVectorIcon" />
-          </a>
-          <a className="inline-flex p-2">
-            <IconFontFill name="GitHub" />
-          </a>
-          <Button variant="ghost" className="size-auto gap-1 px-4">
-            {currentLanguage?.displayName}
-            <LucideChevronDown className="size-[1em]" />
-          </Button>
-          <Button variant="ghost" size="icon" className="size-8">
-            <LucideCircleHelp className="size-[1em]" />
-          </Button>
-          <ThemeButton className="!size-8" />
-          {hasNotification && <BellButton className="!size-8" />}
-          <div className="relative ms-3 flex size-10 shrink-0 items-center justify-center">
-            <RAGFlowAvatar
-              name={nickname}
-              avatar={avatar}
-              isPerson
-              className="size-8"
-            />
-          </div>
-        </div>
+          <RAGFlowAvatar
+            name={nickname}
+            avatar={avatar}
+            isPerson
+            className="size-8"
+          />
+        </Link>
       </div>
-    </>
+    </header>
   );
 }

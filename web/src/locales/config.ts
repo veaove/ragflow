@@ -11,25 +11,16 @@ import translation_en from './en';
 // The language stored in the database is for agent template resources, as these resources reside on the server.
 // When a user logs in from a different machine, the login page language is the language configured by VITE_DEFAULT_LANGUAGE_CODE.
 
+/**
+ * 本产品仅面向中文用户维护，故只保留中文（简/繁）与英文。
+ *
+ * 用户本地存储里若残留已删除的语言（如 'ja'），`supportedLngs` 会让 i18next
+ * 回退到 fallbackLng，不会报错。
+ */
 const languageImports: Record<string, () => Promise<{ default: any }>> = {
   [LanguageAbbreviation.En]: () => import('./en'),
   [LanguageAbbreviation.Zh]: () => import('./zh'),
   [LanguageAbbreviation.ZhTraditional]: () => import('./zh-traditional'),
-  [LanguageAbbreviation.Id]: () => import('./id'),
-  [LanguageAbbreviation.Ja]: () => import('./ja'),
-  [LanguageAbbreviation.Es]: () => import('./es'),
-  [LanguageAbbreviation.Vi]: () => import('./vi'),
-  [LanguageAbbreviation.Ru]: () => import('./ru'),
-  [LanguageAbbreviation.PtBr]: () => import('./pt-br'),
-  [LanguageAbbreviation.De]: () => import('./de'),
-  [LanguageAbbreviation.Fr]: () => import('./fr'),
-  [LanguageAbbreviation.It]: () => import('./it'),
-  [LanguageAbbreviation.Bg]: () => import('./bg'),
-  [LanguageAbbreviation.Ar]: () => import('./ar'),
-  [LanguageAbbreviation.Tr]: () => import('./tr'),
-  [LanguageAbbreviation.Ko]: () => import('./ko'),
-  [LanguageAbbreviation.Az]: () => import('./az'),
-  [LanguageAbbreviation.Uz]: () => import('./uz'),
 };
 
 const supportedLanguageCodes: Intl.UnicodeBCP47LocaleIdentifier[] =
@@ -46,6 +37,21 @@ export const supportedLanguages = supportedLanguageCodes.map((code) => {
     ),
   };
 });
+
+/**
+ * UI 语言切换器展示的语言。
+ *
+ * 与 supportedLanguages 分开是为了兼容存量用户：本地存储里存了已下线语言的用户，
+ * 仍应按该值渲染（切换器不展示它，但也不作废它），而不是被静默重置。
+ */
+const headerLanguageCodes: string[] = [
+  LanguageAbbreviation.Zh,
+  LanguageAbbreviation.En,
+];
+
+export const headerLanguages = supportedLanguages.filter((lang) =>
+  headerLanguageCodes.includes(lang.code),
+);
 
 export const DEFAULT_LANGUAGE_CODE =
   import.meta.env.VITE_DEFAULT_LANGUAGE_CODE || LanguageAbbreviation.En;
