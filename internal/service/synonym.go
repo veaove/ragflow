@@ -57,20 +57,24 @@ type SynonymWordInput struct {
 
 // CreateSynonymGroupRequest is the body of a group creation.
 type CreateSynonymGroupRequest struct {
-	Name   string             `json:"name" binding:"required"`
-	Domain string             `json:"domain"`
-	Remark string             `json:"remark"`
-	Words  []SynonymWordInput `json:"words"`
+	Name      string             `json:"name" binding:"required"`
+	Domain    string             `json:"domain"`
+	Scope     string             `json:"scope"`
+	GroupType string             `json:"group_type"`
+	Remark    string             `json:"remark"`
+	Words     []SynonymWordInput `json:"words"`
 }
 
 // UpdateSynonymGroupRequest is the body of a group update. Words is a pointer
 // so an absent field leaves the stored words untouched while an explicit empty
 // array clears them.
 type UpdateSynonymGroupRequest struct {
-	Name   *string             `json:"name"`
-	Domain *string             `json:"domain"`
-	Remark *string             `json:"remark"`
-	Words  *[]SynonymWordInput `json:"words"`
+	Name      *string             `json:"name"`
+	Domain    *string             `json:"domain"`
+	Scope     *string             `json:"scope"`
+	GroupType *string             `json:"group_type"`
+	Remark    *string             `json:"remark"`
+	Words     *[]SynonymWordInput `json:"words"`
 }
 
 // ListSynonymGroups returns the vocabulary groups of one knowledge base.
@@ -79,7 +83,29 @@ func (s *SynonymService) ListSynonymGroups(ctx context.Context, userID, datasetI
 	if err != nil {
 		return nil, err
 	}
-	return s.synonymDAO.ListGroups(ctx, dao.DB, tenantID, datasetID, domain)
+	groups, err := s.synonymDAO.ListGroups(ctx, dao.DB, tenantID, datasetID, domain)
+	if err != nil {
+		return nil, err
+	}
+	// Attach each group's words so the list view can render the standard word
+	// and aliases without an N+1 round trip per row.
+	if len(groups) > 0 {
+		ids := make([]string, 0, len(groups))
+		for _, g := range groups {
+			ids = append(ids, g.ID)
+		}
+		byGroup, werr := s.synonymDAO.ListWordsByGroupIDs(ctx, dao.DB, ids)
+		if werr != nil {
+			return nil, werr
+		}
+		for _, g := range groups {
+			g.Words = byGroup[g.ID]
+			if g.Words == nil {
+				g.Words = []*entity.SynonymWord{}
+			}
+		}
+	}
+	return groups, nil
 }
 
 // GetSynonymGroup returns one group with its words attached.
@@ -127,6 +153,9 @@ func (s *SynonymService) CreateSynonymGroup(ctx context.Context, userID, dataset
 		DatasetID: datasetID,
 		Name:      name,
 		Domain:    domain,
+		Scope:     normalizeSynonymScope(req.Scope),
+		GroupType: normalizeSynonymGroupType(req.GroupType),
+		Status:    entity.SynonymStatusLive,
 		Remark:    strings.TrimSpace(req.Remark),
 	}
 
@@ -175,6 +204,12 @@ func (s *SynonymService) UpdateSynonymGroup(ctx context.Context, userID, groupID
 	}
 	if req.Domain != nil {
 		updates["domain"] = normalizeSynonymDomain(*req.Domain)
+	}
+	if req.Scope != nil {
+		updates["scope"] = normalizeSynonymScope(*req.Scope)
+	}
+	if req.GroupType != nil {
+		updates["group_type"] = normalizeSynonymGroupType(*req.GroupType)
 	}
 	if req.Remark != nil {
 		updates["remark"] = strings.TrimSpace(*req.Remark)
@@ -348,6 +383,28 @@ func normalizeSynonymDomain(domain string) string {
 	}
 }
 
+// normalizeSynonymScope validates the effect range, defaulting to kb (single
+// knowledge base). Only kb and tenant are accepted.
+func normalizeSynonymScope(scope string) string {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case entity.SynonymScopeTenant:
+		return entity.SynonymScopeTenant
+	default:
+		return entity.SynonymScopeKB
+	}
+}
+
+// normalizeSynonymGroupType validates the group type, defaulting to synonym
+// (semantic expansion). Only synonym and proper are accepted.
+func normalizeSynonymGroupType(groupType string) string {
+	switch strings.ToLower(strings.TrimSpace(groupType)) {
+	case entity.SynonymGroupTypeProper:
+		return entity.SynonymGroupTypeProper
+	default:
+		return entity.SynonymGroupTypeSynonym
+	}
+}
+
 // normalizeSynonymWords trims, drops blanks and duplicates, and enforces the
 // per-group cap. At most one entry is treated as primary so the manager table
 // has a stable canonical form.
@@ -395,6 +452,12 @@ func buildSynonymWordRows(groupID string, words []SynonymWordInput) []*entity.Sy
 			GroupID:   groupID,
 			Word:      w.Word,
 			IsPrimary: w.IsPrimary,
+			// Explicitly set lifecycle fields: GORM writes the Go zero value ""
+			// instead of the column DEFAULT when the field is empty, so relying on
+			// the DB default would store '' and the retrieval path's
+			// `WHERE status='live'` filter would drop every newly created word.
+			Status: entity.SynonymStatusLive,
+			Weight: 1.00,
 		})
 	}
 	return rows

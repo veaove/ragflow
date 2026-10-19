@@ -76,6 +76,29 @@ func (dao *SynonymDAO) ListWords(ctx context.Context, db *gorm.DB, tenantID, gro
 	return words, err
 }
 
+// ListWordsByGroupIDs returns the words of many groups in one query, so the list
+// view can render each group's standard word and aliases without an N+1 round
+// trip. The result is grouped by group_id.
+func (dao *SynonymDAO) ListWordsByGroupIDs(ctx context.Context, db *gorm.DB, groupIDs []string) (map[string][]*entity.SynonymWord, error) {
+	if len(groupIDs) == 0 {
+		return map[string][]*entity.SynonymWord{}, nil
+	}
+	words := make([]*entity.SynonymWord, 0)
+	err := db.WithContext(ctx).Model(&entity.SynonymWord{}).
+		Where("group_id IN ?", groupIDs).
+		Order("is_primary DESC").
+		Order("create_time ASC").
+		Find(&words).Error
+	if err != nil {
+		return nil, err
+	}
+	byGroup := make(map[string][]*entity.SynonymWord, len(groupIDs))
+	for _, w := range words {
+		byGroup[w.GroupID] = append(byGroup[w.GroupID], w)
+	}
+	return byGroup, nil
+}
+
 // CreateGroup inserts a group. The caller supplies a generated id.
 func (dao *SynonymDAO) CreateGroup(ctx context.Context, db *gorm.DB, group *entity.SynonymGroup) error {
 	return db.WithContext(ctx).Create(group).Error
@@ -146,6 +169,10 @@ func (dao *SynonymDAO) GetDictionaryByDataset(ctx context.Context, db *gorm.DB, 
 		Joins("JOIN synonym_group ON synonym_group.id = synonym_word.group_id").
 		Where("synonym_group.tenant_id = ?", tenantID).
 		Where("synonym_group.dataset_id = ?", datasetID).
+		// Only live groups expand at query time. Pending groups are staged
+		// changes that must not affect online retrieval until published.
+		Where("synonym_group.status = ?", entity.SynonymStatusLive).
+		Where("synonym_word.status = ?", entity.SynonymStatusLive).
 		Scan(&rows).Error
 	if err != nil {
 		return nil, err

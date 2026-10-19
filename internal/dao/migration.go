@@ -1089,3 +1089,39 @@ func discardOrphanedColumnValues(ctx context.Context, db *gorm.DB, spec columnSp
 			zap.Error(result.Error))
 	}
 }
+
+// migrateSynonymLifecycleDefaults backfills the synonym lifecycle columns
+// (scope / group_type / status / weight) that AutoMigrate adds. Because GORM
+// writes the Go zero value "" instead of the column DEFAULT when a struct field
+// is empty, rows created by a process predating these columns — or any row whose
+// in-memory struct left the field blank — can carry '' where the retrieval path
+// expects the live/kb/synonym defaults. Normalize them so the live-only filter
+// in GetDictionaryByDataset does not silently drop vocabulary.
+func migrateSynonymLifecycleDefaults(ctx context.Context, db *gorm.DB) error {
+	migrator := db.WithContext(ctx).Migrator()
+
+	if migrator.HasTable("synonym_group") && migrator.HasColumn("synonym_group", "status") {
+		for col, def := range map[string]string{
+			"status":     entity.SynonymStatusLive,
+			"scope":      entity.SynonymScopeKB,
+			"group_type": entity.SynonymGroupTypeSynonym,
+		} {
+			if err := db.WithContext(ctx).Exec(
+				"UPDATE synonym_group SET "+col+" = ? WHERE "+col+" = '' OR "+col+" IS NULL", def,
+			).Error; err != nil {
+				return err
+			}
+		}
+	}
+
+	if migrator.HasTable("synonym_word") && migrator.HasColumn("synonym_word", "status") {
+		if err := db.WithContext(ctx).Exec(
+			"UPDATE synonym_word SET status = ? WHERE status = '' OR status IS NULL",
+			entity.SynonymStatusLive,
+		).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
+}

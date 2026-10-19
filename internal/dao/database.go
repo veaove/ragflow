@@ -209,6 +209,7 @@ func InitDB(ctx context.Context, migrateDB bool) error {
 		&entity.WikiDocumentDirty{},
 		&entity.SynonymGroup{},
 		&entity.SynonymWord{},
+		&entity.ChunkQuestion{},
 		// Knowledge-compile compilation templates and their groups. The Go
 		// KnowledgeCompilerComponent resolves a compilation_template (or group)
 		// from these tables at runtime, so the Go side must guarantee they exist.
@@ -251,6 +252,15 @@ func InitDB(ctx context.Context, migrateDB bool) error {
 
 		if err = migrateTenantModelMaxTokens(ctx, DB); err != nil {
 			return fmt.Errorf("failed to backfill tenant model max_tokens: %w", err)
+		}
+		// Backfill the synonym lifecycle columns added by AutoMigrate. GORM
+		// writes the Go zero value "" instead of the column DEFAULT when a
+		// struct field is empty, so legacy rows (or rows written by a process
+		// that predates these columns) can carry '' where the retrieval path
+		// expects 'live'/'kb'/'synonym'. Normalize them so the live-only filter
+		// in GetDictionaryByDataset does not silently drop vocabulary.
+		if err = migrateSynonymLifecycleDefaults(ctx, DB); err != nil {
+			return fmt.Errorf("failed to backfill synonym lifecycle defaults: %w", err)
 		}
 	} else {
 		if err = migrateIngestionLogRunIdentity(ctx, DB); err != nil {
