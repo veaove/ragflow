@@ -32,6 +32,7 @@ package runtime
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"reflect"
@@ -43,6 +44,11 @@ import (
 
 	"github.com/cloudwego/eino/compose"
 )
+
+// ErrEnvReadOnly is returned when a node attempts to write the env.*
+// namespace. Environment variables are app-level, version-snapshotted and
+// read-only at run time; only conversation.* is writable (FR-04-02 / D3).
+var ErrEnvReadOnly = errors.New("environment variables are read-only at run time; use conversation.* for writable state")
 
 // CanvasState is the per-run shared state bag that all components read/write
 // through eino's StatePreHandler / StatePostHandler (compose/state.go).
@@ -64,6 +70,7 @@ type CanvasState struct {
 	Outputs            map[string]map[string]any
 	Sys                map[string]any
 	Env                map[string]any
+	Conversation       map[string]any
 	Path               []string
 	History            []map[string]any
 	Memory             []map[string]any
@@ -83,6 +90,7 @@ func NewCanvasState(runID, sessionID string) *CanvasState {
 		Outputs:            make(map[string]map[string]any),
 		Sys:                make(map[string]any),
 		Env:                make(map[string]any),
+		Conversation:       make(map[string]any),
 		Path:               []string{},
 		History:            []map[string]any{},
 		Memory:             []map[string]any{},
@@ -160,6 +168,7 @@ type canvasStateJSON struct {
 	Outputs            map[string]map[string]any `json:"outputs"`
 	Sys                map[string]any            `json:"sys,omitempty"`
 	Env                map[string]any            `json:"env,omitempty"`
+	Conversation       map[string]any            `json:"conversation,omitempty"`
 	Path               []string                  `json:"path,omitempty"`
 	History            []map[string]any          `json:"history,omitempty"`
 	Memory             []map[string]any          `json:"memory,omitempty"`
@@ -199,6 +208,7 @@ func (s *CanvasState) MarshalJSON() ([]byte, error) {
 		Outputs:            s.Outputs,
 		Sys:                s.Sys,
 		Env:                s.Env,
+		Conversation:       s.Conversation,
 		Path:               s.Path,
 		History:            s.History,
 		Memory:             s.Memory,
@@ -229,6 +239,7 @@ func (s *CanvasState) UnmarshalJSON(b []byte) error {
 	s.Outputs = snap.Outputs
 	s.Sys = snap.Sys
 	s.Env = snap.Env
+	s.Conversation = snap.Conversation
 	s.Path = snap.Path
 	s.History = snap.History
 	s.activeHistoryIndex = -1
@@ -679,6 +690,9 @@ func (s *CanvasState) ensureInitializedLocked() {
 	if s.Env == nil {
 		s.Env = make(map[string]any)
 	}
+	if s.Conversation == nil {
+		s.Conversation = make(map[string]any)
+	}
 	if s.Retrieval == nil {
 		s.Retrieval = make(map[string]any)
 	}
@@ -941,6 +955,8 @@ func getVarLocked(s *CanvasState, ref string) (any, error) {
 		return dotTraverse(s.Sys, strings.TrimPrefix(ref, "sys.")), nil
 	case strings.HasPrefix(ref, "env."):
 		return dotTraverse(s.Env, strings.TrimPrefix(ref, "env.")), nil
+	case strings.HasPrefix(ref, "conversation."):
+		return dotTraverse(s.Conversation, strings.TrimPrefix(ref, "conversation.")), nil
 	case strings.Contains(ref, "@"):
 		idx := strings.Index(ref, "@")
 		cpnID, tail := ref[:idx], ref[idx+1:]

@@ -398,7 +398,8 @@ func operate(state *runtime.CanvasState, oldVal any, op string, param any) (any,
 //
 //   - "cpn_id@param..." → SetVar(cpnID, param...)
 //   - "sys.x"           → Sys["x"] = v
-//   - "env.x"           → Env["x"] = v
+//   - "env.x"           → rejected (read-only at run time, FR-04-02 / D3)
+//   - "conversation.x"  → Conversation["x"] = v (Chatflow-only, FR-04-03)
 //   - "item"            → Globals["__item__"] = v
 //   - "index"           → Globals["__index__"] = v
 func writeVar(state *runtime.CanvasState, ref string, v any) error {
@@ -413,7 +414,9 @@ func writeVar(state *runtime.CanvasState, ref string, v any) error {
 		state.Sys[strings.TrimPrefix(ref, "sys.")] = v
 		return nil
 	case strings.HasPrefix(ref, "env."):
-		state.Env[strings.TrimPrefix(ref, "env.")] = v
+		return runtime.ErrEnvReadOnly
+	case strings.HasPrefix(ref, "conversation."):
+		state.Conversation[strings.TrimPrefix(ref, "conversation.")] = v
 		return nil
 	}
 	idx := strings.Index(ref, "@")
