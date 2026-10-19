@@ -16,14 +16,16 @@
 
 @import url(./inter.less);
 
+/* 全局字体改为中文优先的系统字体栈，与主流企业后台一致：
+   - 中文环境（PingFang / 微软雅黑）优先，避免 Inter 的中文字形回退不一致
+   - 数字与拉丁字符由系统字体渲染，等宽对齐靠 font-feature-settings 兜底
+   - inter.less 仍保留：其中的 @font-face 只在被 font-family 显式引用时才会
+     下载，此处不再引用 Inter，因此不会产生额外网络请求 */
 :root {
-  --font-sans: 'Inter';
-}
-
-@supports (font-variation-settings: normal) {
-  :root {
-    --font-sans: 'InterVariable';
-  }
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial,
+    sans-serif;
 }
 
 html,

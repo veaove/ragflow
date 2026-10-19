@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 
 import { HomeIcon } from '@/components/svg-icon';
-import { LucideHouse } from 'lucide-react';
+import { LucideHouse, LucideLayoutDashboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 
@@ -45,7 +45,8 @@ export type SidebarMenuItem = {
 };
 
 export const sidebarMenuItems: SidebarMenuItem[] = [
-  { path: Routes.Root, name: 'header.home', icon: LucideHouse },
+  { path: Routes.Root, name: 'header.overview', icon: LucideLayoutDashboard },
+  { path: Routes.Home, name: 'header.home', icon: LucideHouse },
   {
     path: Routes.Datasets,
     name: 'header.dataset',
@@ -102,8 +103,9 @@ export function useActivePath() {
 }
 
 /**
- * 左侧固定栏的竖排主导航。选中态用左侧色条 + 浅色底，与
- * admin 后台的导航保持同一视觉语言。
+ * 左侧固定栏的竖排主导航。
+ *
+ * 深色侧边栏上的选中态：品牌蓝底 + 反白文字 + 左侧亮色条。
  */
 export function SidebarNav({ className }: { className?: string }) {
   const { t } = useTranslation();
@@ -121,22 +123,23 @@ export function SidebarNav({ className }: { className?: string }) {
                 to={path}
                 className={cn(
                   'flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px]',
-                  'text-text-secondary transition-colors',
-                  'hover:bg-bg-card hover:text-text-primary',
-                  'focus-visible:bg-bg-card focus-visible:text-text-primary',
-                  isActive && 'bg-bg-card font-medium text-text-primary',
+                  'text-[var(--rail-text-muted)] transition-colors',
+                  'hover:bg-[var(--rail-hover)] hover:text-[var(--rail-text)]',
+                  'focus-visible:bg-[var(--rail-hover)] focus-visible:text-[var(--rail-text)]',
+                  isActive &&
+                    'bg-[var(--rail-active-bg)] font-medium text-white',
                 )}
                 aria-current={isActive ? 'page' : undefined}
                 data-testid={`sidebar-nav-${path === Routes.Root ? 'root' : path.replace(/^\//, '')}`}
               >
                 <span className="relative flex size-5 shrink-0 items-center justify-center">
-                  {/* 选中态色条：贴在图标左侧，与 admin 导航一致。
-                      注意用 bg-accent-primary（背景色）；裸 accent-primary
-                      编译出的是 accent-color，只对表单复选框生效。*/}
+                  {/* 选中态色条：贴在图标左侧。
+                      用 bg-white 而非 bg-accent-primary —— 深色底上亮色条
+                      对比度更高，且不与选中态的蓝底抢视觉。*/}
                   <span
                     aria-hidden
                     className={cn(
-                      'absolute -left-3 h-6 w-0.5 rounded-full bg-accent-primary transition-opacity',
+                      'absolute -left-3 h-6 w-0.5 rounded-full bg-white transition-opacity',
                       isActive ? 'opacity-100' : 'opacity-0',
                     )}
                   />

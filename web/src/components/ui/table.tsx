@@ -14,7 +14,7 @@ const Table = React.forwardRef<
   >
     <table
       ref={ref}
-      className={cn('w-full caption-bottom text-sm ', className)}
+      className={cn('w-full caption-bottom text-[13px] ', className)}
       {...props}
     />
   </div>
@@ -85,7 +85,8 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      'first-of-type:pl-6 last-of-type:pr-6 h-14 px-4 text-left align-middle font-normal text-text-secondary [&:has([role=checkbox])]:pr-0 ',
+      // 紧凑表格：表头 12px / 40px 行高，贴合企业后台的信息密度
+      'first-of-type:pl-6 last-of-type:pr-6 h-10 px-4 text-left align-middle font-normal text-xs text-text-secondary [&:has([role=checkbox])]:pr-0 ',
       className,
     )}
     {...props}
@@ -100,7 +101,7 @@ const TableCell = React.forwardRef<
   <td
     ref={ref}
     className={cn(
-      'first-of-type:pl-6 last-of-type:pr-6 px-4 py-3 align-middle [&:has([role=checkbox])]:pr-0 text-text-primary font-normal',
+      'first-of-type:pl-6 last-of-type:pr-6 px-4 py-2.5 align-middle text-[13px] [&:has([role=checkbox])]:pr-0 text-text-primary font-normal',
       className,
     )}
     {...props}
