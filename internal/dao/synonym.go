@@ -123,13 +123,11 @@ func (dao *SynonymDAO) DeleteWordsByGroup(ctx context.Context, db *gorm.DB, grou
 // LoadDictionary implements nlp.SynonymLoader so the retrieval path can read
 // tenant vocabulary without importing the service layer.
 func (dao *SynonymDAO) LoadDictionary(ctx context.Context, tenantID, datasetID string) (map[string][]string, error) {
-	var db *gorm.DB
-	if ctx != nil {
-		db = db.WithContext(ctx)
-	} else {
-		db = db.WithContext(context.Background())
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	return dao.GetDictionaryByDataset(ctx, db, tenantID, datasetID)
+	// DB is the package-level handle; the ctx-carrying copy is derived from it.
+	return dao.GetDictionaryByDataset(ctx, DB.WithContext(ctx), tenantID, datasetID)
 }
 
 // GetDictionaryByDataset builds the retrieval-facing dictionary for one

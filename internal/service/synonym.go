@@ -57,10 +57,10 @@ type SynonymWordInput struct {
 
 // CreateSynonymGroupRequest is the body of a group creation.
 type CreateSynonymGroupRequest struct {
-	Name   string              `json:"name" binding:"required"`
-	Domain string              `json:"domain"`
-	Remark string              `json:"remark"`
-	Words  []SynonymWordInput  `json:"words"`
+	Name   string             `json:"name" binding:"required"`
+	Domain string             `json:"domain"`
+	Remark string             `json:"remark"`
+	Words  []SynonymWordInput `json:"words"`
 }
 
 // UpdateSynonymGroupRequest is the body of a group update. Words is a pointer

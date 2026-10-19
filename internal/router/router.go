@@ -17,6 +17,8 @@
 package router
 
 import (
+	"sync"
+
 	"ragflow/internal/common"
 	"ragflow/internal/handler"
 
@@ -61,15 +63,16 @@ type Router struct {
 
 	// synonymHandler is built on first use instead of being injected, so the
 	// already long NewRouter parameter list does not grow for one more route
-	// group.
+	// group. synonymOnce keeps concurrent first requests from racing.
 	synonymHandler *handler.SynonymHandler
+	synonymOnce   sync.Once
 }
 
 // getSynonymHandler lazily constructs the vocabulary alias handler.
 func (r *Router) getSynonymHandler() *handler.SynonymHandler {
-	if r.synonymHandler == nil {
+	r.synonymOnce.Do(func() {
 		r.synonymHandler = handler.NewSynonym()
-	}
+	})
 	return r.synonymHandler
 }
 

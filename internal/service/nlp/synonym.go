@@ -308,6 +308,9 @@ func (s *Synonym) tenantDictionary(ctx context.Context, tenantID, datasetID stri
 	if loader == nil || tenantID == "" || datasetID == "" {
 		return nil
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	if cached, ok := s.dbDict.Load(datasetID); ok {
 		if entry, ok := cached.(*dbDictEntry); ok && entry != nil {
@@ -324,6 +327,9 @@ func (s *Synonym) tenantDictionary(ctx context.Context, tenantID, datasetID stri
 			zap.String("dataset_id", datasetID),
 			zap.Error(err))
 		return nil
+	}
+	if dict == nil {
+		dict = map[string][]string{}
 	}
 
 	entry := &dbDictEntry{dict: dict}
