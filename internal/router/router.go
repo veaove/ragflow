@@ -447,7 +447,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 				// Staged-edit (change set) workflow.
 				datasets.GET("/:dataset_id/change-sets", r.getChangeSetHandler().ListChangeSets)
 				datasets.POST("/:dataset_id/change-sets", r.getChangeSetHandler().CreateChangeSet)
+				datasets.GET("/:dataset_id/change-sets/:change_set_id/diff", r.getChangeSetHandler().GetChangeSetDiff)
 				datasets.POST("/:dataset_id/change-sets/similar-questions", r.getChangeSetHandler().StageSimilarQuestions)
+				datasets.POST("/:dataset_id/change-sets/generate-questions", r.getChangeSetHandler().GenerateSimilarQuestions)
 				datasets.POST("/:dataset_id/change-sets/publish", r.getChangeSetHandler().PublishChangeSet)
 				datasets.POST("/:dataset_id/change-sets/discard", r.getChangeSetHandler().DiscardChangeSet)
 			}

@@ -256,3 +256,118 @@ func (s *ChangeSetService) DiscardChangeSet(ctx context.Context, userID, dataset
 		return s.changeSetDAO.UpdateChangeSetStatus(ctx, tx, tenantID, datasetID, changeSetID, entity.ChangeSetStatusDiscarded)
 	})
 }
+
+// ChangeSetDiff is the structured "before vs after" view of a change set,
+// consumed by both the change center and the test-comparison dialog.
+type ChangeSetDiff struct {
+	ChangeSetID     string               `json:"change_set_id"`
+	SimilarQuestions []SimilarQuestionDiff `json:"similar_questions"`
+	Synonyms         []SynonymGroupDiff    `json:"synonyms"`
+}
+
+// SimilarQuestionDiff shows one chunk's similar questions before (live) and
+// after (live + pending merge) the change set is published.
+type SimilarQuestionDiff struct {
+	ChunkID    string   `json:"chunk_id"`
+	DocumentID string   `json:"document_id"`
+	Question   string   `json:"question"`
+	Before     []string `json:"before"`
+	After      []string `json:"after"`
+}
+
+// SynonymGroupDiff shows one synonym/proper group's words before and after.
+type SynonymGroupDiff struct {
+	GroupID      string   `json:"group_id"`
+	Name         string   `json:"name"`
+	GroupType    string   `json:"group_type"`
+	Scope        string   `json:"scope"`
+	SourceGroupID string  `json:"source_group_id,omitempty"`
+	Before       []string `json:"before"`
+	After        []string `json:"after"`
+}
+
+// GetChangeSetDiff assembles the before/after diff of a change set's pending
+// items. For similar questions, "before" is the chunk's live list and "after"
+// is the live list merged with pending additions. For vocabulary, "before" is
+// the source live group's words (empty for a new group) and "after" is the
+// pending group's words.
+func (s *ChangeSetService) GetChangeSetDiff(ctx context.Context, userID, datasetID, changeSetID string) (*ChangeSetDiff, error) {
+	tenantID, err := resolveTenantID(ctx, userID, datasetID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.changeSetDAO.GetChangeSet(ctx, dao.DB, tenantID, datasetID, changeSetID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrChangeSetNotFound
+		}
+		return nil, err
+	}
+
+	diff := &ChangeSetDiff{ChangeSetID: changeSetID}
+
+	// Similar questions: group pending by chunk, merge with live.
+	pending, err := s.questionDAO.ListByChangeSet(ctx, dao.DB, datasetID, changeSetID, entity.ChunkQuestionStatusPending)
+	if err != nil {
+		return nil, err
+	}
+	type sqKey struct{ chunkID, documentID string }
+	pendingByChunk := map[sqKey][]string{}
+	for _, q := range pending {
+		k := sqKey{q.ChunkID, q.DocumentID}
+		pendingByChunk[k] = append(pendingByChunk[k], q.Content)
+	}
+	diff.SimilarQuestions = make([]SimilarQuestionDiff, 0, len(pendingByChunk))
+	for k, add := range pendingByChunk {
+		live, _ := s.questionDAO.ListByChunk(ctx, dao.DB, datasetID, k.chunkID)
+		before := make([]string, 0, len(live))
+		seen := map[string]bool{}
+		for _, lq := range live {
+			before = append(before, lq.Content)
+			seen[lq.Content] = true
+		}
+		after := append([]string{}, before...)
+		for _, a := range add {
+			if !seen[a] {
+				after = append(after, a)
+				seen[a] = true
+			}
+		}
+		diff.SimilarQuestions = append(diff.SimilarQuestions, SimilarQuestionDiff{
+			ChunkID:    k.chunkID,
+			DocumentID: k.documentID,
+			Before:     before,
+			After:      after,
+		})
+	}
+
+	// Vocabulary: pending groups, with before = source live group's words.
+	groups, err := s.synonymDAO.ListGroupsByChangeSet(ctx, dao.DB, tenantID, datasetID, changeSetID)
+	if err != nil {
+		return nil, err
+	}
+	diff.Synonyms = make([]SynonymGroupDiff, 0, len(groups))
+	for _, g := range groups {
+		after := make([]string, 0, len(g.Words))
+		for _, w := range g.Words {
+			after = append(after, w.Word)
+		}
+		before := []string{}
+		if g.SourceGroupID != "" {
+			srcWords, _ := s.synonymDAO.ListWords(ctx, dao.DB, tenantID, g.SourceGroupID)
+			for _, w := range srcWords {
+				before = append(before, w.Word)
+			}
+		}
+		diff.Synonyms = append(diff.Synonyms, SynonymGroupDiff{
+			GroupID:       g.ID,
+			Name:          g.Name,
+			GroupType:     g.GroupType,
+			Scope:         g.Scope,
+			SourceGroupID: g.SourceGroupID,
+			Before:        before,
+			After:         after,
+		})
+	}
+
+	return diff, nil
+}

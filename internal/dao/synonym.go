@@ -275,3 +275,39 @@ func (dao *SynonymDAO) GetDictionaryByDataset(ctx context.Context, db *gorm.DB, 
 	}
 	return dict, nil
 }
+
+// ListGroupsByChangeSet returns the pending groups of a change set with their
+// words attached, so the diff view can render the staged vocabulary without an
+// N+1 round trip.
+func (dao *SynonymDAO) ListGroupsByChangeSet(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID string) ([]*entity.SynonymGroup, error) {
+	groups := make([]*entity.SynonymGroup, 0)
+	err := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+		Where("tenant_id = ?", tenantID).
+		Where("dataset_id = ?", datasetID).
+		Where("change_set_id = ?", changeSetID).
+		Where("status = ?", entity.SynonymStatusPending).
+		Order("create_time DESC").
+		Find(&groups).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(groups) == 0 {
+		return groups, nil
+	}
+	ids := make([]string, 0, len(groups))
+	for _, g := range groups {
+		ids = append(ids, g.ID)
+	}
+	byGroup, err := dao.ListWordsByGroupIDs(ctx, db, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range groups {
+		g.Words = byGroup[g.ID]
+		if g.Words == nil {
+			g.Words = []*entity.SynonymWord{}
+		}
+		g.WordCount = len(g.Words)
+	}
+	return groups, nil
+}

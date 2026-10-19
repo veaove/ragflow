@@ -50,6 +50,7 @@ type ChangeSetServiceAPI interface {
 	ListChangeSets(ctx context.Context, userID, datasetID string) ([]*entity.KbChangeSet, error)
 	GetOrCreateChangeSet(ctx context.Context, userID, datasetID string) (*entity.KbChangeSet, error)
 	StageSimilarQuestions(ctx context.Context, userID, datasetID, changeSetID, documentID, chunkID string, questions []string, origin string) error
+	GetChangeSetDiff(ctx context.Context, userID, datasetID, changeSetID string) (*service.ChangeSetDiff, error)
 	PublishChangeSet(ctx context.Context, userID, datasetID, changeSetID string) error
 	DiscardChangeSet(ctx context.Context, userID, datasetID, changeSetID string) error
 }
@@ -135,6 +136,41 @@ func (h *ChangeSetHandler) StageSimilarQuestions(c *gin.Context) {
 // PublishChangeSetRequest is the body for publishing a change set.
 type PublishChangeSetRequest struct {
 	ChangeSetID string `json:"change_set_id" binding:"required"`
+}
+
+// GetChangeSetDiff handles GET /datasets/:dataset_id/change-sets/:change_set_id/diff.
+func (h *ChangeSetHandler) GetChangeSetDiff(c *gin.Context) {
+	user, code, message := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, message)
+		return
+	}
+	diff, err := h.service.GetChangeSetDiff(c.Request.Context(), user.ID, c.Param("dataset_id"), c.Param("change_set_id"))
+	if err != nil {
+		respondChangeSetError(c, err)
+		return
+	}
+	common.SuccessWithData(c, diff, "success")
+}
+
+// GenerateSimilarQuestions handles POST /datasets/:dataset_id/change-sets/generate-questions.
+func (h *ChangeSetHandler) GenerateSimilarQuestions(c *gin.Context) {
+	user, code, message := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, message)
+		return
+	}
+	var req service.GenerateSimilarQuestionsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, "Invalid request: "+err.Error())
+		return
+	}
+	candidates, err := h.service.GenerateSimilarQuestions(c.Request.Context(), user.ID, c.Param("dataset_id"), req)
+	if err != nil {
+		respondChangeSetError(c, err)
+		return
+	}
+	common.SuccessWithData(c, candidates, "success")
 }
 
 // PublishChangeSet handles POST /datasets/:dataset_id/change-sets/publish.
