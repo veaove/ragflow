@@ -29,6 +29,7 @@ export enum Routes {
   Root = '/',
   Login = '/login-next',
   Logout = '/logout',
+  Overview = '/overview',
   Home = '/home',
   Datasets = '/datasets',
   DatasetBase = '/dataset',
@@ -182,6 +183,14 @@ const routeConfigOptions = [
     children: [
       {
         path: Routes.Root,
+        Component: () => import('@/pages/overview'),
+      },
+      {
+        path: Routes.Overview,
+        Component: () => import('@/pages/overview'),
+      },
+      {
+        path: Routes.Home,
         Component: () => import('@/pages/home'),
       },
     ],

@@ -337,6 +337,8 @@ export default {
   createSystemToken: `${restAPIv1}/system/keys`,
   removeSystemToken: `${restAPIv1}/system/keys`,
   getSystemConfig: `${restAPIv1}/system/config`,
+  // 按天聚合的会话统计（pv/uv/speed/tokens/round/thumb_up），用于总览看板趋势
+  getSystemStats: `${restAPIv1}/system/stats`,
   setLangfuseConfig: `${restAPIv1}/langfuse/api-key`,
 
   // flow

@@ -415,6 +415,18 @@ export const listDocument = (
 export const documentFilter = (kb_id: string) =>
   request.get(api.getDatasetFilter(kb_id), { params: {} });
 
+/**
+ * 按天聚合的会话统计（pv / uv / speed / tokens / round / thumb_up）。
+ *
+ * 后端该接口早已实现（internal/handler/stats.go），此前前端从未调用；
+ * 总览看板的调用趋势与环比数据均来自这里。
+ */
+export const getSystemStats = (params: {
+  from_date?: string;
+  to_date?: string;
+  canvas_id?: string;
+}) => request.get(api.getSystemStats, { params });
+
 export const uploadDocument = async (datasetId: string, formData: FormData) => {
   const url = api.documentUpload(datasetId);
   const response = await request.post(url, { data: formData });
