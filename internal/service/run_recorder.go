@@ -81,13 +81,13 @@ func (r *RunRecorder) recordNodeFinished(ctx context.Context, canvasID, runID st
 		NodeID:     data.ComponentID,
 		NodeType:   data.ComponentName,
 		Status:     nodeStatusFromError(data.Error),
-		Inputs:     toJSONMap(data.Inputs),
-		Outputs:    toJSONMap(data.Outputs),
+		Inputs:     toJSONMap(MaskPIIMap(data.Inputs)),
+		Outputs:    toJSONMap(MaskPIIMap(data.Outputs)),
 		DurationMS: int(data.ElapsedTime * 1000),
 		CreateTime: time.Now().UnixMilli(),
 	}
 	if errStr, ok := data.Error.(string); ok && errStr != "" {
-		node.ErrorMessage = errStr
+		node.ErrorMessage = MaskPII(errStr)
 	}
 	_ = r.runDAO.BatchCreateNodes(ctx, dao.DB, []*entity.AgentNodeExecution{node})
 }
