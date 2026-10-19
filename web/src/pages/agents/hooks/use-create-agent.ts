@@ -17,13 +17,20 @@ export function useCreateAgentOrPipeline() {
 
   const handleCreateAgentOrPipeline = useCallback(
     async (data: FormSchemaType) => {
-      const isAgent = data.type === FlowType.Agent;
+      const type = data.type ?? FlowType.Agent;
+      const categoryMap: Record<string, AgentCategory> = {
+        [FlowType.Agent]: AgentCategory.AgentCanvas,
+        [FlowType.Chatflow]: AgentCategory.ChatflowCanvas,
+        [FlowType.Workflow]: AgentCategory.WorkflowCanvas,
+        [FlowType.Flow]: AgentCategory.DataflowCanvas,
+        [FlowType.Compiler]: AgentCategory.DataflowCanvas,
+      };
+      const category = categoryMap[type] ?? AgentCategory.AgentCanvas;
+      const isAgent = type === FlowType.Agent || type === FlowType.Chatflow || type === FlowType.Workflow;
       const ret = await setAgent({
         title: data.name,
         dsl: initialEmptyDsl(isAgent),
-        canvas_category: isAgent
-          ? AgentCategory.AgentCanvas
-          : AgentCategory.DataflowCanvas,
+        canvas_category: category,
       });
 
       if (ret.code === 0) {

@@ -54,7 +54,13 @@ function FlowTypeCards({ value, onChange }: FlowTypeCardProps) {
 
   return (
     <section className="flex gap-10">
-      {[FlowType.Agent, FlowType.Flow, FlowType.Compiler].map((val) => {
+      {[
+        FlowType.Agent,
+        FlowType.Chatflow,
+        FlowType.Workflow,
+        FlowType.Flow,
+        FlowType.Compiler,
+      ].map((val) => {
         const isActive = value === val;
         const config = FlowTypeConfig[val];
         const Icon = config.icon;

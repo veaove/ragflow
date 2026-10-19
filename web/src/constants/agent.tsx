@@ -74,6 +74,8 @@ export const initialLlmBaseValues = {
 
 export enum AgentCategory {
   AgentCanvas = 'agent_canvas',
+  ChatflowCanvas = 'chatflow_canvas',
+  WorkflowCanvas = 'workflow_canvas',
   DataflowCanvas = 'dataflow_canvas',
 }
 

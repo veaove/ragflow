@@ -1,8 +1,10 @@
 import { AgentCategory } from '@/constants/agent';
-import { LucideIcon, Network, Route, Shapes } from 'lucide-react';
+import { LucideIcon, MessageSquareText, Network, Route, Shapes, Workflow } from 'lucide-react';
 
 export enum FlowType {
   Agent = 'agent',
+  Chatflow = 'chatflow',
+  Workflow = 'workflow',
   Compiler = 'compiler',
   Flow = 'flow',
 }
@@ -15,6 +17,16 @@ export const FlowTypeConfig: Record<
     icon: Network,
     labelKey: 'tabList.workflow',
     color: 'var(--team-member)',
+  },
+  [FlowType.Chatflow]: {
+    icon: MessageSquareText,
+    labelKey: 'flow.chatflow',
+    color: 'var(--team-department)',
+  },
+  [FlowType.Workflow]: {
+    icon: Workflow,
+    labelKey: 'flow.workflow',
+    color: 'var(--team-group)',
   },
   [FlowType.Compiler]: {
     icon: Shapes,
@@ -33,5 +45,7 @@ export const FlowTypeConfig: Record<
  */
 export const CanvasCategoryToFlowType: Record<string, FlowType> = {
   [AgentCategory.AgentCanvas]: FlowType.Agent,
+  [AgentCategory.ChatflowCanvas]: FlowType.Chatflow,
+  [AgentCategory.WorkflowCanvas]: FlowType.Workflow,
   [AgentCategory.DataflowCanvas]: FlowType.Flow,
 };

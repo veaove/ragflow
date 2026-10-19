@@ -3635,6 +3635,8 @@ This process aggregates variables from multiple branches into a single variable 
       createPipeline: 'Ingestion pipeline',
       createIngestionPipeline: 'Create ingestion pipeline',
       createWorkflow: 'Create workflow',
+      chatflow: 'Chatflow (conversational)',
+      workflow: 'Workflow (task-based)',
       tabList: {
         ingestionPipeline: 'Ingestion pipeline',
         compilationOperator: 'Compilation operator',
