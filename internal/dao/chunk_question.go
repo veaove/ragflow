@@ -86,3 +86,37 @@ func (dao *ChunkQuestionDAO) DeleteByChunk(ctx context.Context, db *gorm.DB, kbI
 		Where("chunk_id = ?", chunkID).
 		Update("status", entity.ChunkQuestionStatusDisabled).Error
 }
+
+// DeleteByChunkAndChangeSet soft-deletes the pending questions of a chunk under
+// a change set. Re-editing within one change set replaces the staged set.
+func (dao *ChunkQuestionDAO) DeleteByChunkAndChangeSet(ctx context.Context, db *gorm.DB, kbID, chunkID, changeSetID string) error {
+	return db.WithContext(ctx).Model(&entity.ChunkQuestion{}).
+		Where("kb_id = ?", kbID).
+		Where("chunk_id = ?", chunkID).
+		Where("change_set_id = ?", changeSetID).
+		Where("status = ?", entity.ChunkQuestionStatusPending).
+		Update("status", entity.ChunkQuestionStatusDisabled).Error
+}
+
+// ListByChangeSet returns the questions of a change set, optionally filtered by
+// status.
+func (dao *ChunkQuestionDAO) ListByChangeSet(ctx context.Context, db *gorm.DB, kbID, changeSetID, status string) ([]*entity.ChunkQuestion, error) {
+	questions := make([]*entity.ChunkQuestion, 0)
+	q := db.WithContext(ctx).Model(&entity.ChunkQuestion{}).
+		Where("kb_id = ?", kbID).
+		Where("change_set_id = ?", changeSetID)
+	if status != "" {
+		q = q.Where("status = ?", status)
+	}
+	err := q.Order("create_time ASC").Find(&questions).Error
+	return questions, err
+}
+
+// DiscardByChangeSet soft-deletes every pending question of a change set.
+func (dao *ChunkQuestionDAO) DiscardByChangeSet(ctx context.Context, db *gorm.DB, kbID, changeSetID string) error {
+	return db.WithContext(ctx).Model(&entity.ChunkQuestion{}).
+		Where("kb_id = ?", kbID).
+		Where("change_set_id = ?", changeSetID).
+		Where("status = ?", entity.ChunkQuestionStatusPending).
+		Update("status", entity.ChunkQuestionStatusDisabled).Error
+}

@@ -137,6 +137,71 @@ func (dao *SynonymDAO) CreateWords(ctx context.Context, db *gorm.DB, words []*en
 	return db.WithContext(ctx).Create(&words).Error
 }
 
+// PromotePendingByChangeSet flips every pending group and word of a change set
+// to live, so they take effect at query time (the retrieval dictionary loads
+// only live rows). Pending copies that carry source_group_id first disable the
+// live group they replace, effecting an atomic swap.
+func (dao *SynonymDAO) PromotePendingByChangeSet(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID string) error {
+	// Disable the live groups that pending copies replace (swap-in).
+	if err := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+		Where("tenant_id = ?", tenantID).
+		Where("dataset_id = ?", datasetID).
+		Where("status = ?", entity.SynonymStatusLive).
+		Where("id IN (?)",
+			db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+				Select("source_group_id").
+				Where("tenant_id = ?", tenantID).
+				Where("dataset_id = ?", datasetID).
+				Where("change_set_id = ?", changeSetID).
+				Where("status = ?", entity.SynonymStatusPending).
+				Where("source_group_id <> ''"),
+		).
+		Update("status", entity.SynonymStatusDisabled).Error; err != nil {
+		return err
+	}
+
+	if err := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+		Where("tenant_id = ?", tenantID).
+		Where("dataset_id = ?", datasetID).
+		Where("change_set_id = ?", changeSetID).
+		Where("status = ?", entity.SynonymStatusPending).
+		Update("status", entity.SynonymStatusLive).Error; err != nil {
+		return err
+	}
+	return db.WithContext(ctx).Model(&entity.SynonymWord{}).
+		Where("status = ?", entity.SynonymStatusPending).
+		Where("group_id IN (?)",
+			db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+				Select("id").
+				Where("tenant_id = ?", tenantID).
+				Where("dataset_id = ?", datasetID).
+				Where("change_set_id = ?", changeSetID),
+		).
+		Update("status", entity.SynonymStatusLive).Error
+}
+
+// DiscardPendingByChangeSet soft-deletes every pending group and word of a
+// change set, abandoning the staged vocabulary without touching live rows.
+func (dao *SynonymDAO) DiscardPendingByChangeSet(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID string) error {
+	groupIDs := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+		Select("id").
+		Where("tenant_id = ?", tenantID).
+		Where("dataset_id = ?", datasetID).
+		Where("change_set_id = ?", changeSetID).
+		Where("status = ?", entity.SynonymStatusPending)
+	if err := db.WithContext(ctx).Model(&entity.SynonymWord{}).
+		Where("group_id IN (?)", groupIDs).
+		Update("status", entity.SynonymStatusDisabled).Error; err != nil {
+		return err
+	}
+	return db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+		Where("tenant_id = ?", tenantID).
+		Where("dataset_id = ?", datasetID).
+		Where("change_set_id = ?", changeSetID).
+		Where("status = ?", entity.SynonymStatusPending).
+		Update("status", entity.SynonymStatusDisabled).Error
+}
+
 // DeleteWordsByGroup clears the words of a group. It is used together with
 // CreateWords to apply a whole-list replacement in one transaction.
 func (dao *SynonymDAO) DeleteWordsByGroup(ctx context.Context, db *gorm.DB, groupID string) error {

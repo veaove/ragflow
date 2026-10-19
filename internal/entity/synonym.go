@@ -67,6 +67,10 @@ type SynonymGroup struct {
 	Status string `gorm:"column:status;size:16;not null;default:live;index" json:"status"`
 	// ChangeSetID links a pending group to the change set that staged it.
 	ChangeSetID string `gorm:"column:change_set_id;size:64;index" json:"change_set_id,omitempty"`
+	// SourceGroupID links a pending group to the live group it replaces. When a
+	// live group is edited in staged mode, the live row stays put and a pending
+	// copy carries this pointer; publish swaps the pending copy in.
+	SourceGroupID string `gorm:"column:source_group_id;size:32;index" json:"source_group_id,omitempty"`
 	// WordCount is a read-only projection joined from synonym_word; it is not a
 	// stored column.
 	WordCount int `gorm:"-" json:"word_count"`

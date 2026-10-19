@@ -39,6 +39,9 @@ type ChunkQuestion struct {
 	ID     string `gorm:"column:id;primaryKey;size:32" json:"id"`
 	ChunkID string `gorm:"column:chunk_id;size:32;not null;index" json:"chunk_id"`
 	KbID   string `gorm:"column:kb_id;size:32;not null;index" json:"kb_id"`
+	// DocumentID is the chunk's parent document, needed to sync questions back
+	// to the index at publish time.
+	DocumentID string `gorm:"column:document_id;size:32;not null;index" json:"document_id"`
 	// Content is the similar-question text (a user's alternative phrasing).
 	Content string `gorm:"column:content;size:200;not null" json:"content"`
 	// Origin records how this question was produced: manual / llm / imported.

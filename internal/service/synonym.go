@@ -57,24 +57,26 @@ type SynonymWordInput struct {
 
 // CreateSynonymGroupRequest is the body of a group creation.
 type CreateSynonymGroupRequest struct {
-	Name      string             `json:"name" binding:"required"`
-	Domain    string             `json:"domain"`
-	Scope     string             `json:"scope"`
-	GroupType string             `json:"group_type"`
-	Remark    string             `json:"remark"`
-	Words     []SynonymWordInput `json:"words"`
+	Name        string             `json:"name" binding:"required"`
+	Domain      string             `json:"domain"`
+	Scope       string             `json:"scope"`
+	GroupType   string             `json:"group_type"`
+	Remark      string             `json:"remark"`
+	Words       []SynonymWordInput `json:"words"`
+	ChangeSetID string             `json:"change_set_id"`
 }
 
 // UpdateSynonymGroupRequest is the body of a group update. Words is a pointer
 // so an absent field leaves the stored words untouched while an explicit empty
 // array clears them.
 type UpdateSynonymGroupRequest struct {
-	Name      *string             `json:"name"`
-	Domain    *string             `json:"domain"`
-	Scope     *string             `json:"scope"`
-	GroupType *string             `json:"group_type"`
-	Remark    *string             `json:"remark"`
-	Words     *[]SynonymWordInput `json:"words"`
+	Name        *string             `json:"name"`
+	Domain      *string             `json:"domain"`
+	Scope       *string             `json:"scope"`
+	GroupType   *string             `json:"group_type"`
+	Remark      *string             `json:"remark"`
+	Words       *[]SynonymWordInput `json:"words"`
+	ChangeSetID string              `json:"change_set_id"`
 }
 
 // ListSynonymGroups returns the vocabulary groups of one knowledge base.
@@ -158,12 +160,18 @@ func (s *SynonymService) CreateSynonymGroup(ctx context.Context, userID, dataset
 		Status:    entity.SynonymStatusLive,
 		Remark:    strings.TrimSpace(req.Remark),
 	}
+	// Staged mode: when the caller supplies a change set, the group is written
+	// pending and does not affect retrieval until published.
+	if req.ChangeSetID != "" {
+		group.Status = entity.SynonymStatusPending
+		group.ChangeSetID = req.ChangeSetID
+	}
 
 	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := s.synonymDAO.CreateGroup(ctx, tx, group); err != nil {
 			return err
 		}
-		rows := buildSynonymWordRows(group.ID, words)
+		rows := buildSynonymWordRows(group.ID, words, group.Status)
 		return s.synonymDAO.CreateWords(ctx, tx, rows)
 	})
 	if err != nil {
@@ -192,6 +200,13 @@ func (s *SynonymService) UpdateSynonymGroup(ctx context.Context, userID, groupID
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	// Staged edit of a live group: keep the live row untouched and write a
+	// pending copy that carries source_group_id. Publish swaps the copy in, so
+	// online retrieval is unaffected until then.
+	if req.ChangeSetID != "" && group.Status == entity.SynonymStatusLive {
+		return s.stageUpdateSynonymGroup(ctx, tenantID, group, req)
 	}
 
 	updates := make(map[string]any)
@@ -233,7 +248,7 @@ func (s *SynonymService) UpdateSynonymGroup(ctx context.Context, userID, groupID
 			if err := s.synonymDAO.DeleteWordsByGroup(ctx, tx, groupID); err != nil {
 				return err
 			}
-			rows := buildSynonymWordRows(groupID, words)
+			rows := buildSynonymWordRows(groupID, words, entity.SynonymStatusLive)
 			if err := s.synonymDAO.CreateWords(ctx, tx, rows); err != nil {
 				return err
 			}
@@ -329,7 +344,7 @@ func (s *SynonymService) ImportSynonymGroups(ctx context.Context, userID, datase
 			if err := s.synonymDAO.CreateGroup(ctx, tx, &group); err != nil {
 				return err
 			}
-			if err := s.synonymDAO.CreateWords(ctx, tx, buildSynonymWordRows(group.ID, wordsByGroup[group.ID])); err != nil {
+			if err := s.synonymDAO.CreateWords(ctx, tx, buildSynonymWordRows(group.ID, wordsByGroup[group.ID], entity.SynonymStatusLive)); err != nil {
 				return err
 			}
 		}
@@ -441,9 +456,12 @@ func normalizeSynonymWords(words []SynonymWordInput) ([]SynonymWordInput, error)
 	return out, nil
 }
 
-func buildSynonymWordRows(groupID string, words []SynonymWordInput) []*entity.SynonymWord {
+func buildSynonymWordRows(groupID string, words []SynonymWordInput, status string) []*entity.SynonymWord {
 	if len(words) == 0 {
 		return nil
+	}
+	if status == "" {
+		status = entity.SynonymStatusLive
 	}
 	rows := make([]*entity.SynonymWord, 0, len(words))
 	for _, w := range words {
@@ -456,7 +474,7 @@ func buildSynonymWordRows(groupID string, words []SynonymWordInput) []*entity.Sy
 			// instead of the column DEFAULT when the field is empty, so relying on
 			// the DB default would store '' and the retrieval path's
 			// `WHERE status='live'` filter would drop every newly created word.
-			Status: entity.SynonymStatusLive,
+			Status: status,
 			Weight: 1.00,
 		})
 	}
@@ -464,9 +482,84 @@ func buildSynonymWordRows(groupID string, words []SynonymWordInput) []*entity.Sy
 }
 
 func buildSynonymWordEntities(groupID string, words []SynonymWordInput) []*entity.SynonymWord {
-	rows := buildSynonymWordRows(groupID, words)
+	rows := buildSynonymWordRows(groupID, words, entity.SynonymStatusLive)
 	if rows == nil {
 		return []*entity.SynonymWord{}
 	}
 	return rows
+}
+
+// stageUpdateSynonymGroup writes a pending copy of a live group for a staged
+// edit. The live group is left as-is; the pending copy carries source_group_id
+// so PublishChangeSet can swap it in (disable the source, promote the copy).
+func (s *SynonymService) stageUpdateSynonymGroup(ctx context.Context, tenantID string, live *entity.SynonymGroup, req UpdateSynonymGroupRequest) (*entity.SynonymGroup, error) {
+	name := live.Name
+	if req.Name != nil {
+		name = strings.TrimSpace(*req.Name)
+		if name == "" {
+			return nil, errors.New("synonym group name is required")
+		}
+	}
+	domain := live.Domain
+	if req.Domain != nil {
+		domain = normalizeSynonymDomain(*req.Domain)
+	}
+	scope := live.Scope
+	if req.Scope != nil {
+		scope = normalizeSynonymScope(*req.Scope)
+	}
+	groupType := live.GroupType
+	if req.GroupType != nil {
+		groupType = normalizeSynonymGroupType(*req.GroupType)
+	}
+	remark := live.Remark
+	if req.Remark != nil {
+		remark = strings.TrimSpace(*req.Remark)
+	}
+
+	words := []SynonymWordInput{}
+	if req.Words != nil {
+		var err error
+		words, err = normalizeSynonymWords(*req.Words)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Preserve the live words when the caller did not change them.
+		liveWords, err := s.synonymDAO.ListWords(ctx, dao.DB, tenantID, live.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, w := range liveWords {
+			words = append(words, SynonymWordInput{Word: w.Word, IsPrimary: w.IsPrimary})
+		}
+	}
+
+	pending := &entity.SynonymGroup{
+		ID:            common.GenerateUUID(),
+		TenantID:      tenantID,
+		DatasetID:     live.DatasetID,
+		Name:          name,
+		Domain:        domain,
+		Scope:         scope,
+		GroupType:     groupType,
+		Status:        entity.SynonymStatusPending,
+		ChangeSetID:   req.ChangeSetID,
+		SourceGroupID: live.ID,
+		Remark:        remark,
+	}
+
+	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.synonymDAO.CreateGroup(ctx, tx, pending); err != nil {
+			return err
+		}
+		return s.synonymDAO.CreateWords(ctx, tx, buildSynonymWordRows(pending.ID, words, entity.SynonymStatusPending))
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	pending.Words = buildSynonymWordEntities(pending.ID, words)
+	pending.WordCount = len(words)
+	return pending, nil
 }

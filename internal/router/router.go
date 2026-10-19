@@ -66,6 +66,19 @@ type Router struct {
 	// group. synonymOnce keeps concurrent first requests from racing.
 	synonymHandler *handler.SynonymHandler
 	synonymOnce   sync.Once
+
+	// changeSetHandler serves the staged-edit workflow; lazily built for the
+	// same reason as synonymHandler.
+	changeSetHandler *handler.ChangeSetHandler
+	changeSetOnce    sync.Once
+}
+
+// getChangeSetHandler lazily constructs the staged-edit handler.
+func (r *Router) getChangeSetHandler() *handler.ChangeSetHandler {
+	r.changeSetOnce.Do(func() {
+		r.changeSetHandler = handler.NewChangeSetHandler()
+	})
+	return r.changeSetHandler
 }
 
 // getSynonymHandler lazily constructs the vocabulary alias handler.
@@ -430,6 +443,13 @@ func (r *Router) Setup(engine *gin.Engine) {
 				datasets.GET("/:dataset_id/synonym-groups", r.getSynonymHandler().ListSynonymGroups)
 				datasets.POST("/:dataset_id/synonym-groups", r.getSynonymHandler().CreateSynonymGroup)
 				datasets.POST("/:dataset_id/synonym-groups/import", r.getSynonymHandler().ImportSynonymGroups)
+
+				// Staged-edit (change set) workflow.
+				datasets.GET("/:dataset_id/change-sets", r.getChangeSetHandler().ListChangeSets)
+				datasets.POST("/:dataset_id/change-sets", r.getChangeSetHandler().CreateChangeSet)
+				datasets.POST("/:dataset_id/change-sets/similar-questions", r.getChangeSetHandler().StageSimilarQuestions)
+				datasets.POST("/:dataset_id/change-sets/publish", r.getChangeSetHandler().PublishChangeSet)
+				datasets.POST("/:dataset_id/change-sets/discard", r.getChangeSetHandler().DiscardChangeSet)
 			}
 
 			// Single vocabulary alias group operations.
