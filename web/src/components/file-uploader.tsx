@@ -184,6 +184,19 @@ interface FileUploaderProps extends Omit<
 
   title?: React.ReactNode;
   description?: React.ReactNode;
+  /**
+   * Extra hint rendered under the description, e.g. the per-file size cap and
+   * batch-upload note.
+   */
+  hint?: React.ReactNode;
+  /**
+   * Format chips rendered in a row below the dropzone. Purely informational —
+   * the accepted types still come from `accept`.
+   * @example formats={[{ key: 'formatPdf' }, { key: 'formatWord' }]}
+   */
+  formats?: Array<{ key: string }>;
+  /** Tailwind height class for the dropzone. @default "h-72" */
+  dropzoneClassName?: string;
 }
 
 export function FileUploader(props: FileUploaderProps) {
@@ -204,6 +217,9 @@ export function FileUploader(props: FileUploaderProps) {
     className,
     title,
     description,
+    hint,
+    formats,
+    dropzoneClassName,
     ...dropzoneProps
   } = props;
   const { t } = useTranslation();
@@ -327,11 +343,12 @@ export function FileUploader(props: FileUploaderProps) {
           <div
             {...getRootProps()}
             className={cn(
-              'group relative grid h-72 w-full cursor-pointer place-items-center rounded-lg border border-dashed border-border-default',
+              'group relative grid w-full cursor-pointer place-items-center rounded-lg border border-dashed border-border-default',
               'px-5 py-2.5 text-center transition hover:bg-bg-card outline-none',
               'focus-visible:border-accent-primary focus-visible:bg-bg-card',
               isDragActive && 'border-border-button',
               isDisabled && 'pointer-events-none opacity-60',
+              dropzoneClassName ?? 'h-72',
               className,
             )}
             {...dropzoneProps}
@@ -423,6 +440,23 @@ export function FileUploader(props: FileUploaderProps) {
             </TabsContent>
           )}
         </Tabs>
+      )}
+
+      {formats && formats.length > 0 && (
+        <div className="flex flex-wrap justify-center gap-2">
+          {formats.map(({ key }) => (
+            <span
+              key={key}
+              className="rounded-md bg-bg-card px-2.5 py-1 text-xs font-medium text-text-secondary"
+            >
+              {t(key)}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {hint && (
+        <p className="text-center text-xs text-text-disabled">{hint}</p>
       )}
 
       {files?.length ? (
