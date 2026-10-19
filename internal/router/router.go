@@ -635,6 +635,38 @@ func (r *Router) Setup(engine *gin.Engine) {
 			// ordinary Agent run and cancellation identity.
 			RegisterAgentCancelRoutes(v1.Group("/tasks"), r.agentHandler)
 
+			// Public Workflow / Chatflow APIs + per-app API keys (D6 / 11.2/11.3).
+			// API key auth is enforced inside the handler (bearerKey + ResolveKey),
+			// which keeps the public path free of the user-session permission chain.
+			appRun := handler.NewAppRunHandler()
+			workflows := v1.Group("/workflows")
+			{
+				workflows.POST("/:canvas_id/run", appRun.RunWorkflow)
+			}
+			chatflows := v1.Group("/chatflows")
+			{
+				chatflows.POST("/:canvas_id/chat", appRun.ChatFlow)
+			}
+			apps := v1.Group("/apps")
+			{
+				apps.GET("/:canvas_id/api-keys", appRun.ListKeys)
+				apps.POST("/:canvas_id/api-keys", appRun.CreateKey)
+				apps.POST("/:canvas_id/api-keys/:id/disable", appRun.DisableKey)
+			}
+
+			// Run records + audit trail (LOG-01/02/03, GOV-04).
+			runHandler := handler.NewRunHandler()
+			runs := v1.Group("/runs")
+			{
+				runs.GET("", runHandler.ListRuns)
+				runs.GET("/:run_id", runHandler.GetRun)
+				runs.GET("/:run_id/nodes", runHandler.ListRunNodes)
+			}
+			audits := v1.Group("/audits")
+			{
+				audits.GET("", handler.NewAuditHandler().ListAudits)
+			}
+
 			// Plugin routes
 			plugin := v1.Group("/plugin")
 			{
