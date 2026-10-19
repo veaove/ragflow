@@ -31,7 +31,6 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { t } from 'i18next';
-import { isEmpty } from 'lodash';
 
 export type MultiSelectOptionType = {
   label: React.ReactNode;
@@ -249,26 +248,18 @@ export const MultiSelect = React.forwardRef<
     ref,
   ) => {
     const [selectedValues, setSelectedValues] =
-      React.useState<string[]>(defaultValue);
+      React.useState<string[]>(props.value ?? defaultValue ?? []);
     const [isPopoverOpen, setIsPopoverOpen] = React.useState(false);
     const [isAnimating, setIsAnimating] = React.useState(false);
     const triggerId = React.useId();
 
+    // Sync with controlled value. The parent (react-hook-form) owns the value,
+    // so keep internal state in lock-step whenever props.value changes.
     React.useEffect(() => {
-      if (isEmpty(selectedValues) && !isEmpty(props.value)) {
+      if (props.value !== undefined) {
         setSelectedValues(props.value as string[]);
       }
-    }, [props.value, selectedValues]);
-
-    React.useEffect(() => {
-      if (
-        isEmpty(selectedValues) &&
-        isEmpty(props.value) &&
-        !isEmpty(defaultValue)
-      ) {
-        setSelectedValues(defaultValue);
-      }
-    }, [defaultValue, props.value, selectedValues]);
+    }, [props.value]);
 
     const flatOptions = React.useMemo(() => {
       return options.flatMap((option) =>
