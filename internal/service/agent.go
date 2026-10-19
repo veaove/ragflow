@@ -1508,6 +1508,27 @@ func (s *AgentService) RunAgent(ctx context.Context, userID, canvasID, sessionID
 		return nil, err
 	}
 	runID := runIDFor(canvasID, map[string]any{"session_id": sessionID})
+	// Persist the run record (best-effort): node traces and the terminal state
+	// are written from the event-forwarding goroutine via the recorder.
+	recorder := NewRunRecorder()
+	if dao.DB != nil {
+		inputs := entity.JSONMap{}
+		if b, err := json.Marshal(map[string]any{"user_input": userInput, "files": files}); err == nil {
+			_ = json.Unmarshal(b, &inputs)
+		}
+		_ = recorder.RecordRunStart(ctx, &entity.AgentRun{
+			ID:            runID,
+			CanvasID:      canvasID,
+			TenantID:      agentTenantID,
+			TriggerType:   entity.RunTriggerDebug,
+			Status:        entity.RunStatusRunning,
+			Inputs:        inputs,
+			MaxDurationMS: 300000,
+			CreatedBy:     userID,
+			CreateTime:    time.Now().UnixMilli(),
+			UpdateTime:    time.Now().UnixMilli(),
+		})
+	}
 	lockToken := common.GenerateToken()
 	runCtx, cancelRun := context.WithCancel(ctx)
 	// Keep workflow cancellation separate from event-consumer cancellation.
@@ -1868,6 +1889,11 @@ func (s *AgentService) RunAgent(ctx context.Context, userID, canvasID, sessionID
 		for ev := range inner {
 			if ev.SessionID == "" {
 				ev.SessionID = sessionID
+			}
+			// Persist node traces / terminal state (best-effort, never blocks
+			// event delivery).
+			if recorder != nil && dao.DB != nil {
+				recorder.HandleEvent(ctx, canvasID, agentTenantID, runID, ev)
 			}
 			select {
 			case out <- ev:
