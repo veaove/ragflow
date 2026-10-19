@@ -81,8 +81,10 @@ func Run(ctx context.Context, serverName string, args *bootstrap.ServerArgs) err
 	}
 
 	// Initialize global QueryBuilder using tokenizer's DictPath
-	// This ensures the Synonym uses the same wordnet directory as tokenizer
-	if err := nlp.InitQueryBuilderFromTokenizer(tokenizerCfg.DictPath); err != nil {
+	// This ensures the Synonym uses the same wordnet directory as tokenizer.
+	// The vocabulary loader lets tenant-managed alias groups take part in
+	// keyword expansion; a nil loader would keep only the packaged dictionary.
+	if err := nlp.InitQueryBuilderFromTokenizerWithLoader(tokenizerCfg.DictPath, dao.NewSynonymDAO()); err != nil {
 		common.Fatal("Failed to initialize query builder", zap.Error(err))
 	}
 

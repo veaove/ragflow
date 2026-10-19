@@ -47,6 +47,19 @@ func NewRetrievalService(docEngine engine.DocEngine, documentDAO *dao.DocumentDA
 	return &RetrievalService{docEngine: docEngine, documentDAO: documentDAO}
 }
 
+// firstNonEmpty returns the first non-blank entry of values, or "" when there
+// is none. Retrieval requests carry tenant and knowledge-base id lists; the
+// vocabulary scope uses the first entry because a synonym dictionary is
+// organised per knowledge base.
+func firstNonEmpty(values []string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // RetrievalRequest request for retrieval search
 type RetrievalRequest struct {
 	Question               string
@@ -762,11 +775,16 @@ func (s *RetrievalService) Search(ctx context.Context, req *RetrievalSearchReque
 	} else {
 		// Non-empty question
 
-		// Compute keywords via QueryBuilder
-		matchText, keywords := GetQueryBuilder().Question(req.Question, "", minMatch(req.VectorSimilarityWeight, 0.3), req.Language)
-		for _, k := range keywords {
-			kwds[k] = struct{}{}
-		}
+// Compute keywords via QueryBuilder. The tenant and knowledge-base scope is
+	// passed through so tenant-managed vocabulary aliases (fund full names,
+	// abbreviations, product aliases) expand into extra keywords here instead
+	// of only at index time.
+	tenantID := firstNonEmpty(req.TenantIDs)
+	datasetID := firstNonEmpty(req.KbIDs)
+	matchText, keywords := GetQueryBuilder().QuestionScoped(ctx, tenantID, datasetID, req.Question, "", minMatch(req.VectorSimilarityWeight, 0.3), req.Language)
+	for _, k := range keywords {
+		kwds[k] = struct{}{}
+	}
 
 		// Check if EmbeddingModel is available
 		if req.EmbeddingModel == nil {
@@ -866,7 +884,7 @@ func (s *RetrievalService) Search(ctx context.Context, req *RetrievalSearchReque
 					// and lower vector similarity threshold (0.17 vs default 0.1-0.2).
 					// This provides a second chance for queries that were too strict
 					// on the first attempt.
-					matchText, _ := GetQueryBuilder().Question(req.Question, "qa", minMatch(req.VectorSimilarityWeight, 0.1), req.Language)
+					matchText, _ := GetQueryBuilder().QuestionScoped(ctx, tenantID, datasetID, req.Question, "qa", minMatch(req.VectorSimilarityWeight, 0.1), req.Language)
 					matchDense = cloneDenseExpr(denseTemplate)
 					matchDense.ExtraOptions["similarity"] = 0.17
 					if req.VectorOnly || matchText == nil {

@@ -15,6 +15,7 @@
 package nlp
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -73,6 +74,13 @@ var (
 // It should be called during the initialization phase of main.go, after tokenizer.Init.
 // The wordnetDir is typically filepath.Join(tokenizer.Config.DictPath, "wordnet")
 func InitQueryBuilder(wordnetDir string) error {
+	return InitQueryBuilderWithLoader(wordnetDir, nil)
+}
+
+// InitQueryBuilderWithLoader initializes the global QueryBuilder and lets it
+// resolve tenant vocabulary through loader. A nil loader keeps the packaged
+// synonym.json dictionary as the only synonym source.
+func InitQueryBuilderWithLoader(wordnetDir string, loader SynonymLoader) error {
 	qbOnce.Do(func() {
 		globalQueryBuilder = &QueryBuilder{
 			queryFields: []string{
@@ -85,7 +93,7 @@ func InitQueryBuilder(wordnetDir string) error {
 				"content_sm_ltks",
 			},
 			termWeight: NewTermWeightDealer(""),
-			synonym:    NewSynonym(nil, "", wordnetDir),
+			synonym:    NewSynonymWithLoader(nil, "", wordnetDir, loader),
 		}
 	})
 	return qbInitError
@@ -97,6 +105,33 @@ func InitQueryBuilder(wordnetDir string) error {
 func InitQueryBuilderFromTokenizer(tokenizerDictPath string) error {
 	wordnetDir := filepath.Join(tokenizerDictPath, "wordnet")
 	return InitQueryBuilder(wordnetDir)
+}
+
+// InitQueryBuilderFromTokenizerWithLoader is InitQueryBuilderFromTokenizer plus
+// tenant vocabulary support.
+func InitQueryBuilderFromTokenizerWithLoader(tokenizerDictPath string, loader SynonymLoader) error {
+	wordnetDir := filepath.Join(tokenizerDictPath, "wordnet")
+	return InitQueryBuilderWithLoader(wordnetDir, loader)
+}
+
+// SetSynonymLoader attaches (or replaces) the tenant vocabulary loader on the
+// global QueryBuilder. A deployment that initialized the builder before the
+// database was ready can wire the loader afterwards without a restart;
+// passing nil disables tenant vocabulary again.
+func SetSynonymLoader(loader SynonymLoader) {
+	qb := GetQueryBuilder()
+	if qb == nil || qb.synonym == nil {
+		return
+	}
+	qb.synonym.SetLoader(loader)
+}
+
+// InvalidateSynonymCache drops the cached vocabulary so the next query reloads
+// it. Call it after any synonym write to make changes visible immediately.
+func InvalidateSynonymCache(datasetID string) {
+	if qb := GetQueryBuilder(); qb != nil && qb.synonym != nil {
+		qb.synonym.InvalidateDataset(datasetID)
+	}
 }
 
 // GetQueryBuilder returns the global QueryBuilder instance.
@@ -247,6 +282,16 @@ func (qb *QueryBuilder) NeedFineGrainedTokenize(tk string) bool {
 // language ("" = English) the query is tokenized with, so query tokens match
 // index tokens.
 func (qb *QueryBuilder) Question(txt string, tbl string, minMatch float64, language string) (*types.MatchTextExpr, []string) {
+	return qb.QuestionScoped(nil, "", "", txt, tbl, minMatch, language)
+}
+
+// QuestionScoped builds the retrieval expression for a query that runs inside a
+// tenant and knowledge-base scope, so tenant vocabulary aliases participate in
+// keyword expansion.
+//
+// Passing an empty tenantID/datasetID keeps the base-dictionary-only behaviour,
+// which is what Question delegates to.
+func (qb *QueryBuilder) QuestionScoped(ctx context.Context, tenantID, datasetID, txt string, tbl string, minMatch float64, language string) (*types.MatchTextExpr, []string) {
 	// originalQuery stores the original input text for later use in query expression.
 	originalQuery := txt
 
@@ -341,7 +386,7 @@ func (qb *QueryBuilder) Question(txt string, tbl string, minMatch float64, langu
 		for i, tw := range tksW {
 			tk := tw.tk
 			// Lookup synonyms (limit to 8 per Python)
-			tkSyns := qb.synonym.Lookup(tk, 8)
+			tkSyns := qb.synonym.LookupScoped(ctx, tenantID, datasetID, tk, 8)
 			if len(tkSyns) > 0 {
 				// Format synonyms with weight boost: term^weight
 				var synParts []string
@@ -443,7 +488,7 @@ func (qb *QueryBuilder) Question(txt string, tbl string, minMatch float64, langu
 
 		// Lookup synonyms
 		// syns are synonyms for the current segment.
-		syns := qb.synonym.Lookup(segment, 8)
+		syns := qb.synonym.LookupScoped(ctx, tenantID, datasetID, segment, 8)
 		if len(syns) > 0 && len(keywords) < 32 {
 			keywords = append(keywords, syns...)
 		}
@@ -497,7 +542,7 @@ func (qb *QueryBuilder) Question(txt string, tbl string, minMatch float64, langu
 
 			// Lookup synonyms for this token
 			// tkSyns are synonyms for the current term.
-			tkSyns := qb.synonym.Lookup(term, 8)
+			tkSyns := qb.synonym.LookupScoped(ctx, tenantID, datasetID, term, 8)
 			for i, s := range tkSyns {
 				tkSyns[i] = qb.SubSpecialChar(s)
 			}

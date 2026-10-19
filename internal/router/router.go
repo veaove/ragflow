@@ -58,6 +58,19 @@ type Router struct {
 	compilationTemplateHandler      *handler.CompilationTemplateHandler
 	compilationTemplateGroupHandler *handler.CompilationTemplateGroupHandler
 	datasetArtifactHandler          *handler.DatasetArtifactHandler
+
+	// synonymHandler is built on first use instead of being injected, so the
+	// already long NewRouter parameter list does not grow for one more route
+	// group.
+	synonymHandler *handler.SynonymHandler
+}
+
+// getSynonymHandler lazily constructs the vocabulary alias handler.
+func (r *Router) getSynonymHandler() *handler.SynonymHandler {
+	if r.synonymHandler == nil {
+		r.synonymHandler = handler.NewSynonym()
+	}
+	return r.synonymHandler
 }
 
 // NewRouter create router
@@ -409,6 +422,19 @@ func (r *Router) Setup(engine *gin.Engine) {
 				datasets.DELETE("/:dataset_id/documents/:document_id/structure/graph", r.datasetArtifactHandler.DeleteDocumentGraph)
 				datasets.POST("/:dataset_id/metadata/update", r.documentHandler.MetadataBatchUpdate)
 				datasets.PATCH("/:dataset_id/documents/metadatas", r.documentHandler.UpdateDocumentMetadatas)
+
+				// Vocabulary alias (synonym) management, scoped to one dataset.
+				datasets.GET("/:dataset_id/synonym-groups", r.getSynonymHandler().ListSynonymGroups)
+				datasets.POST("/:dataset_id/synonym-groups", r.getSynonymHandler().CreateSynonymGroup)
+				datasets.POST("/:dataset_id/synonym-groups/import", r.getSynonymHandler().ImportSynonymGroups)
+			}
+
+			// Single vocabulary alias group operations.
+			synonymGroups := v1.Group("/synonym-groups")
+			{
+				synonymGroups.GET("/:group_id", r.getSynonymHandler().GetSynonymGroup)
+				synonymGroups.PUT("/:group_id", r.getSynonymHandler().UpdateSynonymGroup)
+				synonymGroups.DELETE("/:group_id", r.getSynonymHandler().DeleteSynonymGroup)
 			}
 
 			// Search routes

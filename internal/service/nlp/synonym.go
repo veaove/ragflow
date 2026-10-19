@@ -15,6 +15,7 @@
 package nlp
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -37,6 +39,33 @@ type Synonym struct {
 	redis      Client // Optional Redis client for real-time synonym loading
 	wordNet    *WordNet
 	resPath    string
+
+	// loader reads the tenant-scoped vocabulary that overlays the packaged
+	// synonym.json base dictionary. It is nil when no database is wired in,
+	// which keeps the file-only behaviour of a single-node deployment.
+	// It is an atomic pointer because SetSynonymLoader may run while queries
+	// are in flight.
+	loader atomic.Pointer[SynonymLoader]
+	// dbDict caches the loaded vocabulary per knowledge base. Entries are
+	// dropped wholesale by InvalidateDataset so an edit takes effect on the
+	// next query without a restart.
+	dbDict sync.Map // datasetID -> *dbDictEntry
+}
+
+// dbDictEntry is one cached vocabulary dictionary plus the load timestamp used
+// for diagnostics. The dict is never mutated after publication, so readers can
+// use it without holding a lock.
+type dbDictEntry struct {
+	dict     map[string][]string
+	loadedAt atomic.Int64
+}
+
+// SynonymLoader supplies the tenant-scoped vocabulary that is merged on top of
+// the packaged synonym.json base dictionary.
+type SynonymLoader interface {
+	// LoadDictionary returns word -> synonyms for one knowledge base. Returning
+	// an empty map means "no custom vocabulary", which is not an error.
+	LoadDictionary(ctx context.Context, tenantID, datasetID string) (map[string][]string, error)
 }
 
 // Client interface for Redis operations
@@ -51,6 +80,13 @@ type Client interface {
 //
 //	If empty, WordNet will not be initialized.
 func NewSynonym(redis Client, resPath string, wordnetDir string) *Synonym {
+	return NewSynonymWithLoader(redis, resPath, wordnetDir, nil)
+}
+
+// NewSynonymWithLoader creates a Synonym instance that can additionally resolve
+// tenant-scoped vocabulary from loader. A nil loader preserves the packaged
+// dictionary only behaviour.
+func NewSynonymWithLoader(redis Client, resPath string, wordnetDir string, loader SynonymLoader) *Synonym {
 	s := &Synonym{
 		loadTm:     time.Now().Add(-1000000 * time.Second),
 		dictionary: make(map[string][]string),
@@ -59,6 +95,9 @@ func NewSynonym(redis Client, resPath string, wordnetDir string) *Synonym {
 		resPath:    resPath,
 	}
 	s.lookupNum.Store(100000000)
+	if loader != nil {
+		s.SetLoader(loader)
+	}
 
 	if resPath == "" {
 		s.resPath = "internal/rag/res"
@@ -152,6 +191,15 @@ func (s *Synonym) load() {
 // Lookup looks up synonyms for a given token
 // Reference: synonym.py Dealer.lookup
 func (s *Synonym) Lookup(tk string, topN int) []string {
+	return s.LookupScoped(context.Background(), "", "", tk, topN)
+}
+
+// LookupScoped resolves tk against the tenant's vocabulary for datasetID first,
+// then against the packaged base dictionary and WordNet.
+//
+// An empty tenantID or datasetID keeps the legacy file-only behaviour, so
+// callers that have no knowledge-base context are unaffected.
+func (s *Synonym) LookupScoped(ctx context.Context, tenantID, datasetID, tk string, topN int) []string {
 	if tk == "" {
 		return []string{}
 	}
@@ -160,12 +208,22 @@ func (s *Synonym) Lookup(tk string, topN int) []string {
 		topN = 8
 	}
 
-	// 1) Check the custom dictionary first
+	key := normalizeSynonymKey(tk)
+
+	// 1) Tenant vocabulary wins: it is the only source the customer curates,
+	// so it must take precedence over the generic packaged dictionary.
+	if dict := s.tenantDictionary(ctx, tenantID, datasetID); dict != nil {
+		if res, ok := dict[key]; ok && len(res) > 0 {
+			if len(res) > topN {
+				return res[:topN]
+			}
+			return res
+		}
+	}
+
+	// 2) Custom dictionary loaded from synonym.json
 	s.lookupNum.Add(1)
 	//s.load()
-
-	key := regexp.MustCompile(`[ \t]+`).ReplaceAllString(strings.TrimSpace(tk), " ")
-	key = strings.ToLower(key)
 
 	if res, ok := s.dictionary[key]; ok {
 		if len(res) > topN {
@@ -174,7 +232,7 @@ func (s *Synonym) Lookup(tk string, topN int) []string {
 		return res
 	}
 
-	// 2) If not found and tk is purely alphabetical, fallback to WordNet
+	// 3) If not found and tk is purely alphabetical, fallback to WordNet
 	if matched, _ := regexp.MatchString(`^[a-z]+$`, tk); matched && s.wordNet != nil {
 		wnSet := make(map[string]struct{})
 		synsets := s.wordNet.Synsets(tk, "")
@@ -206,8 +264,92 @@ func (s *Synonym) Lookup(tk string, topN int) []string {
 		return wnRes
 	}
 
-	// 3) Nothing found in either source
+	// 4) Nothing found in any source
 	return []string{}
+}
+
+// normalizeSynonymKey folds the lookup key the same way the dictionary was
+// built, so "  50ETF " and "50etf" resolve to the same entry.
+func normalizeSynonymKey(tk string) string {
+	key := strings.TrimSpace(tk)
+	key = regexp.MustCompile(`[ \t]+`).ReplaceAllString(key, " ")
+	return strings.ToLower(key)
+}
+
+// tenantDictionary returns the cached tenant vocabulary for a knowledge base,
+// loading it on first use. It returns nil when no loader is wired or the scope
+// is incomplete, which leaves the caller on the base dictionary.
+// currentLoader returns the configured vocabulary loader, or nil when none is
+// wired.
+func (s *Synonym) currentLoader() SynonymLoader {
+	if p := s.loader.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
+// SetLoader attaches or replaces the tenant vocabulary loader at runtime.
+// Passing nil disables tenant vocabulary, which also clears cached entries so
+// no stale vocabulary survives the switch.
+func (s *Synonym) SetLoader(loader SynonymLoader) {
+	if loader == nil {
+		s.loader.Store(nil)
+	} else {
+		s.loader.Store(&loader)
+	}
+	s.InvalidateAll()
+}
+
+// tenantDictionary returns the cached tenant vocabulary for a knowledge base,
+// loading it on first use. It returns nil when no loader is wired or the scope
+// is incomplete, which leaves the caller on the base dictionary.
+func (s *Synonym) tenantDictionary(ctx context.Context, tenantID, datasetID string) map[string][]string {
+	loader := s.currentLoader()
+	if loader == nil || tenantID == "" || datasetID == "" {
+		return nil
+	}
+
+	if cached, ok := s.dbDict.Load(datasetID); ok {
+		if entry, ok := cached.(*dbDictEntry); ok && entry != nil {
+			return entry.dict
+		}
+	}
+
+	dict, err := loader.LoadDictionary(ctx, tenantID, datasetID)
+	if err != nil {
+		// A vocabulary read failure must not break retrieval: the query still
+		// runs against the base dictionary and WordNet.
+		common.Warn("Failed to load tenant synonym dictionary",
+			zap.String("tenant_id", tenantID),
+			zap.String("dataset_id", datasetID),
+			zap.Error(err))
+		return nil
+	}
+
+	entry := &dbDictEntry{dict: dict}
+	entry.loadedAt.Store(time.Now().UnixMilli())
+	actual, _ := s.dbDict.LoadOrStore(datasetID, entry)
+	if stored, ok := actual.(*dbDictEntry); ok {
+		return stored.dict
+	}
+	return dict
+}
+
+// InvalidateDataset drops the cached vocabulary of one knowledge base so the
+// next query reloads it. Call it after any synonym write.
+func (s *Synonym) InvalidateDataset(datasetID string) {
+	if datasetID == "" {
+		return
+	}
+	s.dbDict.Delete(datasetID)
+}
+
+// InvalidateAll drops every cached vocabulary.
+func (s *Synonym) InvalidateAll() {
+	s.dbDict.Range(func(key, _ any) bool {
+		s.dbDict.Delete(key)
+		return true
+	})
 }
 
 // GetDictionary returns the synonym dictionary
