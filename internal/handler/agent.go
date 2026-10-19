@@ -815,7 +815,52 @@ func (h *AgentHandler) DeleteVersion(c *gin.Context) {
 	common.SuccessWithData(c, true, "success")
 }
 
-// --- PR2: missing routes wired up to the existing service layer ---
+// RestoreVersion restores a historical version to the canvas draft.
+// @Summary Restore Agent Version
+// @Tags agents
+// @Produce json
+// @Param canvas_id path string true "canvas id"
+// @Param version_id path string true "version id"
+// @Success 200 {object} entity.UserCanvas
+// @Router /api/v1/agents/{canvas_id}/versions/{version_id}/restore [post]
+func (h *AgentHandler) RestoreVersion(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ResponseWithCodeData(c, code, nil, msg)
+		return
+	}
+	canvasID := c.Param("canvas_id")
+	versionID := c.Param("version_id")
+	canvasInstance, err := h.agentService.RestoreVersion(c.Request.Context(), user.ID, canvasID, versionID)
+	if err != nil {
+		ec, em := mapAgentError(err)
+		common.ResponseWithCodeData(c, ec, nil, em)
+		return
+	}
+	common.SuccessWithData(c, canvasInstance, "success")
+}
+
+// ArchiveAgent marks a canvas archived.
+// @Summary Archive Agent
+// @Tags agents
+// @Produce json
+// @Param canvas_id path string true "canvas id"
+// @Success 200 {object} map[string]interface{}
+// @Router /api/v1/agents/{canvas_id}/archive [post]
+func (h *AgentHandler) ArchiveAgent(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ResponseWithCodeData(c, code, nil, msg)
+		return
+	}
+	canvasID := c.Param("canvas_id")
+	if err := h.agentService.ArchiveAgent(c.Request.Context(), user.ID, canvasID); err != nil {
+		ec, em := mapAgentError(err)
+		common.ResponseWithCodeData(c, ec, nil, em)
+		return
+	}
+	common.SuccessWithData(c, true, "success")
+}
 
 // ListAgentTemplates GET /api/v1/agents/templates
 func (h *AgentHandler) ListAgentTemplates(c *gin.Context) {
