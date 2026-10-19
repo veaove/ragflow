@@ -338,6 +338,9 @@ type AgentService struct {
 	api4ConversationDAO         *dao.API4ConversationDAO
 	compilationTemplateGroupDAO *dao.CompilationTemplateGroupDAO
 	compilationTemplateDAO      *dao.CompilationTemplateDAO
+	environmentVariableDAO      *dao.EnvironmentVariableDAO
+	agentRunDAO                 *dao.AgentRunDAO
+	conversationVariableDAO     *dao.ConversationVariableDAO
 
 	// driver is the per-process runner that drives canvas
 	// invocations and produces SSE events. V1 persistence is
@@ -412,6 +415,9 @@ func NewAgentServiceWithOptions(
 		api4ConversationDAO:         dao.NewAPI4ConversationDAO(),
 		compilationTemplateGroupDAO: dao.NewCompilationTemplateGroupDAO(),
 		compilationTemplateDAO:      dao.NewCompilationTemplateDAO(),
+		environmentVariableDAO:      dao.NewEnvironmentVariableDAO(),
+		agentRunDAO:                 dao.NewAgentRunDAO(),
+		conversationVariableDAO:     dao.NewConversationVariableDAO(),
 		runner:                      canvas.NewRunner(),
 		activeSessions:              make(map[string]*activeAgentRun),
 		checkpointStore:             cp,
@@ -1308,12 +1314,24 @@ func (s *AgentService) PublishAgent(ctx context.Context, userID, canvasID string
 	canvasInstance.DSL = dsl
 	canvasInstance.Title = title
 	canvasInstance.Description = description
+
+	// Form-factor validation before the snapshot is written (D2 / 10.1). Only
+	// workflow/chatflow are constrained; agent keeps legacy semantics.
+	if canvasInstance.CanvasCategory == entity.CanvasCategoryWorkflow || canvasInstance.CanvasCategory == entity.CanvasCategoryChatflow {
+		if verr := validatePublish(canvasInstance, dsl); verr != nil {
+			return nil, verr
+		}
+	}
+
 	canvasInstance.Release = true
 	titleStr := ""
 	if title != nil {
 		titleStr = *title
 	}
 	opts := s.saveOrReplaceVersionOptions(ctx, userID, canvasID, dsl, titleStr, description, true)
+	// Publish always appends an immutable version (D5): version history and
+	// rollback require append-only snapshots.
+	opts.AlwaysCreate = true
 	var row *entity.UserCanvasVersion
 	if err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err = s.canvasDAO.UpdateTx(ctx, tx, canvasInstance); err != nil {

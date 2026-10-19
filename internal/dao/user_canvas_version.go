@@ -44,6 +44,15 @@ type SaveOrReplaceLatestVersionOptions struct {
 	Release         bool
 	KeepUnpublished int
 	SameDSL         func(entity.JSONMap) bool
+	// AlwaysCreate forces a new immutable version row on every publish instead
+	// of refreshing the latest row when the DSL is unchanged. Version history
+	// and rollback require append-only semantics (VER-05 / D5).
+	AlwaysCreate bool
+	// Remark / BaseVersionID / EnvSnapshot are publish-only fields carried
+	// onto the new version row when AlwaysCreate is set.
+	Remark        *string
+	BaseVersionID *string
+	EnvSnapshot   entity.JSONMap
 }
 
 // NewUserCanvasVersionDAO returns a zero-value DAO. The struct is stateless
@@ -182,7 +191,7 @@ func (dao *UserCanvasVersionDAO) SaveOrReplaceLatestTx(ctx context.Context, tx *
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
-	} else if opts.sameDSL(latest.DSL) {
+	} else if !opts.AlwaysCreate && opts.sameDSL(latest.DSL) {
 		if !latest.Release || opts.Release {
 			updates := map[string]interface{}{
 				"dsl":     opts.DSL,
@@ -210,13 +219,18 @@ func (dao *UserCanvasVersionDAO) SaveOrReplaceLatestTx(ctx context.Context, tx *
 			return &latest, dao.deleteAllUnpublishedExcessTx(ctx, tx, opts.UserCanvasID, opts.KeepUnpublished)
 		}
 	}
+	nextSeq := latest.VersionSeq + 1
 	row := &entity.UserCanvasVersion{
-		ID:           opts.NewID,
-		UserCanvasID: opts.UserCanvasID,
-		Title:        opts.Title,
-		Description:  opts.Description,
-		Release:      opts.Release,
-		DSL:          opts.DSL,
+		ID:            opts.NewID,
+		UserCanvasID:  opts.UserCanvasID,
+		Title:         opts.Title,
+		Description:   opts.Description,
+		Release:       opts.Release,
+		DSL:           opts.DSL,
+		VersionSeq:    nextSeq,
+		Remark:        opts.Remark,
+		BaseVersionID: opts.BaseVersionID,
+		EnvSnapshot:   opts.EnvSnapshot,
 	}
 	if err = tx.WithContext(ctx).Create(row).Error; err != nil {
 		return nil, err
