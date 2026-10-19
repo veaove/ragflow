@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"path/filepath"
+	"path"
 	"ragflow/internal/storage"
 	"ragflow/internal/utility"
 	"strings"
@@ -56,7 +56,7 @@ func normalizeRemoteUploadFilename(rawURL, contentType string, data []byte) stri
 	parsed, err := url.Parse(rawURL)
 	filename := "download"
 	if err == nil {
-		filename = sanitizeFilename(filepath.Base(parsed.Path))
+		filename = sanitizeFilename(path.Base(parsed.Path))
 	}
 	ct := strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
 	if ct == "application/pdf" || utility.BytesLooksLikePDF(data) {
@@ -70,7 +70,7 @@ func normalizeRemoteUploadFilename(rawURL, contentType string, data []byte) stri
 }
 
 func sanitizeFilename(name string) string {
-	name = filepath.Base(name)
+	name = path.Base(name)
 	name = strings.TrimSpace(name)
 
 	name = strings.Map(func(r rune) rune {
