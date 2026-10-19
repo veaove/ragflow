@@ -37,8 +37,11 @@ type SynonymGroup struct {
 	Remark    string `gorm:"column:remark;size:512" json:"remark"`
 	// WordCount is a read-only projection joined from synonym_word; it is not a
 	// stored column.
-	WordCount int            `gorm:"-" json:"word_count"`
-	Words     []SynonymWord  `gorm:"-" json:"words,omitempty"`
+	WordCount int `gorm:"-" json:"word_count"`
+	// Words holds the group's entries as pointers so that both DAO reads and
+	// buildSynonymWordEntities can assign directly without a per-element
+	// dereference loop. JSON output is identical to a value slice.
+	Words     []*SynonymWord `gorm:"-" json:"words,omitempty"`
 	BaseModel `json:"-"`
 }
 
