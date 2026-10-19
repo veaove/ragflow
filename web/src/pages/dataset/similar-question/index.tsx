@@ -18,7 +18,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import { toast } from 'sonner';
 
-import kbService from '@/services/knowledge-service';
+import kbService, {
+  listDocument,
+} from '@/services/knowledge-service';
 
 import type { IChunk } from '@/interfaces/database/dataset';
 import { Button } from '@/components/ui/button';
@@ -74,13 +76,27 @@ export default function SimilarQuestion() {
     if (!datasetId) return;
     setLoading(true);
     try {
-      const response = await kbService.chunkList({
-        dataset_id: datasetId,
+      // chunk 挂在文档下（GET /datasets/{id}/documents/{doc_id}/chunks），
+      // 必须先列文档再逐文档拉 chunk；kbService.chunkList 的 document_id
+      // 缺失会拼出 /documents/undefined/chunks 导致 500。
+      const docRes = await listDocument({
+        id: datasetId,
         page: 1,
         page_size: 1000,
       });
-      const data = response?.data?.data?.chunks ?? [];
-      setChunks(data);
+      const docs: Array<{ id: string }> = docRes?.data?.data?.docs ?? [];
+      const all: IChunk[] = [];
+      for (const doc of docs) {
+        const res = await kbService.chunkList({
+          dataset_id: datasetId,
+          document_id: doc.id,
+          page: 1,
+          page_size: 1000,
+        });
+        const chunks: IChunk[] = res?.data?.data?.chunks ?? [];
+        all.push(...chunks);
+      }
+      setChunks(all);
     } catch {
       toast.error('加载问答对失败');
     } finally {
