@@ -97,6 +97,11 @@ export default function SimilarQuestion() {
           page_size: 1000,
         });
         const chunks: IChunk[] = res?.data?.data?.chunks ?? [];
+        // 引擎的 chunk 投影可能不含 doc_id；编辑/暂存相似问都需要
+        // document_id，这里用循环手里的 doc.id 兜底回填。
+        chunks.forEach((ch) => {
+          if (!ch.doc_id) ch.doc_id = doc.id;
+        });
         all.push(...chunks);
       }
       setChunks(all);

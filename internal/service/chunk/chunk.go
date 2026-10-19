@@ -876,6 +876,9 @@ func (s *ChunkService) List(ctx context.Context, req *service.ListChunksRequest,
 			"content_with_weight",
 			"img_id",
 			"position_int",
+			// doc_id is echoed back so clients can attribute chunks to their
+			// document (e.g. the similar-question editor needs document_id).
+			"doc_id",
 			// Read back only to emit the `available` boolean.
 			"available_int",
 			// Call for the ES field names: Elasticsearch does not translate
