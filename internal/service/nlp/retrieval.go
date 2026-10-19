@@ -368,6 +368,14 @@ func (s *RetrievalService) Retrieval(ctx context.Context, req *RetrievalRequest)
 		} else {
 			resultChunk["important_kwd"] = []string{}
 		}
+		// question_kwd (similar questions) enables recall attribution. The
+		// search layer renames it to "questions" in formatDatasetSearchChunks;
+		// missing/empty values normalize to an empty list for response parity.
+		if v, ok := chunk["question_kwd"]; ok && v != nil {
+			resultChunk["question_kwd"] = v
+		} else {
+			resultChunk["question_kwd"] = []string{}
+		}
 		if v, ok := chunk["mom_id"]; ok {
 			resultChunk["mom_id"] = v
 		} else {
@@ -741,6 +749,9 @@ func (s *RetrievalService) Search(ctx context.Context, req *RetrievalSearchReque
 		// child fragments to their parent, row_id() the table row identity.
 		"content_with_weight", "doc_type_kwd", "mom_id", "row_id()",
 		"compile_kwd", "scope_kwd",
+		// question_kwd (similar questions) is returned so callers can attribute
+		// which similar question triggered a recall (命中归因).
+		"question_kwd",
 		"_score",
 	}
 

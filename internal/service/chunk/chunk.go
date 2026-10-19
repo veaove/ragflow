@@ -1174,6 +1174,15 @@ func (s *ChunkService) UpdateChunk(ctx context.Context, req *service.UpdateChunk
 			}
 		}
 		d["question_kwd"] = filteredQuestions
+		// Re-tokenize the similar questions so question_tks stays in sync with
+		// question_kwd. Retrieval matches on question_tks (BM25 ^20 + rerank ×6),
+		// so updating question_kwd without question_tks would make the edit a
+		// no-op at query time (RK-01).
+		questionTks, err := s.tokenize(strings.Join(filteredQuestions, "\n"), language)
+		if err != nil {
+			return updateChunkError{code: common.CodeExceptionError, message: "failed to tokenize questions: " + err.Error()}
+		}
+		d["question_tks"] = questionTks
 	}
 
 	// Available
