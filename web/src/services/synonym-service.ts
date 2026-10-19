@@ -18,11 +18,16 @@ import { restAPIv1 } from '@/utils/api';
 import request from '@/utils/request';
 
 export type SynonymDomain = 'fund' | 'hx';
+export type SynonymScope = 'kb' | 'tenant';
+export type SynonymGroupType = 'synonym' | 'proper';
+export type SynonymStatus = 'live' | 'pending' | 'disabled';
 
 export interface ISynonymWord {
   id?: string;
   word: string;
   is_primary?: boolean;
+  status?: SynonymStatus;
+  weight?: number;
 }
 
 export interface ISynonymGroup {
@@ -30,6 +35,9 @@ export interface ISynonymGroup {
   dataset_id: string;
   name: string;
   domain: SynonymDomain;
+  scope?: SynonymScope;
+  group_type?: SynonymGroupType;
+  status?: SynonymStatus;
   remark?: string;
   word_count: number;
   words?: ISynonymWord[];
@@ -59,6 +67,8 @@ export const createSynonymGroup = (
   data: {
     name: string;
     domain: SynonymDomain;
+    scope?: SynonymScope;
+    group_type?: SynonymGroupType;
     remark?: string;
     words: ISynonymWord[];
   },
@@ -72,6 +82,8 @@ export const updateSynonymGroup = (
   data: {
     name?: string;
     domain?: SynonymDomain;
+    scope?: SynonymScope;
+    group_type?: SynonymGroupType;
     remark?: string;
     words?: ISynonymWord[];
   },

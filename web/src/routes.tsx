@@ -72,6 +72,8 @@ export enum Routes {
   ProfilePrompt = `${ProfileSetting}${Prompt}`,
   ProfileProfile = `${ProfileSetting}${Profile}`,
   DatasetTesting = '/retrieval',
+  Vocab = '/vocab',
+  SimilarQuestion = '/similar-question',
   Chunk = '/chunk',
   ChunkResult = `${Chunk}${Chunk}`,
   Parsed = '/parsed',
@@ -230,6 +232,14 @@ const routeConfigOptions = [
           {
             path: `${Routes.DatasetBase}${Routes.DataSetSetting}/:id`,
             Component: () => import('@/pages/dataset/setting'),
+          },
+          {
+            path: `${Routes.DatasetBase}${Routes.Vocab}/:id`,
+            Component: () => import('@/pages/dataset/vocab'),
+          },
+          {
+            path: `${Routes.DatasetBase}${Routes.SimilarQuestion}/:id`,
+            Component: () => import('@/pages/dataset/similar-question'),
           },
         ],
       },

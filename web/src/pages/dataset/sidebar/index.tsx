@@ -7,6 +7,8 @@ import {
   LucideLogs,
   LucideSettings,
   LucideTextSearch,
+  LucideListChecks,
+  LucideLibrary,
 } from 'lucide-react';
 
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
@@ -40,6 +42,16 @@ export function SideBar({ dataset: data }: PropType) {
         icon: <LucideTextSearch className="size-[1em]" />,
         label: t(`knowledgeDetails.testing`),
         key: Routes.DatasetTesting,
+      },
+      {
+        icon: <LucideLibrary className="size-[1em]" />,
+        label: '词表管理',
+        key: Routes.Vocab,
+      },
+      {
+        icon: <LucideListChecks className="size-[1em]" />,
+        label: '相似问管理',
+        key: Routes.SimilarQuestion,
       },
       {
         icon: <LucideLogs className="size-[1em]" />,
