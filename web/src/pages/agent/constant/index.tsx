@@ -71,6 +71,48 @@ export const AgentOperatorList = [
   Operator.Agent,
 ];
 
+// WorkflowOperatorList / ChatflowOperatorList are the node directories for the
+// two new form factors (FR-02-01). Workflow ends in End, Chatflow ends in
+// Answer; both expose the new standalone LLM and the shared logic/integration
+// nodes (D7 / tech design 12.2).
+export const WorkflowOperatorList = [
+  Operator.Begin,
+  Operator.End,
+  Operator.LLM,
+  Operator.Agent,
+  Operator.ParameterExtractor,
+  Operator.TemplateTransform,
+  Operator.Retrieval,
+  Operator.Categorize,
+  Operator.Switch,
+  Operator.Iteration,
+  Operator.Loop,
+  Operator.Code,
+  Operator.Invoke,
+  Operator.VariableAggregator,
+  Operator.VariableAssigner,
+  Operator.Note,
+];
+
+export const ChatflowOperatorList = [
+  Operator.Begin,
+  Operator.Answer,
+  Operator.LLM,
+  Operator.Agent,
+  Operator.ParameterExtractor,
+  Operator.TemplateTransform,
+  Operator.Retrieval,
+  Operator.Categorize,
+  Operator.Switch,
+  Operator.Iteration,
+  Operator.Loop,
+  Operator.Code,
+  Operator.Invoke,
+  Operator.VariableAggregator,
+  Operator.VariableAssigner,
+  Operator.Note,
+];
+
 export const DataOperationsOperatorOptions = [
   ComparisonOperator.Equal,
   ComparisonOperator.NotEqual,

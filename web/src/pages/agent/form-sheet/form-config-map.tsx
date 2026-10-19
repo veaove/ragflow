@@ -1,7 +1,12 @@
 import { Operator } from '../constant';
 import AgentForm from '../form/agent-form';
+import AnswerForm from '../form/answer-form';
 import ArXivForm from '../form/arxiv-form';
 import BeginForm from '../form/begin-form';
+import EndForm from '../form/end-form';
+import LLMForm from '../form/llm-form';
+import ParameterExtractorForm from '../form/parameter-extractor-form';
+import TemplateTransformForm from '../form/template-transform-form';
 import BingForm from '../form/bing-form';
 import BrowserForm from '../form/browser-use-form';
 import CompilationForm from '../form/compilation-form';
@@ -55,6 +60,21 @@ import type { INextOperatorForm } from '../interface';
 export const FormConfigMap = {
   [Operator.Begin]: {
     component: BeginForm,
+  },
+  [Operator.End]: {
+    component: EndForm,
+  },
+  [Operator.Answer]: {
+    component: AnswerForm,
+  },
+  [Operator.LLM]: {
+    component: LLMForm,
+  },
+  [Operator.ParameterExtractor]: {
+    component: ParameterExtractorForm,
+  },
+  [Operator.TemplateTransform]: {
+    component: TemplateTransformForm,
   },
   [Operator.Retrieval]: {
     component: RetrievalForm,

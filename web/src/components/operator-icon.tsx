@@ -20,9 +20,12 @@ import queritLogo from '@/assets/querit.png';
 import search1apiLogo from '@/assets/search1api.png';
 import { cn } from '@/lib/utils';
 import {
+  Bot,
+  Braces,
   Columns3Cog,
   FileCode,
   FileText,
+  Flag,
   Globe,
   HousePlus,
   Infinity as InfinityIcon,
@@ -33,6 +36,8 @@ import {
   LucideFileStack,
   LucideHeading,
   LucideListPlus,
+  MessageCircle,
+  WrapText,
 } from 'lucide-react';
 import { Component } from 'react';
 import { Operator } from '../constants/agent';
@@ -100,6 +105,11 @@ export const LucideIconMap = {
   [Operator.TokenChunker]: LucideBlocks,
   [Operator.TitleChunker]: LucideHeading,
   [Operator.Extractor]: LucideFileStack,
+  [Operator.End]: Flag,
+  [Operator.Answer]: MessageCircle,
+  [Operator.LLM]: Bot,
+  [Operator.ParameterExtractor]: Braces,
+  [Operator.TemplateTransform]: WrapText,
 };
 
 const Empty = () => {

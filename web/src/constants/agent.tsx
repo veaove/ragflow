@@ -146,6 +146,14 @@ export enum Operator {
   LoopStart = 'LoopItem',
   ExitLoop = 'ExitLoop',
   ExcelProcessor = 'ExcelProcessor',
+  // Workflow / Chatflow first-class nodes (Dify port). Names match the Go
+  // component registry (componentNameEnd/Answer/LLM/ParameterExtractor/
+  // TemplateTransform).
+  End = 'End',
+  Answer = 'Answer',
+  LLM = 'LLM',
+  ParameterExtractor = 'ParameterExtractor',
+  TemplateTransform = 'TemplateTransform',
 }
 
 export enum ComparisonOperator {
