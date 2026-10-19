@@ -16,6 +16,25 @@
 
 package entity
 
+import "time"
+
+// Canvas category values — the single source of truth for app form factor
+// (D1 in the technical design). The legacy agent form factor is preserved;
+// chatflow / workflow are the two new first-class form factors, and
+// dataflow_canvas is the ingestion pipeline (out of scope here).
+const (
+	CanvasCategoryAgent     = "agent_canvas"
+	CanvasCategoryChatflow  = "chatflow_canvas"
+	CanvasCategoryWorkflow  = "workflow_canvas"
+	CanvasCategoryDataflow  = "dataflow_canvas"
+)
+
+// DSL schema version for forward/backward migration (FR-06-08 / VER-08).
+const (
+	DSLSchemaVersionLegacy = 0 // pre-versioning DSLs
+	DSLSchemaVersionV1     = 1 // first versioned schema (with End/Answer)
+)
+
 // UserCanvas user canvas model
 type UserCanvas struct {
 	ID             string  `gorm:"column:id;primaryKey;size:32" json:"id"`
@@ -29,6 +48,13 @@ type UserCanvas struct {
 	CanvasType     *string `gorm:"column:canvas_type;size:32;index" json:"canvas_type,omitempty"`
 	CanvasCategory string  `gorm:"column:canvas_category;size:32;not null;default:agent_canvas;index" json:"canvas_category"`
 	DSL            JSONMap `gorm:"column:dsl;type:longtext" json:"dsl,omitempty"`
+	// ArchivedAt marks a soft-archived app: non-nil means archived, and the
+	// derived status is archived (FR-01-05). Release + ArchivedAt together
+	// derive draft/published/archived without a redundant status column.
+	ArchivedAt *time.Time `gorm:"column:archived_at" json:"archived_at,omitempty"`
+	// DSLSchemaVersion records the DSL schema revision so old DSLs can be
+	// migrated on load (FR-06-08).
+	DSLSchemaVersion int `gorm:"column:dsl_schema_version;not null;default:1" json:"dsl_schema_version"`
 	BaseModel
 }
 
@@ -63,6 +89,17 @@ type UserCanvasVersion struct {
 	Description  *string `gorm:"column:description;type:longtext" json:"description,omitempty"`
 	Release      bool    `gorm:"column:release;not null;default:false;index" json:"release"`
 	DSL          JSONMap `gorm:"column:dsl;type:longtext" json:"dsl,omitempty"`
+	// VersionSeq is the monotonic version number shown as v{seq}. Together with
+	// the unique key (user_canvas_id, version_seq) it makes concurrent publish
+	// fail loudly instead of silently overwriting (VER-05 / 10.2).
+	VersionSeq int `gorm:"column:version_seq;not null;default:0" json:"version_seq"`
+	// Remark is an optional human label/note for this version.
+	Remark *string `gorm:"column:remark;size:255" json:"remark,omitempty"`
+	// BaseVersionID is the publish baseline used for conflict detection.
+	BaseVersionID *string `gorm:"column:base_version_id;size:32" json:"base_version_id,omitempty"`
+	// EnvSnapshot is the immutable environment-variable snapshot (secret values
+	// encrypted) taken at publish time, restored together with the DSL.
+	EnvSnapshot JSONMap `gorm:"column:env_snapshot;type:longtext" json:"env_snapshot,omitempty"`
 	BaseModel
 }
 

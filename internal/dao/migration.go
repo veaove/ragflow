@@ -1127,3 +1127,43 @@ func migrateSynonymLifecycleDefaults(ctx context.Context, db *gorm.DB) error {
 
 	return nil
 }
+
+// migrateCanvasVersionSeq backfills version_seq on existing user_canvas_version
+// rows (ordered by create_time per canvas) and then adds the unique key
+// (user_canvas_id, version_seq). It is guarded so a fresh database with no
+// versions is a no-op. Rows already carrying a non-zero version_seq are left
+// untouched (idempotent across restarts).
+func migrateCanvasVersionSeq(ctx context.Context, db *gorm.DB) error {
+	migrator := db.WithContext(ctx).Migrator()
+	if !migrator.HasTable("user_canvas_version") {
+		return nil
+	}
+
+	// Backfill only rows with version_seq = 0, numbering per canvas by time.
+	// MySQL 8 window function; fall back to a portable loop is not needed since
+	// the deployment target is MySQL 8.
+	if err := db.WithContext(ctx).Exec(`
+UPDATE user_canvas_version v
+JOIN (
+  SELECT id, ROW_NUMBER() OVER (PARTITION BY user_canvas_id ORDER BY create_time, id) AS seq
+  FROM user_canvas_version
+  WHERE version_seq = 0
+) t ON t.id = v.id
+SET v.version_seq = t.seq
+WHERE v.version_seq = 0`).Error; err != nil {
+		return err
+	}
+
+	if migrator.HasIndex("user_canvas_version", "uk_canvas_version_seq") {
+		return nil
+	}
+	// Add the unique index; guarded so a pre-existing index (or a re-run after a
+	// partial failure) does not abort startup.
+	if err := db.WithContext(ctx).Exec(
+		"CREATE UNIQUE INDEX uk_canvas_version_seq ON user_canvas_version (user_canvas_id, version_seq)",
+	).Error; err != nil {
+		common.Warn("failed to create unique index on user_canvas_version(version_seq)", zap.Error(err))
+		return nil
+	}
+	return nil
+}

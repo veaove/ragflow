@@ -212,6 +212,12 @@ func InitDB(ctx context.Context, migrateDB bool) error {
 		&entity.ChunkQuestion{},
 		&entity.KbChangeSet{},
 		&entity.KbTestRecord{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
+		&entity.ConversationVariable{},
+		&entity.EnvironmentVariable{},
+		&entity.AppAPIKey{},
+		&entity.AuditLog{},
 		// Knowledge-compile compilation templates and their groups. The Go
 		// KnowledgeCompilerComponent resolves a compilation_template (or group)
 		// from these tables at runtime, so the Go side must guarantee they exist.
@@ -263,6 +269,13 @@ func InitDB(ctx context.Context, migrateDB bool) error {
 		// in GetDictionaryByDataset does not silently drop vocabulary.
 		if err = migrateSynonymLifecycleDefaults(ctx, DB); err != nil {
 			return fmt.Errorf("failed to backfill synonym lifecycle defaults: %w", err)
+		}
+		// Backfill version_seq on existing canvas versions (AutoMigrate adds the
+		// column with default 0), then add the unique key that makes concurrent
+		// publish fail loudly. Order matters: backfill must complete before the
+		// unique index exists, or legacy multi-version canvases would collide.
+		if err = migrateCanvasVersionSeq(ctx, DB); err != nil {
+			return fmt.Errorf("failed to backfill canvas version_seq: %w", err)
 		}
 	} else {
 		if err = migrateIngestionLogRunIdentity(ctx, DB); err != nil {
