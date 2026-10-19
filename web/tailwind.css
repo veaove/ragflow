@@ -75,17 +75,6 @@
 
     --metallic: #46464a;
 
-    /* 侧边栏专用色板。
-       侧边栏固定为深色、内容区保持浅色，是刻意的双区设计，不随全局明暗
-       主题翻转 —— 因此这组 token 只在 :root 定义一次，.dark 下不做覆盖。
-       变量名带 rail 前缀，避开 shadcn ui/sidebar.tsx 已占用的 --sidebar-*。*/
-    --rail-bg: #1a2332;
-    --rail-text: rgba(255, 255, 255, 0.86);
-    --rail-text-muted: rgba(255, 255, 255, 0.55);
-    --rail-hover: rgba(255, 255, 255, 0.07);
-    --rail-active-bg: rgba(6, 91, 193, 0.9);
-    --rail-border: rgba(255, 255, 255, 0.08);
-
     --bg-title: #f6f6f7;
     /* design colors */
 

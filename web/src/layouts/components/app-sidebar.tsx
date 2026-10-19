@@ -23,32 +23,20 @@ export function AppSidebar({ className }: { className?: string }) {
       className={cn(
         // h-screen + shrink-0：脱离内容滚动，始终贴左侧竖直铺满
         'flex h-screen w-64 shrink-0 flex-col',
-        // 深色侧边栏：配色走 tailwind.css 的 --sidebar-* 专用 token，
-        // 不随全局明暗主题翻转（内容区仍是浅色，形成双区对比）
-        'bg-[var(--rail-bg)] text-[var(--rail-text)]',
-        'border-r border-[var(--rail-border)]',
+        'border-r border-border-button bg-bg-base',
         className,
       )}
     >
       {/* 品牌区 */}
-      <div className="flex shrink-0 items-center gap-3 border-b border-[var(--rail-border)] px-5 py-4">
+      <div className="flex shrink-0 items-center gap-3 px-5 py-4">
         <Link
           to={Routes.Root}
           className="flex size-9 shrink-0 items-center justify-center"
           aria-label={t('header.home')}
         >
-          {/* 深色底上改用反白 logo，避免彩色 logo 在深底上发闷 */}
-          <img
-            src="/logo-white.svg"
-            alt="和君纵达 logo"
-            className="size-9"
-            onError={(e) => {
-              // 反白版缺失时回退到彩色版，保证不会出现裂图
-              e.currentTarget.src = '/logo.svg';
-            }}
-          />
+          <img src="/logo.svg" alt="和君纵达 logo" className="size-9" />
         </Link>
-        <span className="truncate text-[17px] font-semibold text-[var(--rail-text)]">
+        <span className="truncate text-[17px] font-bold text-text-primary">
           {t('login.brandName')}
         </span>
       </div>
