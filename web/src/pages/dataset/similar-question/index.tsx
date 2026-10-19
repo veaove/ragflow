@@ -155,7 +155,7 @@ export default function SimilarQuestion() {
         questions: unique,
         origin: 'manual',
       });
-      toast.success('已保存为待生效变更，发布后生效');
+      toast.success('已保存为待生效变更，到「变更中心」发布后生效');
       setEditing(null);
     } catch {
       toast.error('保存失败');

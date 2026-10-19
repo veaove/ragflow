@@ -142,21 +142,25 @@ func (dao *SynonymDAO) CreateWords(ctx context.Context, db *gorm.DB, words []*en
 // only live rows). Pending copies that carry source_group_id first disable the
 // live group they replace, effecting an atomic swap.
 func (dao *SynonymDAO) PromotePendingByChangeSet(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID string) error {
-	// Disable the live groups that pending copies replace (swap-in).
-	if err := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
-		Where("tenant_id = ?", tenantID).
-		Where("dataset_id = ?", datasetID).
-		Where("status = ?", entity.SynonymStatusLive).
-		Where("id IN (?)",
-			db.WithContext(ctx).Model(&entity.SynonymGroup{}).
-				Select("source_group_id").
-				Where("tenant_id = ?", tenantID).
-				Where("dataset_id = ?", datasetID).
-				Where("change_set_id = ?", changeSetID).
-				Where("status = ?", entity.SynonymStatusPending).
-				Where("source_group_id <> ''"),
-		).
-		Update("status", entity.SynonymStatusDisabled).Error; err != nil {
+	// Disable the live groups that pending copies replace (swap-in). The
+	// subquery targets the same table it updates, so it MUST be wrapped in a
+	// derived table — MySQL rejects UPDATE/DELETE with a direct same-table
+	// subquery (Error 1093: You can't specify target table for update in FROM
+	// clause); materializing the inner select first is the standard fix.
+	if err := db.WithContext(ctx).Exec(`
+UPDATE synonym_group
+SET status = ?
+WHERE tenant_id = ? AND dataset_id = ? AND status = ?
+  AND id IN (
+    SELECT t.source_group_id FROM (
+      SELECT source_group_id FROM synonym_group
+      WHERE tenant_id = ? AND dataset_id = ? AND change_set_id = ?
+        AND status = ? AND source_group_id <> ''
+    ) t
+  )
+`, entity.SynonymStatusDisabled, tenantID, datasetID, entity.SynonymStatusLive,
+		tenantID, datasetID, changeSetID, entity.SynonymStatusPending,
+	).Error; err != nil {
 		return err
 	}
 

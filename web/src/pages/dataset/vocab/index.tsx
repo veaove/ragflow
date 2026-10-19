@@ -194,7 +194,7 @@ export default function Vocab() {
           words: payload,
           change_set_id: changeSetId,
         });
-        toast.success('词组已保存为待生效变更');
+        toast.success('词组已保存为待生效变更，到「变更中心」发布后生效');
       } else {
         await createSynonymGroup(datasetId, {
           name,
@@ -205,7 +205,7 @@ export default function Vocab() {
           words: payload,
           change_set_id: changeSetId,
         });
-        toast.success('词组已保存为待生效变更');
+        toast.success('词组已保存为待生效变更，到「变更中心」发布后生效');
       }
       setEditor(null);
       reload();
