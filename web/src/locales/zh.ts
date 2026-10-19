@@ -78,6 +78,36 @@ export default {
       owner: '所有者',
       running: '运行中...',
     },
+    overview: {
+      title: '系统总览',
+      subtitle: {
+        department: '客服中心',
+        console: '知识库运营数据看板',
+      },
+      metric: {
+        datasets: '知识库总数',
+        documents: '文档总数',
+        chunks: '分块总数',
+        calls: '近7日调用',
+        tokens: '近7日 Token 消耗',
+        agentCount: 'Agent 总数',
+        satisfaction: '交互满意度',
+      },
+      unit: {
+        dataset: '个',
+        document: '个',
+        chunk: '个',
+        times: '次',
+        token: 'tokens',
+      },
+      satisfactionHint: '点赞数 / 调用数',
+      chart: {
+        sourceTitle: '知识来源分布',
+        sourceTotal: '文档总数',
+        trendTitle: '近{{days}}日检索趋势',
+        trendEmptyHint: '该趋势统计的是通过 API Key 发起的对话调用，在网页端使用知识库与对话不会计入此处。',
+      },
+    },
     login: {
       loginTitle: '登录账户',
       signUpTitle: '创建账户',
@@ -124,6 +154,7 @@ export default {
       highlightSecurityDesc: '租户隔离 · 操作留痕 · 数据加密',
     },
     header: {
+      overview: '总览',
       knowledgeBase: '知识库',
       chat: '聊天',
       register: '注册',

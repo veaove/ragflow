@@ -45,6 +45,36 @@ export default {
       owner: '擁有者',
       running: '執行中...',
     },
+    overview: {
+      title: '系統總覽',
+      subtitle: {
+        department: '客服中心',
+        console: '知識庫運營數據看板',
+      },
+      metric: {
+        datasets: '知識庫總數',
+        documents: '文檔總數',
+        chunks: '分塊總數',
+        calls: '近7日調用',
+        tokens: '近7日 Token 消耗',
+        agentCount: 'Agent 總數',
+        satisfaction: '互動滿意度',
+      },
+      unit: {
+        dataset: '個',
+        document: '個',
+        chunk: '個',
+        times: '次',
+        token: 'tokens',
+      },
+      satisfactionHint: '點讚數 / 調用數',
+      chart: {
+        sourceTitle: '知識來源分佈',
+        sourceTotal: '文檔總數',
+        trendTitle: '近{{days}}日檢索趨勢',
+        trendEmptyHint: '該趨勢統計的是通過 API Key 發起的對話調用，在網頁端使用知識庫與對話不會計入此處。',
+      },
+    },
     login: {
       login: '登入',
       signUp: '註冊',
@@ -67,6 +97,7 @@ export default {
       review: '來自 500 多條評論',
     },
     header: {
+      overview: '總覽',
       knowledgeBase: '知識庫',
       chat: '聊天',
       register: '註冊',
@@ -165,7 +196,7 @@ export default {
       changeSpecificCategory: '更改特定類別',
       uploadTitle: '點擊或拖拽文件至此區域即可上傳',
       uploadDescription:
-        '支持單次或批量上傳。本地部署的單次上傳檔案總大小上限為 1GB，單次批量上傳檔案數不超過 32，單個帳戶不限檔案數量。對於 cloud.ragflow.io，每次上傳的文件總大小限制為 10MB，每個文件不得超過 10MB，且每個帳戶最多可上傳 128 個文件。',
+        '支持單次或批量上傳。本地部署的單次上傳檔案總大小上限為 1GB，單次批量上傳檔案數不超過 32，單個帳戶不限檔案數量。對於 知識庫，每次上傳的文件總大小限制為 10MB，每個文件不得超過 10MB，且每個帳戶最多可上傳 128 個文件。',
       chunk: '解析塊',
       bulk: '批量',
       cancel: '取消',
@@ -917,7 +948,7 @@ export default {
       parseOnCreation: '創建時解析',
       uploadTitle: '點擊或拖拽文件至此區域即可上傳',
       uploadDescription:
-        '支持單次或批量上傳。本地部署的單次上傳檔案總大小上限為 1GB，單次批量上傳檔案數不超過 32，單個帳戶不限檔案數量。對於 cloud.ragflow.io，每次上傳的文件總大小限制為 10MB，每個文件不得超過 10MB，且每個帳戶最多可上傳 128 個文件。',
+        '支持單次或批量上傳。本地部署的單次上傳檔案總大小上限為 1GB，單次批量上傳檔案數不超過 32，單個帳戶不限檔案數量。對於 知識庫，每次上傳的文件總大小限制為 10MB，每個文件不得超過 10MB，且每個帳戶最多可上傳 128 個文件。',
       file: '文件',
       directory: '文件夾',
       local: '本地上傳',

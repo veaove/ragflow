@@ -97,6 +97,37 @@ export default {
       owner: 'Owner',
       running: 'Running...',
     },
+    overview: {
+      title: 'System Overview',
+      subtitle: {
+        department: 'Customer Service',
+        console: 'Knowledge base operations dashboard',
+      },
+      metric: {
+        datasets: 'Datasets',
+        documents: 'Documents',
+        chunks: 'Chunks',
+        calls: 'Calls (7d)',
+        tokens: 'Tokens (7d)',
+        agentCount: 'Agents',
+        satisfaction: 'Interaction satisfaction',
+      },
+      unit: {
+        dataset: '',
+        document: '',
+        chunk: '',
+        times: '',
+        token: 'tokens',
+      },
+      satisfactionHint: 'thumbs-up / calls',
+      chart: {
+        sourceTitle: 'Knowledge source distribution',
+        sourceTotal: 'Total documents',
+        trendTitle: 'Retrieval trend (last {{days}} days)',
+        trendEmptyHint:
+          'This trend counts conversations made through API keys. Using the knowledge base or chat in the web UI is not recorded here.',
+      },
+    },
     login: {
       loginTitle: 'Sign in to your account',
       signUpTitle: 'Create an account',
@@ -144,6 +175,7 @@ export default {
       highlightSecurityDesc: 'Tenant isolation · Audit trail · Data encryption',
     },
     header: {
+      overview: 'Overview',
       knowledgeBase: 'Dataset',
       chat: 'Chat',
       register: 'Register',

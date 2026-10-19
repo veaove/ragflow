@@ -20,13 +20,13 @@ export function TemplateCard({ data, showModal }: IProps) {
     showModal(data);
   }, [data, showModal]);
 
+  // 模板标题仅维护中英文两种语言，其他语言统一回退英文。
   const language = (
-    i18n.language === LanguageAbbreviation.Zh
+    i18n.language === LanguageAbbreviation.Zh ||
+    i18n.language === LanguageAbbreviation.ZhTraditional
       ? 'zh'
-      : i18n.language === LanguageAbbreviation.De
-        ? 'de'
-        : 'en'
-  ) as 'en' | 'zh' | 'de';
+      : 'en'
+  ) as 'en' | 'zh';
 
   return (
     <Card className="border-colors-outline-neutral-standard group relative min-h-40">

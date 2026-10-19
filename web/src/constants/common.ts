@@ -57,48 +57,22 @@ export const LanguageMap = {
   Czech: 'Čeština',
 };
 
+/**
+ * 本产品仅面向中文用户维护，故只保留中文（简/繁）与英文。
+ *
+ * 历史上这里曾注册 19 种语言，`web/src/locales/` 下也保留了对应的翻译文件。
+ * 精简后非中文用户会回退到英文（见 locales/config.ts 的 fallbackLng）。
+ */
 export enum LanguageAbbreviation {
   En = 'en',
   Zh = 'zh-Hans',
   ZhTraditional = 'zh-Hant',
-  Ru = 'ru',
-  Id = 'id',
-  Ja = 'ja',
-  Es = 'es',
-  Vi = 'vi',
-  PtBr = 'pt-BR',
-  De = 'de',
-  Fr = 'fr',
-  It = 'it',
-  Bg = 'bg',
-  Ar = 'ar',
-  Tr = 'tr',
-  Ko = 'ko',
-  Nl = 'nl',
-  Az = 'az',
-  Uz = 'uz',
 }
 
 export const LanguageAbbreviationMap = {
   [LanguageAbbreviation.En]: 'English',
   [LanguageAbbreviation.Zh]: '简体中文',
   [LanguageAbbreviation.ZhTraditional]: '繁體中文',
-  [LanguageAbbreviation.Ru]: 'Русский',
-  [LanguageAbbreviation.Id]: 'Bahasa Indonesia',
-  [LanguageAbbreviation.Es]: 'Español',
-  [LanguageAbbreviation.Vi]: 'Tiếng việt',
-  [LanguageAbbreviation.Ja]: '日本語',
-  [LanguageAbbreviation.PtBr]: 'Português BR',
-  [LanguageAbbreviation.De]: 'Deutsch',
-  [LanguageAbbreviation.Fr]: 'Français',
-  [LanguageAbbreviation.It]: 'Italiano',
-  [LanguageAbbreviation.Bg]: 'Български',
-  [LanguageAbbreviation.Ar]: 'العربية',
-  [LanguageAbbreviation.Tr]: 'Türkçe',
-  [LanguageAbbreviation.Ko]: '한국어',
-  [LanguageAbbreviation.Nl]: 'Nederlands',
-  [LanguageAbbreviation.Az]: 'Azərbaycanca',
-  [LanguageAbbreviation.Uz]: 'O‘zbekcha',
 };
 
 export const LanguageTranslationMap = {
@@ -158,7 +132,17 @@ export enum FileMimeType {
   Mdx = 'text/mdx',
 }
 
+/**
+ * 官方托管服务的域名。
+ *
+ * 仅用于「是否运行在官方云端」的环境判断：部分功能（获取系统版本、嵌入站点）
+ * 只在自建部署下开放。本项目以私有化部署为主，此处保留判断逻辑但不再对外
+ * 展示该域名，相关文案见 locales 中的知识库说明。
+ */
 export const Domain = 'cloud.ragflow.io';
+
+/** 与 {@link Domain} 同源，供需要hostname（不含端口）的判断处复用。 */
+export const DomainHostname = Domain;
 
 //#region file preview
 export const Images = [

@@ -1,5 +1,5 @@
 <div align="center">
-<a href="https://cloud.ragflow.io/">
+<a href="和君纵达知识库">
 <img src="https://raw.githubusercontent.com/infiniflow/ragflow/main/web/src/assets/logo-with-text.svg" width="520" alt="ragflow logo">
 </a>
 </div>
@@ -22,7 +22,7 @@
     <a href="https://x.com/intent/follow?screen_name=infiniflowai" target="_blank">
         <img src="https://img.shields.io/twitter/follow/infiniflow?logo=X&color=%20%23f5f5f5" alt="X(Twitter)'da takip et">
     </a>
-    <a href="https://cloud.ragflow.io" target="_blank">
+    <a href="和君纵达知识库" target="_blank">
         <img alt="Çevrimiçi Demo" src="https://img.shields.io/badge/Get-Started-4e6b99">
     </a>
     <a href="https://hub.docker.com/r/infiniflow/ragflow" target="_blank">
@@ -37,7 +37,7 @@
 </p>
 
 <h4 align="center">
-  <a href="https://cloud.ragflow.io">Cloud</a> |
+  <a href="和君纵达知识库">和君纵达知识库</a> |
   <a href="https://ragflow.io/docs/dev/">Dokümantasyon</a> |
   <a href="https://github.com/infiniflow/ragflow/issues/12241">Yol Haritası</a> |
   <a href="https://discord.gg/NjYzJD3GM3">Discord</a>
@@ -73,7 +73,7 @@
 
 ## 🎮 Başlarken
 
-Bulut hizmetimizi [https://cloud.ragflow.io](https://cloud.ragflow.io) adresinden deneyin.
+Bulut hizmetimizi 和君纵达知识库 adresinden deneyin.
 
 Yerel dağıtım için [Kendi Sunucusunda Barındırma](#-kendi-sunucusunda-barındırma) bölümüne bakın.
 
