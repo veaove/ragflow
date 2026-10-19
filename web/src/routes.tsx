@@ -74,6 +74,7 @@ export enum Routes {
   DatasetTesting = '/retrieval',
   Vocab = '/vocab',
   SimilarQuestion = '/similar-question',
+  ChangeCenter = '/change-center',
   Chunk = '/chunk',
   ChunkResult = `${Chunk}${Chunk}`,
   Parsed = '/parsed',
@@ -240,6 +241,10 @@ const routeConfigOptions = [
           {
             path: `${Routes.DatasetBase}${Routes.SimilarQuestion}/:id`,
             Component: () => import('@/pages/dataset/similar-question'),
+          },
+          {
+            path: `${Routes.DatasetBase}${Routes.ChangeCenter}/:id`,
+            Component: () => import('@/pages/dataset/change-center'),
           },
         ],
       },

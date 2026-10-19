@@ -9,6 +9,7 @@ import {
   LucideTextSearch,
   LucideListChecks,
   LucideLibrary,
+  LucideGitCompareArrows,
 } from 'lucide-react';
 
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
@@ -52,6 +53,11 @@ export function SideBar({ dataset: data }: PropType) {
         icon: <LucideListChecks className="size-[1em]" />,
         label: '相似问管理',
         key: Routes.SimilarQuestion,
+      },
+      {
+        icon: <LucideGitCompareArrows className="size-[1em]" />,
+        label: '变更中心',
+        key: Routes.ChangeCenter,
       },
       {
         icon: <LucideLogs className="size-[1em]" />,

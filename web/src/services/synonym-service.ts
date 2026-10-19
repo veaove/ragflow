@@ -71,6 +71,7 @@ export const createSynonymGroup = (
     group_type?: SynonymGroupType;
     remark?: string;
     words: ISynonymWord[];
+    change_set_id?: string;
   },
 ) =>
   request.post(`${restAPIv1}/datasets/${datasetId}/synonym-groups`, {
@@ -86,6 +87,7 @@ export const updateSynonymGroup = (
     group_type?: SynonymGroupType;
     remark?: string;
     words?: ISynonymWord[];
+    change_set_id?: string;
   },
 ) =>
   request.put(`${restAPIv1}/synonym-groups/${groupId}`, { data });

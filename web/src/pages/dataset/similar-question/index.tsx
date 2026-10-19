@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import kbService, {
   listDocument,
 } from '@/services/knowledge-service';
+import { stageSimilarQuestions } from '@/services/change-set-service';
 
 import type { IChunk } from '@/interfaces/database/dataset';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { GenerateDialog } from './generate-dialog';
 
 const PAGE_SIZE = 10;
 
@@ -71,6 +73,7 @@ export default function SimilarQuestion() {
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<IChunk | null>(null);
+  const [genOpen, setGenOpen] = useState(false);
 
   const reload = useCallback(async () => {
     if (!datasetId) return;
@@ -145,15 +148,15 @@ export default function SimilarQuestion() {
     // 同一问答对内去重
     const unique = Array.from(new Set(cleaned));
     try {
-      await kbService.setChunk({
-        dataset_id: datasetId,
+      // 编辑进入待生效区，不直接改线上；发布时才同步到 chunk.question_kwd。
+      await stageSimilarQuestions(datasetId, {
         document_id: chunk.doc_id,
         chunk_id: chunk.chunk_id,
         questions: unique,
+        origin: 'manual',
       });
-      toast.success('相似问已保存');
+      toast.success('已保存为待生效变更，发布后生效');
       setEditing(null);
-      reload();
     } catch {
       toast.error('保存失败');
     }
@@ -178,9 +181,14 @@ export default function SimilarQuestion() {
             setPage(1);
           }}
         />
-        <span className="text-sm text-text-secondary">
-          共 {filtered.length} 个问答对
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-text-secondary">
+            共 {filtered.length} 个问答对
+          </span>
+          <Button size="sm" onClick={() => setGenOpen(true)}>
+            批量生成
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto rounded-lg border border-border-base">
@@ -273,6 +281,13 @@ export default function SimilarQuestion() {
         chunk={editing}
         onClose={() => setEditing(null)}
         onSave={save}
+      />
+
+      <GenerateDialog
+        open={genOpen}
+        onOpenChange={setGenOpen}
+        datasetId={datasetId}
+        chunks={chunks}
       />
     </div>
   );

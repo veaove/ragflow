@@ -31,6 +31,7 @@ import {
   listSynonymGroups,
   updateSynonymGroup,
 } from '@/services/synonym-service';
+import { getOrCreateChangeSet } from '@/services/change-set-service';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -181,6 +182,8 @@ export default function Vocab() {
     }));
 
     try {
+      // 编辑进入待生效区，不直接生效；先获取/创建当前用户的变更集。
+      const changeSetId = await getOrCreateChangeSet(datasetId);
       if (state.groupId) {
         await updateSynonymGroup(state.groupId, {
           name,
@@ -189,8 +192,9 @@ export default function Vocab() {
           group_type: state.groupType,
           remark: state.remark.trim(),
           words: payload,
+          change_set_id: changeSetId,
         });
-        toast.success('词组已更新');
+        toast.success('词组已保存为待生效变更');
       } else {
         await createSynonymGroup(datasetId, {
           name,
@@ -199,8 +203,9 @@ export default function Vocab() {
           group_type: state.groupType,
           remark: state.remark.trim(),
           words: payload,
+          change_set_id: changeSetId,
         });
-        toast.success('词组已创建');
+        toast.success('词组已保存为待生效变更');
       }
       setEditor(null);
       reload();
