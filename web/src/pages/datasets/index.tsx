@@ -1,28 +1,44 @@
-import { CardContainer } from '@/components/card-container';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
-import ListFilterBar from '@/components/list-filter-bar';
 import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
-import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { SearchInput } from '@/components/ui/input';
 import { Spin } from '@/components/ui/spin';
 import { ListDeletionKey } from '@/constants/list-deletion';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
-import { useFetchNextKnowledgeListByPage } from '@/hooks/use-knowledge-request';
+import {
+  KnowledgeApiAction,
+  useFetchNextKnowledgeListByPage,
+} from '@/hooks/use-knowledge-request';
 import { useQueryClient } from '@tanstack/react-query';
-import { pick } from 'lodash';
-import { Plus } from 'lucide-react';
-import { useCallback, useEffect } from 'react';
+import { Plus, RefreshCw, ChevronDown } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
-import { DatasetCard } from './dataset-card';
 import { DatasetCreatingDialog } from './dataset-creating-dialog';
 import { useSaveKnowledge } from './hooks';
+import { KnowledgeBaseTable } from './knowledge-base-table';
 import { useRenameDataset } from './use-rename-dataset';
-import { useSelectOwners } from './use-select-owners';
+
+type StatusFilter = 'all' | 'enabled' | 'disabled';
 
 export default function Datasets() {
   const { t } = useTranslation();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+
   const {
     visible,
     hideModal,
@@ -39,13 +55,8 @@ export default function Datasets() {
     handleInputChange,
     searchString,
     setSearchString,
-    filterValue,
-    setFilterValue,
-    handleFilterSubmit,
     loading,
   } = useFetchNextKnowledgeListByPage();
-
-  const owners = useSelectOwners();
 
   const {
     datasetRenameLoading,
@@ -56,19 +67,36 @@ export default function Datasets() {
     showDatasetRenameModal,
   } = useRenameDataset();
 
-  const handlePageChange = useCallback(
-    (page: number, pageSize?: number) => {
-      setPagination({ page, pageSize });
-    },
-    [setPagination],
-  );
-  useGoToPreviousPageOnEmpty(kbs?.length, loading, {
+  const filteredKbs = useMemo(() => {
+    if (!kbs) return [];
+    if (statusFilter === 'all') return kbs;
+    if (statusFilter === 'enabled') return kbs.filter((d) => d.status === '1');
+    return kbs.filter((d) => d.status !== '1');
+  }, [kbs, statusFilter]);
+
+  const currentPageSize = pagination.pageSize || 10;
+
+  const handleSearch = useCallback(() => {
+    setPagination({ page: 1, pageSize: currentPageSize });
+  }, [currentPageSize, setPagination]);
+
+  const handleReset = useCallback(() => {
+    setSearchString('');
+    setStatusFilter('all');
+    setPagination({ page: 1, pageSize: currentPageSize });
+  }, [currentPageSize, setPagination, setSearchString]);
+
+  useGoToPreviousPageOnEmpty(filteredKbs?.length, loading, {
     deletionKey: ListDeletionKey.KnowledgeList,
     searchString,
     setSearchString,
-    filterValue,
-    setFilterValue,
+    filterValue: { status: [statusFilter] },
+    setFilterValue: (value) => {
+      const v = value as { status?: string[] };
+      setStatusFilter((v?.status?.[0] as StatusFilter) ?? 'all');
+    },
   });
+
   const [searchUrl, setSearchUrl] = useSearchParams();
   const isCreate = searchUrl.get('isCreate') === 'true';
   const queryClient = useQueryClient();
@@ -81,6 +109,21 @@ export default function Datasets() {
     }
   }, [isCreate, showModal, searchUrl, setSearchUrl, queryClient]);
 
+  const handleRefresh = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: [KnowledgeApiAction.FetchKnowledgeListByPage],
+    });
+  }, [queryClient]);
+
+  const handlePageChange = useCallback(
+    (params: { page: number; pageSize: number }) => {
+      setPagination(params);
+    },
+    [setPagination],
+  );
+
+  const showTable = filteredKbs?.length || searchString || statusFilter !== 'all';
+
   return (
     <>
       {loading && !kbs?.length ? (
@@ -90,50 +133,91 @@ export default function Datasets() {
         >
           <Spin size="large" />
         </article>
-      ) : kbs?.length || searchString ? (
+      ) : showTable ? (
         <article
           className="size-full min-w-0 flex flex-col"
           data-testid="datasets-list"
         >
           <header className="mb-4 min-w-0 px-5 pt-8">
-            <ListFilterBar
-              title={t('header.dataset')}
-              searchString={searchString}
-              onSearchChange={handleInputChange}
-              value={filterValue}
-              filters={owners}
-              onChange={handleFilterSubmit}
-              icon={'datasets'}
-            >
-              <Button onClick={showModal}>
-                <Plus className="size-[1em]" />
-                {t('knowledgeList.createKnowledgeBase')}
-              </Button>
-            </ListFilterBar>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <h1 className="flex shrink-0 items-center gap-2.5 text-2xl font-semibold">
+                {t('header.dataset')}
+              </h1>
+
+              <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:flex-nowrap">
+                <SearchInput
+                  value={searchString}
+                  onChange={handleInputChange}
+                  placeholder="请输入知识库名称"
+                  className="w-60"
+                />
+
+                <Select
+                  value={statusFilter}
+                  onValueChange={(value) => {
+                    setStatusFilter(value as StatusFilter);
+                    setPagination({ page: 1, pageSize: currentPageSize });
+                  }}
+                >
+                  <SelectTrigger className="w-32">
+                    <SelectValue placeholder="状态" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部</SelectItem>
+                    <SelectItem value="enabled">
+                      {t('knowledgeDetails.enabled')}
+                    </SelectItem>
+                    <SelectItem value="disabled">
+                      {t('knowledgeDetails.disabled')}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Button variant="accent" onClick={handleSearch}>
+                  查询
+                </Button>
+                <Button variant="outline" onClick={handleReset}>
+                  {t('common.reset')}
+                </Button>
+
+                <div className="ml-auto flex items-center gap-3">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="gap-1">
+                        同步
+                        <ChevronDown className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={handleRefresh}>
+                        <RefreshCw className="mr-2 size-4" />
+                        刷新列表
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  <Button variant="accent" onClick={showModal}>
+                    <Plus className="size-[1em]" />
+                    {t('knowledgeList.createKnowledgeBase')}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </header>
 
-          {kbs?.length ? (
-            <>
-              <CardContainer className="flex-1 overflow-auto px-5">
-                {kbs.map((dataset) => (
-                  <DatasetCard
-                    dataset={dataset}
-                    key={dataset.id}
-                    showDatasetRenameModal={showDatasetRenameModal}
-                  />
-                ))}
-              </CardContainer>
-
-              <footer className="mt-4 px-5 pb-5">
-                <RAGFlowPagination
-                  {...pick(pagination, 'current', 'pageSize')}
-                  total={total_datasets}
-                  onChange={handlePageChange}
-                />
-              </footer>
-            </>
+          {filteredKbs?.length ? (
+            <KnowledgeBaseTable
+              data={filteredKbs}
+              pagination={{
+                current: pagination.current,
+                pageSize: currentPageSize,
+                total: total_datasets ?? 0,
+              }}
+              setPagination={handlePageChange}
+              showDatasetRenameModal={showDatasetRenameModal}
+            />
           ) : (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex flex-1 items-center justify-center px-5">
               <EmptyAppCard
                 showIcon
                 size="large"
