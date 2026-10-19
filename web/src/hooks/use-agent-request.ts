@@ -37,6 +37,10 @@ import {
   IDebugSingleRequestBody,
 } from '@/interfaces/request/agent';
 import i18n from '@/locales/config';
+import {
+  resolveBuiltinTitle,
+  useBuiltinPipelineLabels,
+} from '@/utils/builtin-pipeline-i18n';
 import { IInputs } from '@/pages/agent/interface';
 import { useGetSharedChatSearchParams } from '@/pages/next-chats/hooks/use-send-shared-message';
 import agentService, {
@@ -57,7 +61,8 @@ import { markListItemsDeleted } from '@/utils/list-deletion-util';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
 import { get, isEmpty, set } from 'lodash';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useSearchParams } from 'react-router';
 import {
   useGetPaginationWithRouter,
@@ -1018,6 +1023,8 @@ export const BuiltinPipelineKeys = {
 };
 
 export const useFetchBuiltinPipelines = () => {
+  const { t } = useTranslation();
+  const { lang } = useBuiltinPipelineLabels();
   const { data, isFetching: loading } = useQuery<IBuiltinPipelineListResponse>({
     queryKey: BuiltinPipelineKeys.list('builtin'),
     initialData: { canvas: [], total: 0 },
@@ -1031,11 +1038,20 @@ export const useFetchBuiltinPipelines = () => {
     },
   });
 
-  const options =
-    data?.canvas?.map((item) => ({
-      label: item.title,
-      value: item.id,
-    })) ?? [];
+  // Label resolves through the catalogue's own translations so the parser
+  // dropdown and the built-in canvas follow the UI language. The locale files'
+  // parserLabel entries are only a fallback: several locales (zh, es, ...)
+  // never defined them, and the templates ship translations for those already.
+  const options = useMemo(
+    () =>
+      data?.canvas?.map((item) => ({
+        label:
+          resolveBuiltinTitle(item, lang) ||
+          t(`knowledgeConfiguration.parserLabel.${item.id}`),
+        value: item.id,
+      })) ?? [],
+    [data, lang, t],
+  );
 
   return { data, loading, options };
 };

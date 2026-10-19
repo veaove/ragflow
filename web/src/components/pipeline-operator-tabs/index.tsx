@@ -16,9 +16,11 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RAGFlowNodeType } from '@/interfaces/database/agent';
+import { operatorLabelKey } from '@/utils/operator-label';
 import { normalizeOperatorForm } from '@/utils/pipeline-operator';
 import { memo, useCallback, useMemo } from 'react';
 import { FieldErrors } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import PipelineOperatorForm from './pipeline-operator-form';
 
 type PipelineOperatorTabsProps = {
@@ -49,6 +51,8 @@ const PipelineOperatorTabs = ({
   operatorFormErrors,
   fixedFileFormats,
 }: PipelineOperatorTabsProps) => {
+  const { t } = useTranslation();
+
   const getOperatorId = useCallback((node: RAGFlowNodeType) => {
     return (
       (node.data as Record<string, any>)?.operatorId || node.data?.label || ''
@@ -89,6 +93,26 @@ const PipelineOperatorTabs = ({
     [getOperatorId, onOperatorValuesChange],
   );
 
+  /**
+   * Tab 标题优先用用户自定义的节点名（node.data.name）；没有自定义名时，
+   * 节点的 label 是 `component_name` 这类标识符，必须查 i18n 词条，否则中文
+   * 界面会整排显示 GeneralChunker / Extractor / Tokenizer 等英文。
+   */
+  const getNodeLabel = useCallback(
+    (node: RAGFlowNodeType, tabValue: string) => {
+      const customName = node.data?.name;
+      if (customName) return customName;
+
+      const key = operatorLabelKey(node.data?.label);
+      if (key) {
+        const translated = t(key, { defaultValue: '' });
+        if (translated) return translated;
+      }
+      return node.data?.label || tabValue;
+    },
+    [t],
+  );
+
   return (
     <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
       <TabsList className="w-full justify-start">
@@ -96,7 +120,7 @@ const PipelineOperatorTabs = ({
           const tabValue = getTabValue(node, index);
           return (
             <TabsTrigger key={tabValue} value={tabValue}>
-              {node.data?.name || node.data?.label || tabValue}
+              {getNodeLabel(node, tabValue)}
             </TabsTrigger>
           );
         })}

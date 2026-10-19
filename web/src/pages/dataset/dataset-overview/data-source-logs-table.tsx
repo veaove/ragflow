@@ -40,6 +40,9 @@ const isScheduledRow = (log: IDataSourceLog) => {
 
 const DataSourceLogsTable = ({ datasetId }: { datasetId: string }) => {
   const { t: tDatasetOverview } = useTranslation('datasetOverview');
+  // Log column headers live under the `setting` namespace, so the table needs
+  // a root-level translator rather than the datasetOverview-scoped one.
+  const { t } = useTranslation();
   const { pagination, setPagination } = useGetPaginationWithRouter();
 
   const { data } = useQuery<{ logs: IDataSourceLog[]; total: number }>({
@@ -78,13 +81,15 @@ const DataSourceLogsTable = ({ datasetId }: { datasetId: string }) => {
 
   // Static `now`: with scheduled rows filtered out no cell renders a
   // live countdown, so the table doesn't need a 1s re-render tick.
+  // `t` is a dependency so a language switch rebuilds the headers.
   const columns = useMemo(
     () =>
       getDataSourceLogsTableColumns({
         now: Date.now(),
+        translate: t,
         showDatasetColumn: false,
       }),
-    [],
+    [t],
   );
 
   const currentPagination = useMemo(

@@ -4,22 +4,29 @@ import { RunningStatusMap } from '@/constants/knowledge';
 import { RunningStatus } from '@/pages/dataset/dataset/constant';
 import { formatDate } from '@/utils/date';
 import { ColumnDef } from '@tanstack/react-table';
-import { t } from 'i18next';
+import { TFunction } from 'i18next';
 import { IDataSourceLog } from './interface';
 import { getSummary } from './log-summary';
 
 // The data source sync log table is shared by the data source detail page and
 // the dataset logs page. The dataset page already scopes every row to one
 // knowledge base, so it renders the table without the dataset column.
+//
+// `translate` is passed in rather than imported from the i18next singleton:
+// the singleton's `t` is resolved once at module-eval time, so switching the
+// UI language would leave these headers in the previous language.
 export const getDataSourceLogsTableColumns = ({
   now,
+  translate,
   showDatasetColumn = true,
   handleToDataSetDetail,
 }: {
   now: number;
+  translate: TFunction;
   showDatasetColumn?: boolean;
   handleToDataSetDetail?: (id: string) => void;
 }): ColumnDef<IDataSourceLog>[] => {
+  const t = translate;
   const columns: ColumnDef<IDataSourceLog>[] = [
     {
       accessorKey: 'update_date',
@@ -73,16 +80,26 @@ export const getDataSourceLogsTableColumns = ({
   columns.push(
     {
       accessorKey: 'task_type',
-      header: 'Task Type',
+      header: t('setting.taskType'),
       meta: { headerClassName: 'w-28' },
-      cell: ({ row }) => row.original.task_type || 'sync',
+      cell: ({ row }) => {
+        const taskType = row.original.task_type;
+        if (!taskType) return t('setting.taskTypeSync');
+        // Only the two known task types are translated; an unknown value from
+        // a newer backend must render verbatim rather than disappear.
+        const key = `setting.taskType${
+          taskType.charAt(0).toUpperCase() + taskType.slice(1)
+        }`;
+        const translated = t(key, { defaultValue: '' });
+        return translated || taskType;
+      },
     },
     {
       id: 'summary',
-      header: 'Summary',
+      header: t('setting.summary'),
       cell: ({ row }) => (
         <div className="max-w-[32rem] whitespace-normal break-words text-text-primary">
-          {getSummary(row.original, now)}
+          {getSummary(row.original, now, t)}
         </div>
       ),
     },

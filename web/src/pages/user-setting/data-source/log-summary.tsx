@@ -1,4 +1,6 @@
 import { RunningStatus } from '@/pages/dataset/dataset/constant';
+import { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { IDataSourceLog } from './interface';
 
 export const formatDuration = (seconds: number) => {
@@ -40,6 +42,7 @@ export const TaskCountdown = ({
   row: IDataSourceLog;
   now: number;
 }) => {
+  const { t } = useTranslation();
   const remainingSeconds = getTaskCountdownSeconds(row, now);
 
   if (remainingSeconds === null) {
@@ -48,22 +51,30 @@ export const TaskCountdown = ({
 
   return (
     <span className="tabular-nums">
-      Task starts in {formatDuration(remainingSeconds)}
+      {t('setting.taskStartsIn', { duration: formatDuration(remainingSeconds) })}
     </span>
   );
 };
 
-export const getSummary = (row: IDataSourceLog, now: number) => {
+export const getSummary = (
+  row: IDataSourceLog,
+  now: number,
+  translate?: TFunction,
+) => {
+  const t = translate ?? ((k: string) => k);
+
   if (row.status === RunningStatus.SCHEDULE || row.status === '5') {
     return <TaskCountdown row={row} now={now} />;
   }
 
   if (row.status === RunningStatus.RUNNING || row.status === '1') {
-    return row.task_type === 'prune' ? 'Prune in progress' : 'Sync in progress';
+    return row.task_type === 'prune'
+      ? t('setting.pruneInProgress')
+      : t('setting.syncInProgress');
   }
 
   if (row.status === RunningStatus.FAIL || row.status === '4') {
-    return row.error_msg || 'Task failed';
+    return row.error_msg || t('setting.taskFailed');
   }
 
   if (row.status === RunningStatus.CANCEL || row.status === '2') {

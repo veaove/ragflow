@@ -32,9 +32,9 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { t } from 'i18next';
 import { pick } from 'lodash';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { useLogListDataSource } from '../hooks';
 import { getDataSourceLogsTableColumns } from '../log-columns';
@@ -44,6 +44,7 @@ export const DataSourceLogsTable = ({
 }: {
   autoRefresh: boolean;
 }) => {
+  const { t } = useTranslation();
   const { data, pagination, setPagination } = useLogListDataSource(autoRefresh);
   const navigate = useNavigate();
   const [now, setNow] = useState(() => Date.now());
@@ -75,9 +76,10 @@ export const DataSourceLogsTable = ({
     () =>
       getDataSourceLogsTableColumns({
         now,
+        translate: t,
         handleToDataSetDetail,
       }),
-    [now, handleToDataSetDetail],
+    [now, t, handleToDataSetDetail],
   );
 
   const table = useReactTable({
