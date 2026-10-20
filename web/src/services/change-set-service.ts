@@ -146,6 +146,10 @@ export interface IRetrievalCompareResult {
    * 字典再正确也不会产生新召回。
    */
   extra_query_terms?: string[];
+  /** 问题被切成了哪些词（词典按 token 索引）。 */
+  query_tokens?: string[];
+  /** 变更集实际为哪些 token 供给了同义词。 */
+  synonym_override_keys?: string[];
 }
 
 export const listChangeSets = (datasetId: string) =>

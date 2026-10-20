@@ -179,6 +179,21 @@ export function TestCompareDialog({
 
   const summary = result?.diff?.summary;
   const capability = result?.capability;
+  // 新配置一条都没召回、而原配置有结果：这是同义词扩写最容易被误解的形态，
+  // 需要单独解释，否则用户只会看到「丢失 -5」和一片红。
+  const candidateEmpty =
+    !!result &&
+    result.candidate.hits.length === 0 &&
+    result.baseline.hits.length > 0;
+
+  // 检索词数量对「稀释」的解释很关键：分母从 1 个词变成 7 个词，
+  // 单个 chunk 几乎不可能全部覆盖。
+  const termCounts = useMemo(() => {
+    const base = new Set(result?.query_tokens ?? []);
+    const extra = new Set(result?.extra_query_terms ?? []);
+    return { base: base.size, total: new Set([...base, ...extra]).size };
+  }, [result]);
+
   const isEmptyResult =
     !!summary &&
     summary.added_count === 0 &&
@@ -258,7 +273,10 @@ export function TestCompareDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[1100px]">
+      {/* 内容多时（指标卡 + 双栏 + 明细）弹窗会撑出视口，把右上角关闭按钮和
+          底部操作区推出屏幕。这里固定成三行网格：头部和底部不动，只有正文滚动，
+          minmax(0,1fr) 是关键——没有它中间行不会收缩，overflow 不生效。 */}
+      <DialogContent className="max-h-[90vh] max-w-[1100px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             测试对比 · 原配置 vs 新配置
@@ -276,7 +294,7 @@ export function TestCompareDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4">
+        <div className="-mx-2 flex min-h-0 flex-col gap-4 overflow-y-auto px-2">
           {/* 待生效变更摘要 */}
           <div className="rounded bg-bg-card p-3 text-sm">
             <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
@@ -479,15 +497,27 @@ export function TestCompareDialog({
               />
               <MetricCard
                 label="交集平均分"
-                value={`${summary.avg_delta_on_common >= 0 ? '+' : ''}${summary.avg_delta_on_common.toFixed(3)}`}
-                tone={
-                  summary.avg_delta_on_common > 0
-                    ? 'good'
-                    : summary.avg_delta_on_common < 0
-                      ? 'bad'
-                      : 'neutral'
+                // 交集为空时没有可比的样本，显示 "—" 而不是 "+0.000"：
+                // 后者看起来像"分数没变化"，实际是"根本没有共同项"。
+                value={
+                  summary.common_count === 0
+                    ? '—'
+                    : `${summary.avg_delta_on_common >= 0 ? '+' : ''}${summary.avg_delta_on_common.toFixed(3)}`
                 }
-                hint={`交集 ${summary.common_count} 条`}
+                tone={
+                  summary.common_count === 0
+                    ? 'neutral'
+                    : summary.avg_delta_on_common > 0
+                      ? 'good'
+                      : summary.avg_delta_on_common < 0
+                        ? 'bad'
+                        : 'neutral'
+                }
+                hint={
+                  summary.common_count === 0
+                    ? '无共同项'
+                    : `交集 ${summary.common_count} 条`
+                }
               />
             </div>
           )}
@@ -501,6 +531,28 @@ export function TestCompareDialog({
               新配置对本问题
               <b className="text-text-primary">无影响</b>
               ：召回集合、排序与得分均未变化。
+            </div>
+          )}
+
+          {/* 新配置零命中：解释为什么"全丢了"，而不是让用户对着一片红去猜 */}
+          {candidateEmpty && (
+            <div
+              className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+              data-testid="compare-candidate-empty"
+            >
+              <div className="font-medium">
+                新配置在本问题下没有命中任何结果
+              </div>
+              <div className="mt-1 text-xs leading-relaxed">
+                原配置的 {result.baseline.hits.length} 条结果全部未进入新配置：
+                本次检索词从 {termCounts.base} 个增加到 {termCounts.total} 个
+                （同义词扩写），单个文档难以覆盖全部同义词，分数被稀释到阈值{' '}
+                {threshold} 以下。
+              </div>
+              <div className="mt-1 text-xs leading-relaxed">
+                这未必是变更本身有问题——可以试试降低阈值、或减少该组同义词后重测；
+                若降低阈值后新配置能召回更多相关文档，说明扩写生效了。
+              </div>
             </div>
           )}
 
@@ -601,7 +653,7 @@ export function TestCompareDialog({
           )}
         </div>
 
-        <DialogFooter className="flex-wrap items-center justify-between gap-2">
+        <DialogFooter className="shrink-0 flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-text-secondary">
             对比结果仅用于发布前评估，不影响线上检索
           </span>
@@ -677,7 +729,7 @@ function CompareColumn({
           {side.hits.length} 条 · {side.took_ms}ms
         </span>
       </div>
-      <div className="max-h-[260px] overflow-auto p-2">
+      <div className="p-2">
         {side.hits.length === 0 && (
           <div className="p-2 text-xs text-text-secondary">无命中</div>
         )}
@@ -687,7 +739,9 @@ function CompareColumn({
         {removed && removed.length > 0 && (
           <>
             <div className="mt-2 px-2 text-[10px] text-text-secondary">
-              未进入 Top-K（原名次保留）
+              {side.hits.length === 0
+                ? '原配置命中、新配置未召回（原名次保留）'
+                : '未进入 Top-K（原名次保留）'}
             </div>
             {removed.map((it) => (
               <div
