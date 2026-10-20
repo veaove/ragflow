@@ -8,6 +8,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
@@ -19,7 +20,7 @@ import { useDeleteCompilationTemplateGroup } from '@/hooks/use-compilation-templ
 import { Routes } from '@/routes';
 import { pick } from 'lodash';
 import { BuiltinPipelineSection } from './builtin-pipeline-section';
-import { Clipboard, ClipboardPlus, FileInput, Plus } from 'lucide-react';
+import { Clipboard, ClipboardPlus, FileInput, Plus, Shapes } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -207,6 +208,19 @@ export default function Agents() {
                   <FileInput />
                   {t('flow.importJsonFile')}
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  data-testid="agent-create-compiler"
+                  justifyBetween={false}
+                  onClick={() =>
+                    navigate(
+                      `${Routes.CompilationTemplatesEditNext}?source=agents`,
+                    )
+                  }
+                >
+                  <Shapes />
+                  {t('flow.tabList.compilationOperator')}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </ListFilterBar>
@@ -305,6 +319,21 @@ export default function Agents() {
                   >
                     <FileInput className="size-[1em]" />
                     {t('flow.importJsonFile')}
+                  </Button>
+                </li>
+
+                <li>
+                  <Button
+                    variant="static"
+                    size="auto"
+                    onClick={() =>
+                      navigate(
+                        `${Routes.CompilationTemplatesEditNext}?source=agents`,
+                      )
+                    }
+                  >
+                    <Shapes className="size-[1em]" />
+                    {t('flow.tabList.compilationOperator')}
                   </Button>
                 </li>
               </ul>

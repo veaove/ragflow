@@ -15,17 +15,17 @@ export const FlowTypeConfig: Record<
 > = {
   [FlowType.Agent]: {
     icon: Network,
-    labelKey: 'tabList.workflow',
+    labelKey: 'tabList.agentCanvas',
     color: 'var(--team-member)',
   },
   [FlowType.Chatflow]: {
     icon: MessageSquareText,
-    labelKey: 'flow.chatflow',
+    labelKey: 'chatflow',
     color: 'var(--team-department)',
   },
   [FlowType.Workflow]: {
     icon: Workflow,
-    labelKey: 'flow.workflow',
+    labelKey: 'taskFlow',
     color: 'var(--team-group)',
   },
   [FlowType.Compiler]: {

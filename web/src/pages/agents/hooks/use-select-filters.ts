@@ -52,7 +52,7 @@ export function useSelectFilters() {
           },
           {
             id: AgentCategory.AgentCanvas,
-            label: t('flow.tabList.workflow'),
+            label: t('flow.tabList.agentCanvas'),
             count:
               agentFilters?.canvas_category.find(
                 (item) => item.id === AgentCategory.AgentCanvas,

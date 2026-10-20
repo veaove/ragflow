@@ -2,7 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { isEmpty } from 'lodash';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { KnowledgeBaseFormField } from '@/components/knowledge-base-item';
@@ -16,11 +16,9 @@ import { Form } from '@/components/ui/form';
 import { TagRenameId } from '@/constants/knowledge';
 import { IModalProps } from '@/interfaces/common';
 import { cn } from '@/lib/utils';
-import { Routes } from '@/routes';
 import { Check } from 'lucide-react';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router';
 import { FlowType, FlowTypeConfig } from './constant';
 import { NameFormField, NameFormSchema } from './name-form-field';
 import {
@@ -59,7 +57,6 @@ function FlowTypeCards({ value, onChange }: FlowTypeCardProps) {
         FlowType.Chatflow,
         FlowType.Workflow,
         FlowType.Flow,
-        FlowType.Compiler,
       ].map((val) => {
         const isActive = value === val;
         const config = FlowTypeConfig[val];
@@ -116,22 +113,13 @@ export function CreateAgentForm({
   modelBindings,
 }: CreateAgentFormProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
 
   const form = useForm<FormSchemaType>({
     resolver: zodResolver(FormSchema),
     defaultValues: { name: '', type: FlowType.Agent },
   });
 
-  const selectedType = useWatch({ control: form.control, name: 'type' });
-  // Compilation operators are configured on the edit-next page, so the dialog
-  // skips the name field and turns the submit button into a navigation step.
-  const isCompiler = showTypeCards && selectedType === FlowType.Compiler;
   const modelRequired = (modelBindings?.modelCount ?? 0) > 0;
-
-  const handleNext = useCallback(() => {
-    navigate(`${Routes.CompilationTemplatesEditNext}?source=agents`);
-  }, [navigate]);
 
   async function onSubmit(data: FormSchemaType) {
     if (modelRequired && !data.llm_id) {
@@ -203,8 +191,8 @@ export function CreateAgentForm({
             <FlowTypeCards></FlowTypeCards>
           </RAGFlowFormItem>
         )}
-        {!isCompiler && <NameFormField></NameFormField>}
-        {!isCompiler && modelRequired && (
+        <NameFormField></NameFormField>
+        {modelRequired && (
           <ModelTreeSelectFormField
             name="llm_id"
             label={t('chat.model')}
@@ -212,13 +200,13 @@ export function CreateAgentForm({
             required
           />
         )}
-        {!isCompiler && datasetBlocks.length === 1 && (
+        {datasetBlocks.length === 1 && (
           <section className="space-y-4">
             <p className="text-sm text-text-secondary">{datasetHint}</p>
             <KnowledgeBaseFormField required showVariable={false} />
           </section>
         )}
-        {!isCompiler && datasetBlocks.length > 1 && (
+        {datasetBlocks.length > 1 && (
           <section className="space-y-4">
             {datasetBlocks.map((block, index) => (
               <KnowledgeBaseFormField
@@ -231,7 +219,7 @@ export function CreateAgentForm({
             ))}
           </section>
         )}
-        {!isCompiler && memoryHint && (
+        {memoryHint && (
           <section className="space-y-4">
             <p className="text-sm text-text-secondary">{memoryHint}</p>
             <MemoriesFormField label={t('header.memories')} required />
@@ -239,23 +227,22 @@ export function CreateAgentForm({
         )}
       </form>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={hideModal}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={hideModal}
+          data-testid="agent-cancel"
+        >
           {t('common.cancel')}
         </Button>
-        {isCompiler ? (
-          <Button type="button" data-testid="agent-next" onClick={handleNext}>
-            {t('common.next')}
-          </Button>
-        ) : (
-          <ButtonLoading
-            data-testid="agent-save"
-            type="submit"
-            form={TagRenameId}
-            loading={loading}
-          >
-            {t('common.confirm')}
-          </ButtonLoading>
-        )}
+        <ButtonLoading
+          data-testid="agent-save"
+          type="submit"
+          form={TagRenameId}
+          loading={loading}
+        >
+          {t('common.confirm')}
+        </ButtonLoading>
       </DialogFooter>
     </Form>
   );
