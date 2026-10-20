@@ -20,6 +20,7 @@ import { ChevronDown, ChevronRight, Copy } from 'lucide-react';
 
 import {
   type IChangeSetDiff,
+  type IChangeSetScope,
   type ICompareDiffItem,
   type ICompareHit,
   type ICompareSide,
@@ -60,11 +61,14 @@ export function TestCompareDialog({
   onOpenChange,
   datasetId,
   changeSetId,
+  scope,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   datasetId: string;
   changeSetId: string;
+  /** 有勾选时只对比选中项；undefined 表示对比整个变更集。 */
+  scope?: IChangeSetScope;
 }) {
   const [diff, setDiff] = useState<IChangeSetDiff | null>(null);
   const [query, setQuery] = useState('');
@@ -88,34 +92,57 @@ export function TestCompareDialog({
   useEffect(() => {
     setResult(null);
     setError(null);
-  }, [query, topK, threshold]);
+  }, [query, topK, threshold, scope]);
+
+  // 待生效摘要只展示本次对比范围内的项，与后端按 scope 过滤的结果口径一致。
+  const scopedDiff = useMemo(() => {
+    if (!diff || !scope) return diff;
+    return {
+      change_set_id: diff.change_set_id,
+      similar_questions: diff.similar_questions.filter((sq) =>
+        scope.chunk_ids.includes(sq.chunk_id),
+      ),
+      synonyms: diff.synonyms.filter((g) =>
+        scope.group_ids.includes(g.group_id),
+      ),
+    };
+  }, [diff, scope]);
 
   const addedSimilar = useMemo(() => {
-    if (!diff) return [];
-    return diff.similar_questions.flatMap((sq) =>
+    if (!scopedDiff) return [];
+    return scopedDiff.similar_questions.flatMap((sq) =>
       sq.after.filter((a) => !sq.before.includes(a)),
     );
-  }, [diff]);
+  }, [scopedDiff]);
 
   const addedSynonym = useMemo(() => {
-    if (!diff) return [];
-    return diff.synonyms.flatMap((g) =>
+    if (!scopedDiff) return [];
+    return scopedDiff.synonyms.flatMap((g) =>
       g.after.filter((a) => !g.before.includes(a)),
     );
-  }, [diff]);
+  }, [scopedDiff]);
 
   // 同义词条数的「现在 → 发布后」对比。只报「+N 条」容易让人误以为
   // 已生效里也有这些词，把两侧总数摆出来才能看清差异到底在哪。
   const synonymCounts = useMemo(() => {
-    if (!diff) return { live: 0, total: 0 };
-    return diff.synonyms.reduce(
+    if (!scopedDiff) return { live: 0, total: 0 };
+    return scopedDiff.synonyms.reduce(
       (acc, g) => ({
         live: acc.live + g.before.length,
         total: acc.total + g.after.length,
       }),
       { live: 0, total: 0 },
     );
-  }, [diff]);
+  }, [scopedDiff]);
+
+  const scopeLabel = useMemo(() => {
+    if (!diff) return '全部 0 项';
+    if (!scope) {
+      return `全部 ${diff.similar_questions.length + diff.synonyms.length} 项`;
+    }
+    const n = scope.chunk_ids.length + scope.group_ids.length;
+    return `选中 ${n} 项（相似问 ${scope.chunk_ids.length} · 同义词 ${scope.group_ids.length}）`;
+  }, [diff, scope]);
 
   const runCompare = useCallback(async () => {
     const q = query.trim();
@@ -134,6 +161,7 @@ export function TestCompareDialog({
         similarity_threshold: threshold,
         page: 1,
         size: topK,
+        ...(scope ? { scope } : {}),
       });
       if (res?.data?.code !== 0) {
         setError(res?.data?.message || '对比失败');
@@ -147,7 +175,7 @@ export function TestCompareDialog({
     } finally {
       setLoading(false);
     }
-  }, [datasetId, changeSetId, query, topK, threshold]);
+  }, [datasetId, changeSetId, query, topK, threshold, scope]);
 
   const summary = result?.diff?.summary;
   const capability = result?.capability;
@@ -172,7 +200,9 @@ export function TestCompareDialog({
       `- 新增 ${summary.added_count} · 丢失 ${summary.removed_count} · 交集位次变化 ${summary.reordered_count} · 交集平均分 ${summary.avg_delta_on_common >= 0 ? '+' : ''}${summary.avg_delta_on_common.toFixed(4)}`,
     );
     if (result.capability.unsolved_reasons.length > 0) {
-      lines.push(`- 能力限制：${result.capability.unsolved_reasons.join(', ')}`);
+      lines.push(
+        `- 能力限制：${result.capability.unsolved_reasons.join(', ')}`,
+      );
     }
     lines.push('');
     if (result.diff.added.length > 0) {
@@ -218,13 +248,13 @@ export function TestCompareDialog({
 
   const handlePublish = useCallback(async () => {
     try {
-      await publishChangeSet(datasetId, changeSetId);
-      toast.success('变更集已发布');
+      await publishChangeSet(datasetId, changeSetId, scope);
+      toast.success(scope ? '已发布选中变更' : '变更集已发布');
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e?.response?.data?.message || '发布失败');
     }
-  }, [datasetId, changeSetId, onOpenChange]);
+  }, [datasetId, changeSetId, scope, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -249,6 +279,11 @@ export function TestCompareDialog({
         <div className="flex flex-col gap-4">
           {/* 待生效变更摘要 */}
           <div className="rounded bg-bg-card p-3 text-sm">
+            <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+              <span className="rounded bg-accent-primary/10 px-1.5 py-0.5 font-medium text-accent-primary">
+                对比范围：{scopeLabel}
+              </span>
+            </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-text-secondary">
               <span>待生效：相似问 +{addedSimilar.length} 条</span>
               {addedSynonym.length > 0 && (
@@ -257,9 +292,7 @@ export function TestCompareDialog({
                   {synonymCounts.total} 条（新增 {addedSynonym.length} 条）
                 </span>
               )}
-              {addedSynonym.length === 0 && (
-                <span>同义词/专有词 +0 条</span>
-              )}
+              {addedSynonym.length === 0 && <span>同义词/专有词 +0 条</span>}
             </div>
             {addedSynonym.length > 0 && (
               <div className="mt-1 text-xs text-text-secondary">
@@ -356,7 +389,8 @@ export function TestCompareDialog({
             >
               {capability.similar_q_simulated ? (
                 <span>
-                  相似问影响已精确模拟（基于 rerank 分词通道）；同义词变更同样精确。
+                  相似问影响已精确模拟（基于 rerank
+                  分词通道）；同义词变更同样精确。
                 </span>
               ) : (
                 <span>
@@ -375,6 +409,32 @@ export function TestCompareDialog({
             </div>
           )}
 
+          {/* 本次变更给检索词新增了什么 —— 这是「为什么无差异」的直接答案 */}
+          {result && (result.extra_query_terms?.length ?? 0) > 0 && (
+            <div
+              className="rounded border border-border-default bg-bg-card p-2 text-xs text-text-secondary"
+              data-testid="extra-query-terms"
+            >
+              新配置的检索词比原配置多了：
+              <span className="ml-1 inline-flex flex-wrap gap-1">
+                {result.extra_query_terms!.map((term) => (
+                  <span
+                    key={term}
+                    className="rounded bg-accent-primary/10 px-1.5 py-0.5 text-accent-primary"
+                  >
+                    {term}
+                  </span>
+                ))}
+              </span>
+              {isEmptyResult && (
+                <div className="mt-1">
+                  这些词在当前知识库的语料中未出现，因此不会产生新的召回 ——
+                  字典已生效，是「没有可匹配的内容」，不是变更没生效。
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 错误：只显示原因，不退回「只看原配置」 */}
           {error && (
             <div
@@ -384,7 +444,8 @@ export function TestCompareDialog({
               <div className="font-medium">对比失败</div>
               <div className="mt-1">{error}</div>
               <div className="mt-1 text-xs">
-                对比结果不可用时不做降级展示——请修正后重试（如降低 TopK 或调整阈值）。
+                对比结果不可用时不做降级展示——请修正后重试（如降低 TopK
+                或调整阈值）。
               </div>
             </div>
           )}
@@ -531,7 +592,10 @@ export function TestCompareDialog({
           {loading && (
             <div className="space-y-2">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-10 animate-pulse rounded bg-bg-card" />
+                <div
+                  key={i}
+                  className="h-10 animate-pulse rounded bg-bg-card"
+                />
               ))}
             </div>
           )}
@@ -547,9 +611,15 @@ export function TestCompareDialog({
             </Button>
             <ConfirmDeleteDialog
               onOk={handlePublish}
-              title="发布后变更将立即生效并影响线上检索，确定发布该变更集？"
+              title={
+                scope
+                  ? '发布选中的变更将立即生效并影响线上检索，未选中的项将保留在待生效区。确定发布？'
+                  : '发布后变更将立即生效并影响线上检索，确定发布该变更集？'
+              }
             >
-              <Button data-testid="compare-publish">发布变更集</Button>
+              <Button data-testid="compare-publish">
+                {scope ? '发布选中变更' : '发布变更集'}
+              </Button>
             </ConfirmDeleteDialog>
           </div>
         </DialogFooter>

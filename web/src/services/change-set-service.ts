@@ -50,6 +50,17 @@ export interface IChangeSetDiff {
   synonyms: ISynonymGroupDiff[];
 }
 
+/**
+ * Selection scope for a publish / discard / compare. Sent only when the user
+ * has items selected in the change center list; both arrays are always present
+ * (possibly empty) so the backend can tell "no similar questions selected"
+ * apart from "no scope at all".
+ */
+export interface IChangeSetScope {
+  chunk_ids: string[];
+  group_ids: string[];
+}
+
 export interface IGenerateItem {
   chunk_id: string;
   document_id: string;
@@ -129,6 +140,12 @@ export interface IRetrievalCompareResult {
   candidate: ICompareSide;
   diff: ICompareDiff;
   capability: ICompareCapability;
+  /**
+   * 新配置比原配置多出来的检索词 —— 即本次变更真正进入了检索的部分。
+   * 用于回答「为什么显示无差异」：如果这些词在语料里不存在，
+   * 字典再正确也不会产生新召回。
+   */
+  extra_query_terms?: string[];
 }
 
 export const listChangeSets = (datasetId: string) =>
@@ -141,7 +158,9 @@ export const createChangeSet = (datasetId: string) =>
  * 获取当前用户在该知识库的开放变更集，没有则新建。
  * 后端 ListChangeSets 只返回 open/tested 状态的变更集，取当前用户的第一个。
  */
-export const getOrCreateChangeSet = async (datasetId: string): Promise<string> => {
+export const getOrCreateChangeSet = async (
+  datasetId: string,
+): Promise<string> => {
   const res = await listChangeSets(datasetId);
   const sets: IChangeSet[] = res?.data?.data ?? [];
   if (sets.length > 0) {
@@ -185,16 +204,28 @@ export const generateSimilarQuestions = (
     { data },
   );
 
-export const publishChangeSet = (datasetId: string, changeSetId: string) =>
+export const publishChangeSet = (
+  datasetId: string,
+  changeSetId: string,
+  scope?: IChangeSetScope,
+) =>
   request.post(
     `${restAPIv1}/datasets/${datasetId}/change-sets/publish`,
-    { data: { change_set_id: changeSetId } },
+    scope
+      ? { data: { change_set_id: changeSetId, scope } }
+      : { data: { change_set_id: changeSetId } },
   );
 
-export const discardChangeSet = (datasetId: string, changeSetId: string) =>
+export const discardChangeSet = (
+  datasetId: string,
+  changeSetId: string,
+  scope?: IChangeSetScope,
+) =>
   request.post(
     `${restAPIv1}/datasets/${datasetId}/change-sets/discard`,
-    { data: { change_set_id: changeSetId } },
+    scope
+      ? { data: { change_set_id: changeSetId, scope } }
+      : { data: { change_set_id: changeSetId } },
   );
 
 /**
@@ -216,6 +247,7 @@ export const retrievalCompare = (
     size?: number;
     doc_ids?: string[];
     shadow_similar_questions?: boolean;
+    scope?: IChangeSetScope;
   },
 ) =>
   request.post(

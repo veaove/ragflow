@@ -28,6 +28,11 @@ type RetrievalCompareRequest struct {
 	// comparison, which is the exact path (synonym expansion only ever
 	// touches the query string).
 	ShadowSimilarQuestions *bool `json:"shadow_similar_questions,omitempty"`
+	// Scope optionally restricts the comparison to the change-set items the
+	// user selected in the change center list. Nil (absent) compares the
+	// whole change set; a non-nil scope compares only the listed items, so an
+	// empty list inside it compares nothing of that kind.
+	Scope *ChangeSetItemFilter `json:"scope,omitempty"`
 }
 
 // CompareHit is one retrieved chunk, as shown in either comparison column.
@@ -116,8 +121,14 @@ type CompareCapability struct {
 
 // RetrievalCompareResponse is the POST .../retrieval-compare body.
 type RetrievalCompareResponse struct {
-	Baseline   CompareSide       `json:"baseline"`
-	Candidate  CompareSide       `json:"candidate"`
-	Diff       CompareDiff       `json:"diff"`
+	Baseline  CompareSide       `json:"baseline"`
+	Candidate CompareSide       `json:"candidate"`
+	Diff      CompareDiff       `json:"diff"`
 	Capability CompareCapability `json:"capability"`
+	// ExtraQueryTerms lists the terms the candidate query uses that the
+	// baseline query does not — i.e. what the change set actually added to the
+	// search. This is the diagnostic that answers "why is there no difference":
+	// if these terms do not occur in the corpus, nothing can change, no matter
+	// how correct the dictionary is.
+	ExtraQueryTerms []string `json:"extra_query_terms"`
 }

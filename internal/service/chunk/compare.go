@@ -71,8 +71,13 @@ func (s *ChunkService) RetrievalCompare(
 	if err != nil {
 		return nil, err
 	}
+	// A scoped compare only injects the selected items; the rest of the change
+	// set is held constant, so the result answers "what do these items change".
+	if req.Scope != nil {
+		diff = filterChangeSetDiff(diff, req.Scope)
+	}
 
-	language, err := s.datasetLanguage(ctx, datasetID)
+	language, tenantID, err := s.datasetContext(ctx, datasetID)
 	if err != nil {
 		return nil, err
 	}
@@ -147,6 +152,13 @@ func (s *ChunkService) RetrievalCompare(
 		capability.UnsolvedReasons = append(capability.UnsolvedReasons, "similar_questions_not_requested")
 	}
 
+	// Recompute both query term lists so the response can show what the change
+	// set actually added to the search. This is cheap (tokenise + dictionary
+	// lookup, no retrieval) and it is the single most useful diagnostic when a
+	// comparison reports "no effect": it distinguishes "the synonym never made
+	// it into the query" from "it did, but the corpus has nothing to match".
+	extraQueryTerms := computeExtraQueryTerms(ctx, tenantID, datasetID, req.Question, language, override)
+
 	return &service.RetrievalCompareResponse{
 		Baseline: service.CompareSide{
 			Hits:   baselineHits,
@@ -158,23 +170,56 @@ func (s *ChunkService) RetrievalCompare(
 			TookMs: candidateTook,
 			Total:  candidateResp.Total,
 		},
-		Diff:       computeCompareDiff(baselineHits, candidateHits, baselineResp.Total, candidateResp.Total),
-		Capability: capability,
+		Diff:            computeCompareDiff(baselineHits, candidateHits, baselineResp.Total, candidateResp.Total),
+		Capability:      capability,
+		ExtraQueryTerms: extraQueryTerms,
 	}, nil
 }
 
-// datasetLanguage resolves the dataset language, which drives tokenisation.
-func (s *ChunkService) datasetLanguage(ctx context.Context, datasetID string) (string, error) {
+// filterChangeSetDiff narrows a diff to the selected items. The scope
+// convention matches the service layer: a non-nil scope keeps only the listed
+// ids, so an empty list drops every item of that kind. A nil scope is not
+// expected here — the caller only invokes this when req.Scope != nil.
+func filterChangeSetDiff(diff *service.ChangeSetDiff, scope *service.ChangeSetItemFilter) *service.ChangeSetDiff {
+	filtered := &service.ChangeSetDiff{
+		ChangeSetID:      diff.ChangeSetID,
+		SimilarQuestions: make([]service.SimilarQuestionDiff, 0, len(diff.SimilarQuestions)),
+		Synonyms:         make([]service.SynonymGroupDiff, 0, len(diff.Synonyms)),
+	}
+	chunkSet := make(map[string]struct{}, len(scope.ChunkIDs))
+	for _, id := range scope.ChunkIDs {
+		chunkSet[id] = struct{}{}
+	}
+	groupSet := make(map[string]struct{}, len(scope.GroupIDs))
+	for _, id := range scope.GroupIDs {
+		groupSet[id] = struct{}{}
+	}
+	for _, sq := range diff.SimilarQuestions {
+		if _, ok := chunkSet[sq.ChunkID]; ok {
+			filtered.SimilarQuestions = append(filtered.SimilarQuestions, sq)
+		}
+	}
+	for _, g := range diff.Synonyms {
+		if _, ok := groupSet[g.GroupID]; ok {
+			filtered.Synonyms = append(filtered.Synonyms, g)
+		}
+	}
+	return filtered
+}
+
+// datasetContext resolves the two things tokenisation depends on: the dataset
+// language and the tenant that owns its vocabulary.
+func (s *ChunkService) datasetContext(ctx context.Context, datasetID string) (language, tenantID string, err error) {
 	kb, err := s.getKnowledgebaseByID(ctx, datasetID)
 	if err != nil {
-		return "", fmt.Errorf("failed to load dataset %s: %w", datasetID, err)
+		return "", "", fmt.Errorf("failed to load dataset %s: %w", datasetID, err)
 	}
 	if kb == nil {
-		return "", fmt.Errorf("dataset %s not found", datasetID)
+		return "", "", fmt.Errorf("dataset %s not found", datasetID)
 	}
 	// Reuse the same helper the retrieval path uses, so tokenisation here and
 	// there can never disagree.
-	return entity.KnowledgebasesLanguage([]*entity.Knowledgebase{kb}), nil
+	return entity.KnowledgebasesLanguage([]*entity.Knowledgebase{kb}), kb.TenantID, nil
 }
 
 type capabilityInfo struct {
@@ -328,6 +373,38 @@ func hasTokenOverlap(a, b []string) bool {
 		}
 	}
 	return false
+}
+
+// computeExtraQueryTerms returns the terms the candidate query adds on top of
+// the baseline query, in stable order for display.
+func computeExtraQueryTerms(
+	ctx context.Context,
+	tenantID, datasetID, question, language string,
+	override map[string][]string,
+) []string {
+	qb := nlp.GetQueryBuilder()
+	// The minimum-match value only shapes the engine clause, not the term
+	// list, so the retrieval path's own value is irrelevant here.
+	const minMatchForTerms = 0.3
+
+	_, baseTerms := qb.QuestionScopedWithOverride(ctx, tenantID, datasetID, question, "", minMatchForTerms, language, nil)
+	_, candTerms := qb.QuestionScopedWithOverride(ctx, tenantID, datasetID, question, "", minMatchForTerms, language, override)
+
+	added := difference(candTerms, baseTerms)
+	// De-duplicate while preserving order: the tokeniser can repeat a term.
+	seen := make(map[string]struct{}, len(added))
+	out := make([]string, 0, len(added))
+	for _, t := range added {
+		if t == "" {
+			continue
+		}
+		if _, ok := seen[t]; ok {
+			continue
+		}
+		seen[t] = struct{}{}
+		out = append(out, t)
+	}
+	return out
 }
 
 // difference returns the elements of after that are not in before.
