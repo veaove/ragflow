@@ -177,6 +177,14 @@ func Compile(ctx context.Context, c *Canvas, opts ...CompileOption) (*CompiledCa
 		}
 	}
 
+	// Guard against component ids that collide with eino's reserved graph
+	// terminals (START/END). A user-facing node type named "End" plus an
+	// obvious id of "end" is easy to write by hand and would otherwise fail
+	// deep inside eino with an opaque "node is reserved" error. The rename
+	// also rewrites upstream/downstream and `{cpnID@param}` references so the
+	// graph stays connected and variables keep resolving.
+	sanitizeReservedNodeIDs(c)
+
 	// S3 (plan §4.2.b 方案 A): ingestion resume mode forbids UserFillUp
 	// nodes. A UserFillUp node emits its own compose.Interrupt
 	// (wait-for-user); the pipeline resume loop (pipeline.go runResumable)
