@@ -149,13 +149,26 @@ type Knowledgebase struct {
 	// stays listed and keeps its data, but is excluded from retrieval and from
 	// dataset pickers. It may only be disabled while nothing references it
 	// (see DatasetService.ListDatasetReferences).
-	Enabled bool `gorm:"column:enabled;not null;default:1;index" json:"enabled"`
+	//
+	// It is a pointer so "not set" means enabled: the column is NOT NULL
+	// DEFAULT 1, but a Knowledgebase value built in code (tests, partial
+	// fixtures) has no value to read, and a plain bool would make that silent
+	// zero value look like an explicit disable. Always read it through
+	// IsEnabled.
+	Enabled *bool `gorm:"column:enabled;not null;default:1;index" json:"enabled,omitempty"`
 	BaseModel
 }
 
 // TableName returns the table name for Knowledgebase model
 func (kb *Knowledgebase) TableName() string {
 	return "knowledgebase"
+}
+
+// IsEnabled reports whether the dataset takes part in retrieval. A nil Enabled
+// means "not set", which the column default (1) also resolves to, so it counts
+// as enabled.
+func (kb *Knowledgebase) IsEnabled() bool {
+	return kb == nil || kb.Enabled == nil || *kb.Enabled
 }
 
 // KnowledgebasesLanguage returns the language to retrieve with over kbs, which

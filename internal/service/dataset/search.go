@@ -129,7 +129,7 @@ func (d *DatasetService) SearchDatasets(ctx context.Context, req *service.Search
 			common.Warn("SearchDatasets dataset not found", zap.String("datasetID", datasetID))
 			return nil, fmt.Errorf("dataset %s not found", datasetID)
 		}
-		if !kb.Enabled {
+		if !kb.IsEnabled() {
 			common.Warn("SearchDatasets dataset is disabled", zap.String("datasetID", datasetID))
 			return nil, fmt.Errorf("dataset %s is disabled", kb.Name)
 		}

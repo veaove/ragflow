@@ -2195,7 +2195,7 @@ func (s *ChatPipelineService) getModels(ctx context.Context, chat *entity.Chat) 
 			if kb == nil {
 				continue
 			}
-			if !kb.Enabled {
+			if !kb.IsEnabled() {
 				common.Warn("Skipping disabled dataset in chat retrieval", zap.String("kbID", kb.ID))
 				continue
 			}

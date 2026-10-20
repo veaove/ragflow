@@ -259,7 +259,7 @@ func (d *DatasetService) UpdateDataset(ctx context.Context, datasetID, userID st
 		// apps' retrieval, so a live reference would break them silently. The
 		// lookup runs inside this transaction and after the row lock is taken, so
 		// a concurrent bind cannot slip between the check and the write.
-		if req.Enabled != nil && *req.Enabled != lockedKB.Enabled {
+		if req.Enabled != nil && *req.Enabled != lockedKB.IsEnabled() {
 			if !*req.Enabled {
 				refs, refErr := findDatasetReferences(ctx, tx, lockedKB)
 				if refErr != nil {

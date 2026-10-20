@@ -201,6 +201,7 @@ func (d *DatasetService) CreateDataset(ctx context.Context, req *service.CreateD
 
 	kbID := common.GenerateToken()
 	status := string(entity.StatusValid)
+	enabled := true
 	// Fall back to a numbered name when the requested one is already taken.
 	dedupedName, dedupeErr := d.dedupeDatasetName(ctx, name, tenantID)
 	if dedupeErr != nil {
@@ -226,7 +227,7 @@ func (d *DatasetService) CreateDataset(ctx context.Context, req *service.CreateD
 		EmbdID:       embdID,
 		TenantEmbdID: stringPtrIfNotEmpty(tenantEmbdID),
 		Status:       &status,
-		Enabled:      true,
+		Enabled:      &enabled,
 	}
 
 	if err = d.kbDAO.Create(ctx, dao.DB, kb); err != nil {

@@ -73,7 +73,7 @@ func datasetToMap(kb *entity.Knowledgebase) map[string]interface{} {
 		"parser_config":              kb.ParserConfig,
 		"pagerank":                   kb.Pagerank,
 		"create_time":                kb.CreateTime,
-		"enabled":                    kb.Enabled,
+		"enabled":                    kb.IsEnabled(),
 	}
 	if kb.Avatar != nil {
 		item["avatar"] = *kb.Avatar
