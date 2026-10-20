@@ -1,10 +1,14 @@
 import { CardContainer } from '@/components/card-container';
+import { AgentCategory } from '@/constants/agent';
 import ListFilterBar from '@/components/list-filter-bar';
 import { EmptyAppCard } from '@/components/empty/empty';
 import { EmptyCardType } from '@/components/empty/constant';
 import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
-import { useFetchAgentListByPage } from '@/hooks/use-agent-request';
+import {
+  useFetchAgentFilters,
+  useFetchAgentListByPage,
+} from '@/hooks/use-agent-request';
 import { MessageSquareText, Play, Upload, Workflow } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -37,6 +41,7 @@ export default function Studio() {
 
   const { type, setType, canvasCategoryIds } = useStudioTypeFilter();
   const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
+  const { data: agentFilters } = useFetchAgentFilters();
 
   const {
     data,
@@ -53,17 +58,16 @@ export default function Studio() {
   const total = pagination.total ?? 0;
   const { showAgentRenameModal } = useRenameAgent();
 
-  // Tab 计数回答「我有多少个」，不随搜索变化（产品文档 3.3）。
+  // Tab 计数回答「我有多少个」，与「我现在看到几个」是两件事（产品文档 3.3）。
+  // 数据源用 filter 接口的分类计数：它是独立请求、不带搜索词，所以数字不会
+  // 跟着搜索变；「全部」= 两类之和，避免为此多发两次列表请求。
   const counts = useMemo(() => {
-    // 列表接口按 Tab 过滤后返回的就是该类型总数，因此「全部」= 两次查询之和
-    // 不可取（会发两次请求）。这里用当前 Tab 的 total 反推：
-    // 选中「全部」时 total 即两者之和，选中单类型时 total 即该类型数量。
-    return {
-      all: type === 'all' ? total : undefined,
-      workflow: type === 'workflow' ? total : undefined,
-      chatflow: type === 'chatflow' ? total : undefined,
-    };
-  }, [total, type]);
+    const find = (id: string) =>
+      agentFilters?.canvas_category.find((c) => c.id === id)?.count ?? 0;
+    const workflow = find(AgentCategory.WorkflowCanvas);
+    const chatflow = find(AgentCategory.ChatflowCanvas);
+    return { all: workflow + chatflow, workflow, chatflow };
+  }, [agentFilters]);
 
   const handleCreate = useCallback((kind: 'chatflow' | 'workflow') => {
     // 类型卡片即创建入口：点哪张建哪种，并预选类型（产品文档第三节）。
