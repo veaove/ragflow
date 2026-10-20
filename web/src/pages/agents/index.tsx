@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { ListDeletionKey } from '@/constants/list-deletion';
+import { AgentCategory } from '@/constants/agent';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchAgentListByPage } from '@/hooks/use-agent-request';
@@ -63,7 +64,14 @@ export default function Agents() {
     handleFilterSubmit,
     checkValue,
     debouncedSearchString,
-  } = useFetchAgentListByPage();
+  } = useFetchAgentListByPage({
+    // Chatflow / Workflow 迁到「工作室」后，智能体列表默认不再返回它们
+    // （产品文档第三节归属规则）。用户在筛选栏显式选择时仍然优先。
+    defaultCanvasCategoryIds: [
+      AgentCategory.AgentCanvas,
+      AgentCategory.DataflowCanvas,
+    ],
+  });
 
   // Built-in pipelines surface only in the "All" and "Pipeline" views. Compute
   // this from the raw filter value so the section (and its catalog request) is

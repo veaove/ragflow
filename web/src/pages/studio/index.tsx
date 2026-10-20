@@ -1,4 +1,5 @@
 import { CardContainer } from '@/components/card-container';
+import ListFilterBar from '@/components/list-filter-bar';
 import { EmptyAppCard } from '@/components/empty/empty';
 import { EmptyCardType } from '@/components/empty/constant';
 import { Button } from '@/components/ui/button';
@@ -42,6 +43,8 @@ export default function Studio() {
     loading: listLoading,
     pagination,
     setPagination,
+    handleInputChange,
+    debouncedSearchString,
   } = useFetchAgentListByPage({
     canvasCategoryIds,
   });
@@ -92,6 +95,16 @@ export default function Studio() {
           </Button>
         </div>
       </header>
+
+      {/* 搜索：只匹配名称（产品文档 3.3）。类型由下面的 Tab 承担，
+          所以这里不传 filters——筛选栏会退化成纯搜索框。 */}
+      <ListFilterBar
+        searchString={debouncedSearchString}
+        onSearchChange={handleInputChange}
+        showFilter={false}
+        filters={[]}
+        className="mb-4"
+      />
 
       {/* 类型说明卡：两张卡本身就是创建入口（产品文档 3.1 工作室侧做法）。 */}
       <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -155,6 +168,11 @@ export default function Studio() {
                 type={EmptyCardType.Agent}
                 onClick={() => setCreateType('chatflow')}
               />
+              {debouncedSearchString && (
+                <p className="mt-2 text-center text-sm text-text-secondary">
+                  {t('studio.noMatch', { keyword: debouncedSearchString })}
+                </p>
+              )}
             </div>
           )}
         </CardContainer>

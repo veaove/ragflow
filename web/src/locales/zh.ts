@@ -2342,6 +2342,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       workflowOutput: '输出：结构化 JSON（由结束节点定义）',
       chatflowFit: '适合：智能客服、知识问答、多轮引导',
       workflowFit: '适合：定时批处理、数据加工、系统集成',
+      noMatch: '没有匹配「{{keyword}}」的应用',
       viewCard: '卡片',
       viewTable: '表格',
       colType: '类型',

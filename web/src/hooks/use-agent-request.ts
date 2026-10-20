@@ -182,12 +182,19 @@ const buildAgentListParams = ({
 
 export const useFetchAgentListByPage = (options?: {
   /**
-   * Force the canvas-category filter instead of reading it from the shared
-   * filter bar. Studio needs this: its list is scoped to chatflow_canvas +
-   * workflow_canvas, and the type Tab is the only category control it exposes.
-   * Omit it (the Agent page) to keep the existing filter-bar behaviour.
+   * Force the canvas-category filter, ignoring the shared filter bar. Studio
+   * needs this: its list is scoped to chatflow_canvas + workflow_canvas, and
+   * the type Tab is the only category control it exposes.
    */
   canvasCategoryIds?: string[];
+  /**
+   * Category set used when the filter bar has NOT been touched. The Agent
+   * page passes [agent_canvas, dataflow_canvas] so that Chatflow / Workflow
+   * no longer leak into its list — they now live in Studio. An explicit filter
+   * selection still wins, because every option the filter bar offers
+   * (agent / dataflow / compilation group) is inside this set anyway.
+   */
+  defaultCanvasCategoryIds?: string[];
 }) => {
   const { searchString, setSearchString, handleInputChange } =
     useHandleSearchChange();
@@ -197,9 +204,10 @@ export const useFetchAgentListByPage = (options?: {
     useHandleFilterSubmit();
   const canvasCategoryIds = options?.canvasCategoryIds
     ? options.canvasCategoryIds
-    : Array.isArray(filterValue.canvasCategory)
+    : Array.isArray(filterValue.canvasCategory) &&
+        (filterValue.canvasCategory as string[]).length > 0
       ? (filterValue.canvasCategory as string[])
-      : undefined;
+      : options?.defaultCanvasCategoryIds;
   const owner = filterValue.owner;
   const tags = Array.isArray(filterValue.tags) ? filterValue.tags : undefined;
 
@@ -221,6 +229,7 @@ export const useFetchAgentListByPage = (options?: {
       ...pagination,
       filterValue,
       forcedCanvasCategoryIds: options?.canvasCategoryIds,
+      defaultCanvasCategoryIds: options?.defaultCanvasCategoryIds,
     }),
     placeholderData: (previousData) => {
       if (previousData === undefined) {
