@@ -18,6 +18,8 @@ package service
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"ragflow/internal/entity"
 )
@@ -72,7 +74,52 @@ func validatePublish(canvas *entity.UserCanvas, dsl map[string]any) error {
 			return &ErrPublishValidation{Reasons: reasons}
 		}
 	}
+
+	// Environment variables are app-level and version-snapshotted, so a node
+	// must not write them at run time. The check lives here (publish time)
+	// rather than in the runtime: existing canvases legitimately assign
+	// env.* today and must keep working (tech design §1.2, no regression).
+	// New canvases get a precise, actionable message instead of a run-time
+	// failure (FR-04-02).
+	if offenders := envWriteOffenders(dsl); len(offenders) > 0 {
+		return &ErrPublishValidation{Reasons: []string{
+			fmt.Sprintf("环境变量为只读，不能被节点写入（%s）；请改用 conversation.* 写入会话变量", offenders),
+		}}
+	}
 	return nil
+}
+
+// envWriteOffenders returns a human-readable list of VariableAssigner nodes
+// that target the env.* namespace.
+func envWriteOffenders(dsl map[string]any) string {
+	comps, ok := dsl["components"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	var offenders []string
+	for id, raw := range comps {
+		cm, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		view := viewComponent(cm)
+		if !strings.EqualFold(view.name, "VariableAssigner") {
+			continue
+		}
+		vars, _ := view.params["variables"].([]any)
+		for _, v := range vars {
+			vm, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+			ref, _ := vm["variable"].(string)
+			if strings.HasPrefix(ref, "env.") {
+				offenders = append(offenders, fmt.Sprintf("%s → %s", id, ref))
+			}
+		}
+	}
+	sort.Strings(offenders)
+	return strings.Join(offenders, ", ")
 }
 
 // componentView normalizes the two shapes a component can take on the wire:

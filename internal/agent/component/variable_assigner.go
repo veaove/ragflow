@@ -43,7 +43,9 @@ import (
 	"strings"
 
 	"ragflow/internal/agent/runtime"
+	"ragflow/internal/common"
 
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -398,10 +400,18 @@ func operate(state *runtime.CanvasState, oldVal any, op string, param any) (any,
 //
 //   - "cpn_id@param..." → SetVar(cpnID, param...)
 //   - "sys.x"           → Sys["x"] = v
-//   - "env.x"           → rejected (read-only at run time, FR-04-02 / D3)
+//   - "env.x"           → Env["x"] = v (deprecated: see below)
 //   - "conversation.x"  → Conversation["x"] = v (Chatflow-only, FR-04-03)
 //   - "item"            → Globals["__item__"] = v
 //   - "index"           → Globals["__index__"] = v
+//
+// Writing env.* is deprecated but still allowed at run time: existing canvases
+// rely on it (the parallel-subgraph resume flows assign env.before /
+// env.saved and read them back downstream). Turning it into a hard error broke
+// those canvases at run time, which violates the "no regression for existing
+// agent_canvas apps" constraint (tech design §1.2). The new contract is
+// enforced at publish time instead — validatePublish rejects a VariableAssigner
+// that targets env.* and points the author at conversation.* (FR-04-02).
 func writeVar(state *runtime.CanvasState, ref string, v any) error {
 	switch {
 	case ref == "item":
@@ -414,7 +424,10 @@ func writeVar(state *runtime.CanvasState, ref string, v any) error {
 		state.Sys[strings.TrimPrefix(ref, "sys.")] = v
 		return nil
 	case strings.HasPrefix(ref, "env."):
-		return runtime.ErrEnvReadOnly
+		common.Warn("VariableAssigner: writing env.* is deprecated; use conversation.* for writable state",
+			zap.String("ref", ref))
+		state.Env[strings.TrimPrefix(ref, "env.")] = v
+		return nil
 	case strings.HasPrefix(ref, "conversation."):
 		state.Conversation[strings.TrimPrefix(ref, "conversation.")] = v
 		return nil
