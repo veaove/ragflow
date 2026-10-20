@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import message from '@/components/ui/message';
+import { AgentCategory } from '@/constants/agent';
 import { SharedFrom } from '@/constants/chat';
 import { DomainHostname } from '@/constants/common';
 import { useSetModalState } from '@/hooks/common-hooks';
@@ -39,9 +40,16 @@ import {
   Settings,
   Upload,
 } from 'lucide-react';
-import { ComponentPropsWithoutRef, useCallback, useMemo } from 'react';
+import {
+  ComponentPropsWithoutRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 import AgentCanvas from './canvas';
 import { DropdownProvider } from './canvas/context';
 import { CanvasChecklist } from './components/canvas-checklist';
@@ -98,7 +106,7 @@ const AgentWidgetSettingsGlobalKey = 'sys.widget_settings';
 export default function Agent() {
   const { id } = useParams();
   const isPipeline = useIsPipeline();
-  const { navigateToAgents } = useNavigatePage();
+  const { navigateToAgents, navigateToStudio } = useNavigatePage();
   const {
     visible: chatDrawerVisible,
     hideModal: hideChatDrawer,
@@ -250,6 +258,41 @@ export default function Agent() {
     navigateToAgentExplore(id as string)();
   }, [hasBlockingIssues, id, navigateToAgentExplore]);
 
+  // ── 工作室列表下发的「一次性动作」 ──
+  //
+  // 列表页的「更多」菜单把运行 / 检查清单 / 历史版本 / 发布搬到了画布外，
+  // 点击后跳到这里并带上 ?action=xxx。这些动作都依赖画布 store，只能在
+  // 画布内执行，所以做法是：进入时读一次参数，等图加载完再触发，然后清掉
+  // 参数 —— 否则刷新页面会莫名其妙再跑一次。
+  const [searchParams, setSearchParams] = useSearchParams();
+  // 只捕获进入时的值：清参数不应该反过来取消已经决定的行为。
+  const [autoAction] = useState(() => searchParams.get('action'));
+  const canvasNodeCount = useGraphStore((state) => state.nodes.length);
+  const autoActionDone = useRef(false);
+
+  useEffect(() => {
+    if (!autoAction) {
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('action');
+    setSearchParams(next, { replace: true });
+  }, [autoAction, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    // 检查清单与发布靠 autoOpen 交给组件自己打开，这里只处理需要主动触发的两个。
+    if (!autoAction || autoActionDone.current || canvasNodeCount === 0) {
+      return;
+    }
+    if (autoAction === 'run') {
+      autoActionDone.current = true;
+      handleButtonRunClick();
+    } else if (autoAction === 'versions') {
+      autoActionDone.current = true;
+      showVersionDialog();
+    }
+  }, [autoAction, canvasNodeCount, handleButtonRunClick, showVersionDialog]);
+
   const handleEmbedClick = useCallback(() => {
     if (hasBlockingIssues()) {
       return;
@@ -349,12 +392,16 @@ export default function Agent() {
             </Button>
           )}
           <PublishConfirmDialog
+            autoOpen={autoAction === 'publish'}
             agentDetail={agentDetail}
             loading={loading}
             onPublish={() => saveGraph(undefined, undefined, true)}
             onBeforeOpen={hasBlockingIssues}
           />
-          <CanvasChecklist issues={issues} />
+          <CanvasChecklist
+            issues={issues}
+            autoOpen={autoAction === 'checklist'}
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant={'secondary'}>

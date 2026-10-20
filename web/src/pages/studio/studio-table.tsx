@@ -9,7 +9,25 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useTranslation } from 'react-i18next';
-import { Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import {
+  ChevronDown,
+  Compass,
+  History,
+  ListChecks,
+  Logs,
+  Play,
+  Send,
+  Trash2,
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Routes } from '@/routes';
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
 import { useDeleteAgent } from '@/hooks/use-agent-request';
 import { IFlow } from '@/interfaces/database/agent';
@@ -34,7 +52,23 @@ export function StudioTable({
   onCreate: () => void;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { deleteAgent } = useDeleteAgent();
+
+  // 列表页直接触达应用级操作，避免每次都先进画布再找按钮。
+  //
+  // 能脱离画布独立完成的两项直接跳独立页：
+  //   探索 → /agent/:id/explore，运行日志 → /agent-log-page/:id
+  // 依赖画布 store 的三项（运行 / 历史版本 / 检查清单）走「跳过去 + 自动触发」：
+  // 画布读取 ?action= 后在图加载完成时执行一次，然后清掉参数，
+  // 所以用户只需在列表点一下，不用再在画布上找按钮。
+  const openCanvas = (
+    id: string,
+    action?: 'run' | 'versions' | 'checklist' | 'publish',
+  ) => {
+    const query = action ? `?action=${action}` : '';
+    navigate(`${Routes.Agent}/${id}${query}`);
+  };
 
   if (!loading && apps.length === 0) {
     return <EmptyAppCard type={EmptyCardType.Agent} onClick={onCreate} />;
@@ -102,7 +136,7 @@ export function StudioTable({
                     : t('common.none'))}
               </TableCell>
               <TableCell className="text-right">
-                <div className="flex items-center justify-end gap-3">
+                <div className="flex items-center justify-end gap-2">
                   <button
                     type="button"
                     className="text-sm text-accent-primary"
@@ -111,6 +145,61 @@ export function StudioTable({
                   >
                     {t('common.edit')}
                   </button>
+                  {/* 应用级操作下沉到列表：这些按钮本来只在画布顶部有，
+                      每测一次都要先进画布再找位置，批量巡检时很费事。 */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex items-center gap-0.5 text-sm text-accent-primary"
+                        data-testid="studio-table-more"
+                      >
+                        更多
+                        <ChevronDown className="size-3" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuItem onClick={() => openCanvas(app.id, 'run')}>
+                        <Play className="size-3.5" />
+                        {t('flow.run')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          navigate(`${Routes.Agent}/${app.id}/explore`)
+                        }
+                      >
+                        <Compass className="size-3.5" />
+                        {t('explore.title')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => openCanvas(app.id, 'checklist')}
+                      >
+                        <ListChecks className="size-3.5" />
+                        {t('flow.checklist')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => openCanvas(app.id, 'versions')}
+                      >
+                        <History className="size-3.5" />
+                        {t('flow.historyVersion')}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => openCanvas(app.id, 'publish')}
+                      >
+                        <Send className="size-3.5" />
+                        {t('flow.release')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          navigate(`${Routes.AgentLogPage}/${app.id}`)
+                        }
+                      >
+                        <Logs className="size-3.5" />
+                        {t('flow.log')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   {/* 删除与卡片视图的能力对齐：表格能看到应用，就要能删掉它，
                       否则用户只能切回卡片视图才能删（产品文档 3.4 同源原则）。 */}
                   <ConfirmDeleteDialog

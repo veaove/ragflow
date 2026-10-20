@@ -22,7 +22,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { ListChecks, MoveRight } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Operator } from '../constant';
 import useGraphStore from '../store';
@@ -103,9 +103,22 @@ function ChecklistIssueItem({
  * variables, missing required fields, orphan steps) grouped by node. Variable
  * issues locate the node and open its form; orphan issues only highlight it.
  */
-export function CanvasChecklist({ issues }: { issues: CanvasIssue[] }) {
+export function CanvasChecklist({
+  issues,
+  autoOpen = false,
+}: {
+  issues: CanvasIssue[];
+  /** 从工作室列表跳进来时自动展开（?action=checklist）。 */
+  autoOpen?: boolean;
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (autoOpen) {
+      setOpen(true);
+    }
+  }, [autoOpen]);
   const requestNodeFocus = useGraphStore((state) => state.requestNodeFocus);
 
   const groups = useMemo(() => groupIssuesByNode(issues), [issues]);

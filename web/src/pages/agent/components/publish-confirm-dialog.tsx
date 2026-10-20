@@ -12,7 +12,7 @@ import { IFlow } from '@/interfaces/database/agent';
 import { IDataset } from '@/interfaces/database/dataset';
 import { formatDate } from '@/utils/date';
 import { BookPlus } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useIsPipeline } from '../hooks/use-is-pipeline';
 
@@ -23,6 +23,8 @@ interface PublishConfirmDialogProps {
   // Returning true blocks the dialog from opening (e.g. unresolved canvas
   // checklist issues) — the caller is responsible for the user-facing notice.
   onBeforeOpen?: () => boolean;
+  /** 从工作室列表跳进来时自动打开（?action=publish）。 */
+  autoOpen?: boolean;
 }
 
 function AssociatedDataset({
@@ -67,9 +69,18 @@ export function PublishConfirmDialog({
   loading,
   onPublish,
   onBeforeOpen,
+  autoOpen = false,
 }: PublishConfirmDialogProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+
+  // 从工作室列表点「发布」跳进来时，?action=publish 会让 autoOpen 为 true，
+  // 这里直接把确认框打开，省掉用户在画布上再找一次按钮。
+  useEffect(() => {
+    if (autoOpen) {
+      setOpen(true);
+    }
+  }, [autoOpen]);
   const isPipeline = useIsPipeline();
 
   const lastPublished = useMemo(() => {
