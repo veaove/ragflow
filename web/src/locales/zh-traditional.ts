@@ -109,6 +109,7 @@ export default {
       flow: '智能體',
       qc: '會話質檢',
       search: '搜尋',
+      knowledgeSearch: '知識搜尋',
       welcome: '歡迎來到',
     },
     knowledgeList: {

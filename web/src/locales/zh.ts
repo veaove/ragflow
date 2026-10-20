@@ -170,6 +170,7 @@ export default {
       flow: '智能体',
       studio: '工作室',
       search: '搜索',
+      knowledgeSearch: '知识搜索',
       welcome: '欢迎来到',
       dataset: '知识库',
       memories: '记忆',

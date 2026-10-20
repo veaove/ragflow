@@ -191,6 +191,7 @@ export default {
       flow: 'Agent',
       studio: 'Studio',
       search: 'Search',
+      knowledgeSearch: 'Knowledge Search',
       welcome: 'Welcome to',
       dataset: 'Dataset',
       memories: 'Memory',

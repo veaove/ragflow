@@ -61,7 +61,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
   } as SidebarMenuItem,
   {
     path: Routes.Searches,
-    name: 'header.search',
+    name: 'header.knowledgeSearch',
     icon: MenuItemsIcon,
     icon_name: 'searches',
     'data-testid': 'nav-search',
