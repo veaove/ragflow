@@ -169,6 +169,18 @@ out
 # Nuxt.js build / generate output
 .nuxt
 dist
+# Timestamped frontend release bundles (web/dist_2026*, dist_new, dist_upload_v4).
+# Each is a ~50MB published bundle kept locally for release rollback.
+web/dist_*/
+web/dist_new/
+web/dist_upload_v4/
+# Server-specific ECS deployment scripts. These embed the instance IP, the
+# build/backup rotation logic, and (in the integration test helper) an
+# encrypted test credential, so they stay out of the shared repository.
+scripts_ecs_*.sh
+scripts_ecs_*/
+# Local agent/workspace state (memory logs, task metadata).
+.workbuddy/
 ragflow_cli.egg-info
 # Gatsby files
 .cache/
