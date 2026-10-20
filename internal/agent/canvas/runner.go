@@ -115,6 +115,30 @@ type MessageEvent struct {
 	Thinking     string      `json:"thinking,omitempty"`
 	StartToThink bool        `json:"start_to_think,omitempty"`
 	EndToThink   bool        `json:"end_to_think,omitempty"`
+	// QcEvent is the quality-inspection verdict for this frame. It is the same
+	// contract the chat-app answer stream carries, so one client renderer
+	// covers both conversation forms.
+	QcEvent *QcEvent `json:"qc_event,omitempty"`
+}
+
+// QcEvent is the quality-inspection hint carried by an answer frame. The JSON
+// tags below ARE the client contract, and this is the ONE definition:
+// internal/service aliases it (`type QcEvent = canvas.QcEvent`) instead of
+// declaring a second copy, because two shapes that drift apart silently is
+// exactly how a hit ends up with a field the other side never reads.
+//
+// Only warn / block hits fill it; info hits are persisted server-side without a
+// client hint. When Blocked is true the backend has ALREADY replaced the
+// frame's Content with the replacement message, so a client that accumulated
+// earlier text must REPLACE it rather than append — otherwise a block that
+// fires mid-stream renders as "half original answer + replacement".
+type QcEvent struct {
+	RuleID        string `json:"rule_id"`
+	RuleName      string `json:"rule_name"`
+	Severity      string `json:"severity"`
+	MatchedText   string `json:"matched_text"`
+	PromptMessage string `json:"prompt_message"`
+	Blocked       bool   `json:"blocked"`
 }
 
 // MessageEndEvent is the JSON payload for Type=="message_end" frames.

@@ -13,7 +13,7 @@ import {
   MessageEventType,
   useSendMessageBySSE,
 } from '@/hooks/use-send-message';
-import { Message } from '@/interfaces/database/chat';
+import { IQcEvent, Message } from '@/interfaces/database/chat';
 import i18n from '@/locales/config';
 import api from '@/utils/api';
 import { get } from 'lodash';
@@ -51,6 +51,9 @@ export function findMessageFromList(eventList: IEventList) {
   let startIndex = -1;
   let endIndex = -1;
   let audioBinary = undefined;
+  // Latest quality-inspection verdict carried by a message frame. The backend
+  // stamps it on the frame that produced the hit, so the last one wins.
+  let qcEvent: IQcEvent | undefined;
   // memory_error is surfaced by the backend in the Message component's
   // output, which lands in a node_finished frame's `outputs` (and possibly
   // on a message frame). Scan every event so the toast fires regardless of
@@ -65,9 +68,24 @@ export function findMessageFromList(eventList: IEventList) {
     : undefined;
   messageEventList.forEach((x, idx) => {
     const { data } = x;
-    const { content, start_to_think, end_to_think, audio_binary } = data;
+    const { content, start_to_think, end_to_think, audio_binary, qc_event } =
+      data;
     if (audio_binary) {
       audioBinary = audio_binary;
+    }
+    if (qc_event) {
+      qcEvent = qc_event;
+      if (qc_event.blocked) {
+        // A block retracts everything streamed so far: the backend already
+        // replaced the answer with the replacement message, so appending would
+        // render "half original answer + replacement". The think-block marks
+        // are cleared too, otherwise the trailing </think> repair below would
+        // append a stray tag to the replacement text.
+        nextContent = content;
+        startIndex = -1;
+        endIndex = -1;
+        return;
+      }
     }
     if (start_to_think === true) {
       nextContent += '<think>' + content;
@@ -102,6 +120,7 @@ export function findMessageFromList(eventList: IEventList) {
     content: nextContent,
     audio_binary: audioBinary,
     memory_error: memoryError,
+    qc_event: qcEvent,
     attachment:
       workflowFinished?.data?.outputs?.attachment ||
       messageEndEvent?.data?.attachment ||
@@ -298,6 +317,14 @@ export const useSendAgentMessage = ({
   // Guards the memory-save-failure toast so it fires once per (message, error)
   // instead of repeatedly on every SSE append.
   const memoryErrorShownRef = useRef<string | undefined>(undefined);
+  // Warn-level QC hits are stamped on the frame that produced them, and the
+  // replay effect re-runs on every incoming frame — remember which rules
+  // already raised a toast so one hit does not produce a toast per frame.
+  // Scoped per message: the same rule may legitimately fire again on the next
+  // answer.
+  const qcWarnedRef = useRef<{ messageId?: string; ruleIds: Set<string> }>({
+    ruleIds: new Set(),
+  });
 
   const isTaskMode = useIsTaskMode(isTask);
 
@@ -526,8 +553,15 @@ export const useSendAgentMessage = ({
     ) {
       return;
     }
-    const { content, id, attachment, audio_binary, memory_error, downloads } =
-      findMessageFromList(answerList);
+    const {
+      content,
+      id,
+      attachment,
+      audio_binary,
+      memory_error,
+      downloads,
+      qc_event,
+    } = findMessageFromList(answerList);
     // Surface memory-save failure (e.g. unavailable embedding model) as a
     // toast, mirroring the prompt style used for LLM-unavailable errors.
     if (
@@ -536,6 +570,22 @@ export const useSendAgentMessage = ({
     ) {
       sonnerMessage.warning(memory_error);
       memoryErrorShownRef.current = `${id}:${memory_error}`;
+    }
+    // A warn-level QC hit keeps the answer, the user only gets a hint. A block
+    // is explained by the banner on the message, not by a toast.
+    if (qc_event && !qc_event.blocked) {
+      const warned = qcWarnedRef.current;
+      if (warned.messageId !== id) {
+        warned.messageId = id;
+        warned.ruleIds = new Set();
+      }
+      const ruleKey = qc_event.rule_id || qc_event.rule_name || 'qc';
+      if (!warned.ruleIds.has(ruleKey)) {
+        warned.ruleIds.add(ruleKey);
+        sonnerMessage.warning(
+          qc_event.prompt_message || i18n.t('chat.qcWarnHint'),
+        );
+      }
     }
     const inputAnswer = findInputFromList(answerList);
     const answer = content || getLatestError(answerList);
@@ -550,6 +600,7 @@ export const useSendAgentMessage = ({
           attachment: attachment as IAttachment,
           downloads,
           id,
+          qc_event,
         });
         addNewestOneAnswer({
           answer: '',
@@ -563,6 +614,7 @@ export const useSendAgentMessage = ({
           attachment: attachment as IAttachment,
           downloads,
           id,
+          qc_event,
           ...inputAnswer,
         });
       }

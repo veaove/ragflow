@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"ragflow/internal/agent/canvas"
 	"ragflow/internal/agentic_rag"
 	"ragflow/internal/common"
 	"ragflow/internal/engine"
@@ -115,14 +116,10 @@ type AsyncChatResult struct {
 }
 
 // QcEvent is the quality-inspection hint carried alongside an answer chunk.
-type QcEvent struct {
-	RuleID        string `json:"rule_id"`
-	RuleName      string `json:"rule_name"`
-	Severity      string `json:"severity"`
-	MatchedText   string `json:"matched_text"`
-	PromptMessage string `json:"prompt_message"`
-	Blocked       bool   `json:"blocked"`
-}
+// The wire shape is owned by the canvas package because a QC hint rides on a
+// canvas frame too; aliasing it here keeps the chat pipeline reading naturally
+// while guaranteeing both conversation forms emit one identical contract.
+type QcEvent = canvas.QcEvent
 
 // ThinkEvent is one structured agentic reasoning step as it goes over the
 // wire (the SSE `think_event` field). This is the ONE definition, so a

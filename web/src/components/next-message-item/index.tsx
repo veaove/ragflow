@@ -32,6 +32,7 @@ import {
   useState,
 } from 'react';
 
+import { useTranslate } from '@/hooks/common-hooks';
 import { IRegenerateMessage, IRemoveMessageById } from '@/hooks/logic-hooks';
 import { INodeEvent, MessageEventType } from '@/hooks/use-send-message';
 import { cn } from '@/lib/utils';
@@ -98,10 +99,15 @@ function MessageItem({
   nickname,
 }: IProps) {
   const { theme } = useTheme();
+  const { t } = useTranslate('chat');
   const isAssistant = item.role === MessageType.Assistant;
   const isUser = item.role === MessageType.User;
   const [showThinking, setShowThinking] = useState(false);
   const { setLastSendLoadingFunc } = useContext(AgentChatContext);
+  // The backend already swapped the answer for the replacement message, so this
+  // banner only explains WHY the answer looks like that. Live streams only —
+  // qc_event is not persisted with the message.
+  const qcBlocked = isAssistant && item.qc_event?.blocked === true;
 
   useEffect(() => {
     if (typeof setLastSendLoadingFunc === 'function') {
@@ -294,6 +300,13 @@ function MessageItem({
                   />
                 </div>
               )}
+
+            {qcBlocked && (
+              <div className="mb-2 flex items-center gap-2 self-start rounded-md border border-state-error bg-state-error-5 px-3 py-1.5 text-sm text-state-error">
+                <SvgIcon name="error" width={16} className="size-4" />
+                <span>{t('qcBlockedBanner')}</span>
+              </div>
+            )}
 
             {renderContent()}
 

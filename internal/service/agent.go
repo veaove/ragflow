@@ -1963,7 +1963,7 @@ func (s *AgentService) RunAgent(ctx context.Context, userID, canvasID, sessionID
 			qc.InspectUserInput(input)
 		}
 	}
-	return s.wrapAgentQcChannel(qc, isWorkflow, out), nil
+	return s.wrapAgentQcChannel(qc, isWorkflow, isDebug, out), nil
 }
 
 // wrapAgentQcChannel wraps a canvas run event stream with quality inspection.
@@ -1972,7 +1972,14 @@ func (s *AgentService) RunAgent(ctx context.Context, userID, canvasID, sessionID
 // remaining raw answer frames. For workflow it inspects the End node's
 // "node_finished" outputs (record + alert only — the workflow path never
 // blocks). When QC is disabled it returns the input channel unchanged.
-func (s *AgentService) wrapAgentQcChannel(qc *QcSession, isWorkflow bool, in <-chan canvas.RunEvent) <-chan canvas.RunEvent {
+//
+// Every hit is also stamped onto the frame as `qc_event`, mirroring the chat-app
+// answer stream. Without it this conversation form gave the user no feedback at
+// all: the answer silently turned into the replacement text, and a warn-level
+// hit was only visible in the QC hit list. Debug runs are the exception — they
+// record only, never alert, so no hint is pushed to the client underneath the
+// author's own debugging session.
+func (s *AgentService) wrapAgentQcChannel(qc *QcSession, isWorkflow, isDebug bool, in <-chan canvas.RunEvent) <-chan canvas.RunEvent {
 	if qc == nil || !qc.Enabled() {
 		return in
 	}
@@ -1992,8 +1999,11 @@ func (s *AgentService) wrapAgentQcChannel(qc *QcSession, isWorkflow bool, in <-c
 					out <- ev
 					continue
 				}
-				if msg.Content != "" {
-					qc.InspectAnswer(msg.Content)
+				// Once blocked, the remaining raw answer frames are dropped
+				// below, so re-inspecting them would only inflate hit counts.
+				var hits []QcHitResult
+				if msg.Content != "" && !replacementSent {
+					hits = qc.InspectAnswer(msg.Content)
 				}
 				if qc.Blocked() {
 					if !replacementSent {
@@ -2002,6 +2012,9 @@ func (s *AgentService) wrapAgentQcChannel(qc *QcSession, isWorkflow bool, in <-c
 						msg.Thinking = ""
 						msg.StartToThink = false
 						msg.EndToThink = false
+						// Blocked means "replace what you accumulated": clean
+						// text may already have streamed before the hit fired.
+						msg.QcEvent = blockQcEvent(qc)
 						if b, err := json.Marshal(msg); err == nil {
 							ev.Data = string(b)
 						}
@@ -2009,6 +2022,12 @@ func (s *AgentService) wrapAgentQcChannel(qc *QcSession, isWorkflow bool, in <-c
 					}
 					// Drop the raw chunk (and every later answer frame).
 					continue
+				}
+				if warn := warnQcEvent(hits); warn != nil && !isDebug {
+					msg.QcEvent = warn
+					if b, err := json.Marshal(msg); err == nil {
+						ev.Data = string(b)
+					}
 				}
 			case "node_finished":
 				if isWorkflow {

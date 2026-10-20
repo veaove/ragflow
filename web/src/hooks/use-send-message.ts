@@ -19,6 +19,7 @@ import { Authorization } from '@/constants/authorization';
 import { ResponseType } from '@/interfaces/database/base';
 import {
   IDocumentDownloadInfo,
+  IQcEvent,
   IReferenceObject,
 } from '@/interfaces/database/chat';
 import { BeginQuery } from '@/pages/agent/interface';
@@ -76,6 +77,9 @@ export interface IMessageData {
   memory_error?: string;
   start_to_think?: boolean;
   end_to_think?: boolean;
+  // Quality-inspection verdict for this frame, stamped by the canvas run
+  // wrapper. Same contract as the chat-app answer chunk (IQcEvent).
+  qc_event?: IQcEvent;
 }
 
 export interface IMessageEndData {

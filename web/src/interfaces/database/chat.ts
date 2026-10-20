@@ -163,6 +163,10 @@ export interface IAnswer {
   audio_binary?: string;
   data?: any;
   chatBoxId?: string;
+  // Quality-inspection hint that produced this answer. Live-stream only: it is
+  // not persisted, so a reloaded conversation shows the replacement text
+  // without the banner.
+  qc_event?: IQcEvent;
 }
 
 export interface Docagg {
