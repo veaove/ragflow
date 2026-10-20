@@ -131,4 +131,12 @@ type RetrievalCompareResponse struct {
 	// if these terms do not occur in the corpus, nothing can change, no matter
 	// how correct the dictionary is.
 	ExtraQueryTerms []string `json:"extra_query_terms"`
+	// QueryTokens is how the question was segmented. The synonym dictionary is
+	// keyed by token, so this explains a common surprise: a term whose
+	// segmentation differs from the dictionary entry will never be expanded.
+	QueryTokens []string `json:"query_tokens"`
+	// SynonymOverrideKeys lists the tokens for which the change set supplied a
+	// synonym list. Empty while the change set does contain synonyms means the
+	// two never met on the same token.
+	SynonymOverrideKeys []string `json:"synonym_override_keys"`
 }

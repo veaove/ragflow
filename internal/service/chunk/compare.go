@@ -87,7 +87,12 @@ func (s *ChunkService) RetrievalCompare(
 		shadowSimilar = *req.ShadowSimilarQuestions
 	}
 
-	override, extraTokens, capInfo := buildInjections(diff, req.Question, language, shadowSimilar)
+	// Tokenise through exactly the same entry point the retrieval path uses
+	// (same ctx / tenant / dataset / language). Using a different entry point
+	// here once produced override keys that could never match the tokens the
+	// real query used, silently disabling the injection.
+	override, extraTokens, capInfo, qTokens := buildInjections(
+		ctx, tenantID, datasetID, diff, req.Question, language, shadowSimilar)
 
 	// Observability: when a comparison shows "no effect", this line answers the
 	// first question every time — was anything actually injected? Logged at
@@ -170,9 +175,11 @@ func (s *ChunkService) RetrievalCompare(
 			TookMs: candidateTook,
 			Total:  candidateResp.Total,
 		},
-		Diff:            computeCompareDiff(baselineHits, candidateHits, baselineResp.Total, candidateResp.Total),
-		Capability:      capability,
-		ExtraQueryTerms: extraQueryTerms,
+		Diff:                computeCompareDiff(baselineHits, candidateHits, baselineResp.Total, candidateResp.Total),
+		Capability:          capability,
+		ExtraQueryTerms:     extraQueryTerms,
+		QueryTokens:         qTokens,
+		SynonymOverrideKeys: sortedKeys(override),
 	}, nil
 }
 
@@ -240,16 +247,19 @@ type capabilityInfo struct {
 // test query cannot move any score — TokenSimilarity only sees the
 // intersection — so it is skipped and counted, which is itself useful feedback.
 func buildInjections(
+	ctx context.Context,
+	tenantID, datasetID string,
 	diff *service.ChangeSetDiff,
 	question, language string,
 	shadowSimilar bool,
-) (map[string][]string, map[string][]string, capabilityInfo) {
-	info := capabilityInfo{}
+) (override, extra map[string][]string, info capabilityInfo, qTokens []string) {
 	qb := nlp.GetQueryBuilder()
 
-	_, qTokens := qb.Question(question, "qa", wordSepThreshold, language)
+	// Same call the retrieval path makes, so the token list is guaranteed
+	// identical to the one the override keys are compared against.
+	_, qTokens = qb.QuestionScopedWithOverride(ctx, tenantID, datasetID, question, "", wordSepThreshold, language, nil)
 
-	override := map[string][]string{}
+	override = map[string][]string{}
 	for _, group := range diff.Synonyms {
 		if len(group.After) == 0 {
 			continue
@@ -270,7 +280,7 @@ func buildInjections(
 		}
 	}
 
-	extra := map[string][]string{}
+	extra = map[string][]string{}
 	if !shadowSimilar {
 		// Still report how many chunks the change set touches, so the UI can
 		// explain that similar questions exist but were not simulated.
@@ -279,7 +289,7 @@ func buildInjections(
 				info.affectedChunks++
 			}
 		}
-		return override, extra, info
+		return override, extra, info, qTokens
 	}
 
 	for _, sq := range diff.SimilarQuestions {
@@ -303,7 +313,7 @@ func buildInjections(
 		}
 	}
 
-	return override, extra, info
+	return override, extra, info, qTokens
 }
 
 // groupMatchesToken reports whether tk is one of the group's words, either
@@ -373,6 +383,16 @@ func hasTokenOverlap(a, b []string) bool {
 		}
 	}
 	return false
+}
+
+// sortedKeys returns the map keys in stable order, for diagnostics.
+func sortedKeys(m map[string][]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // computeExtraQueryTerms returns the terms the candidate query adds on top of
