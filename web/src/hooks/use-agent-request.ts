@@ -151,6 +151,8 @@ const buildAgentListParams = ({
   canvasCategoryIds,
   ownerIds,
   tags,
+  release,
+  sort,
 }: {
   page: number;
   pageSize: number;
@@ -158,6 +160,10 @@ const buildAgentListParams = ({
   canvasCategoryIds?: string[];
   ownerIds?: string[];
   tags?: string[];
+  /** Publication state: true = published, false = draft, undefined = all. */
+  release?: boolean;
+  /** Sort terms in the backend's `column:direction` form. */
+  sort?: string;
 }) => {
   const params: Record<string, unknown> = {
     page,
@@ -172,6 +178,12 @@ const buildAgentListParams = ({
   }
   if (Array.isArray(ownerIds) && ownerIds.length > 0) {
     params.owner_ids = ownerIds.join(',');
+  }
+  if (release !== undefined) {
+    params.release = release ? 'true' : 'false';
+  }
+  if (sort) {
+    params.sort = sort;
   }
   if (Array.isArray(tags) && tags.length > 0) {
     params.tags = tags.join(',');
@@ -200,6 +212,10 @@ export const useFetchAgentListByPage = (options?: {
    * The Agent / Studio lists pass 12 (product doc 3.3).
    */
   defaultPageSize?: number;
+  /** Publication-state filter: true = published, false = draft, undefined = all. */
+  release?: boolean;
+  /** Sort terms in the backend's `column:direction` form. */
+  sort?: string;
 }) => {
   const { searchString, setSearchString, handleInputChange } =
     useHandleSearchChange();
@@ -225,6 +241,8 @@ export const useFetchAgentListByPage = (options?: {
     canvasCategoryIds,
     ownerIds: Array.isArray(owner) ? owner : undefined,
     tags,
+    release: options?.release,
+    sort: options?.sort,
   });
 
   const { data, isFetching: loading } = useQuery<{
@@ -237,6 +255,8 @@ export const useFetchAgentListByPage = (options?: {
       filterValue,
       forcedCanvasCategoryIds: options?.canvasCategoryIds,
       defaultCanvasCategoryIds: options?.defaultCanvasCategoryIds,
+      release: options?.release,
+      sort: options?.sort,
     }),
     placeholderData: (previousData) => {
       if (previousData === undefined) {

@@ -212,6 +212,15 @@ func (h *AgentHandler) ListAgents(c *gin.Context) {
 			}
 		}
 	}
+	// Optional publication-state filter: release=true keeps published
+	// canvases, release=false keeps drafts. Anything else means "no filter".
+	var releaseFilter *bool
+	if raw := strings.TrimSpace(c.Query("release")); raw != "" {
+		if v, err := strconv.ParseBool(raw); err == nil {
+			releaseFilter = &v
+		}
+	}
+
 	var tags []string
 	if raw := c.Query("tags"); raw != "" {
 		for _, tag := range strings.Split(raw, ",") {
@@ -234,6 +243,7 @@ func (h *AgentHandler) ListAgents(c *gin.Context) {
 		canvasCategory,
 		canvasType,
 		tags,
+		&service.AgentListFilters{Release: releaseFilter},
 	)
 	if err != nil {
 		common.ResponseWithCodeData(c, code, false, err.Error())

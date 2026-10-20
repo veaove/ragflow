@@ -602,7 +602,15 @@ func toAgentItem(c *dao.UserCanvasListItem) *AgentItem {
 // ListAgents returns agent canvases visible to userID.
 // Mirrors Python agent_api.list_agents — validates owner_ids against joined tenants,
 // then delegates to the DAO.
-func (s *AgentService) ListAgents(ctx context.Context, userID string, keywords string, page, pageSize int, terms []dao.OrderTerm, ownerIDs []string, canvasCategory, canvasType string, tags []string) (*ListAgentsResponse, common.ErrorCode, error) {
+// AgentListFilters carries optional list filters that are not part of the
+// historic positional signature. A nil field means "no filter on this
+// dimension", so callers that do not use them keep the previous behaviour.
+type AgentListFilters struct {
+	// Release filters by publication state: true = published, false = draft.
+	Release *bool
+}
+
+func (s *AgentService) ListAgents(ctx context.Context, userID string, keywords string, page, pageSize int, terms []dao.OrderTerm, ownerIDs []string, canvasCategory, canvasType string, tags []string, filters *AgentListFilters) (*ListAgentsResponse, common.ErrorCode, error) {
 	subject := permission.Subject{UserID: userID}
 	canvasIDs, err := AccessibleCanvasIDs(ctx, subject, permission.OperationRead)
 	if err != nil {
@@ -623,6 +631,13 @@ func (s *AgentService) ListAgents(ctx context.Context, userID string, keywords s
 		}
 	}
 	effectiveOwnerIDs := ownerIDs
+
+	// Normalise the optional filter bundle so the DAO call below can read a
+	// plain pointer without nil checks at every use site.
+	var releaseFilter *bool
+	if filters != nil {
+		releaseFilter = filters.Release
+	}
 
 	// A canvas entry is either an agent (user_canvas) or a compilation template
 	// group. Python splits canvas_category on commas and, when the tenant is the
@@ -663,6 +678,7 @@ func (s *AgentService) ListAgents(ctx context.Context, userID string, keywords s
 		agentCategories,
 		canvasType,
 		tags,
+		releaseFilter,
 	)
 	if err != nil {
 		return nil, common.CodeServerError, fmt.Errorf("failed to list agents: %w", err)

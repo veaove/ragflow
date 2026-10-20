@@ -22,6 +22,12 @@ import { CreateStudioDialog } from './create-studio-dialog';
 import { useStudioTypeFilter } from './use-studio-type-filter';
 import { StudioTypeTab } from './studio-type-tab';
 import { StudioTable } from './studio-table';
+import {
+  ListSortSelect,
+  ReleaseFilterSelect,
+  ResetFilterButton,
+} from './list-sort-filter';
+import { useListSortAndFilter } from '@/hooks/use-list-sort-and-filter';
 import { ViewToggle } from './view-toggle';
 import { useListViewPreference } from '@/hooks/use-list-view-preference';
 import { useRenameAgent } from '../agents/use-rename-agent';
@@ -46,6 +52,15 @@ export default function Studio() {
   const { type, setType, canvasCategoryIds } = useStudioTypeFilter();
   const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
   const { data: agentFilters } = useFetchAgentFilters();
+  const {
+    sortKey,
+    sort,
+    release,
+    setSort,
+    setRelease,
+    hasActiveFilter,
+    resetFilters,
+  } = useListSortAndFilter();
 
   const {
     data,
@@ -57,6 +72,8 @@ export default function Studio() {
   } = useFetchAgentListByPage({
     canvasCategoryIds,
     defaultPageSize: 12,
+    release,
+    sort,
   });
 
   const apps = data ?? [];
@@ -105,15 +122,21 @@ export default function Studio() {
         </div>
       </header>
 
-      {/* 搜索：只匹配名称（产品文档 3.3）。类型由下面的 Tab 承担，
+      {/* 搜索 + 排序 + 状态筛选（产品文档 3.3/3.4）。类型由下面的 Tab 承担，
           所以这里不传 filters——筛选栏会退化成纯搜索框。 */}
-      <ListFilterBar
-        searchString={debouncedSearchString}
-        onSearchChange={handleInputChange}
-        showFilter={false}
-        filters={[]}
-        className="mb-4"
-      />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="min-w-[220px] flex-1">
+          <ListFilterBar
+            searchString={debouncedSearchString}
+            onSearchChange={handleInputChange}
+            showFilter={false}
+            filters={[]}
+          />
+        </div>
+        <ReleaseFilterSelect value={release} onChange={setRelease} />
+        <ListSortSelect value={sortKey} onChange={setSort} />
+        {hasActiveFilter && <ResetFilterButton onReset={resetFilters} />}
+      </div>
 
       {/* 类型说明卡：两张卡本身就是创建入口（产品文档 3.1 工作室侧做法）。 */}
       <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2">

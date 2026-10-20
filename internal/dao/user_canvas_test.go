@@ -290,7 +290,7 @@ func TestUserCanvasDAOKeywordSearchIncludesTags(t *testing.T) {
 		}
 	}
 
-	results, _, err := d.ListByIDs(ctx, db, []string{"c1", "c2"}, nil, 1, 10, []OrderTerm{{Column: "create_time"}}, "finance", nil, "", nil)
+	results, _, err := d.ListByIDs(ctx, db, []string{"c1", "c2"}, nil, 1, 10, []OrderTerm{{Column: "create_time"}}, "finance", nil, "", nil, nil)
 	if err != nil {
 		t.Fatalf("ListByIDs: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestUserCanvasDAOListByIDsCategoryUnion(t *testing.T) {
 	}
 
 	canvasIDs := []string{"c-wf-1", "c-wf-2", "c-df-1"}
-	rows, total, err := d.ListByIDs(ctx, db, canvasIDs, nil, 1, 10, []OrderTerm{{Column: "create_time"}}, "", []string{"dataflow_canvas", "agent_canvas"}, "", nil)
+	rows, total, err := d.ListByIDs(ctx, db, canvasIDs, nil, 1, 10, []OrderTerm{{Column: "create_time"}}, "", []string{"dataflow_canvas", "agent_canvas"}, "", nil, nil)
 	if err != nil {
 		t.Fatalf("ListByIDs: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestUserCanvasDAOListByIDsCategoryUnion(t *testing.T) {
 		t.Fatalf("category union returned total=%d rows=%d, want 3/3", total, len(rows))
 	}
 
-	rows, total, err = d.ListByIDs(ctx, db, canvasIDs, nil, 1, 10, []OrderTerm{{Column: "create_time"}}, "", []string{"agent_canvas"}, "", nil)
+	rows, total, err = d.ListByIDs(ctx, db, canvasIDs, nil, 1, 10, []OrderTerm{{Column: "create_time"}}, "", []string{"agent_canvas"}, "", nil, nil)
 	if err != nil {
 		t.Fatalf("ListByIDs (single category): %v", err)
 	}
@@ -370,7 +370,7 @@ func TestUserCanvasDAOOrderByTags(t *testing.T) {
 		}
 	}
 
-	results, _, err := d.ListByIDs(ctx, db, []string{"c-z", "c-a", "c-m"}, nil, 1, 10, []OrderTerm{{Column: "tags"}}, "", nil, "", nil)
+	results, _, err := d.ListByIDs(ctx, db, []string{"c-z", "c-a", "c-m"}, nil, 1, 10, []OrderTerm{{Column: "tags"}}, "", nil, "", nil, nil)
 	if err != nil {
 		t.Fatalf("ListByIDs: %v", err)
 	}

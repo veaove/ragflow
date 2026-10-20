@@ -214,7 +214,7 @@ type UserCanvasListItem struct {
 }
 
 // ListByIDs lists permission-filtered canvases with optional metadata filters.
-func (dao *UserCanvasDAO) ListByIDs(ctx context.Context, db *gorm.DB, canvasIDs, ownerIDs []string, page, pageSize int, terms []OrderTerm, keywords string, canvasCategories []string, canvasType string, tags []string) ([]*UserCanvasListItem, int64, error) {
+func (dao *UserCanvasDAO) ListByIDs(ctx context.Context, db *gorm.DB, canvasIDs, ownerIDs []string, page, pageSize int, terms []OrderTerm, keywords string, canvasCategories []string, canvasType string, tags []string, release *bool) ([]*UserCanvasListItem, int64, error) {
 	if len(canvasIDs) == 0 {
 		return nil, 0, nil
 	}
@@ -253,6 +253,12 @@ func (dao *UserCanvasDAO) ListByIDs(ctx context.Context, db *gorm.DB, canvasIDs,
 		base = base.Where("user_canvas.title LIKE ? OR user_canvas.tags LIKE ?", like, like)
 	}
 	base = applyUserCanvasTagFilter(ctx, db, base, tags)
+
+	// Publication state. Nil means "no filter" (the historic behaviour);
+	// true keeps published canvases, false keeps drafts.
+	if release != nil {
+		base = base.Where("user_canvas.release = ?", *release)
+	}
 
 	var total int64
 	if err := base.Count(&total).Error; err != nil {

@@ -21,6 +21,12 @@ import {
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchAgentListByPage } from '@/hooks/use-agent-request';
+import { useListSortAndFilter } from '@/hooks/use-list-sort-and-filter';
+import {
+  ListSortSelect,
+  ReleaseFilterSelect,
+  ResetFilterButton,
+} from '../studio/list-sort-filter';
 import { useDeleteCompilationTemplateGroup } from '@/hooks/use-compilation-template-group-request';
 import { Routes } from '@/routes';
 import { pick } from 'lodash';
@@ -55,6 +61,17 @@ const CompilationGroupCategory = 'compilation_template_group';
 export default function Agents() {
   const { t } = useTranslation();
 
+  // 排序 + 发布状态筛选：与工作室共用同一套规则（产品文档 3.4）。
+  const {
+    sortKey,
+    sort,
+    release,
+    setSort,
+    setRelease,
+    hasActiveFilter,
+    resetFilters,
+  } = useListSortAndFilter();
+
   const {
     data,
     loading: listLoading,
@@ -76,6 +93,8 @@ export default function Agents() {
       AgentCategory.DataflowCanvas,
     ],
     defaultPageSize: 12,
+    release,
+    sort,
   });
 
   // Built-in pipelines surface only in the "All" and "Pipeline" views. Compute
@@ -199,6 +218,14 @@ export default function Agents() {
             onChange={handleFilterSubmit}
             value={filterValue}
           >
+            {/* 排序 + 发布状态筛选：与工作室共用同一套规则
+                （产品文档 3.4「两个页面规则完全一致」）。 */}
+            <ReleaseFilterSelect value={release} onChange={setRelease} />
+            <ListSortSelect value={sortKey} onChange={setSort} />
+            {hasActiveFilter && (
+              <ResetFilterButton onReset={resetFilters} />
+            )}
+
             {/* 拆分按钮：主按钮一步到位开创建弹窗，箭头收低频入口
                 （产品文档 3.1 智能体侧做法）。此前只有一个 + 图标，
                 用户必须展开才知道能建什么。 */}
