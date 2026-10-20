@@ -14,7 +14,7 @@
  */
 import crypto from 'node:crypto';
 
-const BASE = process.env.RF_BASE || 'http://47.99.241.190:9380';
+const BASE = process.env.RF_BASE || 'http://47.99.241.190';
 const EMAIL = process.env.RF_EMAIL || '123456789@qq.com';
 const PASSWORD = process.env.RF_PASSWORD || 'QweAsd@123';
 
