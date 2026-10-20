@@ -14,7 +14,33 @@
  */
 import crypto from 'node:crypto';
 
-const BASE = process.env.RF_BASE || 'http://47.99.241.190';
+// 直连 API（9380）优先，不通则回落 nginx 反代（80）。
+// 安全组放行情况会变，写死任一个都会在改配置后突然跑不通。
+const BASE_CANDIDATES = [
+  process.env.RF_BASE,
+  'http://47.99.241.190:9380',
+  'http://47.99.241.190',
+].filter(Boolean);
+
+async function resolveBase() {
+  for (const base of BASE_CANDIDATES) {
+    try {
+      const res = await fetch(`${base}/api/v1/system/healthz`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        console.log(`(使用入口: ${base})`);
+        return base;
+      }
+    } catch {
+      // try the next candidate
+    }
+  }
+  console.log(`(所有入口不可达，回退到: ${BASE_CANDIDATES[0]})`);
+  return BASE_CANDIDATES[0];
+}
+
+let BASE = BASE_CANDIDATES[0];
 const EMAIL = process.env.RF_EMAIL || '123456789@qq.com';
 const PASSWORD = process.env.RF_PASSWORD || 'QweAsd@123';
 
@@ -48,6 +74,8 @@ const H = { 'Content-Type': 'application/json' };
 const auth = (t) => ({ ...H, Authorization: `Bearer ${t}` });
 
 async function main() {
+  BASE = await resolveBase();
+
   // ── 登录 ──
   const lr = await fetch(`${BASE}/api/v1/auth/login`, {
     method: 'POST',
