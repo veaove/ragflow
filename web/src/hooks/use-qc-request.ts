@@ -24,32 +24,50 @@ export interface IQcPushEvent {
   data?: IQcHit;
 }
 
+const ReconnectDelayMs = 3000;
+
 /**
  * useQcRealtime opens a WebSocket to /api/v1/qc/stream and forwards every
- * qc_hit push event to `onEvent`. It reconnects automatically with a short
- * backoff and never throws — a dropped stream only means the realtime panel
+ * qc_hit push event to `onEvent`. It reconnects automatically with a fixed
+ * delay and never throws — a dropped stream only means the realtime panel
  * misses events, which the hit list can still load from the database.
+ *
+ * NOTE: whatever reverse proxy fronts the API must forward the WebSocket
+ * upgrade headers (`Upgrade` / `Connection`), otherwise the handshake fails
+ * with a non-101 status and this hook retries forever.
  */
 export function useQcRealtime(onEvent: (hit: IQcHit) => void) {
   const [connected, setConnected] = useState(false);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
+  const wsRef = useRef<WebSocket | null>(null);
+  const retryTimerRef = useRef<number | undefined>(undefined);
+  // Guards the reconnect chain. The previous version scheduled the next attempt
+  // from inside the socket's own closure, so the cleanup returned to the effect
+  // could only cancel the FIRST timer — a closed page kept reconnecting every
+  // 3s indefinitely.
+  const disposedRef = useRef(false);
+
   const connect = useCallback(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    if (disposedRef.current) return;
     const token = getAuthorization();
-    if (!token) return () => {};
+    if (!token) return;
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${protocol}//${window.location.host}${restAPIv1}/qc/stream?token=${encodeURIComponent(token)}`;
+
     let ws: WebSocket;
     try {
       ws = new WebSocket(url);
     } catch {
-      return () => {};
+      return;
     }
-    let closed = false;
-    let retryTimer: number | undefined;
+    wsRef.current = ws;
 
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => {
+      if (!disposedRef.current) setConnected(true);
+    };
     ws.onmessage = (ev) => {
       try {
         const event = JSON.parse(ev.data) as IQcPushEvent;
@@ -61,22 +79,12 @@ export function useQcRealtime(onEvent: (hit: IQcHit) => void) {
       }
     };
     ws.onclose = () => {
+      if (disposedRef.current) return;
       setConnected(false);
-      if (!closed) {
-        retryTimer = window.setTimeout(connect, 3000);
-      }
+      retryTimerRef.current = window.setTimeout(connect, ReconnectDelayMs);
     };
     ws.onerror = () => {
-      try {
-        ws.close();
-      } catch {
-        // ignore
-      }
-    };
-
-    return () => {
-      closed = true;
-      if (retryTimer) window.clearTimeout(retryTimer);
+      // onclose always follows onerror; closing here keeps retries in one place.
       try {
         ws.close();
       } catch {
@@ -86,8 +94,21 @@ export function useQcRealtime(onEvent: (hit: IQcHit) => void) {
   }, []);
 
   useEffect(() => {
-    const cleanup = connect();
-    return cleanup;
+    disposedRef.current = false;
+    connect();
+    return () => {
+      disposedRef.current = true;
+      if (retryTimerRef.current !== undefined) {
+        window.clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = undefined;
+      }
+      try {
+        wsRef.current?.close();
+      } catch {
+        // ignore
+      }
+      wsRef.current = null;
+    };
   }, [connect]);
 
   return { connected };

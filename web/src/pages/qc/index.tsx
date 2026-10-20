@@ -217,7 +217,9 @@ function RealtimePanel() {
             connected ? 'bg-green-500' : 'bg-gray-300'
           }`}
         />
-        {connected ? '实时推送中' : '连接中 / 已断开'}
+        {connected
+          ? '实时推送中'
+          : '未连接（实时推送不可用，命中仍可在此页与命中记录中查看）'}
       </div>
       {events.length === 0 ? (
         <Empty type={EmptyType.Data} text="暂无实时命中事件" />
