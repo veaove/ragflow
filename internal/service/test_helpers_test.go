@@ -33,6 +33,15 @@ import (
 func sptr(s string) *string { return &s }
 
 // setupServiceTestDB initializes an in-memory SQLite database for service tests.
+//
+// The connection pool is pinned to a single connection on purpose: with
+// `sqlite.Open(":memory:")` every pooled connection is its OWN empty
+// database, so a table created by AutoMigrate on one connection is invisible
+// to the next one. The pool happily grows past one connection under load,
+// which made DDL land on a different connection than the queries — producing
+// "no such table: user_canvas" / "api4_conversation" flakes that had nothing
+// to do with the code under test. Service tests do not run in parallel, so a
+// single connection is safe and makes the schema deterministic.
 func setupServiceTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -41,6 +50,10 @@ func setupServiceTestDB(t *testing.T) *gorm.DB {
 	})
 	if err != nil {
 		t.Fatalf("failed to open sqlite: %v", err)
+	}
+	if sqlDB, derr := db.DB(); derr == nil {
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(1)
 	}
 
 	if err = db.AutoMigrate(

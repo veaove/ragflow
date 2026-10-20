@@ -18,6 +18,7 @@ package dao
 
 import (
 	"context"
+	"strings"
 
 	"ragflow/internal/entity"
 
@@ -34,7 +35,14 @@ func NewAgentRunDAO() *AgentRunDAO {
 }
 
 // Create inserts a new run. Callers supply the id and initial fields.
+//
+// An empty idempotency key is stored as NULL so the unique key
+// (canvas_id, idempotency_key) does not collide across ordinary runs of the
+// same canvas.
 func (dao *AgentRunDAO) Create(ctx context.Context, db *gorm.DB, run *entity.AgentRun) error {
+	if run.IdempotencyKey != nil && strings.TrimSpace(*run.IdempotencyKey) == "" {
+		run.IdempotencyKey = nil
+	}
 	return db.WithContext(ctx).Create(run).Error
 }
 

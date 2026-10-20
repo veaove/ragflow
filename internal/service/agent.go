@@ -1523,7 +1523,7 @@ func (s *AgentService) RunAgent(ctx context.Context, userID, canvasID, sessionID
 		if b, err := json.Marshal(map[string]any{"user_input": userInput, "files": files}); err == nil {
 			_ = json.Unmarshal(b, &inputs)
 		}
-		_ = recorder.RecordRunStart(ctx, &entity.AgentRun{
+		runRow := &entity.AgentRun{
 			ID:            runID,
 			CanvasID:      canvasID,
 			TenantID:      agentTenantID,
@@ -1534,7 +1534,14 @@ func (s *AgentService) RunAgent(ctx context.Context, userID, canvasID, sessionID
 			CreatedBy:     userID,
 			CreateTime:    time.Now().UnixMilli(),
 			UpdateTime:    time.Now().UnixMilli(),
-		})
+		}
+		// The public API entry point passes the caller's Idempotency-Key
+		// through the context; storing it on the run row is what makes a
+		// retry resolve to this run instead of executing the workflow again.
+		if idemKey := idempotencyKeyFromContext(ctx); idemKey != "" {
+			runRow.IdempotencyKey = &idemKey
+		}
+		_ = recorder.RecordRunStart(ctx, runRow)
 	}
 	lockToken := common.GenerateToken()
 	runCtx, cancelRun := context.WithCancel(ctx)

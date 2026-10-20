@@ -33,16 +33,30 @@ import (
 // are best-effort (a recording outage must not fail the run itself).
 type RunRecorder struct {
 	runDAO *dao.AgentRunDAO
+	// enabled is false when the run-record tables are absent (a deployment
+	// that has not been migrated yet, or a test that only migrates a subset
+	// of the schema). In that case the recorder disables itself instead of
+	// issuing inserts that would fail on every event.
+	enabled bool
 }
 
 // NewRunRecorder builds a recorder backed by the shared DB.
 func NewRunRecorder() *RunRecorder {
-	return &RunRecorder{runDAO: dao.NewAgentRunDAO()}
+	r := &RunRecorder{runDAO: dao.NewAgentRunDAO(), enabled: true}
+	if dao.DB == nil {
+		r.enabled = false
+		return r
+	}
+	migrator := dao.DB.WithContext(context.Background()).Migrator()
+	if !migrator.HasTable(&entity.AgentRun{}) || !migrator.HasTable(&entity.AgentNodeExecution{}) {
+		r.enabled = false
+	}
+	return r
 }
 
 // RecordRunStart creates the initial agent_run row (status=running).
 func (r *RunRecorder) RecordRunStart(ctx context.Context, run *entity.AgentRun) error {
-	if r.runDAO == nil || dao.DB == nil {
+	if !r.enabled || r.runDAO == nil || dao.DB == nil {
 		return nil
 	}
 	return r.runDAO.Create(ctx, dao.DB, run)
@@ -52,7 +66,7 @@ func (r *RunRecorder) RecordRunStart(ctx context.Context, run *entity.AgentRun) 
 // node_finished → agent_node_execution; workflow_finished/error → run terminal.
 // All other events (node_started, message, message_end) are ignored here.
 func (r *RunRecorder) HandleEvent(ctx context.Context, canvasID, tenantID, runID string, ev canvas.RunEvent) {
-	if r.runDAO == nil || dao.DB == nil {
+	if !r.enabled || r.runDAO == nil || dao.DB == nil {
 		return
 	}
 	switch ev.Type {

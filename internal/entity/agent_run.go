@@ -64,7 +64,13 @@ type AgentRun struct {
 	PromptTokens    int    `gorm:"column:prompt_tokens;not null;default:0" json:"prompt_tokens"`
 	CompletionTokens int   `gorm:"column:completion_tokens;not null;default:0" json:"completion_tokens"`
 	ConversationID  string `gorm:"column:conversation_id;size:32" json:"conversation_id,omitempty"`
-	IdempotencyKey  string `gorm:"column:idempotency_key;size:128" json:"idempotency_key,omitempty"`
+	// IdempotencyKey is NULL when the caller did not supply one. NULL (not
+	// "") matters: the unique key is (canvas_id, idempotency_key) and both
+	// MySQL and SQLite treat NULLs as distinct, so ordinary runs (no
+	// idempotency key) never collide with each other. An empty string
+	// would make the second run of a canvas violate the constraint and lose
+	// its run record.
+	IdempotencyKey  *string `gorm:"column:idempotency_key;size:128" json:"idempotency_key,omitempty"`
 	APIKeyID        string `gorm:"column:api_key_id;size:32" json:"api_key_id,omitempty"`
 	CreatedBy       string `gorm:"column:created_by;size:64" json:"created_by,omitempty"`
 	CreateTime      int64  `gorm:"column:create_time;not null" json:"create_time"`

@@ -55,9 +55,34 @@ type AppRunRequest struct {
 // record was written under.
 type runIDContextKey struct{}
 
+// idempotencyKeyContextKey carries the caller's Idempotency-Key down into
+// RunAgent so the run record is written WITH that key. Without it the key
+// would only live in the request, the stored run would have a NULL key, and
+// the next retry would miss the existing run and execute the workflow twice.
+type idempotencyKeyContextKey struct{}
+
 // WithRunID attaches an externally allocated run id to ctx.
 func WithRunID(ctx context.Context, runID string) context.Context {
 	return context.WithValue(ctx, runIDContextKey{}, runID)
+}
+
+// WithIdempotencyKey attaches the caller's idempotency key to ctx.
+func WithIdempotencyKey(ctx context.Context, key string) context.Context {
+	if key == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, idempotencyKeyContextKey{}, key)
+}
+
+// idempotencyKeyFromContext returns the caller's idempotency key, if any.
+func idempotencyKeyFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(idempotencyKeyContextKey{}).(string); ok {
+		return v
+	}
+	return ""
 }
 
 // runIDFromContext returns the externally allocated run id, if any.
@@ -130,6 +155,7 @@ func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey str
 	// RunAgent through the context (RunAgent would otherwise derive its own).
 	runID := common.GenerateUUID()
 	ctx = WithRunID(ctx, runID)
+	ctx = WithIdempotencyKey(ctx, req.IdempotencyKey)
 	req.RunID = runID
 
 	events, err := s.RunAgent(ctx, ownerUserID, canvasID, sessionID, "", userInput, files)
