@@ -20,7 +20,14 @@ import { useDeleteCompilationTemplateGroup } from '@/hooks/use-compilation-templ
 import { Routes } from '@/routes';
 import { pick } from 'lodash';
 import { BuiltinPipelineSection } from './builtin-pipeline-section';
-import { Clipboard, ClipboardPlus, FileInput, Plus, Shapes } from 'lucide-react';
+import {
+  ChevronDown,
+  Clipboard,
+  ClipboardPlus,
+  FileInput,
+  Plus,
+  Shapes,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -179,12 +186,24 @@ export default function Agents() {
             onChange={handleFilterSubmit}
             value={filterValue}
           >
-            <DropdownMenu>
-              <DropdownMenuTrigger data-testid="create-agent" asChild>
-                <Button>
-                  <Plus className="size-[1em]" />
-                </Button>
-              </DropdownMenuTrigger>
+            {/* 拆分按钮：主按钮一步到位开创建弹窗，箭头收低频入口
+                （产品文档 3.1 智能体侧做法）。此前只有一个 + 图标，
+                用户必须展开才知道能建什么。 */}
+            <div className="flex items-center">
+              <Button
+                className="rounded-r-none"
+                onClick={showCreatingModal}
+                data-testid="agent-create-primary"
+              >
+                <Plus className="size-[1em]" />
+                {t('studio.createApp')}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger data-testid="create-agent" asChild>
+                  <Button className="rounded-l-none border-l px-2">
+                    <ChevronDown className="size-[1em]" />
+                  </Button>
+                </DropdownMenuTrigger>
               <DropdownMenuContent data-testid="agent-create-menu">
                 <DropdownMenuItem
                   justifyBetween={false}
@@ -221,8 +240,9 @@ export default function Agents() {
                   <Shapes />
                   {t('flow.tabList.compilationOperator')}
                 </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </ListFilterBar>
         </header>
 

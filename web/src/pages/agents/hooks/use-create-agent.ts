@@ -17,16 +17,12 @@ export function useCreateAgentOrPipeline() {
 
   const handleCreateAgentOrPipeline = useCallback(
     async (data: FormSchemaType) => {
+      // 弹窗只剩两个原生项；Chatflow / Workflow 由工作室弹窗自行创建。
       const type = data.type ?? FlowType.Agent;
-      const categoryMap: Record<string, AgentCategory> = {
-        [FlowType.Agent]: AgentCategory.AgentCanvas,
-        [FlowType.Chatflow]: AgentCategory.ChatflowCanvas,
-        [FlowType.Workflow]: AgentCategory.WorkflowCanvas,
-        [FlowType.Flow]: AgentCategory.DataflowCanvas,
-        [FlowType.Compiler]: AgentCategory.DataflowCanvas,
-      };
-      const category = categoryMap[type] ?? AgentCategory.AgentCanvas;
-      const isAgent = type === FlowType.Agent || type === FlowType.Chatflow || type === FlowType.Workflow;
+      const isAgent = type === FlowType.Agent;
+      const category = isAgent
+        ? AgentCategory.AgentCanvas
+        : AgentCategory.DataflowCanvas;
       const ret = await setAgent({
         title: data.name,
         dsl: initialEmptyDsl(isAgent),

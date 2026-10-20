@@ -12,6 +12,9 @@ import { AgentCard } from '../agents/agent-card';
 import { CreateStudioDialog } from './create-studio-dialog';
 import { useStudioTypeFilter } from './use-studio-type-filter';
 import { StudioTypeTab } from './studio-type-tab';
+import { StudioTable } from './studio-table';
+import { ViewToggle } from './view-toggle';
+import { useListViewPreference } from '@/hooks/use-list-view-preference';
 import { useRenameAgent } from '../agents/use-rename-agent';
 
 /**
@@ -32,6 +35,7 @@ export default function Studio() {
   );
 
   const { type, setType, canvasCategoryIds } = useStudioTypeFilter();
+  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
 
   const {
     data,
@@ -73,6 +77,7 @@ export default function Studio() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <ViewToggle mode={viewMode} onChange={setViewMode} />
           <Button
             variant="outline"
             size="sm"
@@ -135,23 +140,32 @@ export default function Studio() {
 
       <StudioTypeTab value={type} onChange={setType} counts={counts} />
 
-      <CardContainer>
-        {apps.map((app) => (
-          <AgentCard
-            key={app.id}
-            data={app as any}
-            showAgentRenameModal={showAgentRenameModal}
-          />
-        ))}
-        {!listLoading && apps.length === 0 && (
-          <div className="col-span-full">
-            <EmptyAppCard
-              type={EmptyCardType.Agent}
-              onClick={() => setCreateType('chatflow')}
+      {viewMode === 'card' ? (
+        <CardContainer>
+          {apps.map((app) => (
+            <AgentCard
+              key={app.id}
+              data={app as any}
+              showAgentRenameModal={showAgentRenameModal}
             />
-          </div>
-        )}
-      </CardContainer>
+          ))}
+          {!listLoading && apps.length === 0 && (
+            <div className="col-span-full">
+              <EmptyAppCard
+                type={EmptyCardType.Agent}
+                onClick={() => setCreateType('chatflow')}
+              />
+            </div>
+          )}
+        </CardContainer>
+      ) : (
+        <StudioTable
+          apps={apps as any}
+          loading={listLoading}
+          onOpen={(id) => navigate(`/agent/${id}`)}
+          onCreate={() => setCreateType('chatflow')}
+        />
+      )}
 
       {total > 0 && (
         <div className="mt-4 flex justify-end">
