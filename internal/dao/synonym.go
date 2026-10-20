@@ -137,73 +137,118 @@ func (dao *SynonymDAO) CreateWords(ctx context.Context, db *gorm.DB, words []*en
 	return db.WithContext(ctx).Create(&words).Error
 }
 
-// PromotePendingByChangeSet flips every pending group and word of a change set
-// to live, so they take effect at query time (the retrieval dictionary loads
-// only live rows). Pending copies that carry source_group_id first disable the
-// live group they replace, effecting an atomic swap.
-func (dao *SynonymDAO) PromotePendingByChangeSet(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID string) error {
-	// Disable the live groups that pending copies replace (swap-in). The
-	// subquery targets the same table it updates, so it MUST be wrapped in a
-	// derived table — MySQL rejects UPDATE/DELETE with a direct same-table
-	// subquery (Error 1093: You can't specify target table for update in FROM
-	// clause); materializing the inner select first is the standard fix.
-	if err := db.WithContext(ctx).Exec(`
-UPDATE synonym_group
-SET status = ?
-WHERE tenant_id = ? AND dataset_id = ? AND status = ?
-  AND id IN (
-    SELECT t.source_group_id FROM (
-      SELECT source_group_id FROM synonym_group
-      WHERE tenant_id = ? AND dataset_id = ? AND change_set_id = ?
-        AND status = ? AND source_group_id <> ''
-    ) t
-  )
-`, entity.SynonymStatusDisabled, tenantID, datasetID, entity.SynonymStatusLive,
-		tenantID, datasetID, changeSetID, entity.SynonymStatusPending,
-	).Error; err != nil {
-		return err
-	}
-
-	if err := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+// selectedPendingGroupIDs resolves the pending groups of a change set that a
+// scoped operation targets. groupIDs follows the change-set scope convention:
+// nil keeps every pending group, a non-nil slice (possibly empty) restricts
+// the operation to those groups. Ids are materialized as a Go slice so the
+// dynamic IN list never has to travel through raw SQL.
+func selectedPendingGroupIDs(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID string, groupIDs []string) ([]string, error) {
+	ids := make([]string, 0)
+	q := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
 		Where("tenant_id = ?", tenantID).
 		Where("dataset_id = ?", datasetID).
 		Where("change_set_id = ?", changeSetID).
-		Where("status = ?", entity.SynonymStatusPending).
+		Where("status = ?", entity.SynonymStatusPending)
+	if groupIDs != nil {
+		q = q.Where("id IN ?", groupIDs)
+	}
+	if err := q.Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// PromotePendingByGroupIDs flips the pending groups and words of a change set
+// to live, restricted to the selected group ids. The swap-in behaviour of the
+// whole-set path is preserved and narrowed with it: a selected pending copy
+// carrying source_group_id disables the live group it replaces.
+func (dao *SynonymDAO) PromotePendingByGroupIDs(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID string, groupIDs []string) error {
+	// Resolve the selected groups first: their ids drive the promote, and
+	// their source_group_id values drive the swap-in disable. Materializing
+	// both keeps every dynamic IN list out of raw SQL and sidesteps MySQL's
+	// "can't specify target table for update in FROM clause" restriction.
+	selected := make([]*entity.SynonymGroup, 0)
+	q := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+		Where("tenant_id = ?", tenantID).
+		Where("dataset_id = ?", datasetID).
+		Where("change_set_id = ?", changeSetID).
+		Where("status = ?", entity.SynonymStatusPending)
+	if groupIDs != nil {
+		q = q.Where("id IN ?", groupIDs)
+	}
+	if err := q.Find(&selected).Error; err != nil {
+		return err
+	}
+	if len(selected) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(selected))
+	sources := make([]string, 0, len(selected))
+	for _, g := range selected {
+		ids = append(ids, g.ID)
+		if g.SourceGroupID != "" {
+			sources = append(sources, g.SourceGroupID)
+		}
+	}
+	if len(sources) > 0 {
+		if err := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+			Where("tenant_id = ?", tenantID).
+			Where("dataset_id = ?", datasetID).
+			Where("status = ?", entity.SynonymStatusLive).
+			Where("id IN ?", sources).
+			Update("status", entity.SynonymStatusDisabled).Error; err != nil {
+			return err
+		}
+	}
+	if err := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+		Where("tenant_id = ?", tenantID).
+		Where("dataset_id = ?", datasetID).
+		Where("id IN ?", ids).
 		Update("status", entity.SynonymStatusLive).Error; err != nil {
 		return err
 	}
 	return db.WithContext(ctx).Model(&entity.SynonymWord{}).
 		Where("status = ?", entity.SynonymStatusPending).
-		Where("group_id IN (?)",
-			db.WithContext(ctx).Model(&entity.SynonymGroup{}).
-				Select("id").
-				Where("tenant_id = ?", tenantID).
-				Where("dataset_id = ?", datasetID).
-				Where("change_set_id = ?", changeSetID),
-		).
+		Where("group_id IN ?", ids).
 		Update("status", entity.SynonymStatusLive).Error
 }
 
-// DiscardPendingByChangeSet soft-deletes every pending group and word of a
-// change set, abandoning the staged vocabulary without touching live rows.
-func (dao *SynonymDAO) DiscardPendingByChangeSet(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID string) error {
-	groupIDs := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
-		Select("id").
-		Where("tenant_id = ?", tenantID).
-		Where("dataset_id = ?", datasetID).
-		Where("change_set_id = ?", changeSetID).
-		Where("status = ?", entity.SynonymStatusPending)
+// DiscardPendingByGroupIDs soft-deletes the pending groups and words of a
+// change set, restricted to the selected group ids. Live rows are untouched;
+// only the staged copies of the selected groups are abandoned.
+func (dao *SynonymDAO) DiscardPendingByGroupIDs(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID string, groupIDs []string) error {
+	ids, err := selectedPendingGroupIDs(ctx, db, tenantID, datasetID, changeSetID, groupIDs)
+	if err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
 	if err := db.WithContext(ctx).Model(&entity.SynonymWord{}).
-		Where("group_id IN (?)", groupIDs).
+		Where("status = ?", entity.SynonymStatusPending).
+		Where("group_id IN ?", ids).
 		Update("status", entity.SynonymStatusDisabled).Error; err != nil {
 		return err
 	}
 	return db.WithContext(ctx).Model(&entity.SynonymGroup{}).
 		Where("tenant_id = ?", tenantID).
 		Where("dataset_id = ?", datasetID).
+		Where("id IN ?", ids).
+		Update("status", entity.SynonymStatusDisabled).Error
+}
+
+// CountPendingGroupsByChangeSet counts the pending groups of a change set.
+// The change-set service uses it together with the question count to decide
+// whether the set still has staged items after a partial publish or discard.
+func (dao *SynonymDAO) CountPendingGroupsByChangeSet(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID string) (int64, error) {
+	var count int64
+	err := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+		Where("tenant_id = ?", tenantID).
+		Where("dataset_id = ?", datasetID).
 		Where("change_set_id = ?", changeSetID).
 		Where("status = ?", entity.SynonymStatusPending).
-		Update("status", entity.SynonymStatusDisabled).Error
+		Count(&count).Error
+	return count, err
 }
 
 // DeleteWordsByGroup clears the words of a group. It is used together with

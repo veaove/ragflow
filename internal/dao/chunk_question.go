@@ -112,11 +112,47 @@ func (dao *ChunkQuestionDAO) ListByChangeSet(ctx context.Context, db *gorm.DB, k
 	return questions, err
 }
 
-// DiscardByChangeSet soft-deletes every pending question of a change set.
-func (dao *ChunkQuestionDAO) DiscardByChangeSet(ctx context.Context, db *gorm.DB, kbID, changeSetID string) error {
-	return db.WithContext(ctx).Model(&entity.ChunkQuestion{}).
+// pendingQuestionsOfChangeSet scopes a statement to the pending questions of a
+// change set. chunkIDs follows the change-set scope convention: nil keeps
+// every pending question, a non-nil slice (possibly empty) restricts the
+// statement to those chunks — an empty slice matches no row, which is the
+// "nothing of this kind selected" case.
+func pendingQuestionsOfChangeSet(db *gorm.DB, kbID, changeSetID string, chunkIDs []string) *gorm.DB {
+	q := db.Model(&entity.ChunkQuestion{}).
+		Where("kb_id = ?", kbID).
+		Where("change_set_id = ?", changeSetID).
+		Where("status = ?", entity.ChunkQuestionStatusPending)
+	if chunkIDs != nil {
+		q = q.Where("chunk_id IN ?", chunkIDs)
+	}
+	return q
+}
+
+// PromoteQuestionsByChunkIDs flips the pending questions of the given chunks
+// under a change set to live. See pendingQuestionsOfChangeSet for the chunkIDs
+// convention.
+func (dao *ChunkQuestionDAO) PromoteQuestionsByChunkIDs(ctx context.Context, db *gorm.DB, kbID, changeSetID string, chunkIDs []string) error {
+	return pendingQuestionsOfChangeSet(db.WithContext(ctx), kbID, changeSetID, chunkIDs).
+		Update("status", entity.ChunkQuestionStatusLive).Error
+}
+
+// DiscardQuestionsByChunkIDs soft-deletes the pending questions of the given
+// chunks under a change set. See pendingQuestionsOfChangeSet for the chunkIDs
+// convention.
+func (dao *ChunkQuestionDAO) DiscardQuestionsByChunkIDs(ctx context.Context, db *gorm.DB, kbID, changeSetID string, chunkIDs []string) error {
+	return pendingQuestionsOfChangeSet(db.WithContext(ctx), kbID, changeSetID, chunkIDs).
+		Update("status", entity.ChunkQuestionStatusDisabled).Error
+}
+
+// CountPendingByChangeSet counts the pending questions of a change set. The
+// change-set service uses it to decide whether the set still has staged items
+// after a partial publish or discard.
+func (dao *ChunkQuestionDAO) CountPendingByChangeSet(ctx context.Context, db *gorm.DB, kbID, changeSetID string) (int64, error) {
+	var count int64
+	err := db.WithContext(ctx).Model(&entity.ChunkQuestion{}).
 		Where("kb_id = ?", kbID).
 		Where("change_set_id = ?", changeSetID).
 		Where("status = ?", entity.ChunkQuestionStatusPending).
-		Update("status", entity.ChunkQuestionStatusDisabled).Error
+		Count(&count).Error
+	return count, err
 }

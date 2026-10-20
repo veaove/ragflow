@@ -51,8 +51,8 @@ type ChangeSetServiceAPI interface {
 	GetOrCreateChangeSet(ctx context.Context, userID, datasetID string) (*entity.KbChangeSet, error)
 	StageSimilarQuestions(ctx context.Context, userID, datasetID, changeSetID, documentID, chunkID string, questions []string, origin string) error
 	GetChangeSetDiff(ctx context.Context, userID, datasetID, changeSetID string) (*service.ChangeSetDiff, error)
-	PublishChangeSet(ctx context.Context, userID, datasetID, changeSetID string) error
-	DiscardChangeSet(ctx context.Context, userID, datasetID, changeSetID string) error
+	PublishChangeSet(ctx context.Context, userID, datasetID, changeSetID string, scope *service.ChangeSetItemFilter) error
+	DiscardChangeSet(ctx context.Context, userID, datasetID, changeSetID string, scope *service.ChangeSetItemFilter) error
 }
 
 // ChangeSetHandler serves the staged-edit (change set) endpoints.
@@ -133,9 +133,12 @@ func (h *ChangeSetHandler) StageSimilarQuestions(c *gin.Context) {
 	common.SuccessWithData(c, gin.H{"change_set_id": req.ChangeSetID}, "success")
 }
 
-// PublishChangeSetRequest is the body for publishing a change set.
+// PublishChangeSetRequest is the body for publishing a change set. Scope is
+// optional: absent means every pending item (the whole-set publish), present
+// restricts the publish to the selected chunks / groups.
 type PublishChangeSetRequest struct {
-	ChangeSetID string `json:"change_set_id" binding:"required"`
+	ChangeSetID string                       `json:"change_set_id" binding:"required"`
+	Scope       *service.ChangeSetItemFilter `json:"scope"`
 }
 
 // GetChangeSetDiff handles GET /datasets/:dataset_id/change-sets/:change_set_id/diff.
@@ -217,16 +220,19 @@ func (h *ChangeSetHandler) PublishChangeSet(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, "Invalid request: "+err.Error())
 		return
 	}
-	if err := h.service.PublishChangeSet(c.Request.Context(), user.ID, c.Param("dataset_id"), req.ChangeSetID); err != nil {
+	if err := h.service.PublishChangeSet(c.Request.Context(), user.ID, c.Param("dataset_id"), req.ChangeSetID, req.Scope); err != nil {
 		respondChangeSetError(c, err)
 		return
 	}
 	common.SuccessWithData(c, nil, "success")
 }
 
-// DiscardChangeSetRequest is the body for discarding a change set.
+// DiscardChangeSetRequest is the body for discarding a change set. Scope is
+// optional: absent means every pending item (the whole-set discard), present
+// restricts the discard to the selected chunks / groups.
 type DiscardChangeSetRequest struct {
-	ChangeSetID string `json:"change_set_id" binding:"required"`
+	ChangeSetID string                       `json:"change_set_id" binding:"required"`
+	Scope       *service.ChangeSetItemFilter `json:"scope"`
 }
 
 // DiscardChangeSet handles POST /datasets/:dataset_id/change-sets/discard.
@@ -241,7 +247,7 @@ func (h *ChangeSetHandler) DiscardChangeSet(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, "Invalid request: "+err.Error())
 		return
 	}
-	if err := h.service.DiscardChangeSet(c.Request.Context(), user.ID, c.Param("dataset_id"), req.ChangeSetID); err != nil {
+	if err := h.service.DiscardChangeSet(c.Request.Context(), user.ID, c.Param("dataset_id"), req.ChangeSetID, req.Scope); err != nil {
 		respondChangeSetError(c, err)
 		return
 	}

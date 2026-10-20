@@ -33,14 +33,28 @@ import (
 // another tenant; the two cases are indistinguishable to callers.
 var ErrChangeSetNotFound = errors.New("change set not found")
 
+// ChangeSetItemFilter narrows a publish / discard / compare operation to the
+// items the user selected in the change center list.
+//
+// Convention: a nil filter means every pending item of the change set — the
+// original whole-set behaviour. A non-nil filter is an explicit selection
+// scope: only the listed ids take part, and an empty (but non-nil) list means
+// "no item of that kind is selected". JSON preserves the distinction
+// (absent/null → nil, [] → empty slice), so a request that selects only
+// similar questions can never accidentally publish the vocabulary groups.
+type ChangeSetItemFilter struct {
+	ChunkIDs []string `json:"chunk_ids"`
+	GroupIDs []string `json:"group_ids"`
+}
+
 // ChangeSetService coordinates the staged-edit workflow: it owns change set
 // lifecycle (open → tested → published / discarded), stages pending synonym and
 // similar-question changes, and publishes them atomically.
 type ChangeSetService struct {
-	changeSetDAO  *dao.KbChangeSetDAO
-	questionDAO   *dao.ChunkQuestionDAO
-	synonymDAO    *dao.SynonymDAO
-	chunkUpdater  ChunkQuestionSyncUpdater
+	changeSetDAO *dao.KbChangeSetDAO
+	questionDAO  *dao.ChunkQuestionDAO
+	synonymDAO   *dao.SynonymDAO
+	chunkUpdater ChunkQuestionSyncUpdater
 }
 
 // ChunkQuestionSyncUpdater writes a chunk's merged similar-question list back to
@@ -158,15 +172,21 @@ func (s *ChangeSetService) StageSimilarQuestions(ctx context.Context, userID, da
 	return s.questionDAO.CreateQuestions(ctx, dao.DB, rows)
 }
 
-// PublishChangeSet flips every pending item of a change set to live and syncs
+// PublishChangeSet flips the pending items of a change set to live and syncs
 // similar questions back to the chunk index, atomically.
+//
+// The scope narrows the publish to the selected items: a nil scope publishes
+// everything pending (the original behaviour), a non-nil scope publishes only
+// the listed chunks / groups and leaves the rest staged. The change set only
+// leaves the active list once nothing is pending, so a partial publish keeps
+// it open and its remaining items visible in the change center.
 //
 // Conflict handling: the caller should pass the staged change set; this method
 // validates ownership and performs the publish in one transaction where
 // possible. Similar-question index sync runs after the DB commit; if any chunk
 // sync fails, the DB rows are already live (they match the index's source of
 // truth via question_kwd), and the error is reported for retry.
-func (s *ChangeSetService) PublishChangeSet(ctx context.Context, userID, datasetID, changeSetID string) error {
+func (s *ChangeSetService) PublishChangeSet(ctx context.Context, userID, datasetID, changeSetID string, scope *ChangeSetItemFilter) error {
 	tenantID, err := resolveTenantID(ctx, userID, datasetID)
 	if err != nil {
 		return err
@@ -182,6 +202,15 @@ func (s *ChangeSetService) PublishChangeSet(ctx context.Context, userID, dataset
 		return errors.New("change set already published")
 	}
 
+	// nil scope → both nil → the DAO paths promote every pending item, exactly
+	// the pre-scope behaviour. A non-nil scope is passed through as-is so an
+	// empty list inside it means "none selected" rather than "everything".
+	var chunkIDs, groupIDs []string
+	if scope != nil {
+		chunkIDs, groupIDs = scope.ChunkIDs, scope.GroupIDs
+	}
+	selectedChunks := toIDSet(chunkIDs)
+
 	// 1. Promote pending chunk questions to live, grouped by chunk for index sync.
 	pendingQuestions, err := s.questionDAO.ListByChangeSet(ctx, dao.DB, datasetID, changeSetID, entity.ChunkQuestionStatusPending)
 	if err != nil {
@@ -195,6 +224,13 @@ func (s *ChangeSetService) PublishChangeSet(ctx context.Context, userID, dataset
 
 	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, q := range pendingQuestions {
+			// A scoped publish only promotes the selected chunks; the rest
+			// stay pending under the same change set.
+			if scope != nil {
+				if _, ok := selectedChunks[q.ChunkID]; !ok {
+					continue
+				}
+			}
 			if err := s.questionDAO.UpdateQuestionStatus(ctx, tx, datasetID, q.ID, entity.ChunkQuestionStatusLive); err != nil {
 				return err
 			}
@@ -206,11 +242,12 @@ func (s *ChangeSetService) PublishChangeSet(ctx context.Context, userID, dataset
 			g.questions = append(g.questions, q.Content)
 		}
 		// 2. Promote pending synonym groups/words to live.
-		if err := s.synonymDAO.PromotePendingByChangeSet(ctx, tx, tenantID, datasetID, changeSetID); err != nil {
+		if err := s.synonymDAO.PromotePendingByGroupIDs(ctx, tx, tenantID, datasetID, changeSetID, groupIDs); err != nil {
 			return err
 		}
-		// 3. Mark the change set published.
-		return s.changeSetDAO.UpdateChangeSetStatus(ctx, tx, tenantID, datasetID, changeSetID, entity.ChangeSetStatusPublished)
+		// 3. Mark the change set published only once nothing is pending: a
+		// partial publish keeps the set open with the remaining items staged.
+		return s.finalizeChangeSetStatus(ctx, tx, tenantID, datasetID, changeSetID, entity.ChangeSetStatusPublished)
 	})
 	if err != nil {
 		return err
@@ -233,9 +270,13 @@ func (s *ChangeSetService) PublishChangeSet(ctx context.Context, userID, dataset
 	return nil
 }
 
-// DiscardChangeSet abandons all pending items of a change set. Live data is
-// untouched; only pending rows are soft-deleted.
-func (s *ChangeSetService) DiscardChangeSet(ctx context.Context, userID, datasetID, changeSetID string) error {
+// DiscardChangeSet abandons pending items of a change set. Live data is
+// untouched; only pending rows are soft-deleted. The scope narrows the discard
+// to the selected items: a nil scope discards everything pending, a non-nil
+// scope discards only the listed chunks / groups and leaves the rest staged.
+// The set is only marked discarded once nothing is pending, so a partial
+// discard keeps it open with the remaining items visible.
+func (s *ChangeSetService) DiscardChangeSet(ctx context.Context, userID, datasetID, changeSetID string, scope *ChangeSetItemFilter) error {
 	tenantID, err := resolveTenantID(ctx, userID, datasetID)
 	if err != nil {
 		return err
@@ -246,21 +287,55 @@ func (s *ChangeSetService) DiscardChangeSet(ctx context.Context, userID, dataset
 		}
 		return err
 	}
+	var chunkIDs, groupIDs []string
+	if scope != nil {
+		chunkIDs, groupIDs = scope.ChunkIDs, scope.GroupIDs
+	}
 	return dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := s.questionDAO.DiscardByChangeSet(ctx, tx, datasetID, changeSetID); err != nil {
+		if err := s.questionDAO.DiscardQuestionsByChunkIDs(ctx, tx, datasetID, changeSetID, chunkIDs); err != nil {
 			return err
 		}
-		if err := s.synonymDAO.DiscardPendingByChangeSet(ctx, tx, tenantID, datasetID, changeSetID); err != nil {
+		if err := s.synonymDAO.DiscardPendingByGroupIDs(ctx, tx, tenantID, datasetID, changeSetID, groupIDs); err != nil {
 			return err
 		}
-		return s.changeSetDAO.UpdateChangeSetStatus(ctx, tx, tenantID, datasetID, changeSetID, entity.ChangeSetStatusDiscarded)
+		return s.finalizeChangeSetStatus(ctx, tx, tenantID, datasetID, changeSetID, entity.ChangeSetStatusDiscarded)
 	})
+}
+
+// finalizeChangeSetStatus flips a change set to the terminal status only when
+// nothing is pending any more. A partial publish or discard leaves staged
+// items behind, and the set must stay in the active list (ListChangeSets
+// returns open/tested sets) so the remaining items keep showing in the change
+// center.
+func (s *ChangeSetService) finalizeChangeSetStatus(ctx context.Context, tx *gorm.DB, tenantID, datasetID, changeSetID, terminalStatus string) error {
+	remainingQuestions, err := s.questionDAO.CountPendingByChangeSet(ctx, tx, datasetID, changeSetID)
+	if err != nil {
+		return err
+	}
+	remainingGroups, err := s.synonymDAO.CountPendingGroupsByChangeSet(ctx, tx, tenantID, datasetID, changeSetID)
+	if err != nil {
+		return err
+	}
+	if remainingQuestions+remainingGroups > 0 {
+		return nil
+	}
+	return s.changeSetDAO.UpdateChangeSetStatus(ctx, tx, tenantID, datasetID, changeSetID, terminalStatus)
+}
+
+// toIDSet builds a lookup set from an id list. A nil list yields an empty set,
+// which the caller only consults for scoped (non-nil) operations.
+func toIDSet(ids []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set
 }
 
 // ChangeSetDiff is the structured "before vs after" view of a change set,
 // consumed by both the change center and the test-comparison dialog.
 type ChangeSetDiff struct {
-	ChangeSetID     string               `json:"change_set_id"`
+	ChangeSetID      string                `json:"change_set_id"`
 	SimilarQuestions []SimilarQuestionDiff `json:"similar_questions"`
 	Synonyms         []SynonymGroupDiff    `json:"synonyms"`
 }
@@ -277,13 +352,13 @@ type SimilarQuestionDiff struct {
 
 // SynonymGroupDiff shows one synonym/proper group's words before and after.
 type SynonymGroupDiff struct {
-	GroupID      string   `json:"group_id"`
-	Name         string   `json:"name"`
-	GroupType    string   `json:"group_type"`
-	Scope        string   `json:"scope"`
-	SourceGroupID string  `json:"source_group_id,omitempty"`
-	Before       []string `json:"before"`
-	After        []string `json:"after"`
+	GroupID       string   `json:"group_id"`
+	Name          string   `json:"name"`
+	GroupType     string   `json:"group_type"`
+	Scope         string   `json:"scope"`
+	SourceGroupID string   `json:"source_group_id,omitempty"`
+	Before        []string `json:"before"`
+	After         []string `json:"after"`
 }
 
 // GetChangeSetDiff assembles the before/after diff of a change set's pending
