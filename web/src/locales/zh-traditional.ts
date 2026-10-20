@@ -99,7 +99,7 @@ export default {
     header: {
       overview: '總覽',
       knowledgeBase: '知識庫',
-      chat: '聊天',
+      chat: '知識問答',
       register: '註冊',
       signin: '登入',
       home: '首頁',
@@ -107,7 +107,7 @@ export default {
       logout: '登出',
       fileManager: '文件管理',
       flow: '智能體',
-      qc: '質檢',
+      qc: '會話質檢',
       search: '搜尋',
       welcome: '歡迎來到',
     },

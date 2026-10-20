@@ -159,7 +159,7 @@ export default {
     header: {
       overview: '总览',
       knowledgeBase: '知识库',
-      chat: '聊天',
+      chat: '知识问答',
       register: '注册',
       signin: '登录',
       home: '首页',
@@ -173,7 +173,7 @@ export default {
       welcome: '欢迎来到',
       dataset: '知识库',
       memories: '记忆',
-      qc: '质检',
+      qc: '会话质检',
       discord: 'Discord',
       github: 'GitHub',
       help: '帮助',
