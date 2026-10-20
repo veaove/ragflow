@@ -290,3 +290,7 @@ ragflow_deps/*.zip
 # external DeepDoc testdata, fetched on demand via scripts/fetch_deepdoc_testdata.sh
 # (symlinked into place from ~/.cache/ragflow-testdata; never committed)
 internal/deepdoc/native/testdata
+
+# scratch directory for local e2e debugging; holds throwaway scripts and
+# short-lived credentials/tokens, never committed
+.tmp_qa/
