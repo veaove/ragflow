@@ -1,6 +1,7 @@
 export default {
   translation: {
     common: {
+      new: '新增',
       confirm: '确定',
       back: '返回',
       noResults: '未查到结果',
@@ -165,6 +166,7 @@ export default {
       fileManager: '文件管理',
       skills: 'Skills',
       flow: '智能体',
+      studio: '工作室',
       search: '搜索',
       welcome: '欢迎来到',
       dataset: '知识库',
@@ -2323,6 +2325,26 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       uploadLimit: '文件大小不能超过 10M，文件总数不超过 128 个',
       destinationFolder: '目标文件夹',
       pleaseUploadAtLeastOneFile: '请上传至少一个文件',
+    },
+    studio: {
+      subtitle: '对话流与任务流：面向用户的对话式应用，以及面向系统的数据加工与集成',
+      createApp: '创建应用',
+      createAppTitle: '创建应用',
+      createChatflow: '创建对话流',
+      createWorkflow: '创建任务流',
+      chatflowDesc: '对话式工作流：带会话与记忆，输出流式消息',
+      workflowDesc: '无对话工作流：单次执行，输出结构化结果',
+      chatflowShape: '图：开始 → 检索/工具 → 回答',
+      workflowShape: '图：开始 → 处理 → 结束',
+      chatflowWhat: '对话式工作流（Chatflow）',
+      workflowWhat: '无对话工作流（Workflow）',
+      chatflowOutput: '输出：流式消息 + 引用 + 会话变量',
+      workflowOutput: '输出：结构化 JSON（由结束节点定义）',
+      chatflowFit: '适合：智能客服、知识问答、多轮引导',
+      workflowFit: '适合：定时批处理、数据加工、系统集成',
+      typeImmutable:
+        '类型决定可用节点、是否有会话、以及发布契约，创建后不可更改。',
+      belongHint: '需要多轮对话或子智能体请到「智能体」；文档解析入库请到「智能体 → 数据管道」。',
     },
     flow: {
       exportCurrentPage: '导出当页',

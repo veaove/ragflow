@@ -1,6 +1,7 @@
 export default {
   translation: {
     common: {
+      new: 'New',
       confirm: 'Confirm',
       back: 'Back',
       noResults: 'No results found',
@@ -186,6 +187,7 @@ export default {
       fileManager: 'File',
       skills: 'Skills',
       flow: 'Agent',
+      studio: 'Studio',
       search: 'Search',
       welcome: 'Welcome to',
       dataset: 'Dataset',
@@ -2732,6 +2734,29 @@ Example: Virtual Hosted Style`,
         'Each file must not exceed 10MB, and the total number of files must not exceed 128.',
       destinationFolder: 'Destination folder',
       pleaseUploadAtLeastOneFile: 'Please upload at least one file',
+    },
+    studio: {
+      subtitle:
+        'Chatflow & Workflow: user-facing conversational apps, plus system-facing data processing and integrations',
+      createApp: 'Create app',
+      createAppTitle: 'Create app',
+      createChatflow: 'Create chatflow',
+      createWorkflow: 'Create workflow',
+      chatflowDesc:
+        'Conversational workflow: carries session and memory, streams messages',
+      workflowDesc: 'Non-conversational workflow: single run, structured output',
+      chatflowShape: 'Graph: Start → Retrieval/Tools → Answer',
+      workflowShape: 'Graph: Start → Process → End',
+      chatflowWhat: 'Conversational workflow (Chatflow)',
+      workflowWhat: 'Non-conversational workflow (Workflow)',
+      chatflowOutput: 'Output: streamed message + references + conversation variables',
+      workflowOutput: 'Output: structured JSON (defined by the End node)',
+      chatflowFit: 'Good for: customer support, knowledge Q&A, guided flows',
+      workflowFit: 'Good for: batch jobs, data processing, system integration',
+      typeImmutable:
+        'The type decides which nodes are available, whether there is a session, and the publish contract. It cannot be changed after creation.',
+      belongHint:
+        'For multi-turn conversations or sub-agents go to "Agent"; for document ingestion go to "Agent → Ingestion pipeline".',
     },
     flow: {
       exportCurrentPage: 'Export current page',

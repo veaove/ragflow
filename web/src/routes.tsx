@@ -38,6 +38,8 @@ export enum Routes {
   Agent = '/agent',
   AgentTemplates = '/agent-templates',
   Agents = '/agents',
+  Studio = '/studio',
+  StudioWorkflow = `${Routes.Studio}/:id`,
   Pipeline = '/pipeline',
   Explore = '/explore',
   AgentExplore = `${Routes.Agent}/:id/explore`,
@@ -264,6 +266,10 @@ const routeConfigOptions = [
       {
         path: Routes.Agents,
         Component: () => import('@/pages/agents'),
+      },
+      {
+        path: Routes.Studio,
+        Component: () => import('@/pages/studio'),
       },
       {
         path: Routes.AgentTemplates,
