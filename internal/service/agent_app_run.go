@@ -111,10 +111,12 @@ func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey str
 	// 5. Run with the canvas owner's identity (canvasRow.UserID) as the runtime
 	// tenant; RunAgent's loadCanvasForUser then passes for the owner.
 	ownerUserID := canvasRow.UserID
+	// The session id is passed through untouched: an empty value lets RunAgent
+	// mint a fresh session (the new-session path), while a client-supplied
+	// conversation_id continues an existing Chatflow conversation. Generating
+	// one here would make RunAgent treat it as a resume of a session that does
+	// not exist yet ("session not found").
 	sessionID := req.ConversationID
-	if sessionID == "" {
-		sessionID = common.GenerateToken()
-	}
 	var userInput any = req.Query
 	files := []map[string]interface{}{}
 
