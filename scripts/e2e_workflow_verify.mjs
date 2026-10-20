@@ -6,8 +6,14 @@
 import crypto from 'node:crypto';
 
 const BASE = 'http://47.99.241.190:9380';
-const EMAIL = '123456789@qq.com';
-const PASSWORD = 'QweAsd@123';
+// 凭证一律走环境变量，不要硬编码到仓库里：
+//   RF_EMAIL=... RF_PASSWORD=... node scripts/<this-file>
+const EMAIL = process.env.RF_EMAIL || '';
+const PASSWORD = process.env.RF_PASSWORD || '';
+if (!EMAIL || !PASSWORD) {
+  console.error('缺少 RF_EMAIL / RF_PASSWORD 环境变量');
+  process.exit(1);
+}
 
 // 与 web/src/utils/index.ts 一致的 RSA 公钥
 const PUB_KEY = `-----BEGIN PUBLIC KEY-----
