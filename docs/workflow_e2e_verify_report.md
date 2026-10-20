@@ -7,7 +7,7 @@
 | 验证账号 | `123456789@qq.com`（nickname=nick，非超管） |
 | 验证脚本 | `scripts/e2e_workflow_verify.mjs`（13 项断言，可重复执行） |
 | 依据文档 | 功能清单 / PRD / 技术详设 / 四件套评审报告 |
-| 结论 | **通过**。首轮实测抓出 6 个缺陷（含 3 个 P0），全部已修复并回归验证 |
+| 结论 | **通过**。端到端首轮抓出 6 个缺陷、服务器全量单测追加 6 个，共 12 个，全部已修并回归通过 |
 
 ---
 
@@ -80,6 +80,47 @@ PUB-14（幂等）、D8（幂等唯一索引）、11.8（错误码表）。
 | 根因 | `RunAgentAsApp` 预先生成 sessionID 并传入，`RunAgent` 据此判定为「续聊已有会话」并去查会话记录——而该会话尚未创建 |
 | 修复 | sessionID 原样透传：空值让 `RunAgent` 走 new-session 分支（自行分配并创建），客户端传的 `conversation_id` 才是续聊语义 |
 | 提交 | `89833a8bd` |
+
+---
+
+## 二之二、服务器全量单测追加发现（6 个，均已修）
+
+端到端验证通过后，又在服务器跑了 `build.sh --test ./internal/...`（QA 报告强调的正确入口），
+抓出 6 个问题——**全部是我引入的**，说明单测覆盖到了 e2e 覆盖不到的路径。
+
+### 回归 4：env 只读破坏存量画布（2 个 FAIL）
+
+| | |
+|---|---|
+| 现象 | `TestParallelResumePreservesProducerState` / `TestParallelResumePreservesStateAcrossTwoInterrupts` 报 `variables[0] write "env.saved": environment variables are read-only` |
+| 根因 | 我把 `env.*` 做成运行时只读，破坏了存量画布——既有 parallel-subgraph resume 流程用 VariableAssigner 写 `env.before`/`env.saved` 并在下游读回，这是 RAGFlow 一直合法的用法。违背详设 §1.2「存量零回归」硬约束 |
+| 修复 | 运行时恢复可写（打 Warn 日志提示已废弃）；按详设 FR-04-02「保存时拒绝」的原意，把约束移到**发布校验**——`validatePublish` 检测 VariableAssigner 是否写 `env.*`，命中则拒绝发布并指引改用 `conversation.*`。存量画布照常跑，新画布在发布时即被拦下，拿到明确提示而不是运行期炸掉 |
+
+### 回归 5：过时的组件测试（1 个 FAIL）
+
+| | |
+|---|---|
+| 现象 | `TestCompileRejectsAnswerComponent` 报「Compile accepted unsupported Answer component」 |
+| 根因 | 该测试写于 Answer 组件不存在之时，断言 Compile 报 `unknown component "Answer"`。而 Answer 正是 Dify 移植的 P0 需求（FR-03-02），现已注册——测试前提已失效 |
+| 修复 | 改为 `TestCompileAcceptsAnswerComponent`（现在必须编译通过），并新增 `TestCompileRejectsUnknownComponent` 保留「未知组件必须被拒」的原始护栏 |
+
+### 回归 6：SQLite 多连接导致单测连锁失败（9 个 FAIL）
+
+| | |
+|---|---|
+| 现象 | 补建表后反而更多 FAIL，日志 `no such table` 涉及 `agent_run` / `api4_conversation` / `user_canvas` / `tenant_model` 等**测试本来就要用**的表 |
+| 根因 | `setupServiceTestDB` 用 SQLite 内存库，而**每个池化连接都是独立的空库**。AutoMigrate 在连接 A 建表、运行时的查询落在连接 B → 表不存在。这是测试基础设施的固有脆弱性，之前运行期不写新表所以没暴露 |
+| 修复 | ① 测试 DB 连接池钉成单连接（`SetMaxOpenConns(1)`，service 测试不并行，安全且 schema 确定）；② `RunRecorder` 增加表存在性探测——表缺失时自我禁用（未迁移的部署 / 只迁移部分 schema 的测试），不再对每个事件发注定失败的 INSERT |
+
+### 生产级问题 7：幂等键没落库 → 幂等实际失效
+
+幂等键原本只存在于请求里，写入 `agent_run` 时是 NULL → 重试查不到已有 run → **重复执行**，
+PUB-14/D8 的意图落空。修复：经 context 传递幂等键并落到 run 记录上。
+
+### 生产级问题 8：空幂等键触发唯一索引冲突
+
+唯一键 `(canvas_id, idempotency_key)` 下，普通 run 的空串 `''` 会让**同一 canvas 的第二个 run**
+违反约束 → 丢掉运行记录。改为 NULL 语义（MySQL/SQLite 的 NULL 互不相等）。
 
 ---
 
