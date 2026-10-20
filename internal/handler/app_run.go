@@ -17,6 +17,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -66,7 +67,7 @@ func (h *AppRunHandler) RunWorkflow(c *gin.Context) {
 		body.ResponseMode = "blocking"
 	}
 
-	events, err := h.agentService.RunAgentAsApp(c.Request.Context(), canvasID, key, body)
+	events, runID, err := h.agentService.RunAgentAsApp(c.Request.Context(), canvasID, key, body)
 	if err != nil {
 		respondAppRunError(c, err)
 		return
@@ -77,7 +78,7 @@ func (h *AppRunHandler) RunWorkflow(c *gin.Context) {
 		return
 	}
 	// blocking: collect events and return the final payload.
-	collectBlocking(c, events)
+	collectBlocking(c, events, runID)
 }
 
 // ChatFlow handles POST /chatflows/:canvas_id/chat (SSE).
@@ -93,7 +94,7 @@ func (h *AppRunHandler) ChatFlow(c *gin.Context) {
 	body.IdempotencyKey = c.GetHeader("Idempotency-Key")
 	body.ResponseMode = "streaming"
 
-	events, err := h.agentService.RunAgentAsApp(c.Request.Context(), canvasID, key, body)
+	events, _, err := h.agentService.RunAgentAsApp(c.Request.Context(), canvasID, key, body)
 	if err != nil {
 		respondAppRunError(c, err)
 		return
@@ -174,32 +175,66 @@ func streamAppEvents(c *gin.Context, events <-chan canvas.RunEvent) {
 	}
 }
 
-// collectBlocking drains events and returns a single JSON payload with the
-// final workflow outputs.
-func collectBlocking(c *gin.Context, events <-chan canvas.RunEvent) {
-	var runID, status string
+// collectBlocking drains events and returns a single JSON payload.
+//
+// The Workflow response body is the End node's declared output map, not the
+// Agent-style assistant text: a workflow ends in an explicit `End` node whose
+// `outputs` define the API contract (FR-03-01). The End node's outputs are
+// carried by its `node_finished` event, so they are collected from there.
+func collectBlocking(c *gin.Context, events <-chan canvas.RunEvent, runID string) {
+	status := "succeeded"
 	var outputs any
+	var usage any
+	var errMessage string
+
 	for ev := range events {
 		switch ev.Type {
-		case "workflow_started":
-			// run_id is inside data JSON; best-effort parse skipped for MVP —
-			// the client can still correlate via the streaming path.
-			_ = ev
+		case "node_finished":
+			var data canvas.NodeFinishedData
+			if err := json.Unmarshal([]byte(ev.Data), &data); err == nil {
+				if data.ComponentName == "End" && data.Outputs != nil {
+					outputs = data.Outputs
+				}
+			}
 		case "workflow_finished":
-			status = "succeeded"
-			outputs = ev.Data
+			var data map[string]any
+			if err := json.Unmarshal([]byte(ev.Data), &data); err == nil {
+				if u, ok := data["usage"]; ok {
+					usage = u
+				}
+				// Fall back to the runner's outputs when no End node reported
+				// (agent-style canvases driven through the same endpoint).
+				if outputs == nil {
+					if o, ok := data["outputs"]; ok {
+						outputs = o
+					}
+				}
+			}
 		case "error":
 			status = "failed"
+			var data map[string]any
+			if err := json.Unmarshal([]byte(ev.Data), &data); err == nil {
+				if m, ok := data["message"].(string); ok {
+					errMessage = m
+				}
+			}
 		}
 	}
-	if status == "" {
-		status = "succeeded"
+
+	payload := gin.H{
+		"run_id": runID,
+		"status": status,
 	}
-	common.SuccessWithData(c, gin.H{
-		"run_id":  runID,
-		"status":  status,
-		"outputs": outputs,
-	}, "success")
+	if outputs != nil {
+		payload["outputs"] = outputs
+	}
+	if usage != nil {
+		payload["usage"] = usage
+	}
+	if errMessage != "" {
+		payload["error"] = errMessage
+	}
+	common.SuccessWithData(c, payload, "success")
 }
 
 // respondAppRunError maps public-API service errors to the HTTP status codes

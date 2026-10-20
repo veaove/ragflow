@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	"ragflow/internal/agent/canvas"
+	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 )
@@ -43,6 +44,31 @@ type AppRunRequest struct {
 	MaxDurationMS  int            `json:"max_duration_ms"`
 	IdempotencyKey string         `json:"-"`
 	APIKeyID       string         `json:"-"`
+	// RunID is allocated by the public entry point and handed to RunAgent
+	// through the context, so the HTTP layer can report the same id the run
+	// record was written under.
+	RunID string `json:"-"`
+}
+
+// runIDContextKey carries the run id allocated by the public API entry point
+// down into RunAgent, so the HTTP layer can report the same run_id the run
+// record was written under.
+type runIDContextKey struct{}
+
+// WithRunID attaches an externally allocated run id to ctx.
+func WithRunID(ctx context.Context, runID string) context.Context {
+	return context.WithValue(ctx, runIDContextKey{}, runID)
+}
+
+// runIDFromContext returns the externally allocated run id, if any.
+func runIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(runIDContextKey{}).(string); ok {
+		return v
+	}
+	return ""
 }
 
 // RunAgentAsApp runs a published canvas through the public API, bypassing the
@@ -51,11 +77,11 @@ type AppRunRequest struct {
 // with the canvas owner's identity as the runtime tenant.
 //
 // V1.0 supports blocking + streaming only; async returns ErrResponseModeNotSupported.
-func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey string, req AppRunRequest) (<-chan canvas.RunEvent, error) {
+func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey string, req AppRunRequest) (<-chan canvas.RunEvent, string, error) {
 	// 1. Validate the key → canvas binding (active + ownership).
 	key, err := NewAppKeyService().ResolveKey(ctx, plainKey, canvasID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	req.APIKeyID = key.ID
 
@@ -64,20 +90,21 @@ func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey str
 	canvasRow, err := s.canvasDAO.GetByID(ctx, dao.DB, canvasID)
 	if err != nil {
 		if errors.Is(err, dao.ErrUserCanvasNotFound) {
-			return nil, dao.ErrUserCanvasNotFound
+			return nil, "", dao.ErrUserCanvasNotFound
 		}
-		return nil, err
+		return nil, "", err
 	}
 
 	// 3. Async is V1.1 — reject it loudly rather than faking it.
 	if req.ResponseMode == "async" {
-		return nil, ErrResponseModeNotSupported
+		return nil, "", ErrResponseModeNotSupported
 	}
 
 	// 4. Idempotency: same key + same canvas returns the first run (D8).
 	if req.IdempotencyKey != "" && s.agentRunDAO != nil && dao.DB != nil {
 		if existing, err := s.agentRunDAO.GetByIdempotencyKey(ctx, dao.DB, canvasID, req.IdempotencyKey); err == nil && existing != nil {
-			return s.replayRun(ctx, existing)
+			ch, rerr := s.replayRun(ctx, existing)
+			return ch, existing.ID, rerr
 		}
 	}
 
@@ -85,6 +112,9 @@ func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey str
 	// tenant; RunAgent's loadCanvasForUser then passes for the owner.
 	ownerUserID := canvasRow.UserID
 	sessionID := req.ConversationID
+	if sessionID == "" {
+		sessionID = common.GenerateToken()
+	}
 	var userInput any = req.Query
 	files := []map[string]interface{}{}
 
@@ -94,7 +124,17 @@ func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey str
 		userInput = req.Inputs
 	}
 
-	return s.RunAgent(ctx, ownerUserID, canvasID, sessionID, "", userInput, files)
+	// Allocate the run id here so the HTTP layer can report it, and hand it to
+	// RunAgent through the context (RunAgent would otherwise derive its own).
+	runID := common.GenerateUUID()
+	ctx = WithRunID(ctx, runID)
+	req.RunID = runID
+
+	events, err := s.RunAgent(ctx, ownerUserID, canvasID, sessionID, "", userInput, files)
+	if err != nil {
+		return nil, "", err
+	}
+	return events, runID, nil
 }
 
 // replayRun synthesizes a terminal event stream for an already-completed run

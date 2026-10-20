@@ -150,9 +150,14 @@ async function main() {
     headers: { Authorization: `Bearer ${apiKey}` },
     body: { inputs: {}, query: '我要赎回基金', response_mode: 'blocking' },
   });
+  const runData = run.json?.data || {};
   console.log(`   run 响应: ${JSON.stringify(run.json).slice(0, 300)}`);
   ok('7. Workflow API blocking 调用', run.status === 200 && run.json?.code === 0,
       `http=${run.status} code=${run.json?.code}`);
+  ok('7b. 返回 run_id', !!runData.run_id, `run_id=${runData.run_id || '(空)'}`);
+  ok('7c. 返回 End 节点输出', runData.outputs && Object.keys(runData.outputs).length > 0,
+      `outputs=${JSON.stringify(runData.outputs)}`);
+  ok('7d. 运行状态为 succeeded', runData.status === 'succeeded', `status=${runData.status}`);
 
   // ── 8. async 应被拒绝（V1.0 不支持）──
   const asyncResp = await call('POST', `/api/v1/workflows/${canvasId}/run`, {

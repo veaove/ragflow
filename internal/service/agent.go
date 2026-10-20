@@ -1511,6 +1511,13 @@ func (s *AgentService) RunAgent(ctx context.Context, userID, canvasID, sessionID
 	// Persist the run record (best-effort): node traces and the terminal state
 	// are written from the event-forwarding goroutine via the recorder.
 	recorder := NewRunRecorder()
+	// The public API entry point allocates the run id itself (so it can report
+	// it to the caller) and passes it down through the context. Reuse it here
+	// instead of deriving a second, different id.
+	externalRunID := runIDFromContext(ctx)
+	if externalRunID != "" {
+		runID = externalRunID
+	}
 	if dao.DB != nil {
 		inputs := entity.JSONMap{}
 		if b, err := json.Marshal(map[string]any{"user_input": userInput, "files": files}); err == nil {
