@@ -84,13 +84,15 @@ export const useChangeLanguage = () => {
   return changeLanguage;
 };
 
-export const useGetPaginationWithRouter = () => {
+export const useGetPaginationWithRouter = (options?: {
+  defaultPageSize?: number;
+}) => {
   const { t } = useTranslate('common');
   const {
     setPaginationParams,
     page,
     size: pageSize,
-  } = useSetPaginationParams();
+  } = useSetPaginationParams(options);
 
   const onPageChange: Pagination['onChange'] = useCallback(
     (pageNumber: number, size?: number) => {

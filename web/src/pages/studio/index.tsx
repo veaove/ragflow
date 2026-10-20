@@ -1,5 +1,9 @@
 import { CardContainer } from '@/components/card-container';
 import { AgentCategory } from '@/constants/agent';
+import {
+  LIST_MAX_DISPLAYED_PAGES,
+  LIST_PAGE_SIZE_OPTIONS,
+} from '@/constants/list-pagination';
 import ListFilterBar from '@/components/list-filter-bar';
 import { EmptyAppCard } from '@/components/empty/empty';
 import { EmptyCardType } from '@/components/empty/constant';
@@ -52,6 +56,7 @@ export default function Studio() {
     debouncedSearchString,
   } = useFetchAgentListByPage({
     canvasCategoryIds,
+    defaultPageSize: 12,
   });
 
   const apps = data ?? [];
@@ -194,6 +199,8 @@ export default function Studio() {
           <RAGFlowPagination
             {...pagination}
             total={total}
+            pageSizeOptions={LIST_PAGE_SIZE_OPTIONS}
+            maxDisplayedPages={LIST_MAX_DISPLAYED_PAGES}
             onChange={(page: number, pageSize?: number) =>
               setPagination({ page, pageSize })
             }

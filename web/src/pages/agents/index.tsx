@@ -14,6 +14,10 @@ import {
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { ListDeletionKey } from '@/constants/list-deletion';
 import { AgentCategory } from '@/constants/agent';
+import {
+  LIST_MAX_DISPLAYED_PAGES,
+  LIST_PAGE_SIZE_OPTIONS,
+} from '@/constants/list-pagination';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchAgentListByPage } from '@/hooks/use-agent-request';
@@ -71,6 +75,7 @@ export default function Agents() {
       AgentCategory.AgentCanvas,
       AgentCategory.DataflowCanvas,
     ],
+    defaultPageSize: 12,
   });
 
   // Built-in pipelines surface only in the "All" and "Pipeline" views. Compute
@@ -288,6 +293,8 @@ export default function Agents() {
                 <RAGFlowPagination
                   {...pick(pagination, 'current', 'pageSize')}
                   total={pagination.total}
+                  pageSizeOptions={LIST_PAGE_SIZE_OPTIONS}
+                  maxDisplayedPages={LIST_MAX_DISPLAYED_PAGES}
                   onChange={handlePageChange}
                 />
               </footer>

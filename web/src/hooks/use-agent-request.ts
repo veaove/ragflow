@@ -195,10 +195,17 @@ export const useFetchAgentListByPage = (options?: {
    * (agent / dataflow / compilation group) is inside this set anyway.
    */
   defaultCanvasCategoryIds?: string[];
+  /**
+   * Page size used when neither the URL nor localStorage carries one.
+   * The Agent / Studio lists pass 12 (product doc 3.3).
+   */
+  defaultPageSize?: number;
 }) => {
   const { searchString, setSearchString, handleInputChange } =
     useHandleSearchChange();
-  const { pagination, setPagination } = useGetPaginationWithRouter();
+  const { pagination, setPagination } = useGetPaginationWithRouter({
+    defaultPageSize: options?.defaultPageSize,
+  });
   const debouncedSearchString = useDebounce(searchString, { wait: 500 });
   const { filterValue, setFilterValue, handleFilterSubmit, checkValue } =
     useHandleFilterSubmit();

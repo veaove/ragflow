@@ -22,6 +22,18 @@ export type RAGFlowPaginationType = {
   current?: number;
   pageSize?: number;
   showSizeChanger?: boolean;
+  /**
+   * Page-size choices offered in the size changer. Defaults to the historic
+   * 10/20/50/100 so unrelated list pages keep their behaviour; the Agent and
+   * Studio lists pass 8/12/24/48 with a default of 12 (product doc 3.3).
+   */
+  pageSizeOptions?: number[];
+  /**
+   * How many page buttons are shown before collapsing into an ellipsis.
+   * Defaults to 5; the Agent / Studio lists use 7 so short lists show every
+   * page number (product doc 3.3).
+   */
+  maxDisplayedPages?: number;
 };
 
 export function RAGFlowPagination({
@@ -30,17 +42,21 @@ export function RAGFlowPagination({
   total = 0,
   onChange,
   showSizeChanger = true,
+  pageSizeOptions = [10, 20, 50, 100],
+  maxDisplayedPages = 5,
 }: RAGFlowPaginationType) {
   const { t } = useTranslation();
   const [currentPage, setCurrentPage] = useState(1);
-  const [currentPageSize, setCurrentPageSize] = useState('10');
+  const [currentPageSize, setCurrentPageSize] = useState(
+    pageSizeOptions.includes(pageSize) ? pageSize.toString() : '10',
+  );
 
   const sizeChangerOptions: SelectWithSearchOptionType[] = useMemo(() => {
-    return [10, 20, 50, 100].map((x) => ({
+    return pageSizeOptions.map((x) => ({
       label: <span>{t('pagination.page', { page: x })}</span>,
       value: x.toString(),
     }));
-  }, [t]);
+  }, [pageSizeOptions, t]);
 
   const pages = useMemo(() => {
     const num = Math.ceil(total / pageSize);
@@ -105,7 +121,6 @@ export function RAGFlowPagination({
   // Generates an array of page numbers to display
   const displayedPages = useMemo(() => {
     const totalPages = pages.length;
-    const maxDisplayedPages = 5;
 
     if (totalPages <= maxDisplayedPages) {
       return pages;

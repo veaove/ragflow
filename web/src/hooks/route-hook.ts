@@ -90,7 +90,12 @@ const PageSizeStorageKeyPrefix = 'RAGFlowPageSize:';
 const getStoredPageSize = (pathname: string) =>
   Number(localStorage.getItem(`${PageSizeStorageKeyPrefix}${pathname}`));
 
-export const useSetPaginationParams = () => {
+/**
+ * @param options.defaultPageSize Fallback page size when neither the URL nor
+ *        localStorage carries one. Defaults to 50 (historic behaviour); the
+ *        Agent / Studio lists pass 12 (product doc 3.3).
+ */
+export const useSetPaginationParams = (options?: { defaultPageSize?: number }) => {
   const [queryParameters, setSearchParams] = useSearchParams();
   const { pathname } = useLocation();
 
@@ -115,6 +120,9 @@ export const useSetPaginationParams = () => {
     setPaginationParams,
     page: Number(queryParameters.get('page')) || 1,
     size:
-      Number(queryParameters.get('size')) || getStoredPageSize(pathname) || 50,
+      Number(queryParameters.get('size')) ||
+      getStoredPageSize(pathname) ||
+      options?.defaultPageSize ||
+      50,
   };
 };
