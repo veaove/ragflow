@@ -61,6 +61,16 @@ func (d *DatasetService) SearchDatasets(ctx context.Context, req *service.Search
 	vectorSimilarityWeight := 0.3
 	if req.VectorSimilarityWeight != nil {
 		vectorSimilarityWeight = *req.VectorSimilarityWeight
+	} else if req.KeywordsSimilarityWeight != nil {
+		// The dataset test UI only sends the keyword weight, which fusion needs
+		// as its complement. Without this the test panel's weight slider had no
+		// effect at all: the field it sent was never read.
+		vectorSimilarityWeight = 1 - *req.KeywordsSimilarityWeight
+		if vectorSimilarityWeight < 0 {
+			vectorSimilarityWeight = 0
+		} else if vectorSimilarityWeight > 1 {
+			vectorSimilarityWeight = 1
+		}
 	}
 	knnTopK := 1024
 	if req.KNNTopK != nil {

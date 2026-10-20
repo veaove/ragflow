@@ -630,7 +630,7 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       noTestResultsForNotRuned:
         'No test has been run yet. Results will appear here.',
       testingDescription:
-        'Conduct a retrieval test to check whether your configuration recalls the right chunks. Test settings here are saved automatically in this browser and restored on your next visit; to apply them to real conversations or the Retrieval agent component settings, update the corresponding settings.',
+        'Conduct a retrieval test to check whether your configuration recalls the right chunks. Test settings here are stored on the knowledge base itself and restored on your next visit; to apply them to real conversations or the Retrieval agent component settings, update the corresponding settings.',
       testingSettingsSaved: 'Settings saved',
       similarityThreshold: 'Similarity threshold',
       similarityThresholdTip:

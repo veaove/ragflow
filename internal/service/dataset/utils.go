@@ -75,6 +75,9 @@ func datasetToMap(kb *entity.Knowledgebase) map[string]interface{} {
 		"create_time":                kb.CreateTime,
 		"enabled":                    kb.IsEnabled(),
 	}
+	if kb.RerankID != nil && *kb.RerankID != "" {
+		item["rerank_id"] = *kb.RerankID
+	}
 	if kb.Avatar != nil {
 		item["avatar"] = *kb.Avatar
 	}

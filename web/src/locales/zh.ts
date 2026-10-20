@@ -568,7 +568,7 @@ export default {
       noTestResultsForRuned: '未找到相关结果，请尝试调整查询语句或参数',
       noTestResultsForNotRuned: '尚未运行测试，结果会显示在这里',
       testingDescription:
-        '请完成召回测试：确保你的配置可以从数据库召回正确的文本块。此处的测试设置会自动保存在本机，重新打开时继续沿用；如需将这些设置应用到实际对话或召回算子，请到对应设置处同步更新。',
+        '请完成召回测试：确保你的配置可以从数据库召回正确的文本块。此处的测试设置会保存到当前知识库，重新打开时继续沿用；如需将这些设置应用到实际对话或召回算子，请到对应设置处同步更新。',
       testingSettingsSaved: '保存成功',
       similarityThreshold: '相似度阈值',
       similarityThresholdTip:

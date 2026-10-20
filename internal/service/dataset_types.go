@@ -192,6 +192,14 @@ type UpdateDatasetRequest struct {
 	Pagerank       *int64                     `json:"pagerank,omitempty"`
 	ParserConfig   map[string]interface{}     `json:"parser_config,omitempty"`
 	PipelineID     *string                    `json:"pipeline_id,omitempty"`
+	// Retrieval defaults. The retrieval test panel persists its setup here so
+	// reopening a knowledge base restores the same threshold, weight and rerank
+	// model. The API exposes the keyword weight (datasetToMap returns
+	// 1 - vector_similarity_weight) while the column stores the vector weight,
+	// so the service converts on write.
+	SimilarityThreshold      *float64 `json:"similarity_threshold,omitempty"`
+	KeywordsSimilarityWeight *float64 `json:"keywords_similarity_weight,omitempty"`
+	RerankID                 *string  `json:"rerank_id,omitempty"`
 	// ParseType indicates pipeline selection mode: 1 = BuiltIn (parser_id),
 	// 2 = Pipeline (pipeline_id). nil means unspecified.
 	ParseType *int `json:"parse_type,omitempty"`

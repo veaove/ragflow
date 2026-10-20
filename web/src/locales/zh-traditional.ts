@@ -153,7 +153,7 @@ export default {
       processDuration: '過程持續時間',
       progressMsg: '進度消息',
       testingDescription:
-        '請完成召回測試：確保你的設定可以從資料庫正確地召回文字區塊。此處的測試設定會自動保存在本機，重新打開時繼續沿用；如需將這些設定套用到實際對話或召回算子，請到對應設定處同步更新。',
+        '請完成召回測試：確保你的設定可以從資料庫正確地召回文字區塊。此處的測試設定會儲存到目前知識庫，重新打開時繼續沿用；如需將這些設定套用到實際對話或召回算子，請到對應設定處同步更新。',
       testingSettingsSaved: '儲存成功',
       similarityThreshold: '相似度閾值',
       similarityThresholdTip:

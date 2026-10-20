@@ -351,6 +351,32 @@ func migrateKnowledgebaseEnabledColumn(ctx context.Context, db *gorm.DB) error {
 	return nil
 }
 
+// migrateKnowledgebaseRerankColumn adds knowledgebase.rerank_id when the column
+// is missing.
+//
+// Like enabled, it cannot be left to the runtime AutoMigrate path: that path
+// never touches knowledgebase, so once a query names the column an existing
+// database would fail with Error 1054. NULL means "no default rerank model".
+func migrateKnowledgebaseRerankColumn(ctx context.Context, db *gorm.DB) error {
+	migrator := db.WithContext(ctx).Migrator()
+	if !migrator.HasTable(&entity.Knowledgebase{}) {
+		return nil
+	}
+	if migrator.HasColumn(&entity.Knowledgebase{}, "rerank_id") {
+		return nil
+	}
+	if err := db.WithContext(ctx).Exec(
+		"ALTER TABLE knowledgebase ADD COLUMN rerank_id varchar(128) NULL",
+	).Error; err != nil {
+		if isDuplicateColumnError(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to add knowledgebase.rerank_id: %w", err)
+	}
+	common.Info("Added knowledgebase.rerank_id")
+	return nil
+}
+
 // migrateIngestionLogRunIdentity adds the columns and indexes that make each
 // ingestion event belong to one immutable pipeline-operation-log run. It is
 // deliberately explicit: the runtime startup path auto-migrates ingestion

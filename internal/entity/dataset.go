@@ -115,6 +115,9 @@ type Knowledgebase struct {
 	ChunkNum               int64      `gorm:"column:chunk_num;default:0;index" json:"chunk_num"`
 	SimilarityThreshold    float64    `gorm:"column:similarity_threshold;default:0.2;index" json:"similarity_threshold"`
 	VectorSimilarityWeight float64    `gorm:"column:vector_similarity_weight;default:0.3;index" json:"vector_similarity_weight"`
+	// RerankID is the rerank model the knowledge base uses by default, so the
+	// retrieval test can reopen with the same model instead of resetting.
+	RerankID *string `gorm:"column:rerank_id;size:128" json:"rerank_id,omitempty"`
 	ParserID               string     `gorm:"column:parser_id;size:32;not null;default:general;index" json:"parser_id"`
 	PipelineID             *string    `gorm:"column:pipeline_id;size:32;index" json:"pipeline_id,omitempty"`
 	ParserConfig           JSONMap    `gorm:"column:parser_config;type:json" json:"parser_config"`

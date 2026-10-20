@@ -102,6 +102,25 @@ func (d *DatasetService) UpdateDataset(ctx context.Context, datasetID, userID st
 		}
 		simpleUpdates["permission"] = permission
 	}
+	if req.SimilarityThreshold != nil {
+		if *req.SimilarityThreshold < 0 || *req.SimilarityThreshold > 1 {
+			return nil, common.CodeDataError, errors.New("similarity_threshold must be between 0 and 1")
+		}
+		simpleUpdates["similarity_threshold"] = *req.SimilarityThreshold
+	}
+	if req.KeywordsSimilarityWeight != nil {
+		if *req.KeywordsSimilarityWeight < 0 || *req.KeywordsSimilarityWeight > 1 {
+			return nil, common.CodeDataError, errors.New("keywords_similarity_weight must be between 0 and 1")
+		}
+		// The column stores the vector weight; the API speaks in keyword weight
+		// (datasetToMap returns 1 - vector), so invert on write to keep the
+		// read/write pair symmetric.
+		simpleUpdates["vector_similarity_weight"] = 1 - *req.KeywordsSimilarityWeight
+	}
+	if req.RerankID != nil {
+		// An empty value is meaningful: it clears the saved rerank model.
+		simpleUpdates["rerank_id"] = strings.TrimSpace(*req.RerankID)
+	}
 
 	// Validate the parse_type/parser_id/pipeline_id triple. FromRequest rejects
 	// any partial or contradictory combination (e.g. an id without parse_type,

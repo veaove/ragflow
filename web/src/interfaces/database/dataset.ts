@@ -41,6 +41,8 @@ export interface IDataset {
   raptor_task_finish_at: string;
   raptor_task_id: string;
   similarity_threshold: number;
+  /** Default rerank model saved with the knowledge base, if any. */
+  rerank_id?: string;
   status: string;
   /**
    * The user-facing enable/disable switch. `status` is the row lifecycle

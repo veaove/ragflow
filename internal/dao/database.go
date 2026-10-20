@@ -312,6 +312,11 @@ func InitDB(ctx context.Context, migrateDB bool) error {
 	if err = migrateKnowledgebaseEnabledColumn(ctx, DB); err != nil {
 		return err
 	}
+	// knowledgebase.rerank_id is read by the dataset detail response and the
+	// retrieval test's saved settings, and is likewise outside auto-migrate.
+	if err = migrateKnowledgebaseRerankColumn(ctx, DB); err != nil {
+		return err
+	}
 	// Seed built-in agent templates so the Go backend can serve the
 	// "create agent from template" catalogue without relying on Python-side
 	// initialization.

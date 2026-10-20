@@ -14,7 +14,7 @@ import {
   MetadataFilter,
   MetadataFilterSchema,
 } from '@/components/metadata-filter';
-import { RerankFormFields } from '@/components/rerank';
+import { RerankFormFields, rerankFormSchema } from '@/components/rerank';
 import {
   SimilaritySliderFormField,
   initialSimilarityThresholdValue,
@@ -33,8 +33,13 @@ import {
 } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 
-import { useTestRetrieval } from '@/hooks/use-knowledge-request';
+import {
+  useFetchKnowledgeBaseConfiguration,
+  useTestRetrieval,
+} from '@/hooks/use-knowledge-request';
+import { IDataset } from '@/interfaces/database/dataset';
 import { ITestRetrievalRequestBody } from '@/interfaces/request/knowledge';
+import { updateKb } from '@/services/knowledge-service';
 import { trim } from 'lodash';
 import { Send } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
@@ -48,147 +53,58 @@ type TestingFormProps = Pick<
   'loading' | 'refetch' | 'setValues'
 >;
 
-const TEST_SETTINGS_STORAGE_PREFIX = 'ragflow:retrieval-test-settings:';
-
-// The retrieval test panel is a sandbox, so its configuration is not part of
-// the knowledge base record — nothing persisted it, and reopening the page
-// silently reset the rerank model and sliders to their defaults. Persist the
-// configuration subset (never `question`, which changes with every run, nor
-// `dataset_ids`, which is bound to the route) so the panel reopens with the
-// user's last setup.
-const PERSISTED_SETTING_FIELDS = [
-  'similarity_threshold',
-  'keywords_similarity_weight',
-  'page_size',
-  'rerank_candidates_count',
-  'rerank_id',
-  'cross_languages',
-  'meta_data_filter',
-] as const;
-
-type PersistedTestingSettings = Partial<{
+type PersistedTestingSettings = {
   similarity_threshold: number;
   keywords_similarity_weight: number;
-  page_size: number;
-  rerank_candidates_count: number;
   rerank_id: string;
-  cross_languages: string[];
-  meta_data_filter: Record<string, unknown>;
-}>;
+};
 
-function clampNumber(value: unknown, min: number, max: number) {
+// Sliders move in 0.01 steps, so rounding to two decimals is lossless and
+// keeps a backend round trip (vector weight -> keyword weight -> vector
+// weight) from drifting into a diff that would trigger a pointless save.
+function roundWeight(value: number) {
+  return Number(value.toFixed(2));
+}
+
+function clampWeight(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value)
-    ? Math.min(max, Math.max(min, value))
+    ? roundWeight(Math.min(1, Math.max(0, value)))
     : undefined;
 }
 
-// Restoring must never inject a value the form would reject, so every field is
-// re-validated against the same range its schema enforces.
-function sanitizePersistedSettings(raw: unknown): PersistedTestingSettings {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return {};
-  }
-  const input = raw as Record<string, unknown>;
-  const settings: PersistedTestingSettings = {};
-
-  const similarityThreshold = clampNumber(input.similarity_threshold, 0, 1);
-  if (similarityThreshold !== undefined) {
-    settings.similarity_threshold = similarityThreshold;
-  }
-
-  const keywordsWeight = clampNumber(
-    input.keywords_similarity_weight,
-    0,
-    1,
-  );
-  if (keywordsWeight !== undefined) {
-    settings.keywords_similarity_weight = keywordsWeight;
-  }
-
-  const pageSize = clampNumber(input.page_size, 1, 100);
-  if (pageSize !== undefined) {
-    settings.page_size = Math.round(pageSize);
-  }
-
-  const rerankCandidatesCount = clampNumber(
-    input.rerank_candidates_count,
-    64,
-    256,
-  );
-  if (rerankCandidatesCount !== undefined) {
-    settings.rerank_candidates_count = Math.round(rerankCandidatesCount);
-  }
-
-  if (typeof input.rerank_id === 'string') {
-    settings.rerank_id = input.rerank_id;
-  }
-
-  if (Array.isArray(input.cross_languages)) {
-    settings.cross_languages = input.cross_languages.filter(
-      (item): item is string => typeof item === 'string',
-    );
-  }
-
-  if (
-    input.meta_data_filter &&
-    typeof input.meta_data_filter === 'object' &&
-    !Array.isArray(input.meta_data_filter)
-  ) {
-    settings.meta_data_filter = input.meta_data_filter as Record<
-      string,
-      unknown
-    >;
-  }
-
-  return settings;
-}
-
-function readPersistedTestingSettings(
-  knowledgeBaseId?: string,
+/**
+ * The retrieval test panel used to be a pure sandbox: nothing persisted its
+ * setup, so reopening the page silently reset the rerank model and the sliders
+ * to their defaults. The setup now lives on the knowledge base record itself
+ * (`similarity_threshold` / `vector_similarity_weight` / `rerank_id`), which is
+ * what the retrieval API already reads, so a change takes effect immediately
+ * and survives reloads and other devices.
+ */
+function defaultsFromConfiguration(
+  configuration: IDataset | undefined,
 ): PersistedTestingSettings {
-  if (!knowledgeBaseId || typeof window === 'undefined') {
-    return {};
-  }
-  try {
-    const raw = window.localStorage.getItem(
-      `${TEST_SETTINGS_STORAGE_PREFIX}${knowledgeBaseId}`,
-    );
-    return raw ? sanitizePersistedSettings(JSON.parse(raw)) : {};
-  } catch {
-    return {};
-  }
+  return {
+    similarity_threshold:
+      clampWeight(configuration?.similarity_threshold) ??
+      initialSimilarityThresholdValue.similarity_threshold,
+    keywords_similarity_weight:
+      clampWeight(configuration?.keywords_similarity_weight) ??
+      initialKeywordsSimilarityWeightValue.keywords_similarity_weight,
+    rerank_id: configuration?.rerank_id ?? '',
+  };
 }
 
-function writePersistedTestingSettings(
-  knowledgeBaseId: string | undefined,
-  settings: PersistedTestingSettings,
-) {
-  if (!knowledgeBaseId || typeof window === 'undefined') {
-    return;
-  }
-  try {
-    window.localStorage.setItem(
-      `${TEST_SETTINGS_STORAGE_PREFIX}${knowledgeBaseId}`,
-      JSON.stringify(settings),
-    );
-  } catch {
-    // Private mode / quota exceeded — persistence is best-effort.
-  }
-}
-
-function pickPersistedSettings(
-  values: Record<string, unknown> | undefined,
-): PersistedTestingSettings {
-  if (!values) {
-    return {};
-  }
-  const picked: Record<string, unknown> = {};
-  for (const field of PERSISTED_SETTING_FIELDS) {
-    if (values[field] !== undefined) {
-      picked[field] = values[field];
-    }
-  }
-  return picked as PersistedTestingSettings;
+/**
+ * Serialises only the fields that are persisted, in a fixed key order, so
+ * typing the test question (or changing any other transient field) never
+ * counts as a settings change.
+ */
+function buildSnapshot(values: Partial<PersistedTestingSettings>) {
+  return JSON.stringify({
+    similarity_threshold: values.similarity_threshold,
+    keywords_similarity_weight: values.keywords_similarity_weight,
+    rerank_id: values.rerank_id ?? '',
+  });
 }
 
 export default function TestingForm({
@@ -201,6 +117,8 @@ export default function TestingForm({
   const ownerTenantId = useOwnerTenantId();
   const knowledgeBaseId = id;
 
+  const { data: configuration } = useFetchKnowledgeBaseConfiguration();
+
   const formSchema = z
     .object({
       question: z.string().min(1, {
@@ -208,6 +126,7 @@ export default function TestingForm({
       }),
       ...similarityThresholdSchema,
       ...keywordsSimilarityWeightSchema,
+      ...rerankFormSchema,
       dataset_ids: z.array(z.string()).optional(),
       ...MetadataFilterSchema,
       page_size: z.number().int().min(1).max(100),
@@ -218,20 +137,19 @@ export default function TestingForm({
       path: ['rerank_candidates_count'],
     });
 
-  const persistedSettings = useMemo(
-    () => readPersistedTestingSettings(knowledgeBaseId),
-    [knowledgeBaseId],
-  );
-
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       ...initialSimilarityThresholdValue,
       ...initialKeywordsSimilarityWeightValue,
+      // The rerank select is rendered here but was never declared in this
+      // schema's defaults, so seed an explicit empty string: otherwise the
+      // control flips from uncontrolled to controlled once the saved model
+      // arrives from the server.
+      rerank_id: '',
       dataset_ids: [knowledgeBaseId],
       page_size: 10,
       rerank_candidates_count: 64,
-      ...persistedSettings,
     },
   });
 
@@ -239,23 +157,40 @@ export default function TestingForm({
 
   const values = useWatch({ control: form.control });
 
-  // Serialise only the configuration subset in a fixed key order, so typing the
-  // test question (or any other transient field) never counts as a save.
-  const settingsSnapshot = useMemo(
-    () => JSON.stringify(pickPersistedSettings(values as Record<string, unknown>)),
-    [values],
-  );
+  const settingsSnapshot = useMemo(() => buildSnapshot(values), [values]);
 
-  const lastSavedSnapshotRef = useRef(settingsSnapshot);
+  // Until the knowledge base configuration arrives the form still holds the
+  // global defaults, which would look like a user edit and overwrite the saved
+  // setup. The snapshot doubles as the "already persisted" baseline.
+  const initializedRef = useRef(false);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (initializedRef.current || !configuration?.id) {
+      return;
+    }
+    initializedRef.current = true;
+
+    const restored = defaultsFromConfiguration(configuration);
+    const nextValues = {
+      ...form.getValues(),
+      ...restored,
+    };
+    form.reset(nextValues);
+    lastSavedSnapshotRef.current = buildSnapshot(nextValues);
+  }, [configuration, form]);
 
   useEffect(() => {
     setValues(values as ITestRetrievalRequestBody);
   }, [setValues, values]);
 
   useEffect(() => {
-    // The settings are live already — this only persists them so the next visit
+    // The settings are live already — this only persists them, so the panel
     // reopens with the same configuration, and confirms the save to the user.
+    if (!initializedRef.current || !knowledgeBaseId) {
+      return;
+    }
     if (settingsSnapshot === lastSavedSnapshotRef.current) {
       return;
     }
@@ -264,13 +199,29 @@ export default function TestingForm({
       clearTimeout(saveTimerRef.current);
     }
 
-    saveTimerRef.current = setTimeout(() => {
-      writePersistedTestingSettings(
-        knowledgeBaseId,
-        JSON.parse(settingsSnapshot) as PersistedTestingSettings,
-      );
-      lastSavedSnapshotRef.current = settingsSnapshot;
-      toast.success(t('knowledgeDetails.testingSettingsSaved'));
+    const pendingSnapshot = settingsSnapshot;
+
+    saveTimerRef.current = setTimeout(async () => {
+      const settings = JSON.parse(pendingSnapshot) as PersistedTestingSettings;
+      try {
+        const { data } = await updateKb(knowledgeBaseId, {
+          similarity_threshold: settings.similarity_threshold,
+          keywords_similarity_weight: settings.keywords_similarity_weight,
+          // An empty string is meaningful here: it clears the saved model.
+          rerank_id: settings.rerank_id ?? '',
+        });
+
+        if (data?.code === 0) {
+          lastSavedSnapshotRef.current = pendingSnapshot;
+          toast.success(t('knowledgeDetails.testingSettingsSaved'));
+        }
+        // A non-zero code is already reported by the request interceptor's
+        // global error notification, so adding another toast here would show
+        // the same failure twice. Leaving the baseline untouched means the
+        // next edit retries instead of pretending the settings were saved.
+      } catch {
+        // Network-layer failures are surfaced by the interceptor too.
+      }
     }, 600);
 
     return () => {
