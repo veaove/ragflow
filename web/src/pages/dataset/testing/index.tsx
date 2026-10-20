@@ -8,12 +8,19 @@ import {
 import { useTestRetrieval } from '@/hooks/use-knowledge-request';
 import { t } from 'i18next';
 import { useState } from 'react';
+import { useParams } from 'react-router';
 import TestingForm from './testing-form';
 import { TestingResult } from './testing-result';
 
 export default function RetrievalTesting() {
   const { loading, setValues, refetch, data, handleFilterSubmit, filterValue } =
     useTestRetrieval();
+
+  // React Router keeps this component mounted when only the `:id` param
+  // changes, but the form's persisted settings are per dataset — keying by id
+  // forces a remount so switching datasets restores that dataset's own setup
+  // instead of carrying the previous one over.
+  const { id } = useParams();
 
   const [count] = useState(1); // TODO: Different layouts are needed; if they are no longer required, consider deleting them.
 
@@ -43,6 +50,7 @@ export default function RetrievalTesting() {
 
               <div className="flex-1 h-0">
                 <TestingForm
+                  key={id}
                   loading={loading}
                   setValues={setValues}
                   refetch={refetch}
@@ -63,6 +71,7 @@ export default function RetrievalTesting() {
           <CardContent className="p-0 flex gap-2">
             <div className="flex-1">
               <TestingForm
+                key={id}
                 loading={loading}
                 setValues={setValues}
                 refetch={refetch}
@@ -76,6 +85,7 @@ export default function RetrievalTesting() {
             </div>
             <div className="flex-1">
               <TestingForm
+                key={id}
                 loading={loading}
                 setValues={setValues}
                 refetch={refetch}
