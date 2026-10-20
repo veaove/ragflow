@@ -49,7 +49,6 @@ import {
   toggleQcRule,
   updateQcRule,
 } from '@/services/qc-service';
-import { cn } from '@/lib/utils';
 import * as React from 'react';
 import { toast } from 'sonner';
 
@@ -158,19 +157,18 @@ const severityTone: Record<string, string> = {
 };
 
 /**
- * QcRulePanel 是应用级质检规则的配置面板，绑定到某一个聊天应用或对话流。
- * 规则只对该应用生效；规则列表、新建/编辑抽屉、实时测试都在此组件内完成。
+ * QcRulePanel 是「质检」菜单里的规则维护面板：规则的增删改、启停、实时测试
+ * 都在这里完成。规则归属某一个聊天应用或对话流（home app）。
+ *
+ * 应用设置页里**不再**嵌这个面板 —— 那里只做「选用」已有规则，
+ * 见 `rule-selector.tsx` 的 QcRuleSelector。
  */
 export function QcRulePanel({
   appType,
   appId,
-  variant = 'full',
-  className,
 }: {
   appType: QcAppType;
   appId: string;
-  variant?: 'full' | 'embedded';
-  className?: string;
 }) {
   const [rules, setRules] = React.useState<IQcRule[]>([]);
   const [total, setTotal] = React.useState(0);
@@ -290,39 +288,22 @@ export function QcRulePanel({
     }
   };
 
-  const isEmbedded = variant === 'embedded';
-
   return (
-    <div
-      className={cn(
-        'flex flex-col',
-        isEmbedded ? 'gap-3' : 'h-full gap-4 p-4',
-        className,
-      )}
-    >
+    <div className="flex h-full flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-text-secondary">
-          规则仅对当前应用生效，共 {total} 条
+          规则归属当前应用｜共 {total} 条，其他应用可在其设置页勾选选用
         </div>
         <Button size="sm" onClick={openCreate}>
           新建规则
         </Button>
       </div>
 
-      {isEmbedded ? (
-        <EmbeddedRuleList
-          rules={rules}
-          loading={loading}
-          onEdit={openEdit}
-          onToggle={toggle}
-          onRemove={remove}
-        />
-      ) : (
-        <div className="flex-1 overflow-auto rounded-lg border border-border-base">
-          {rules.length === 0 && !loading ? (
-            <Empty type={EmptyType.Data} text="本应用还没有质检规则" />
-          ) : (
-            <Table>
+      <div className="flex-1 overflow-auto rounded-lg border border-border-base">
+        {rules.length === 0 && !loading ? (
+          <Empty type={EmptyType.Data} text="本应用还没有质检规则" />
+        ) : (
+          <Table>
               <TableHeader className="bg-background-second">
                 <TableRow>
                   <TableHead className="h-10 text-text-title">规则名称</TableHead>
@@ -421,9 +402,8 @@ export function QcRulePanel({
                 ))}
               </TableBody>
             </Table>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       {total > PAGE_SIZE && (
         <RAGFlowPagination
@@ -439,105 +419,6 @@ export function QcRulePanel({
         onClose={() => setEditor(null)}
         onSave={save}
       />
-    </div>
-  );
-}
-
-function EmbeddedRuleList({
-  rules,
-  loading,
-  onEdit,
-  onToggle,
-  onRemove,
-}: {
-  rules: IQcRule[];
-  loading: boolean;
-  onEdit: (rule: IQcRule) => void;
-  onToggle: (rule: IQcRule) => void;
-  onRemove: (rule: IQcRule) => void;
-}) {
-  if (rules.length === 0 && !loading) {
-    return (
-      <div className="rounded-lg border border-border-base">
-        <Empty type={EmptyType.Data} text="本应用还没有质检规则" />
-      </div>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      {rules.map((rule) => (
-        <div
-          key={rule.id}
-          className="rounded-lg border border-border-base bg-background-content p-3"
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="truncate font-medium text-text-title">
-                  {rule.name}
-                </span>
-                <span
-                  className={`shrink-0 rounded px-2 py-0.5 text-xs ${
-                    rule.enabled
-                      ? 'bg-green-100 text-green-600'
-                      : 'bg-background-second text-text-sub-title'
-                  }`}
-                >
-                  {rule.enabled ? '启用' : '停用'}
-                </span>
-              </div>
-              <div className="mt-1 flex flex-wrap gap-1">
-                {rule.keywords.slice(0, 4).map((kw) => (
-                  <span
-                    key={kw}
-                    className="rounded bg-background-second px-1.5 py-0.5 text-xs text-text-secondary"
-                  >
-                    {kw}
-                  </span>
-                ))}
-                {rule.keywords.length > 4 && (
-                  <span className="text-xs text-text-sub-title">
-                    +{rule.keywords.length - 4}
-                  </span>
-                )}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-text-secondary">
-                <span>{matchModeLabel[rule.match_mode]}</span>
-                <span>·</span>
-                <span>{scopeLabel[rule.scope]}</span>
-                <span>·</span>
-                <span
-                  className={`rounded px-1.5 py-0.5 text-xs ${severityTone[rule.severity]}`}
-                >
-                  {severityLabel[rule.severity]}
-                </span>
-                <span>·</span>
-                <span>{actionLabel[rule.action]}</span>
-              </div>
-            </div>
-            <div className="flex shrink-0 flex-col gap-1">
-              <Button size="sm" variant="outline" onClick={() => onEdit(rule)}>
-                编辑
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onToggle(rule)}
-              >
-                {rule.enabled ? '停用' : '启用'}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-red-500"
-                onClick={() => onRemove(rule)}
-              >
-                删除
-              </Button>
-            </div>
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

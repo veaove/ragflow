@@ -433,6 +433,104 @@ func (h *QcHandler) DeleteRule(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return
 	}
+	// Drop the app references too; otherwise the selector keeps showing a
+	// dangling "selected" entry for a rule that no longer exists.
+	if err := dao.NewQcRuleDAO().DeleteBindingsByRule(c.Request.Context(), dao.DB, rule.ID); err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	common.SuccessWithData(c, nil, "success")
+}
+
+// GetRuleSelection handles GET /qc/rules/selection?app_type=&app_id=.
+//
+// This backs the 「选用规则」 block in the chat / agent settings: it returns
+// every rule the tenant owns, each flagged with whether it is in effect for
+// the queried app. Rules created in the QC menu show up here, so a user never
+// has to re-create a rule from inside an app.
+func (h *QcHandler) GetRuleSelection(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	appType := c.Query("app_type")
+	appID := c.Query("app_id")
+	if appType == "" || appID == "" {
+		common.ErrorWithCode(c, common.CodeArgumentError, "app_type and app_id are required")
+		return
+	}
+	if appType != entity.QcAppTypeChat && appType != entity.QcAppTypeCanvas {
+		common.ErrorWithCode(c, common.CodeArgumentError, "invalid app_type")
+		return
+	}
+	owner, err := resolveAppOwner(c, appType, appID)
+	if err != nil {
+		if errors.Is(err, errQcAppNotFound) {
+			common.ErrorWithCode(c, common.CodeNotFound, "app not found")
+			return
+		}
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	if owner != user.ID {
+		common.ErrorWithCode(c, common.CodeForbidden, "no permission to manage this app's QC rules")
+		return
+	}
+
+	rules, err := dao.NewQcRuleDAO().ListSelectable(c.Request.Context(), dao.DB, user.ID, appType, appID)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	common.SuccessWithData(c, rules, "success")
+}
+
+// UpdateRuleSelection handles PUT /qc/rules/selection.
+// Body: {"app_type":"chat","app_id":"...","rule_ids":["...","..."]}
+// The list is the complete set of rules this app should use; an empty list
+// clears every reference (home rules still apply and need no reference).
+func (h *QcHandler) UpdateRuleSelection(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	var body struct {
+		AppType string   `json:"app_type"`
+		AppID   string   `json:"app_id"`
+		RuleIDs []string `json:"rule_ids"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		common.ErrorWithCode(c, common.CodeArgumentError, "invalid request body")
+		return
+	}
+	if body.AppType != entity.QcAppTypeChat && body.AppType != entity.QcAppTypeCanvas {
+		common.ErrorWithCode(c, common.CodeArgumentError, "invalid app_type")
+		return
+	}
+	if body.AppID == "" {
+		common.ErrorWithCode(c, common.CodeArgumentError, "app_id is required")
+		return
+	}
+	owner, err := resolveAppOwner(c, body.AppType, body.AppID)
+	if err != nil {
+		if errors.Is(err, errQcAppNotFound) {
+			common.ErrorWithCode(c, common.CodeNotFound, "app not found")
+			return
+		}
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	if owner != user.ID {
+		common.ErrorWithCode(c, common.CodeForbidden, "no permission to manage this app's QC rules")
+		return
+	}
+
+	if err := dao.NewQcRuleDAO().ReplaceBindings(c.Request.Context(), dao.DB, user.ID, body.AppType, body.AppID, body.RuleIDs); err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
 	common.SuccessWithData(c, nil, "success")
 }
 

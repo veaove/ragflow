@@ -29,6 +29,10 @@ func (r *Router) registerQcRoutes(v1 *gin.RouterGroup) {
 		qc.GET("/rules", r.getQcHandler().ListRules)
 		qc.POST("/rules", r.getQcHandler().CreateRule)
 		qc.POST("/rules/test", r.getQcHandler().TestRule)
+		// App-level rule selection (the 「选用规则」 block in app settings).
+		// Must precede /rules/:id so "selection" is never read as an id.
+		qc.GET("/rules/selection", r.getQcHandler().GetRuleSelection)
+		qc.PUT("/rules/selection", r.getQcHandler().UpdateRuleSelection)
 		qc.GET("/rules/:id", r.getQcHandler().GetRule)
 		qc.PUT("/rules/:id", r.getQcHandler().UpdateRule)
 		qc.DELETE("/rules/:id", r.getQcHandler().DeleteRule)

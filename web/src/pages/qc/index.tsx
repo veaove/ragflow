@@ -182,7 +182,7 @@ function RulesTab() {
           )}
         </select>
         <span className="text-xs text-text-sub-title">
-          规则只对选中的应用生效
+          这里维护规则的归属应用；聊天/智能体的设置页可直接选用已有规则
         </span>
       </div>
       <div className="min-h-0 flex-1">

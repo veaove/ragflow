@@ -29,7 +29,7 @@ import { SavingButton } from './saving-button';
 import { useChatSettingSchema } from './use-chat-setting-schema';
 import { useRevealSubmitErrors } from './use-reveal-submit-errors';
 import { getWebSearchProvider } from '../web-search-api-key';
-import { QcRulePanel } from '@/pages/qc/rule-panel';
+import { QcRuleSelector } from '@/pages/qc/rule-selector';
 
 type ChatSettingsProps = { hasSingleChatBox: boolean };
 
@@ -213,11 +213,7 @@ export function ChatSettings({ hasSingleChatBox }: ChatSettingsProps) {
                       onCollapseOpenChange={onAdvancedSettingOpenChange}
                     ></ChatPromptEngine>
                     <Collapse title={t('chat.qcRules')}>
-                      <QcRulePanel
-                        appType="chat"
-                        appId={id ?? ''}
-                        variant="embedded"
-                      />
+                      <QcRuleSelector appType="chat" appId={id ?? ''} />
                     </Collapse>
                   </section>
                 </ScrollArea>

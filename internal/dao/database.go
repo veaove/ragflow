@@ -224,6 +224,7 @@ func InitDB(ctx context.Context, migrateDB bool) error {
 		&entity.CompilationTemplate{},
 		&entity.CompilationTemplateGroup{},
 		&entity.QcRule{},
+		&entity.QcRuleBinding{},
 		&entity.QcHit{},
 	}
 

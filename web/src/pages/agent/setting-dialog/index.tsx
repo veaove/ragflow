@@ -9,7 +9,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSetAgent } from '@/hooks/use-agent-request';
 import { IModalProps } from '@/interfaces/common';
-import { QcRulePanel } from '@/pages/qc/rule-panel';
+import { QcRuleSelector } from '@/pages/qc/rule-selector';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
@@ -50,11 +50,7 @@ export function SettingDialog({ hideModal }: IModalProps<any>) {
             <SettingForm submit={submit}></SettingForm>
           </TabsContent>
           <TabsContent value="qc" className="max-h-[60vh] overflow-y-auto">
-            <QcRulePanel
-              appType="canvas"
-              appId={id ?? ''}
-              variant="embedded"
-            />
+            <QcRuleSelector appType="canvas" appId={id ?? ''} />
           </TabsContent>
         </Tabs>
         {tab === 'basic' && (

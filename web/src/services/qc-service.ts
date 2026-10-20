@@ -171,6 +171,25 @@ export const updateQcConfig = (data: {
   retention_days?: number;
 }) => request.put(`${restAPIv1}/qc/config`, { data });
 
+// ---- 应用级「选用规则」（聊天/智能体设置页里的质检区块） ----
+
+/** 规则 + 它是否在当前应用生效。`home` 表示这条规则就是在当前应用里创建的。 */
+export interface IQcRuleSelection extends IQcRule {
+  selected: boolean;
+  home: boolean;
+}
+
+export const getQcRuleSelection = (params: {
+  app_type: QcAppType;
+  app_id: string;
+}) => request.get(`${restAPIv1}/qc/rules/selection`, { params });
+
+export const updateQcRuleSelection = (data: {
+  app_type: QcAppType;
+  app_id: string;
+  rule_ids: string[];
+}) => request.put(`${restAPIv1}/qc/rules/selection`, { data });
+
 // ---- 应用候选（质检菜单里选择「引用」哪个应用来配规则） ----
 
 export interface IQcAppOption {

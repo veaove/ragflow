@@ -22,6 +22,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"ragflow/internal/common"
 	"ragflow/internal/entity"
 )
 
@@ -127,18 +128,119 @@ func (dao *QcRuleDAO) List(ctx context.Context, db *gorm.DB, filter QcRuleListFi
 	return rules, total, nil
 }
 
-// ListEnabledByApp loads all enabled rules bound to an app, used at the start
-// of a session to compile the matcher once.
+// ListEnabledByApp loads all enabled rules that apply to an app: the rules
+// whose home app is this one, plus every rule another app created but this app
+// selected in its settings. Called once at the start of a session to compile
+// the matcher.
 func (dao *QcRuleDAO) ListEnabledByApp(ctx context.Context, db *gorm.DB, appType, appID string) ([]entity.QcRule, error) {
 	var rules []entity.QcRule
 	err := db.WithContext(ctx).
-		Where("app_type = ? AND app_id = ? AND enabled = ?", appType, appID, true).
-		Order("create_time ASC").
+		Table("qc_rule AS r").
+		Select("r.*").
+		Joins(
+			"LEFT JOIN qc_rule_binding AS b ON b.rule_id = r.id AND b.app_type = ? AND b.app_id = ?",
+			appType, appID,
+		).
+		Where("r.enabled = ?", true).
+		Where("(r.app_type = ? AND r.app_id = ?) OR b.id IS NOT NULL", appType, appID).
+		Order("r.create_time ASC").
 		Find(&rules).Error
 	if err != nil {
 		return nil, err
 	}
 	return rules, nil
+}
+
+// ListSelectable lists every rule the tenant could apply to an app, together
+// with the ids currently in effect for that app (home rules + bound rules).
+// This is what the "选用规则" selector renders.
+func (dao *QcRuleDAO) ListSelectable(ctx context.Context, db *gorm.DB, tenantID, appType, appID string) ([]QcRuleSelection, error) {
+	var rules []entity.QcRule
+	if err := db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Order("create_time DESC").
+		Find(&rules).Error; err != nil {
+		return nil, err
+	}
+
+	bound := make(map[string]bool)
+	var ruleIDs []string
+	if err := db.WithContext(ctx).
+		Model(&entity.QcRuleBinding{}).
+		Where("tenant_id = ? AND app_type = ? AND app_id = ?", tenantID, appType, appID).
+		Pluck("rule_id", &ruleIDs).Error; err != nil {
+		return nil, err
+	}
+	for _, id := range ruleIDs {
+		bound[id] = true
+	}
+
+	out := make([]QcRuleSelection, 0, len(rules))
+	for _, r := range rules {
+		home := r.AppType == appType && r.AppID == appID
+		out = append(out, QcRuleSelection{
+			QcRule: r,
+			// Home rules always apply and cannot be deselected; a bound rule is
+			// selected explicitly in this app's settings.
+			Selected: home || bound[r.ID],
+			Home:     home,
+		})
+	}
+	return out, nil
+}
+
+// ReplaceBindings makes want the complete set of rules this app references from
+// other apps. Home rules are never stored as bindings (they apply implicitly)
+// and unknown/foreign rule ids are ignored, so a stale selection can't attach
+// another tenant's rule.
+func (dao *QcRuleDAO) ReplaceBindings(ctx context.Context, db *gorm.DB, tenantID, appType, appID string, want []string) error {
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("tenant_id = ? AND app_type = ? AND app_id = ?", tenantID, appType, appID).
+			Delete(&entity.QcRuleBinding{}).Error; err != nil {
+			return err
+		}
+		if len(want) == 0 {
+			return nil
+		}
+
+		var owned []entity.QcRule
+		if err := tx.Where("tenant_id = ? AND id IN ?", tenantID, want).Find(&owned).Error; err != nil {
+			return err
+		}
+		now := time.Now().Local().UnixMilli()
+		for _, r := range owned {
+			if r.AppType == appType && r.AppID == appID {
+				continue // home rule: applies without a binding row
+			}
+			if err := tx.Create(&entity.QcRuleBinding{
+				ID:         common.GenerateToken(),
+				TenantID:   tenantID,
+				RuleID:     r.ID,
+				AppType:    appType,
+				AppID:      appID,
+				CreateTime: now,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// DeleteBindingsByRule drops every reference to a rule; called when the rule
+// itself is deleted so no dangling bindings keep it "selected".
+func (dao *QcRuleDAO) DeleteBindingsByRule(ctx context.Context, db *gorm.DB, ruleID string) error {
+	return db.WithContext(ctx).Where("rule_id = ?", ruleID).Delete(&entity.QcRuleBinding{}).Error
+}
+
+// QcRuleSelection is one row of the app-level rule selector.
+type QcRuleSelection struct {
+	entity.QcRule
+	// Selected reports whether the rule is in effect for the queried app.
+	Selected bool `json:"selected"`
+	// Home reports whether this app created the rule. Home rules always apply
+	// and the selector must not let them be unchecked.
+	Home bool `json:"home"`
 }
 
 // CountByTenant counts all rules (enabled + disabled) of a tenant.

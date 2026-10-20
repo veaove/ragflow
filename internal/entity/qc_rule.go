@@ -51,8 +51,8 @@ const (
 
 // QC actions.
 const (
-	QcActionLog           = "log"            // record only
-	QcActionLogAndAlert   = "log_and_alert"  // record + alert
+	QcActionLog           = "log"             // record only
+	QcActionLogAndAlert   = "log_and_alert"   // record + alert
 	QcActionBlockAndAlert = "block_and_alert" // block + alert
 )
 
@@ -80,7 +80,10 @@ func (k *QcKeywords) Scan(value interface{}) error {
 	return json.Unmarshal(b, k)
 }
 
-// QcRule is a quality-inspection rule bound to a single app.
+// QcRule is a quality-inspection rule. Its (AppType, AppID) is the rule's HOME
+// app — where it was created in the QC menu. A rule can additionally be
+// referenced by other apps through QcRuleBinding, which is what the "选用规则"
+// selector in the chat / agent settings writes.
 type QcRule struct {
 	ID            string     `gorm:"column:id;primaryKey;size:32" json:"id"`
 	TenantID      string     `gorm:"column:tenant_id;size:64;not null;index" json:"tenant_id"`
@@ -101,6 +104,23 @@ type QcRule struct {
 // TableName specify table name.
 func (QcRule) TableName() string {
 	return "qc_rule"
+}
+
+// QcRuleBinding references a QC rule from an app that is NOT the rule's home
+// app. Effective rules for a session = the app's own rules + every bound rule,
+// which is how one rule created once in the QC menu serves many apps.
+type QcRuleBinding struct {
+	ID         string `gorm:"column:id;primaryKey;size:32" json:"id"`
+	TenantID   string `gorm:"column:tenant_id;size:64;not null;index" json:"tenant_id"`
+	RuleID     string `gorm:"column:rule_id;size:32;not null;uniqueIndex:uk_qc_binding,priority:1" json:"rule_id"`
+	AppType    string `gorm:"column:app_type;size:16;not null;uniqueIndex:uk_qc_binding,priority:2" json:"app_type"`
+	AppID      string `gorm:"column:app_id;size:64;not null;index;uniqueIndex:uk_qc_binding,priority:3" json:"app_id"`
+	CreateTime int64  `gorm:"column:create_time;not null" json:"create_time"`
+}
+
+// TableName specify table name.
+func (QcRuleBinding) TableName() string {
+	return "qc_rule_binding"
 }
 
 // QcHit is a single quality-inspection match record (compliance evidence).
