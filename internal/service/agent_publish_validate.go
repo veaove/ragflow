@@ -75,7 +75,32 @@ func validatePublish(canvas *entity.UserCanvas, dsl map[string]any) error {
 	return nil
 }
 
-// collectComponentNames returns the obj.component_name of every component.
+// componentView normalizes the two shapes a component can take on the wire:
+//   - flattened (what dsl.NormalizeForCanvas emits): {id, name, params}
+//   - nested (what a hand-written DSL carries):      {obj:{component_name, params}}
+// Reading only one shape silently finds zero nodes and makes every workflow
+// look like it has no End, so both are resolved here once.
+type componentView struct {
+	name   string
+	params map[string]any
+}
+
+func viewComponent(cm map[string]any) componentView {
+	if obj, ok := cm["obj"].(map[string]any); ok {
+		name, _ := obj["component_name"].(string)
+		params, _ := obj["params"].(map[string]any)
+		return componentView{name: name, params: params}
+	}
+	name, _ := cm["name"].(string)
+	if name == "" {
+		name, _ = cm["component_name"].(string)
+	}
+	params, _ := cm["params"].(map[string]any)
+	return componentView{name: name, params: params}
+}
+
+// collectComponentNames returns the component name of every component,
+// tolerating both the flattened and nested DSL shapes.
 func collectComponentNames(dsl map[string]any) []string {
 	comps, ok := dsl["components"].(map[string]any)
 	if !ok {
@@ -87,9 +112,7 @@ func collectComponentNames(dsl map[string]any) []string {
 		if !ok {
 			continue
 		}
-		obj, _ := cm["obj"].(map[string]any)
-		name, _ := obj["component_name"].(string)
-		if name != "" {
+		if name := viewComponent(cm).name; name != "" {
 			names = append(names, name)
 		}
 	}
@@ -118,19 +141,15 @@ func endHasOutputs(dsl map[string]any) bool {
 		if !ok {
 			continue
 		}
-		obj, _ := cm["obj"].(map[string]any)
-		if name, _ := obj["component_name"].(string); name != "End" {
+		view := viewComponent(cm)
+		if view.name != "End" {
 			continue
 		}
-		params, _ := obj["params"].(map[string]any)
-		if params == nil {
+		if view.params == nil {
 			return false
 		}
-		outputs, _ := params["outputs"].(map[string]any)
-		if len(outputs) == 0 {
-			return false
-		}
-		return true
+		outputs, _ := view.params["outputs"].(map[string]any)
+		return len(outputs) > 0
 	}
 	return false
 }

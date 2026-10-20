@@ -189,6 +189,17 @@ func (r *Router) Setup(engine *gin.Engine) {
 		// to choose between Go and Python code paths.
 		apiNoAuth.GET("/language", r.systemHandler.Language)
 
+		// Public Workflow / Chatflow run APIs (D6 / 11.2 / 11.3, TR-08).
+		//
+		// These MUST live outside the `authorized` group: that group runs the
+		// user-session AuthMiddleware, which rejects an app API key with
+		// "Invalid access token" before the handler ever sees it. They are
+		// registered here and authenticate themselves via the bearer key
+		// (AppKeyService.ResolveKey inside the handler).
+		appRun := handler.NewAppRunHandler()
+		apiNoAuth.POST("/workflows/:canvas_id/run", appRun.RunWorkflow)
+		apiNoAuth.POST("/chatflows/:canvas_id/chat", appRun.ChatFlow)
+
 		// Pipeline catalog. Public static data (shipped with the binary),
 		// no auth required. The front end uses it to populate the parser
 		// picker without hard-coding the parser_id list.
@@ -635,18 +646,10 @@ func (r *Router) Setup(engine *gin.Engine) {
 			// ordinary Agent run and cancellation identity.
 			RegisterAgentCancelRoutes(v1.Group("/tasks"), r.agentHandler)
 
-			// Public Workflow / Chatflow APIs + per-app API keys (D6 / 11.2/11.3).
-			// API key auth is enforced inside the handler (bearerKey + ResolveKey),
-			// which keeps the public path free of the user-session permission chain.
+			// Per-app API key management. Unlike the run APIs these are
+			// owner-facing (they mint credentials), so they stay behind the
+			// user-session middleware.
 			appRun := handler.NewAppRunHandler()
-			workflows := v1.Group("/workflows")
-			{
-				workflows.POST("/:canvas_id/run", appRun.RunWorkflow)
-			}
-			chatflows := v1.Group("/chatflows")
-			{
-				chatflows.POST("/:canvas_id/chat", appRun.ChatFlow)
-			}
 			apps := v1.Group("/apps")
 			{
 				apps.GET("/:canvas_id/api-keys", appRun.ListKeys)
