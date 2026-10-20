@@ -227,7 +227,7 @@ func buildInjections(
 		var tokens []string
 		for _, q := range added {
 			_, qPrimeTokens := qb.Question(q, "qa", wordSepThreshold, language)
-			if !hasTokenOverlap(qTokens, qPrimeTokens) {
+			if !overlapsQuestion(question, q, qTokens, qPrimeTokens) {
 				info.skipped++
 				continue
 			}
@@ -253,6 +253,41 @@ func groupMatchesToken(words []string, tk string, qb *nlp.QueryBuilder, language
 			if x == tk {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// overlapsQuestion decides whether an added similar question shares enough
+// with the test question to be worth injecting.
+//
+// Token intersection alone is too strict: tokenisers segment inconsistently, so
+// "华夏的申购费率说明" and "华夏基金 申购费率是多少" can end up with disjoint
+// term lists even though a human sees the overlap immediately. Skipping such a
+// question would silently hide a real effect, which is far worse than injecting
+// a token that changes nothing — so we fall back to a character-bigram check.
+func overlapsQuestion(question, similar string, qTokens, sTokens []string) bool {
+	if hasTokenOverlap(qTokens, sTokens) {
+		return true
+	}
+	return shareBigram(question, similar)
+}
+
+// shareBigram reports whether two strings share a two-rune substring. For CJK
+// text this is a reliable "these talk about the same thing" signal; for Latin
+// text the token path above normally answers first.
+func shareBigram(a, b string) bool {
+	ra, rb := []rune(a), []rune(b)
+	if len(ra) < 2 || len(rb) < 2 {
+		return false
+	}
+	grams := make(map[string]struct{}, len(ra))
+	for i := 0; i+1 < len(ra); i++ {
+		grams[string(ra[i:i+2])] = struct{}{}
+	}
+	for i := 0; i+1 < len(rb); i++ {
+		if _, ok := grams[string(rb[i:i+2])]; ok {
+			return true
 		}
 	}
 	return false

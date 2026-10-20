@@ -190,3 +190,67 @@ func TestComputeCompareDiff_ScoreEpsilon(t *testing.T) {
 		t.Fatalf("score changed = %d, want 0 (within epsilon)", diff.Summary.ScoreChangedCount)
 	}
 }
+
+// TestShareBigram guards the overlap fallback: tokenisers segment
+// inconsistently, so two obviously-related Chinese sentences can end up with
+// disjoint term lists. Falling back to a character bigram must still recognise
+// them as related — otherwise a real effect gets silently skipped.
+func TestShareBigram(t *testing.T) {
+	cases := []struct {
+		name    string
+		a, b    string
+		wantHit bool
+	}{
+		{
+			name:    "related Chinese phrasing",
+			a:       "华夏基金 申购费率是多少",
+			b:       "华夏的申购费率说明",
+			wantHit: true,
+		},
+		{
+			name:    "unrelated Chinese",
+			a:       "华夏基金 申购费率是多少",
+			b:       "火星探测器的燃料配方",
+			wantHit: false,
+		},
+		{
+			name:    "too short to compare",
+			a:       "a",
+			b:       "b",
+			wantHit: false,
+		},
+		{
+			name:    "shared latin bigram",
+			a:       "etf fee",
+			b:       "etf charges",
+			wantHit: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shareBigram(tc.a, tc.b); got != tc.wantHit {
+				t.Fatalf("shareBigram(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.wantHit)
+			}
+		})
+	}
+}
+
+// TestOverlapsQuestion_TokenOrBigram documents the two-tier rule: either a
+// token hit or a character bigram hit counts as overlap.
+func TestOverlapsQuestion_TokenOrBigram(t *testing.T) {
+	// Disjoint token lists, but the strings obviously relate.
+	if !overlapsQuestion("华夏基金 申购费率是多少", "华夏的申购费率说明",
+		[]string{"totally", "different"}, []string{"tokens", "here"}) {
+		t.Fatal("expected a bigram hit to count as overlap")
+	}
+	// Neither tokens nor bigrams overlap.
+	if overlapsQuestion("华夏基金", "火星探测器",
+		[]string{"x"}, []string{"y"}) {
+		t.Fatal("expected no overlap for unrelated content")
+	}
+	// Token hit alone is enough even without shared characters.
+	if !overlapsQuestion("alpha", "beta", []string{"shared"}, []string{"shared"}) {
+		t.Fatal("expected a token hit to count as overlap")
+	}
+}
