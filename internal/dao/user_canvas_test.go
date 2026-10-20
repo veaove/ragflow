@@ -35,7 +35,16 @@ func setupUserCanvasTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
 
-	if err := db.AutoMigrate(&entity.UserCanvas{}); err != nil {
+	// ListByIDs reads user.nickname / user.avatar through a LEFT JOIN, and
+	// derives latest_version_seq and last_run_time from subqueries over
+	// user_canvas_version and agent_run. All four tables must exist or the
+	// query fails on SQLite with "no such table".
+	if err := db.AutoMigrate(
+		&entity.UserCanvas{},
+		&entity.User{},
+		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+	); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
 
@@ -196,9 +205,6 @@ func TestUserCanvasDAOListTagsIncludesPipelineWhenCategoryIsEmpty(t *testing.T) 
 
 func TestUserCanvasDAOOwnerAndCategoryFilters(t *testing.T) {
 	db := setupUserCanvasTestDB(t)
-	if err := db.AutoMigrate(&entity.User{}); err != nil {
-		t.Fatalf("failed to migrate user: %v", err)
-	}
 	pushDB(t, db)
 	ctx := t.Context()
 	d := NewUserCanvasDAO()
@@ -270,9 +276,6 @@ func TestUserCanvasDAOOwnerAndCategoryFilters(t *testing.T) {
 // "Tag metadata should be searchable across the Agent list").
 func TestUserCanvasDAOKeywordSearchIncludesTags(t *testing.T) {
 	db := setupUserCanvasTestDB(t)
-	if err := db.AutoMigrate(&entity.User{}); err != nil {
-		t.Fatalf("failed to migrate user: %v", err)
-	}
 	pushDB(t, db)
 	ctx := t.Context()
 	d := NewUserCanvasDAO()
@@ -306,9 +309,6 @@ func TestUserCanvasDAOKeywordSearchIncludesTags(t *testing.T) {
 // canvas_category filter matches the union of the selected categories.
 func TestUserCanvasDAOListByIDsCategoryUnion(t *testing.T) {
 	db := setupUserCanvasTestDB(t)
-	if err := db.AutoMigrate(&entity.User{}); err != nil {
-		t.Fatalf("failed to migrate user: %v", err)
-	}
 	pushDB(t, db)
 	ctx := t.Context()
 	d := NewUserCanvasDAO()
@@ -349,9 +349,6 @@ func TestUserCanvasDAOListByIDsCategoryUnion(t *testing.T) {
 // their tags column (issue #14774: "Agents can be sorted by tag").
 func TestUserCanvasDAOOrderByTags(t *testing.T) {
 	db := setupUserCanvasTestDB(t)
-	if err := db.AutoMigrate(&entity.User{}); err != nil {
-		t.Fatalf("failed to migrate user: %v", err)
-	}
 	pushDB(t, db)
 	ctx := t.Context()
 	d := NewUserCanvasDAO()

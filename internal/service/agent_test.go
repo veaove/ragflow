@@ -921,6 +921,9 @@ func setupAgentSessionServiceTest(t *testing.T) {
 		// children) alongside canvases, so those tables must exist too.
 		&entity.CompilationTemplateGroup{},
 		&entity.CompilationTemplate{},
+		// ListAgents surfaces each canvas's last run time via a subquery over
+		// agent_run; without the table the whole list query fails on SQLite.
+		&entity.AgentRun{},
 	); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
