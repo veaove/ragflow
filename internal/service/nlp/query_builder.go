@@ -307,6 +307,28 @@ func (qb *QueryBuilder) QuestionScoped(ctx context.Context, tenantID, datasetID,
 //
 // The map is request-scoped; it never touches the package-level QueryBuilder
 // singleton or its per-dataset cache, so concurrent requests stay isolated.
+// lookupSynonyms resolves the synonym list for one token.
+//
+// This is the ONLY place the query builder should consult the synonym
+// dictionary, because it is where the request-scoped override applies. The
+// change-set comparison (TestCompareDialog) injects a candidate dictionary
+// here; every branch of the query builder — Chinese, non-Chinese, and the
+// fine-grained term pass — must route through this method, otherwise a whole
+// script family silently ignores the override. That exact mistake shipped once:
+// the override was wired into the non-Chinese branch only, so on Chinese
+// datasets the injected synonyms never took effect and the comparison always
+// reported "no difference".
+func (qb *QueryBuilder) lookupSynonyms(
+	ctx context.Context,
+	tenantID, datasetID, tk string,
+	override map[string][]string,
+) []string {
+	if syns, ok := override[tk]; ok {
+		return syns
+	}
+	return qb.synonym.LookupScoped(ctx, tenantID, datasetID, tk, 8)
+}
+
 func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID, datasetID, txt string, tbl string, minMatch float64, language string, synonymOverride map[string][]string) (*types.MatchTextExpr, []string) {
 	// originalQuery stores the original input text for later use in query expression.
 	originalQuery := txt
@@ -402,13 +424,9 @@ func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID
 		for i, tw := range tksW {
 			tk := tw.tk
 			// Lookup synonyms (limit to 8 per Python)
-			tkSyns := qb.synonym.LookupScoped(ctx, tenantID, datasetID, tk, 8)
-			// A hit in the override map replaces the live list for this token.
-			// Callers pre-merge live + pending, so this is "the dictionary as
-			// it would be after publishing", not "only the pending entries".
-			if override, ok := synonymOverride[tk]; ok {
-				tkSyns = override
-			}
+			// The override is applied inside lookupSynonyms, so all three
+			// branches share one behaviour.
+			tkSyns := qb.lookupSynonyms(ctx, tenantID, datasetID, tk, synonymOverride)
 			if len(tkSyns) > 0 {
 				// Format synonyms with weight boost: term^weight
 				var synParts []string
@@ -510,7 +528,7 @@ func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID
 
 		// Lookup synonyms
 		// syns are synonyms for the current segment.
-		syns := qb.synonym.LookupScoped(ctx, tenantID, datasetID, segment, 8)
+		syns := qb.lookupSynonyms(ctx, tenantID, datasetID, segment, synonymOverride)
 		if len(syns) > 0 && len(keywords) < 32 {
 			keywords = append(keywords, syns...)
 		}
@@ -564,7 +582,7 @@ func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID
 
 			// Lookup synonyms for this token
 			// tkSyns are synonyms for the current term.
-			tkSyns := qb.synonym.LookupScoped(ctx, tenantID, datasetID, term, 8)
+			tkSyns := qb.lookupSynonyms(ctx, tenantID, datasetID, term, synonymOverride)
 			for i, s := range tkSyns {
 				tkSyns[i] = qb.SubSpecialChar(s)
 			}
