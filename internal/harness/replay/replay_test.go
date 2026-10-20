@@ -381,8 +381,12 @@ func TestIntegration_RecordReplayRoundTrip(t *testing.T) {
 	if len(result.Divergences) != 0 {
 		t.Fatalf("expected 0 divergences, got %d", len(result.Divergences))
 	}
-	if result.Duration == 0 {
-		t.Fatal("expected non-zero duration")
+	// Duration is a performance metric, not a behavioural contract. Asserting
+	// it is non-zero was flaky: time.Since has nanosecond granularity but a
+	// pure-memory replay can complete inside one clock tick, yielding 0.
+	// The real invariant is that a measured duration is never negative.
+	if result.Duration < 0 {
+		t.Fatalf("duration must not be negative, got %v", result.Duration)
 	}
 	if result.ReplayMetrics.TotalEvents != result.ReplayLen {
 		t.Fatal("ReplayMetrics.TotalEvents mismatch")
@@ -531,8 +535,9 @@ func TestFork_WithEngine(t *testing.T) {
 	if result.FinalState != nil {
 		t.Fatal("expected nil FinalState without ForkEngine")
 	}
-	if result.Duration == 0 {
-		t.Fatal("expected non-zero duration")
+	// See the sibling test: non-negative is the invariant, non-zero is flaky.
+	if result.Duration < 0 {
+		t.Fatalf("duration must not be negative, got %v", result.Duration)
 	}
 }
 

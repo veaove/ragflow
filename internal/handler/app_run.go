@@ -56,7 +56,7 @@ func (h *AppRunHandler) RunWorkflow(c *gin.Context) {
 	canvasID := c.Param("canvas_id")
 	key := bearerKey(c)
 	if key == "" {
-		common.ResponseWithCodeData(c, common.CodeUnauthorized, nil, "missing API key")
+		common.ResponseWithHttpCodeData(c, http.StatusUnauthorized, common.CodeUnauthorized, nil, "missing API key")
 		return
 	}
 	var body service.AppRunRequest
@@ -85,7 +85,7 @@ func (h *AppRunHandler) ChatFlow(c *gin.Context) {
 	canvasID := c.Param("canvas_id")
 	key := bearerKey(c)
 	if key == "" {
-		common.ResponseWithCodeData(c, common.CodeUnauthorized, nil, "missing API key")
+		common.ResponseWithHttpCodeData(c, http.StatusUnauthorized, common.CodeUnauthorized, nil, "missing API key")
 		return
 	}
 	var body service.AppRunRequest
@@ -202,16 +202,21 @@ func collectBlocking(c *gin.Context, events <-chan canvas.RunEvent) {
 	}, "success")
 }
 
-// respondAppRunError maps public-API service errors to HTTP codes.
+// respondAppRunError maps public-API service errors to the HTTP status codes
+// from the tech design's error table (11.8). These are external integration
+// surfaces, so a standard HTTP status matters: a caller (or gateway) must be
+// able to tell "unauthorized" from "bad request" without parsing the body.
+// Internal endpoints keep the HTTP-200 + body-code convention of the api
+// service; the public run APIs do not.
 func respondAppRunError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrAppKeyForbidden):
-		common.ResponseWithCodeData(c, common.CodeUnauthorized, nil, "APP_KEY_INVALID")
+		common.ResponseWithHttpCodeData(c, http.StatusUnauthorized, common.CodeUnauthorized, nil, "APP_KEY_INVALID")
 	case errors.Is(err, service.ErrAppModeMismatch):
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "APP_MODE_MISMATCH")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeArgumentError, nil, "APP_MODE_MISMATCH")
 	case errors.Is(err, service.ErrResponseModeNotSupported):
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "RESPONSE_MODE_NOT_SUPPORTED")
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeArgumentError, nil, "RESPONSE_MODE_NOT_SUPPORTED")
 	default:
-		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
+		common.ResponseWithHttpCodeData(c, http.StatusInternalServerError, common.CodeServerError, nil, err.Error())
 	}
 }
