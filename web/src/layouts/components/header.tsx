@@ -21,7 +21,7 @@ import { MobileNavbar } from './mobile-nav-drawer';
 import ThemeButton from './theme-button';
 import { LucideLanguages } from 'lucide-react';
 import React, { useMemo } from 'react';
-import { Link, useLocation } from 'react-router';
+import { Link } from 'react-router';
 
 /**
  * 顶栏。左右两端分别是品牌入口与账号/偏好操作。
@@ -37,7 +37,6 @@ export function Header({
   className,
   ...props
 }: React.HTMLAttributes<HTMLElement>) {
-  const { pathname } = useLocation();
   const changeLanguage = useChangeLanguage();
 
   const {
@@ -71,13 +70,6 @@ export function Header({
             renderFooter={(close) => <MobileMenuFooter onClose={close} />}
           />
         </div>
-        <Link
-          to={Routes.Root}
-          aria-current={pathname === Routes.Root ? 'page' : undefined}
-          className="flex size-9 shrink-0 items-center justify-center"
-        >
-          <img src="/logo.svg" alt="和君纵达 logo" className="size-9" />
-        </Link>
       </div>
 
       <div className="flex-1" aria-hidden />

@@ -42,8 +42,6 @@ export type SidebarMenuItem = {
   name: string;
   icon: React.ComponentType<{ className?: string; name?: string }>;
   icon_name?: string;
-  /** Optional trailing chip (e.g. the "new" marker on Studio). */
-  badge?: string;
 };
 
 export const sidebarMenuItems: SidebarMenuItem[] = [
@@ -79,7 +77,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     path: Routes.Studio,
     name: 'header.studio',
     icon: Workflow,
-    badge: 'common.new',
     'data-testid': 'nav-studio',
   } as SidebarMenuItem,
   {
@@ -121,7 +118,7 @@ export function SidebarNav({ className }: { className?: string }) {
   return (
     <nav className={cn('py-2', className)}>
       <ul className="space-y-1">
-        {sidebarMenuItems.map(({ path, name, icon: Icon, icon_name, badge }) => {
+        {sidebarMenuItems.map(({ path, name, icon: Icon, icon_name }) => {
           const isActive = path === activePath;
 
           return (
@@ -152,11 +149,6 @@ export function SidebarNav({ className }: { className?: string }) {
                   <Icon className="size-5 stroke-[1.5]" name={icon_name} />
                 </span>
                 <span className="truncate">{t(name)}</span>
-                {badge && (
-                  <span className="ml-auto shrink-0 rounded-full bg-accent-primary/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-accent-primary">
-                    {t(badge)}
-                  </span>
-                )}
               </Link>
             </li>
           );
