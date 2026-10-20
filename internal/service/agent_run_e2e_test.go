@@ -162,6 +162,8 @@ func TestRunAgent_RealCanvas_BeginMessage(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -234,6 +236,8 @@ func TestRunAgent_SessionHistoryFeedsSysHistoryAndPersists(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -361,6 +365,8 @@ func TestRunAgent_NewSessionPersistsHistoryForNextTurn(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.API4Conversation{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -444,6 +450,8 @@ func TestRunAgent_RejectsSessionOwnedByAnotherUser(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.API4Conversation{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -524,6 +532,8 @@ func TestRunAgent_RealCanvas_WaitForUserResume(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -673,6 +683,8 @@ func TestRunAgent_InterruptPersistsPartialAssistantHistory(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.API4Conversation{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -753,6 +765,8 @@ func TestRunAgent_RealCanvas_WaitForUserResume_EventSemantics(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -852,6 +866,8 @@ func TestRunAgent_RealCanvas_GroupedParallelOuterFollower(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -982,6 +998,8 @@ func TestRunAgent_AllFixture_LoopInterruptResume(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -1107,6 +1125,8 @@ func TestRunAgent_AllFixture_LoopInterruptResume_MultiTurn(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -1207,6 +1227,8 @@ func TestRunAgent_AllFixture_IterationFormatsItems(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -1320,6 +1342,8 @@ func TestRunAgent_AllFixture_VarAssigner(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -1404,6 +1428,8 @@ func TestRunAgent_AllFixture_DataOps(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -1500,6 +1526,8 @@ func TestRunAgent_RealCanvas_CompileFails(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -1606,6 +1634,8 @@ func TestRunAgent_AllFixture_CategorizeResume(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -1754,6 +1784,8 @@ func TestRunAgent_RealCanvas_InvokeFails(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -1860,6 +1892,8 @@ func TestRunAgent_RunTracker_AttachCheckpoint_CallSequence(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
 		&entity.TenantModelProvider{},
@@ -1977,6 +2011,8 @@ func TestRunAgent_FilesPopulateIteration(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.UserTenant{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
@@ -2110,6 +2146,8 @@ func TestRunAgent_MissingUploadEmitsError(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.UserTenant{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
@@ -2183,6 +2221,8 @@ func TestRunAgent_NoFilesRunsNormally(t *testing.T) {
 	if err := testDB.AutoMigrate(
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
+		&entity.AgentRun{},
+		&entity.AgentNodeExecution{},
 		&entity.UserTenant{},
 		&entity.APIToken{},
 		&entity.API4Conversation{},
