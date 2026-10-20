@@ -35,6 +35,10 @@
 | E2E 账号 | `qa.e2e@example.com`（普通用户 `is_superuser=0`，主 API 可用） |
 | 测试工具 | Playwright 1.64.1（Chromium headless），Node 22.22.2 |
 
+> **语言注意**：该账号的界面语言是 English（线上默认），且 `localStorage['lng']='zh'`
+> 只改了 `html[lang]`、并未真正切到中文（被用户设置覆盖）。因此所有 UI 断言均采用
+> **中英双语正则**，避免"文案语言不同"被误判成功能缺陷。
+
 ---
 
 ## 三、后端全量单测
@@ -281,8 +285,23 @@ src/components/list-filter-bar/index.tsx:155  →  <SearchInput value onChange r
 
 ---
 
-## 七、未执行项
+## 六·附、E2E 截图证据
 
+存于 `docs/qa_shots/2026-10-20/`：
+
+| 文件 | 内容 |
+|---|---|
+| `shot_studio_list.png` | 工作室列表（类型卡 + Tab 计数 + 视图切换） |
+| `shot_studio_table.png` | 工作室表格视图（7 列 + 分页 12/页 + Total 5） |
+| `shot_studio_create.png` | 工作室创建弹窗（两张类型大卡，Chatflow 已预选） |
+| `shot_runs.png` | 运行日志页（4 个筛选控件 + 7 列表格 + 5 行数据） |
+| `shot_agents.png` | 智能体列表（`创建应用` 拆分按钮） |
+| `shot_agents_menu.png` | 拆分按钮下拉（编译算子被分隔线独立） |
+| `shot_agent_create.png` | 智能体创建弹窗（只剩 2 张原生卡） |
+
+---
+
+## 七、未执行项
 | 项 | 原因 | 启用方式 |
 |---|---|---|
 | `build.sh --test-integration` | 需真实 MySQL/Redis/MinIO/ES 全栈 + 测试账号 `qa@infiniflow.org` | 服务器上补账号后 `bash build.sh --test-integration` |
