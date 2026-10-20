@@ -226,6 +226,7 @@ func (d *DatasetService) CreateDataset(ctx context.Context, req *service.CreateD
 		EmbdID:       embdID,
 		TenantEmbdID: stringPtrIfNotEmpty(tenantEmbdID),
 		Status:       &status,
+		Enabled:      true,
 	}
 
 	if err = d.kbDAO.Create(ctx, dao.DB, kb); err != nil {

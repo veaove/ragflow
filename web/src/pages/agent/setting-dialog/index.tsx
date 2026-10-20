@@ -6,10 +6,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSetAgent } from '@/hooks/use-agent-request';
 import { IModalProps } from '@/interfaces/common';
-import { useCallback } from 'react';
+import { QcRulePanel } from '@/pages/qc/rule-panel';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useParams } from 'react-router';
 import {
   AgentSettingId,
   SettingForm,
@@ -19,6 +22,8 @@ import {
 export function SettingDialog({ hideModal }: IModalProps<any>) {
   const { t } = useTranslation();
   const { setAgent } = useSetAgent();
+  const { id } = useParams();
+  const [tab, setTab] = useState<'basic' | 'qc'>('basic');
 
   const submit = useCallback(
     async (values: SettingFormSchemaType) => {
@@ -32,16 +37,33 @@ export function SettingDialog({ hideModal }: IModalProps<any>) {
 
   return (
     <Dialog open onOpenChange={hideModal}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t('common.edit')}</DialogTitle>
         </DialogHeader>
-        <SettingForm submit={submit}></SettingForm>
-        <DialogFooter>
-          <ButtonLoading type="submit" form={AgentSettingId} loading={false}>
-            {t('common.save')}
-          </ButtonLoading>
-        </DialogFooter>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as 'basic' | 'qc')}>
+          <TabsList>
+            <TabsTrigger value="basic">{t('flow.settings.basic')}</TabsTrigger>
+            <TabsTrigger value="qc">{t('flow.settings.qcRules')}</TabsTrigger>
+          </TabsList>
+          <TabsContent value="basic">
+            <SettingForm submit={submit}></SettingForm>
+          </TabsContent>
+          <TabsContent value="qc" className="max-h-[60vh] overflow-y-auto">
+            <QcRulePanel
+              appType="canvas"
+              appId={id ?? ''}
+              variant="embedded"
+            />
+          </TabsContent>
+        </Tabs>
+        {tab === 'basic' && (
+          <DialogFooter>
+            <ButtonLoading type="submit" form={AgentSettingId} loading={false}>
+              {t('common.save')}
+            </ButtonLoading>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

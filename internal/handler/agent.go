@@ -1299,7 +1299,8 @@ func (h *AgentHandler) AgentChatCompletions(c *gin.Context) {
 	// req.Files is already normalized to the 1D file list by the
 	// agentFiles unmarshaler. A nil/empty list reaches RunAgent as-is so
 	// its `len(files) > 0` guard sees a file-less run.
-	events, err := h.chatRunner.RunAgent(c.Request.Context(), user.ID, req.AgentID, req.SessionID, "", userInput, req.Files)
+	runCtx := service.WithRunTrigger(c.Request.Context(), entity.RunTriggerWebapp)
+	events, err := h.chatRunner.RunAgent(runCtx, user.ID, req.AgentID, req.SessionID, "", userInput, req.Files)
 	if err != nil {
 		common.Warn("agent chat completions: RunAgent failed",
 			append([]zap.Field{

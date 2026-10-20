@@ -91,6 +91,7 @@ func (s *AgentService) RunAgentWithWebhook(
 	if payload != nil {
 		ctx = context.WithValue(ctx, webhookPayloadKey{}, payload)
 	}
+	ctx = WithRunTrigger(ctx, entity.RunTriggerWebhook)
 	return s.RunAgent(ctx, userID, canvasID, AgentSessionIDFromContext(ctx), "", "", nil)
 }
 
@@ -1489,6 +1490,12 @@ func (s *AgentService) RunAgent(ctx context.Context, userID, canvasID, sessionID
 		return nil, err
 	}
 	agentTenantID := canvasRow.UserID
+	// Trigger type defaults to debug (the editor /agent run entry and tests);
+	// production entry points override it through WithRunTrigger.
+	triggerType := runTriggerFromContext(ctx)
+	if triggerType == "" {
+		triggerType = entity.RunTriggerDebug
+	}
 	newSession := sessionID == ""
 	if sessionID == "" {
 		sessionID = common.GenerateToken()
@@ -1552,7 +1559,7 @@ func (s *AgentService) RunAgent(ctx context.Context, userID, canvasID, sessionID
 			ID:            runID,
 			CanvasID:      canvasID,
 			TenantID:      agentTenantID,
-			TriggerType:   entity.RunTriggerDebug,
+			TriggerType:   triggerType,
 			Status:        entity.RunStatusRunning,
 			Inputs:        inputs,
 			MaxDurationMS: 300000,
@@ -1943,7 +1950,75 @@ func (s *AgentService) RunAgent(ctx context.Context, userID, canvasID, sessionID
 		}
 	}()
 	registrationHandedOff = true
-	return out, nil
+
+	// Quality inspection (Chain 2): inspect the canvas run's answer text.
+	// A chatflow blocks on block-level rules; a workflow only records + alerts
+	// (its final output is not a replaceable stream). Debug runs (trigger_type
+	// == debug) record only, never block or alert.
+	isWorkflow := canvasRow.CanvasCategory == entity.CanvasCategoryWorkflow
+	isDebug := triggerType == entity.RunTriggerDebug
+	qc := NewQcSession(ctx, agentTenantID, entity.QcAppTypeCanvas, canvasID, sessionID, runID, isWorkflow || isDebug, isDebug)
+	if qc.Enabled() {
+		if input := stringifyAgentUserInput(agentRunQuery(userInput)); input != "" {
+			qc.InspectUserInput(input)
+		}
+	}
+	return s.wrapAgentQcChannel(qc, isWorkflow, out), nil
+}
+
+// wrapAgentQcChannel wraps a canvas run event stream with quality inspection.
+// For chatflow it inspects "message" content deltas and, once a block rule
+// fires, replaces the stream with the block replacement message and drops the
+// remaining raw answer frames. For workflow it inspects the End node's
+// "node_finished" outputs (record + alert only — the workflow path never
+// blocks). When QC is disabled it returns the input channel unchanged.
+func (s *AgentService) wrapAgentQcChannel(qc *QcSession, isWorkflow bool, in <-chan canvas.RunEvent) <-chan canvas.RunEvent {
+	if qc == nil || !qc.Enabled() {
+		return in
+	}
+	out := make(chan canvas.RunEvent, 8)
+	go func() {
+		defer close(out)
+		replacementSent := false
+		for ev := range in {
+			switch ev.Type {
+			case "message":
+				if ev.Data == "" {
+					out <- ev
+					continue
+				}
+				var msg canvas.MessageEvent
+				if err := json.Unmarshal([]byte(ev.Data), &msg); err != nil {
+					out <- ev
+					continue
+				}
+				if msg.Content != "" {
+					qc.InspectAnswer(msg.Content)
+				}
+				if qc.Blocked() {
+					if !replacementSent {
+						replacementSent = true
+						msg.Content = qc.Replacement()
+						msg.Thinking = ""
+						msg.StartToThink = false
+						msg.EndToThink = false
+						if b, err := json.Marshal(msg); err == nil {
+							ev.Data = string(b)
+						}
+						out <- ev
+					}
+					// Drop the raw chunk (and every later answer frame).
+					continue
+				}
+			case "node_finished":
+				if isWorkflow {
+					qc.InspectWorkflowOutput(ev.Data)
+				}
+			}
+			out <- ev
+		}
+	}()
+	return out
 }
 
 // runReleasedAgent runs the most recently published version of a canvas.

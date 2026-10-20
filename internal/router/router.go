@@ -71,6 +71,19 @@ type Router struct {
 	// same reason as synonymHandler.
 	changeSetHandler *handler.ChangeSetHandler
 	changeSetOnce    sync.Once
+
+	// qcHandler serves the quality-inspection routes; lazily built to keep the
+	// already long NewRouter parameter list from growing.
+	qcHandler *handler.QcHandler
+	qcOnce    sync.Once
+}
+
+// getQcHandler lazily constructs the quality-inspection handler.
+func (r *Router) getQcHandler() *handler.QcHandler {
+	r.qcOnce.Do(func() {
+		r.qcHandler = handler.NewQcHandler()
+	})
+	return r.qcHandler
 }
 
 // getChangeSetHandler lazily constructs the staged-edit handler.
@@ -231,6 +244,12 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 		apiNoAuth.GET("/dify/retrieval/health", r.difyRetrievalHandler.HealthCheck)
 
+		// Quality-inspection realtime WebSocket. Registered outside the
+		// AuthMiddleware group because a browser WebSocket upgrade cannot
+		// carry the Authorization header; the handler resolves the user from
+		// the `token` query parameter instead.
+		apiNoAuth.GET("/qc/stream", r.getQcHandler().Stream)
+
 		RegisterEENoAuthRouter(apiNoAuth, r)
 	}
 
@@ -376,6 +395,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 				datasets.GET("/tags/aggregation", r.datasetsHandler.AggregateTags)
 				datasets.GET("/:dataset_id", r.datasetsHandler.GetDataset)
 				datasets.PUT("/:dataset_id", r.datasetsHandler.UpdateDataset)
+				datasets.GET("/:dataset_id/references", r.datasetsHandler.ListDatasetReferences)
 				datasets.GET("/:dataset_id/graph", r.datasetsHandler.GetKnowledgeGraph)
 				datasets.POST("/:dataset_id/embedding/check", r.datasetsHandler.CheckEmbedding)
 				datasets.POST("/:dataset_id/documents/batch-update-status", r.documentHandler.BatchUpdateDocumentStatus)
@@ -800,6 +820,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 				dify.POST("/retrieval", r.difyRetrievalHandler.Retrieval)
 				dify.GET("/retrieval", r.difyRetrievalHandler.Retrieval)
 			}
+
+			// Quality-inspection routes
+			r.registerQcRoutes(v1)
 		}
 	}
 

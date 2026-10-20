@@ -96,6 +96,31 @@ func runIDFromContext(ctx context.Context) string {
 	return ""
 }
 
+// runTriggerContextKey carries the trigger type (debug/api/webapp/...) set by
+// the entry point down into RunAgent. QC uses it to distinguish debug runs
+// (record-only, never block or alert) from production runs.
+type runTriggerContextKey struct{}
+
+// WithRunTrigger attaches the run trigger type to ctx. An empty value is a
+// no-op so the default (debug) in RunAgent is preserved.
+func WithRunTrigger(ctx context.Context, triggerType string) context.Context {
+	if triggerType == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, runTriggerContextKey{}, triggerType)
+}
+
+// runTriggerFromContext returns the trigger type attached to ctx, if any.
+func runTriggerFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(runTriggerContextKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
+
 // RunAgentAsApp runs a published canvas through the public API, bypassing the
 // user-session permission chain (P0-1 / D6). It validates the API key against
 // the canvas, loads the canvas directly (no CheckCanvasPermission), and runs
@@ -156,6 +181,7 @@ func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey str
 	runID := common.GenerateUUID()
 	ctx = WithRunID(ctx, runID)
 	ctx = WithIdempotencyKey(ctx, req.IdempotencyKey)
+	ctx = WithRunTrigger(ctx, entity.RunTriggerAPI)
 	req.RunID = runID
 
 	events, err := s.RunAgent(ctx, ownerUserID, canvasID, sessionID, "", userInput, files)

@@ -36,12 +36,22 @@ func datasetListItemToMap(kb *entity.KnowledgebaseListItem) map[string]interface
 		"pagerank":                   kb.Pagerank,
 		"embedding_model":            kb.EmbdID,
 		"nickname":                   kb.Nickname,
+		"enabled":                    kb.Enabled,
 	}
 	if kb.TenantAvatar != nil {
 		item["tenant_avatar"] = *kb.TenantAvatar
 	}
 	if kb.UpdateTime != nil {
 		item["update_time"] = *kb.UpdateTime
+	}
+	if kb.CreateTime != nil {
+		item["create_time"] = *kb.CreateTime
+	}
+	if kb.CreateDate != nil {
+		item["create_date"] = *kb.CreateDate
+	}
+	if kb.UpdateDate != nil {
+		item["update_date"] = *kb.UpdateDate
 	}
 	return item
 }
@@ -63,6 +73,7 @@ func datasetToMap(kb *entity.Knowledgebase) map[string]interface{} {
 		"parser_config":              kb.ParserConfig,
 		"pagerank":                   kb.Pagerank,
 		"create_time":                kb.CreateTime,
+		"enabled":                    kb.Enabled,
 	}
 	if kb.Avatar != nil {
 		item["avatar"] = *kb.Avatar
@@ -96,6 +107,12 @@ func datasetToMap(kb *entity.Knowledgebase) map[string]interface{} {
 	}
 	if kb.UpdateTime != nil {
 		item["update_time"] = *kb.UpdateTime
+	}
+	if kb.CreateDate != nil {
+		item["create_date"] = *kb.CreateDate
+	}
+	if kb.UpdateDate != nil {
+		item["update_date"] = *kb.UpdateDate
 	}
 	return item
 }

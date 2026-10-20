@@ -28,7 +28,9 @@ import { Plus, RefreshCw, ChevronDown } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
+import { IDataset, IDatasetReference } from '@/interfaces/database/dataset';
 import { DatasetCreatingDialog } from './dataset-creating-dialog';
+import { DatasetDisableBlockedDialog } from './dataset-disable-blocked-dialog';
 import { useSaveKnowledge } from './hooks';
 import { KnowledgeBaseTable } from './knowledge-base-table';
 import { useRenameDataset } from './use-rename-dataset';
@@ -70,8 +72,9 @@ export default function Datasets() {
   const filteredKbs = useMemo(() => {
     if (!kbs) return [];
     if (statusFilter === 'all') return kbs;
-    if (statusFilter === 'enabled') return kbs.filter((d) => d.status === '1');
-    return kbs.filter((d) => d.status !== '1');
+    const isEnabled = (dataset: IDataset) => dataset.enabled !== false;
+    if (statusFilter === 'enabled') return kbs.filter(isEnabled);
+    return kbs.filter((dataset) => !isEnabled(dataset));
   }, [kbs, statusFilter]);
 
   const currentPageSize = pagination.pageSize || 10;
@@ -100,6 +103,12 @@ export default function Datasets() {
   const [searchUrl, setSearchUrl] = useSearchParams();
   const isCreate = searchUrl.get('isCreate') === 'true';
   const queryClient = useQueryClient();
+
+  // A dataset that apps still bind cannot be disabled; the dialog names them.
+  const [disableBlocked, setDisableBlocked] = useState<{
+    dataset: IDataset;
+    references: IDatasetReference[];
+  } | null>(null);
   useEffect(() => {
     if (isCreate) {
       queryClient.invalidateQueries({ queryKey: ['tenantInfo'] });
@@ -215,6 +224,9 @@ export default function Datasets() {
               }}
               setPagination={handlePageChange}
               showDatasetRenameModal={showDatasetRenameModal}
+              onDisableBlocked={(dataset, references) =>
+                setDisableBlocked({ dataset, references })
+              }
             />
           ) : (
             <div className="flex flex-1 items-center justify-center px-5">
@@ -257,6 +269,13 @@ export default function Datasets() {
           initialName={initialDatasetName}
           loading={datasetRenameLoading}
         ></RenameDialog>
+      )}
+      {disableBlocked && (
+        <DatasetDisableBlockedDialog
+          dataset={disableBlocked.dataset}
+          references={disableBlocked.references}
+          onClose={() => setDisableBlocked(null)}
+        />
       )}
     </>
   );

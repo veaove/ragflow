@@ -29,6 +29,7 @@ import {
   IDataset,
   IDatasetFilter,
   IDatasetListResult,
+  IDatasetReference,
   IKnowledgeGraph,
   INextTestingResult,
   IRenameTag,
@@ -51,6 +52,7 @@ import kbService, {
   getArtifactGraph,
   getArtifactPage,
   getArtifactsStructure,
+  getDatasetReferences,
   getKbDetail,
   getKnowledgeGraph,
   getWikiCommit,
@@ -76,7 +78,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { useDebounce } from 'ahooks';
-import { omit } from 'lodash';
+import { isUndefined, omit, omitBy } from 'lodash';
 import { useCallback, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import {
@@ -364,6 +366,7 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
     }) => {
       const kbId = params?.kb_id || knowledgeBaseId;
       const {
+        name,
         embedding_model,
         chunk_method,
         pipeline_id,
@@ -374,20 +377,28 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
         parser_config,
         ...additionalFields
       } = params;
-      const requestBody: Record<string, any> = {
-        name,
-        embedding_model,
-        chunk_method,
-        pipeline_id,
-        avatar,
-        description,
-        permission,
-        pagerank,
-        parser_config: isPipelineParserConfig(parser_config)
-          ? parser_config
-          : normalizeParserConfig(parser_config),
-        ...omit(additionalFields, ['kb_id']),
-      };
+      // Every key is omitted when undefined so a partial update only carries the
+      // fields the caller actually set. Without that, an update that touches a
+      // single field would still send an empty `name`, and the backend rejects
+      // any provided but blank name with "String should have at least 1
+      // character" — which is why the enable switch used to fail silently.
+      const requestBody: Record<string, any> = omitBy(
+        {
+          name,
+          embedding_model,
+          chunk_method,
+          pipeline_id,
+          avatar,
+          description,
+          permission,
+          pagerank,
+          parser_config: isPipelineParserConfig(parser_config)
+            ? parser_config
+            : normalizeParserConfig(parser_config),
+          ...omit(additionalFields, ['kb_id']),
+        },
+        isUndefined,
+      );
 
       const { data = {} } = await updateKb(kbId, requestBody);
       if (data.code === 0) {
@@ -405,6 +416,21 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
   });
 
   return { data, loading, saveKnowledgeConfiguration: mutateAsync };
+};
+
+/**
+ * Reads the apps that currently bind a dataset. A non-empty list means the
+ * dataset must stay enabled: the user has to unbind it in those apps first.
+ * Returns an empty list on failure so the caller degrades to "let the backend
+ * decide" instead of blocking on a broken lookup.
+ */
+export const fetchDatasetReferences = async (
+  datasetId: string,
+): Promise<IDatasetReference[]> => {
+  const { data } = await getDatasetReferences(datasetId);
+  const references = (data?.data as { references?: IDatasetReference[] })
+    ?.references;
+  return Array.isArray(references) ? references : [];
 };
 
 export const useFetchKnowledgeBaseConfiguration = (props?: {
@@ -1031,9 +1057,13 @@ export const useFetchKnowledgeList = (
 
   const list = useMemo(() => {
     const all = data?.pages.flatMap((page) => page.items) ?? [];
+    // Disabled datasets stay in the management list but are not offered as a
+    // retrieval source, so pickers never bind a dataset the owner switched off.
+    // Rows from endpoints that predate the field count as enabled.
+    const enabled = all.filter((x) => x.enabled !== false);
     return shouldFilterListWithoutDocument
-      ? all.filter((x) => x.chunk_count > 0)
-      : all;
+      ? enabled.filter((x) => x.chunk_count > 0)
+      : enabled;
   }, [data, shouldFilterListWithoutDocument]);
 
   const handleScroll = useCallback(

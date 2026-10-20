@@ -461,6 +461,9 @@ func (a *NLPRetrievalAdapter) resolveDatasets(
 		if kb == nil {
 			return nil, fmt.Errorf("retrieval: dataset %q was not found", datasetID)
 		}
+		if !kb.Enabled {
+			return nil, fmt.Errorf("retrieval: dataset %q is disabled", kb.Name)
+		}
 		kbs = append(kbs, kb)
 		resolvedKBIDs = append(resolvedKBIDs, kb.ID)
 	}

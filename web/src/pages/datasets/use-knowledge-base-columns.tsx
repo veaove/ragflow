@@ -12,13 +12,17 @@ import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import {
   useDeleteKnowledge,
   useUpdateKnowledge,
+  fetchDatasetReferences,
 } from '@/hooks/use-knowledge-request';
-import { IDataset } from '@/interfaces/database/dataset';
+import {
+  IDataset,
+  IDatasetReference,
+} from '@/interfaces/database/dataset';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/date';
 import { ColumnDef } from '@tanstack/react-table';
 import { Pencil, Trash2 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRenameDataset } from './use-rename-dataset';
 
@@ -29,18 +33,28 @@ type PaginationInfo = {
 
 type UseKnowledgeBaseColumnsProps = {
   pagination: PaginationInfo;
+  /**
+   * Called when the dataset cannot be disabled because apps still bind it. The
+   * caller owns the dialog: the column definition cannot render one.
+   */
+  onDisableBlocked: (dataset: IDataset, references: IDatasetReference[]) => void;
 } & Pick<ReturnType<typeof useRenameDataset>, 'showDatasetRenameModal'>;
 
 export function useKnowledgeBaseColumns({
   pagination,
   showDatasetRenameModal,
+  onDisableBlocked,
 }: UseKnowledgeBaseColumnsProps) {
   const { t } = useTranslation();
   const { navigateToDataset } = useNavigatePage();
   const { saveKnowledgeConfiguration } = useUpdateKnowledge(true);
   const { deleteKnowledge } = useDeleteKnowledge();
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  const isEnabled = (status?: string) => status === '1';
+  // `enabled` is the switch; `status` is the backend row-lifecycle marker and
+  // must not drive the UI. Datasets from endpoints that predate the field are
+  // treated as enabled, matching the column default.
+  const isEnabled = (dataset: IDataset) => dataset.enabled !== false;
 
   const columns: ColumnDef<IDataset>[] = useMemo(
     () => [
@@ -105,10 +119,10 @@ export function useKnowledgeBaseColumns({
         cell: ({ row }) => <span>{row.getValue('chunk_count') ?? 0}</span>,
       },
       {
-        accessorKey: 'status',
+        accessorKey: 'enabled',
         header: t('knowledgeDetails.status'),
         cell: ({ row }) => {
-          const enabled = isEnabled(row.getValue('status'));
+          const enabled = isEnabled(row.original);
           return (
             <div className="flex items-center gap-2">
               <span
@@ -130,16 +144,28 @@ export function useKnowledgeBaseColumns({
         accessorKey: 'update_date',
         header: '更新时间',
         cell: ({ row }) => {
-          const value = row.getValue('update_date') as string;
-          return <span className="text-text-secondary">{value ? formatDate(value) : '--'}</span>;
+          // create_date/update_date are the formatted columns; fall back to the
+          // numeric timestamps for list shapes that only carry those.
+          const value =
+            row.original.update_date ?? row.original.update_time ?? '';
+          return (
+            <span className="text-text-secondary">
+              {value ? formatDate(value) : '--'}
+            </span>
+          );
         },
       },
       {
         accessorKey: 'create_date',
         header: '创建时间',
         cell: ({ row }) => {
-          const value = row.getValue('create_date') as string;
-          return <span className="text-text-secondary">{value ? formatDate(value) : '--'}</span>;
+          const value =
+            row.original.create_date ?? row.original.create_time ?? '';
+          return (
+            <span className="text-text-secondary">
+              {value ? formatDate(value) : '--'}
+            </span>
+          );
         },
       },
       {
@@ -147,7 +173,8 @@ export function useKnowledgeBaseColumns({
         header: '操作',
         cell: ({ row }) => {
           const dataset = row.original;
-          const enabled = isEnabled(dataset.status);
+          const enabled = isEnabled(dataset);
+          const toggling = togglingId === dataset.id;
 
           const handleEdit = (e: React.MouseEvent) => {
             e.stopPropagation();
@@ -155,10 +182,26 @@ export function useKnowledgeBaseColumns({
           };
 
           const handleToggle = async (checked: boolean) => {
-            await saveKnowledgeConfiguration({
-              kb_id: dataset.id,
-              status: checked ? '1' : '0',
-            });
+            setTogglingId(dataset.id);
+            try {
+              if (!checked) {
+                // A dataset that something still binds cannot be disabled: the
+                // binding would silently lose its retrieval source. Look the
+                // bindings up first so the user is told exactly where to unbind
+                // instead of getting a bare failure.
+                const references = await fetchDatasetReferences(dataset.id);
+                if (references.length > 0) {
+                  onDisableBlocked(dataset, references);
+                  return;
+                }
+              }
+              await saveKnowledgeConfiguration({
+                kb_id: dataset.id,
+                enabled: checked,
+              });
+            } finally {
+              setTogglingId(null);
+            }
           };
 
           const handleDelete = () => {
@@ -178,6 +221,7 @@ export function useKnowledgeBaseColumns({
 
               <Switch
                 checked={enabled}
+                disabled={toggling}
                 onCheckedChange={handleToggle}
                 className="data-[state=checked]:bg-accent-primary"
               />
@@ -214,6 +258,8 @@ export function useKnowledgeBaseColumns({
       showDatasetRenameModal,
       saveKnowledgeConfiguration,
       deleteKnowledge,
+      onDisableBlocked,
+      togglingId,
     ],
   );
 

@@ -368,6 +368,13 @@ export const datasetFilter = () => request.get(api.datasetFilter);
 export const updateKb = (datasetId: string, data: Record<string, any>) =>
   request.put(api.updateKb(datasetId), { data });
 
+/**
+ * Lists the apps that bind this dataset. The list must be empty before the
+ * dataset can be disabled.
+ */
+export const getDatasetReferences = (datasetId: string) =>
+  request.get(api.datasetReferences(datasetId));
+
 export const runIndex = (datasetId: string, indexType: string) =>
   request.post(api.runIndex(datasetId, indexType));
 

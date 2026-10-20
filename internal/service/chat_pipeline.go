@@ -100,6 +100,11 @@ type AsyncChatResult struct {
 	// the think-block sentence), forwarded so a client can render steps —
 	// tool, status, counts, sources, duration — instead of paragraphs.
 	ThinkEvent *ThinkEvent `json:"think_event,omitempty"`
+	// QcEvent is non-nil when this chunk accompanies a quality-inspection hit.
+	// Only warn / block hits fill it; info hits are persisted without a client
+	// hint. When Blocked is true, Answer has already been replaced with the
+	// replacement message.
+	QcEvent *QcEvent `json:"qc_event,omitempty"`
 	// Internal-only: set when Answer is the run's authoritative full text —
 	// <think> stretch included, citation handles already compacted against the
 	// shipped reference — so the session writer must persist it instead of the
@@ -107,6 +112,16 @@ type AsyncChatResult struct {
 	AnswerIsAuthoritative bool
 	// Internal-only: accumulated answer for building the decorated final result.
 	accumulatedAnswer string
+}
+
+// QcEvent is the quality-inspection hint carried alongside an answer chunk.
+type QcEvent struct {
+	RuleID        string `json:"rule_id"`
+	RuleName      string `json:"rule_name"`
+	Severity      string `json:"severity"`
+	MatchedText   string `json:"matched_text"`
+	PromptMessage string `json:"prompt_message"`
+	Blocked       bool   `json:"blocked"`
 }
 
 // ThinkEvent is one structured agentic reasoning step as it goes over the
@@ -226,6 +241,14 @@ func (s *ChatPipelineService) AsyncChat(
 		return nil, fmt.Errorf("the last content of this conversation is not from user")
 	}
 
+	// Quality inspection of the user input: record + alert only, never block.
+	// Runs once at entry, before any dispatch, so all three chat paths get it.
+	if qcUser := NewQcSession(ctx, chat.TenantID, entity.QcAppTypeChat, chat.ID, common.SessionIDFromContext(ctx), chat.ID, false, false); qcUser.Enabled() {
+		if last := lastUserMessage(messages); last != "" {
+			qcUser.InspectUserInput(last)
+		}
+	}
+
 	// Resolve what this conversation can reach BEFORE dispatching: whether it
 	// has knowledge bases, and whether web search is enabled.
 	hasKBs := false
@@ -271,12 +294,20 @@ func (s *ChatPipelineService) AsyncChat(
 		if useWebSearch {
 			ctx = agentic_rag.WithWebSearch(ctx, s.webSearchFunc(chat.PromptConfig))
 		}
-		return s.agenticRag(ctx, userID, chat, messages, stream, kwargs, quoteEnabled(kwargs, chat.PromptConfig))
+		ch, err := s.agenticRag(ctx, userID, chat, messages, stream, kwargs, quoteEnabled(kwargs, chat.PromptConfig))
+		if err != nil {
+			return nil, err
+		}
+		return s.wrapQcChannel(ctx, chat, ch), nil
 	}
 
 	// No KBs & no web search → fast-path to LLM-only chat.
 	if !hasKBs && !useWebSearch {
-		return s.AsyncChatSolo(ctx, userID, chat, messages, stream, kwargs)
+		ch, err := s.AsyncChatSolo(ctx, userID, chat, messages, stream, kwargs)
+		if err != nil {
+			return nil, err
+		}
+		return s.wrapQcChannel(ctx, chat, ch), nil
 	}
 	if kwargs == nil {
 		kwargs = make(map[string]interface{})
@@ -1365,7 +1396,100 @@ func (s *ChatPipelineService) AsyncChat(
 		common.Info("AsyncChat completed", zap.String("chat_id", chat.ID))
 	}()
 
-	return out, nil
+	return s.wrapQcChannel(ctx, chat, out), nil
+}
+
+// wrapQcChannel wraps an AsyncChat result stream with quality inspection.
+// It accumulates answer deltas into a session matcher, replaces the stream
+// with the replacement message when a block rule fires, and drops the
+// authoritative final chunk so the raw text never reaches the client. When QC
+// is disabled (no enabled rules or the global switch is off) it returns the
+// input channel unchanged.
+func (s *ChatPipelineService) wrapQcChannel(ctx context.Context, chat *entity.Chat, in <-chan AsyncChatResult) <-chan AsyncChatResult {
+	qc := NewQcSession(ctx, chat.TenantID, entity.QcAppTypeChat, chat.ID, common.SessionIDFromContext(ctx), chat.ID, false, false)
+	if !qc.Enabled() {
+		return in
+	}
+	out := make(chan AsyncChatResult, 16)
+	go func() {
+		defer close(out)
+		replacementSent := false
+		for result := range in {
+			if !result.Final && result.Answer != "" {
+				hits := qc.InspectAnswer(result.Answer)
+				if qc.Blocked() {
+					if !replacementSent {
+						replacementSent = true
+						out <- AsyncChatResult{
+							Answer:    qc.Replacement(),
+							Reference: result.Reference,
+							CreatedAt: float64(time.Now().Unix()),
+							Final:     false,
+							QcEvent:   blockQcEvent(qc),
+						}
+					}
+					// Drop the raw chunk (and every later chunk).
+					continue
+				}
+				if ev := warnQcEvent(hits); ev != nil {
+					result.QcEvent = ev
+				}
+			} else if result.Final && qc.Blocked() {
+				// The authoritative final chunk carries the raw answer; drop it
+				// once blocked so the original text never reaches the client.
+				continue
+			}
+			out <- result
+		}
+	}()
+	return out
+}
+
+// blockQcEvent builds the block-level QcEvent for the current session.
+func blockQcEvent(qc *QcSession) *QcEvent {
+	rule := qc.BlockedRule()
+	if rule == nil {
+		return &QcEvent{Blocked: true}
+	}
+	return &QcEvent{
+		RuleID:        rule.ID,
+		RuleName:      rule.Name,
+		Severity:      rule.Severity,
+		PromptMessage: rule.PromptMessage,
+		Blocked:       true,
+	}
+}
+
+// warnQcEvent picks the first warn/info hit (non-block) to surface as a client
+// hint. Block hits are handled by the block path above.
+func warnQcEvent(hits []QcHitResult) *QcEvent {
+	for _, h := range hits {
+		if h.Blocked || h.Rule == nil {
+			continue
+		}
+		return &QcEvent{
+			RuleID:        h.Rule.ID,
+			RuleName:      h.Rule.Name,
+			Severity:      h.Rule.Severity,
+			MatchedText:   h.MatchedText,
+			PromptMessage: h.Rule.PromptMessage,
+			Blocked:       false,
+		}
+	}
+	return nil
+}
+
+// lastUserMessage returns the trailing user message content from the history.
+func lastUserMessage(messages []map[string]interface{}) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if role, _ := messages[i]["role"].(string); role != "user" {
+			continue
+		}
+		if content, ok := messages[i]["content"].(string); ok {
+			return content
+		}
+	}
+	return ""
 }
 
 // deepResearchProgressCallback builds the progress callback handed to
@@ -2032,6 +2156,24 @@ func (s *ChatPipelineService) getModels(ctx context.Context, chat *entity.Chat) 
 			common.Warn("Failed to get KBs by IDs; retrieval may be incomplete",
 				zap.Strings("kbIDs", kbIDs), zap.Error(err))
 		}
+	}
+	// Drop disabled datasets before they reach retrieval. The disable guard
+	// already refuses to switch off a dataset that an app binds, so this only
+	// fires for bindings created before that guard — or if a dataset was
+	// disabled and bound again afterwards.
+	if len(kbs) > 0 {
+		enabledKBs := make([]*entity.Knowledgebase, 0, len(kbs))
+		for _, kb := range kbs {
+			if kb == nil {
+				continue
+			}
+			if !kb.Enabled {
+				common.Warn("Skipping disabled dataset in chat retrieval", zap.String("kbID", kb.ID))
+				continue
+			}
+			enabledKBs = append(enabledKBs, kb)
+		}
+		kbs = enabledKBs
 	}
 
 	// Embedding model.

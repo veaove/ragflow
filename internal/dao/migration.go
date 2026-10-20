@@ -314,6 +314,43 @@ func migrateIngestionTaskPipelineLogID(ctx context.Context, db *gorm.DB) error {
 	return nil
 }
 
+// migrateKnowledgebaseEnabledColumn adds knowledgebase.enabled when the column
+// is missing.
+//
+// It is explicit rather than left to AutoMigrate for two reasons. The runtime
+// (non --migrate) startup path only auto-migrates the Go-exclusive runtime
+// tables and never touches knowledgebase, yet the dataset list SELECT now names
+// the column, so a missing column would fail the whole list API with Error
+// 1054. And AutoMigrate can quietly skip a new column when an earlier column
+// fails to converge on an existing table. Existing rows predate the switch, so
+// they are enabled by default.
+func migrateKnowledgebaseEnabledColumn(ctx context.Context, db *gorm.DB) error {
+	migrator := db.WithContext(ctx).Migrator()
+	if !migrator.HasTable(&entity.Knowledgebase{}) {
+		return nil
+	}
+	if migrator.HasColumn(&entity.Knowledgebase{}, "enabled") {
+		return nil
+	}
+	if err := db.WithContext(ctx).Exec(
+		"ALTER TABLE knowledgebase ADD COLUMN enabled tinyint(1) NOT NULL DEFAULT 1",
+	).Error; err != nil {
+		if isDuplicateColumnError(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to add knowledgebase.enabled: %w", err)
+	}
+	// Legacy rows created before the column existed can carry NULL when the
+	// ALTER ran without a default on some backends; normalise them to enabled.
+	if err := db.WithContext(ctx).Exec(
+		"UPDATE knowledgebase SET enabled = 1 WHERE enabled IS NULL",
+	).Error; err != nil {
+		return fmt.Errorf("failed to backfill knowledgebase.enabled: %w", err)
+	}
+	common.Info("Added knowledgebase.enabled")
+	return nil
+}
+
 // migrateIngestionLogRunIdentity adds the columns and indexes that make each
 // ingestion event belong to one immutable pipeline-operation-log run. It is
 // deliberately explicit: the runtime startup path auto-migrates ingestion

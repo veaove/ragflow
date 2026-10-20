@@ -169,7 +169,8 @@ func (d *DatasetService) UpdateDataset(ctx context.Context, datasetID, userID st
 	}
 
 	requestedAnyUpdate := len(simpleUpdates) > 0 || connectorsProvided || parserIDProvided ||
-		pipelineID != nil || embdIDProvided || pagerankRequested || req.ParserConfig != nil || req.ParserConfigProvided
+		pipelineID != nil || embdIDProvided || pagerankRequested || req.ParserConfig != nil || req.ParserConfigProvided ||
+		req.Enabled != nil
 	if !requestedAnyUpdate {
 		return nil, common.CodeDataError, errors.New("no properties were modified")
 	}
@@ -251,6 +252,26 @@ func (d *DatasetService) UpdateDataset(ctx context.Context, datasetID, userID st
 				txCode = common.CodeDataError
 				return fmt.Errorf("Dataset name '%s' already exists", nameValue)
 			}
+		}
+
+		// The enable switch is a metadata flip, but turning it off is only safe
+		// while nothing binds the dataset: a disabled dataset disappears from its
+		// apps' retrieval, so a live reference would break them silently. The
+		// lookup runs inside this transaction and after the row lock is taken, so
+		// a concurrent bind cannot slip between the check and the write.
+		if req.Enabled != nil && *req.Enabled != lockedKB.Enabled {
+			if !*req.Enabled {
+				refs, refErr := findDatasetReferences(ctx, tx, lockedKB)
+				if refErr != nil {
+					txCode = common.CodeServerError
+					return refErr
+				}
+				if len(refs) > 0 {
+					txCode = common.CodeDataError
+					return &DatasetReferencedError{References: refs}
+				}
+			}
+			updates["enabled"] = *req.Enabled
 		}
 
 		if pipelineID != nil {

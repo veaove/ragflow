@@ -111,6 +111,7 @@ func (h *AgentHandler) handleOpenAICompat(c *gin.Context, user *entity.User, req
 	}
 
 	runContext := service.WithOpenAICompatMessages(c.Request.Context(), req.Messages)
+	runContext = service.WithRunTrigger(runContext, entity.RunTriggerAPI)
 	events, err := h.chatRunner.RunAgent(
 		runContext, user.ID, req.AgentID, req.SessionID, "", question, req.Files,
 	)

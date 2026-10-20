@@ -1,0 +1,169 @@
+/*
+ *  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+import { restAPIv1 } from '@/utils/api';
+import request from '@/utils/request';
+
+// ---- 质检规则类型 ----
+
+export type QcAppType = 'chat' | 'canvas';
+export type QcMatchMode = 'contains' | 'whole_word' | 'regex';
+export type QcScope = 'ai_answer' | 'user_input' | 'both';
+export type QcSeverity = 'info' | 'warn' | 'block';
+export type QcAction = 'log' | 'log_and_alert' | 'block_and_alert';
+
+export interface IQcRule {
+  id: string;
+  tenant_id: string;
+  app_type: QcAppType;
+  app_id: string;
+  name: string;
+  keywords: string[];
+  match_mode: QcMatchMode;
+  scope: QcScope;
+  severity: QcSeverity;
+  action: QcAction;
+  prompt_message: string;
+  enabled: boolean;
+  created_by?: string;
+  create_time?: number;
+  update_time?: number;
+}
+
+export interface IQcRulePayload {
+  app_type: QcAppType;
+  app_id: string;
+  name: string;
+  keywords: string[];
+  match_mode: QcMatchMode;
+  scope: QcScope;
+  severity: QcSeverity;
+  action: QcAction;
+  prompt_message: string;
+  enabled: boolean;
+}
+
+export interface IQcTestHit {
+  keyword: string;
+  start: number;
+  end: number;
+}
+
+export interface IQcTestResult {
+  hit_count: number;
+  hits: IQcTestHit[];
+  highlighted: string;
+}
+
+// ---- 命中记录类型 ----
+
+export interface IQcHit {
+  id: string;
+  tenant_id: string;
+  rule_id: string;
+  rule_name: string;
+  session_id: string;
+  chat_id: string;
+  app_type: QcAppType;
+  app_id: string;
+  scope: QcScope;
+  severity: QcSeverity;
+  matched_text: string;
+  context_before?: string;
+  context_after?: string;
+  action_taken: QcAction;
+  create_time: number;
+}
+
+// ---- 系统配置 ----
+
+export interface IQcConfig {
+  enabled: boolean;
+  max_rules_per_tenant: number;
+  retention_days: number;
+}
+
+// ---- 列表响应 ----
+
+export interface IQcList<T> {
+  list: T[];
+  total: number;
+}
+
+// 后端返回 { code, data, message, total? }；request 层 getResponse=true，
+// 因此 service 方法 resolve 出的是 Response，调用方读 response.data.data / response.data.total。
+
+export const listQcRules = (params: {
+  app_type: QcAppType;
+  app_id: string;
+  page?: number;
+  size?: number;
+  keyword?: string;
+  scope?: string;
+  severity?: string;
+  enabled?: boolean;
+}) => request.get(`${restAPIv1}/qc/rules`, { params });
+
+export const getQcRule = (id: string) =>
+  request.get(`${restAPIv1}/qc/rules/${id}`);
+
+export const createQcRule = (data: IQcRulePayload) =>
+  request.post(`${restAPIv1}/qc/rules`, { data });
+
+export const updateQcRule = (id: string, data: Partial<IQcRulePayload>) =>
+  request.put(`${restAPIv1}/qc/rules/${id}`, { data });
+
+export const deleteQcRule = (id: string) =>
+  request.delete(`${restAPIv1}/qc/rules/${id}`);
+
+export const toggleQcRule = (id: string, enabled: boolean) =>
+  request.post(`${restAPIv1}/qc/rules/${id}/toggle`, { data: { enabled } });
+
+export const testQcRule = (data: {
+  keywords: string[];
+  match_mode: QcMatchMode;
+  text: string;
+}) => request.post(`${restAPIv1}/qc/rules/test`, { data });
+
+export const listQcHits = (params: {
+  page?: number;
+  size?: number;
+  from?: number;
+  to?: number;
+  rule_id?: string;
+  scope?: string;
+  severity?: string;
+  session_id?: string;
+  app_type?: string;
+  app_id?: string;
+}) => request.get(`${restAPIv1}/qc/hits`, { params });
+
+export const getQcHit = (id: string) =>
+  request.get(`${restAPIv1}/qc/hits/${id}`);
+
+export const exportQcHits = (params: Record<string, any>) =>
+  request.get(`${restAPIv1}/qc/hits/export`, {
+    params,
+    responseType: 'blob',
+  });
+
+export const getQcConfig = () => request.get(`${restAPIv1}/qc/config`);
+
+export const updateQcConfig = (data: {
+  enabled?: boolean;
+  max_rules_per_tenant?: number;
+  retention_days?: number;
+}) => request.put(`${restAPIv1}/qc/config`, { data });

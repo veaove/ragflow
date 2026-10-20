@@ -154,6 +154,9 @@ func (s *BotService) AgentbotCompletion(
 		return nil, common.CodeDataError, err
 	}
 	userInput := NormalizeAgentInput(question, req.UserInput)
+	// Agentbot runs are production conversations (not editor debug), so QC
+	// may block chatflow answers and alert on hits.
+	ctx = WithRunTrigger(ctx, entity.RunTriggerEmbed)
 	var ch <-chan canvas.RunEvent
 	if req.Release != nil && *req.Release {
 		ch, err = s.agentService.runReleasedAgent(ctx, userID, agentID,

@@ -162,6 +162,8 @@ export default {
   datasetFilter: `${restAPIv1}/datasets?type=filter`,
   createKb: `${restAPIv1}/datasets`,
   updateKb: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,
+  datasetReferences: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/references`,
   rmKb: `${restAPIv1}/datasets`,
   getKbDetail: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,
   getKnowledgeGraph: (knowledgeId: string) =>

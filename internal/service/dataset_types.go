@@ -196,6 +196,11 @@ type UpdateDatasetRequest struct {
 	// 2 = Pipeline (pipeline_id). nil means unspecified.
 	ParseType *int `json:"parse_type,omitempty"`
 
+	// Enabled toggles the dataset's user-facing enable/disable switch. Setting
+	// it to false is rejected while any app still binds the dataset: the caller
+	// has to unbind it first (see DatasetService.ListDatasetReferences).
+	Enabled *bool `json:"enabled,omitempty"`
+
 	// ParserConfigProvided reports whether the raw request body contained a
 	// "parser_config" key. An explicitly provided parser_config ({} or null) is a
 	// valid no-op that must succeed, unlike a truly empty request body.

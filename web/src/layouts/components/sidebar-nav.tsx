@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 
 import { HomeIcon } from '@/components/svg-icon';
-import { LucideHouse, Workflow } from 'lucide-react';
+import { LucideHouse, ShieldCheck, Workflow } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 
@@ -85,6 +85,12 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     icon: MenuItemsIcon,
     icon_name: 'memory',
   },
+  {
+    path: Routes.Qc,
+    name: 'header.qc',
+    icon: ShieldCheck,
+    'data-testid': 'nav-qc',
+  } as SidebarMenuItem,
   {
     path: Routes.Files,
     name: 'header.fileManager',

@@ -141,7 +141,15 @@ type Knowledgebase struct {
 	SessionGraphTaskFinishAt     *time.Time `gorm:"column:session_graph_task_finish_at" json:"session_graph_task_finish_at,omitempty"`
 	SessionEssenceTaskID         *string    `gorm:"column:session_essence_task_id;size:32;index" json:"session_essence_task_id,omitempty"`
 	SessionEssenceTaskFinishAt   *time.Time `gorm:"column:session_essence_task_finish_at" json:"session_essence_task_finish_at,omitempty"`
-	Status                       *string    `gorm:"column:status;size:1;index;default:'1'" json:"status,omitempty"`
+	// Status is the row-lifecycle marker (1 = live, 0 = soft deleted). Every
+	// dataset query filters on it, so it must never carry the enable/disable
+	// state of a dataset.
+	Status *string `gorm:"column:status;size:1;index;default:'1'" json:"status,omitempty"`
+	// Enabled is the user-facing enable/disable switch. A disabled dataset
+	// stays listed and keeps its data, but is excluded from retrieval and from
+	// dataset pickers. It may only be disabled while nothing references it
+	// (see DatasetService.ListDatasetReferences).
+	Enabled bool `gorm:"column:enabled;not null;default:1;index" json:"enabled"`
 	BaseModel
 }
 
@@ -279,9 +287,13 @@ type KnowledgebaseListItem struct {
 	Pagerank               int64   `json:"pagerank"`
 	EmbdID                 string  `json:"embd_id"`
 	TenantEmbdID           *string `json:"tenant_embd_id,omitempty"`
-	Nickname               string  `json:"nickname"`
-	TenantAvatar           *string `json:"tenant_avatar,omitempty"`
-	UpdateTime             *int64  `json:"update_time,omitempty"`
+	Nickname               string     `json:"nickname"`
+	TenantAvatar           *string    `json:"tenant_avatar,omitempty"`
+	UpdateTime             *int64     `json:"update_time,omitempty"`
+	CreateTime             *int64     `json:"create_time,omitempty"`
+	CreateDate             *time.Time `json:"create_date,omitempty"`
+	UpdateDate             *time.Time `json:"update_date,omitempty"`
+	Enabled                bool       `json:"enabled"`
 }
 
 // DatasetOwnerFilter represents an owner option in dataset filter responses.

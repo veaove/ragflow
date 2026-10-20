@@ -129,6 +129,10 @@ func (d *DatasetService) SearchDatasets(ctx context.Context, req *service.Search
 			common.Warn("SearchDatasets dataset not found", zap.String("datasetID", datasetID))
 			return nil, fmt.Errorf("dataset %s not found", datasetID)
 		}
+		if !kb.Enabled {
+			common.Warn("SearchDatasets dataset is disabled", zap.String("datasetID", datasetID))
+			return nil, fmt.Errorf("dataset %s is disabled", kb.Name)
+		}
 		if !seenTenants[kb.TenantID] {
 			seenTenants[kb.TenantID] = true
 			tenantIDs = append(tenantIDs, kb.TenantID)

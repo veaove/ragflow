@@ -101,6 +101,7 @@ export enum Routes {
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
   AdminMonitoring = `${Admin}/monitoring`,
+  Qc = '/qc',
 }
 
 const defaultRouteFallback = (
@@ -302,6 +303,10 @@ const routeConfigOptions = [
       {
         path: Routes.Files,
         Component: () => import('@/pages/files'),
+      },
+      {
+        path: Routes.Qc,
+        Component: () => import('@/pages/qc'),
       },
       {
         path: Routes.Skills,

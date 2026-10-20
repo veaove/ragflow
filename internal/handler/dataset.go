@@ -19,6 +19,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"ragflow/internal/engine"
@@ -395,6 +396,9 @@ var updateDatasetAllowedFields = map[string]bool{
 	"permission": true, "parse_type": true, "pipeline_id": true, "chunk_method": true,
 	"parser_id": true, "parser_config": true, "auto_metadata_config": true,
 	"dataset_id": true, "pagerank": true, "language": true, "connectors": true,
+	// enabled is the dataset enable/disable switch (distinct from the
+	// soft-delete "status" column, which the API never exposes for writing).
+	"enabled": true,
 }
 
 func (h *DatasetsHandler) UpdateDataset(c *gin.Context) {
@@ -459,6 +463,16 @@ func (h *DatasetsHandler) UpdateDataset(c *gin.Context) {
 
 	result, code, err := h.datasetsService.UpdateDataset(ctx, datasetID, userID, req)
 	if err != nil {
+		// A dataset that is still bound somewhere cannot be disabled. Return the
+		// binding list in the payload so the UI can name the exact apps instead
+		// of asking the user to hunt for them.
+		var referencedErr *dataset.DatasetReferencedError
+		if errors.As(err, &referencedErr) {
+			common.ResponseWithCodeData(c, code, map[string]interface{}{
+				"references": referencedErr.References,
+			}, referencedErr.Error())
+			return
+		}
 		common.ErrorWithCode(c, code, err.Error())
 		return
 	}
@@ -468,6 +482,32 @@ func (h *DatasetsHandler) UpdateDataset(c *gin.Context) {
 	}
 
 	common.SuccessNoMessage(c, result)
+}
+
+// ListDatasetReferences reports every app that currently binds the dataset. It
+// backs the "cannot disable, unbind first" dialog on the dataset list.
+func (h *DatasetsHandler) ListDatasetReferences(c *gin.Context) {
+	user, errorCode, errorMessage := GetUser(c)
+	if errorCode != common.CodeSuccess {
+		common.ErrorWithCode(c, errorCode, errorMessage)
+		return
+	}
+
+	datasetID := strings.TrimSpace(c.Param("dataset_id"))
+	if datasetID == "" {
+		common.ResponseWithCodeData(c, common.CodeBadRequest, nil, "dataset id is required")
+		return
+	}
+
+	references, code, err := h.datasetsService.ListDatasetReferences(c.Request.Context(), datasetID, strings.TrimSpace(user.ID))
+	if err != nil {
+		common.ErrorWithCode(c, code, err.Error())
+		return
+	}
+
+	common.SuccessNoMessage(c, map[string]interface{}{
+		"references": references,
+	})
 }
 
 func (h *DatasetsHandler) GetMetadataConfig(c *gin.Context) {

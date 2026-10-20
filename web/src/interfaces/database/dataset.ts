@@ -42,6 +42,11 @@ export interface IDataset {
   raptor_task_id: string;
   similarity_threshold: number;
   status: string;
+  /**
+   * The user-facing enable/disable switch. `status` is the row lifecycle
+   * marker used by the backend for soft deletes and must not be used for this.
+   */
+  enabled?: boolean;
   tenant_avatar: string;
   tenant_embd_id: number;
   tenant_id: string;
@@ -50,6 +55,16 @@ export interface IDataset {
   update_time: number;
   keywords_similarity_weight: number;
   connectors: IConnector[];
+}
+
+export type IDatasetReferenceKind = 'chat' | 'agent' | 'evaluation';
+
+/** One app that binds a dataset; a dataset with references cannot be disabled. */
+export interface IDatasetReference {
+  kind: IDatasetReferenceKind;
+  id: string;
+  name: string;
+  category?: string;
 }
 
 export type IDatasetFilter = {

@@ -223,6 +223,8 @@ func InitDB(ctx context.Context, migrateDB bool) error {
 		// from these tables at runtime, so the Go side must guarantee they exist.
 		&entity.CompilationTemplate{},
 		&entity.CompilationTemplateGroup{},
+		&entity.QcRule{},
+		&entity.QcHit{},
 	}
 
 	if migrateDB {
@@ -302,6 +304,11 @@ func InitDB(ctx context.Context, migrateDB bool) error {
 	// missing column fails the whole API with Error 1054. Ensure it on both
 	// startup paths rather than trusting AutoMigrate.
 	if err = migrateIngestionTaskPipelineLogID(ctx, DB); err != nil {
+		return err
+	}
+	// knowledgebase.enabled is read by every dataset list query and is not part
+	// of the runtime auto-migrate set, so both startup paths must ensure it.
+	if err = migrateKnowledgebaseEnabledColumn(ctx, DB); err != nil {
 		return err
 	}
 	// Seed built-in agent templates so the Go backend can serve the
