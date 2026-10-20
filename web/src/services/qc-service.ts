@@ -167,3 +167,30 @@ export const updateQcConfig = (data: {
   max_rules_per_tenant?: number;
   retention_days?: number;
 }) => request.put(`${restAPIv1}/qc/config`, { data });
+
+// ---- 应用候选（质检菜单里选择「引用」哪个应用来配规则） ----
+
+export interface IQcAppOption {
+  id: string;
+  name: string;
+}
+
+/**
+ * 拉取当前用户可配置质检规则的应用：chat = 聊天应用（/chats），
+ * canvas = 对话流/工作流（/agents）。返回精简的 {id, name} 供下拉选择。
+ */
+export const listQcAppOptions = async (
+  appType: QcAppType,
+): Promise<IQcAppOption[]> => {
+  const url = appType === 'chat' ? `${restAPIv1}/chats` : `${restAPIv1}/agents`;
+  const response = await request.get(url, {
+    params: { page: 1, page_size: 200 },
+  });
+  const payload = response?.data?.data ?? {};
+  const list: any[] =
+    (appType === 'chat' ? payload.chats : payload.canvas) ?? [];
+  return list.map((item) => ({
+    id: item.id,
+    name: item.name ?? item.title ?? item.id,
+  }));
+};

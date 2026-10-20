@@ -1415,10 +1415,31 @@ func (s *ChatPipelineService) wrapQcChannel(ctx context.Context, chat *entity.Ch
 		defer close(out)
 		replacementSent := false
 		for result := range in {
-			if !result.Final && result.Answer != "" {
+			// Inspect EVERY chunk that carries answer text, including the final
+			// authoritative chunk: some paths (e.g. SQL retrieval) emit the
+			// whole answer only in the final chunk, so skipping it would let
+			// those answers bypass inspection entirely.
+			if result.Answer != "" {
 				hits := qc.InspectAnswer(result.Answer)
 				if qc.Blocked() {
-					if !replacementSent {
+					if result.Final {
+						// Never forward the raw final answer. Still emit a
+						// terminal chunk so the client closes the stream — the
+						// old code dropped it and left clients hanging. Only
+						// carry the replacement text when nothing was sent yet.
+						answer := ""
+						if !replacementSent {
+							replacementSent = true
+							answer = qc.Replacement()
+						}
+						out <- AsyncChatResult{
+							Answer:    answer,
+							Reference: result.Reference,
+							CreatedAt: result.CreatedAt,
+							Final:     true,
+							QcEvent:   blockQcEvent(qc),
+						}
+					} else if !replacementSent {
 						replacementSent = true
 						out <- AsyncChatResult{
 							Answer:    qc.Replacement(),
@@ -1428,15 +1449,22 @@ func (s *ChatPipelineService) wrapQcChannel(ctx context.Context, chat *entity.Ch
 							QcEvent:   blockQcEvent(qc),
 						}
 					}
-					// Drop the raw chunk (and every later chunk).
+					// Drop the raw chunk (and every later raw answer chunk).
 					continue
 				}
 				if ev := warnQcEvent(hits); ev != nil {
 					result.QcEvent = ev
 				}
 			} else if result.Final && qc.Blocked() {
-				// The authoritative final chunk carries the raw answer; drop it
-				// once blocked so the original text never reaches the client.
+				// Already blocked on an earlier delta: the final chunk carries
+				// no new text but is the client's end signal, so forward a
+				// sanitised terminal chunk instead of dropping it.
+				out <- AsyncChatResult{
+					Reference: result.Reference,
+					CreatedAt: result.CreatedAt,
+					Final:     true,
+					QcEvent:   blockQcEvent(qc),
+				}
 				continue
 			}
 			out <- result

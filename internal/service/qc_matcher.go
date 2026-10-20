@@ -57,6 +57,11 @@ type CompiledRules struct {
 	rules           []compiledRule
 	firstRunes      map[rune]bool
 	maxKeywordRunes int
+	// hasRegex disables the first-rune fast path: a regex has no fixed first
+	// rune, so it can match text containing none of the literal keywords. When
+	// this was missing, a regex-only rule set left firstRunes empty, maybeHit
+	// returned false, and EVERY regex rule silently never matched.
+	hasRegex bool
 }
 
 // regexOverlapRunes is the assumed maximum rune length of a regex match. It
@@ -92,6 +97,7 @@ func CompileRules(rules []entity.QcRule) (*CompiledRules, error) {
 				return nil, err
 			}
 			cr.re = re
+			c.hasRegex = true
 			if regexOverlapRunes > c.maxKeywordRunes {
 				c.maxKeywordRunes = regexOverlapRunes
 			}
@@ -126,8 +132,12 @@ func (c *CompiledRules) collectFirstRune(kw string) {
 }
 
 // maybeHit is the cheap pre-check: false means no keyword can possibly start
-// anywhere in text, so the full matcher can be skipped.
+// anywhere in text, so the full matcher can be skipped. Regex rules have no
+// fixed first rune, so their presence forces the full match.
 func (c *CompiledRules) maybeHit(text string) bool {
+	if c.hasRegex {
+		return true
+	}
 	for _, r := range text {
 		if c.firstRunes[r] {
 			return true

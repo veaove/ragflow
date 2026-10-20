@@ -35,17 +35,21 @@ import {
 } from '@/components/ui/table';
 import { useQcRealtime } from '@/hooks/use-qc-request';
 import {
+  IQcAppOption,
   IQcConfig,
   IQcHit,
+  QcAppType,
   QcScope,
   exportQcHits,
   getQcConfig,
   getQcHit,
+  listQcAppOptions,
   listQcHits,
   updateQcConfig,
 } from '@/services/qc-service';
 import * as React from 'react';
 import { toast } from 'sonner';
+import { QcRulePanel } from './rule-panel';
 
 const PAGE_SIZE = 20;
 
@@ -76,16 +80,17 @@ const severityTone: Record<string, string> = {
 const formatTime = (ms?: number) =>
   ms ? new Date(ms).toLocaleString() : '-';
 
-type TabKey = 'realtime' | 'hits' | 'config';
+type TabKey = 'rules' | 'realtime' | 'hits' | 'config';
 
 const TABS: { key: TabKey; label: string }[] = [
+  { key: 'rules', label: '质检规则' },
   { key: 'realtime', label: '实时质检' },
   { key: 'hits', label: '命中记录' },
   { key: 'config', label: '系统配置' },
 ];
 
 export function QcManagement() {
-  const [tab, setTab] = React.useState<TabKey>('realtime');
+  const [tab, setTab] = React.useState<TabKey>('rules');
 
   return (
     <div className="flex h-full flex-col">
@@ -102,9 +107,97 @@ export function QcManagement() {
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
+        {tab === 'rules' && <RulesTab />}
         {tab === 'realtime' && <RealtimePanel />}
         {tab === 'hits' && <HitsPanel />}
         {tab === 'config' && <ConfigPanel />}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 质检菜单里的规则配置：先选择要「引用」的应用（聊天应用 / 对话流），
+ * 再进入该应用的规则面板。规则仍绑定到所选应用，只对其生效。
+ */
+function RulesTab() {
+  const [appType, setAppType] = React.useState<QcAppType>('chat');
+  const [appId, setAppId] = React.useState('');
+  const [options, setOptions] = React.useState<IQcAppOption[]>([]);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const list = await listQcAppOptions(appType);
+        if (cancelled) return;
+        setOptions(list);
+        setAppId(list[0]?.id ?? '');
+      } catch {
+        if (!cancelled) {
+          setOptions([]);
+          setAppId('');
+          toast.error('加载应用列表失败');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appType]);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border-base px-4 py-3">
+        <span className="text-sm text-text-secondary">配置应用：</span>
+        <select
+          className="h-9 rounded-md border border-border-base bg-background-content px-3 text-sm"
+          value={appType}
+          onChange={(e) => {
+            setAppType(e.target.value as QcAppType);
+            setAppId('');
+          }}
+        >
+          <option value="chat">聊天应用</option>
+          <option value="canvas">对话流 / 工作流</option>
+        </select>
+        <select
+          className="h-9 min-w-56 rounded-md border border-border-base bg-background-content px-3 text-sm"
+          value={appId}
+          onChange={(e) => setAppId(e.target.value)}
+          disabled={loading || options.length === 0}
+        >
+          {options.length === 0 ? (
+            <option value="">{loading ? '加载中…' : '暂无可用应用'}</option>
+          ) : (
+            options.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.name}
+              </option>
+            ))
+          )}
+        </select>
+        <span className="text-xs text-text-sub-title">
+          规则只对选中的应用生效
+        </span>
+      </div>
+      <div className="min-h-0 flex-1">
+        {appId ? (
+          <QcRulePanel appType={appType} appId={appId} />
+        ) : (
+          <Empty
+            type={EmptyType.Data}
+            text={
+              loading
+                ? '正在加载应用…'
+                : '暂无可配置的应用，请先创建聊天应用或对话流'
+            }
+          />
+        )}
       </div>
     </div>
   );
