@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>知识库副本沙箱 · 交互原型</title>
+<style>
+  :root{
+    --brand:#065BC1; --brand-weak:#EAF1FB; --brand-line:#BFD5F0;
+    --rail:#1A2332; --rail-line:#2C3949; --rail-text:#C7D2E0;
+    --bg:#F5F7FA; --card:#FFFFFF;
+    --t1:#1B2431; --t2:#5A6474; --t3:#949EAC;
+    --line:#E7ECF3; --line-2:#DFE5ED;
+    --ok:#22A06B; --ok-bg:#E8F6EF;
+    --warn:#F2994A; --warn-bg:#FDF3E8;
+    --err:#EB5757; --err-bg:#FDECEC;
+    --radius:5px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--t1);font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+
+  /* ===== 侧边栏 ===== */
+  .rail{width:216px;background:var(--rail);color:var(--rail-text);display:flex;flex-direction:column;flex-shrink:0;position:sticky;top:0;height:100vh}
+  .rail-logo{display:flex;align-items:center;gap:9px;padding:16px 18px;border-bottom:1px solid var(--rail-line)}
+  .rail-logo svg{flex-shrink:0}
+  .rail-logo b{color:#fff;font-size:15px;font-weight:700}
+  .rail-nav{padding:10px 8px;flex:1;overflow-y:auto}
+  .rail-cap{font-size:11px;color:#6B7A8D;padding:12px 12px 6px;letter-spacing:.04em}
+  .rail-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius);cursor:pointer;color:var(--rail-text);font-size:13px;margin-bottom:2px;border-left:2px solid transparent}
+  .rail-item:hover{background:#222E3E;color:#fff}
+  .rail-item.on{background:#243348;color:#fff;font-weight:500;border-left-color:#fff}
+  .rail-item .tag{margin-left:auto;font-size:11px;background:var(--warn);color:#fff;padding:1px 6px;border-radius:9px;font-weight:600}
+
+  /* ===== 内容区 ===== */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .topbar{background:var(--card);border-bottom:1px solid var(--line);padding:12px 24px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:20}
+  .crumb{color:var(--t3);font-size:12px}
+  .crumb b{color:var(--t1);font-weight:500}
+  .content{padding:20px 24px 48px;flex:1}
+
+  h1{font-size:20px;font-weight:600;margin-bottom:4px}
+  h2{font-size:15px;font-weight:600;margin-bottom:14px}
+  .sub{color:var(--t2);font-size:13px;margin-bottom:18px}
+
+  /* ===== 组件 ===== */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:34px;padding:0 14px;border-radius:var(--radius);border:1px solid var(--line-2);background:#fff;color:var(--t1);font-size:13px;cursor:pointer;font-family:inherit;transition:.15s;white-space:nowrap}
+  .btn:hover{border-color:var(--brand);color:var(--brand)}
+  .btn.pri{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn.pri:hover{background:#0A4EA8;color:#fff}
+  .btn.danger{background:var(--err);border-color:var(--err);color:#fff}
+  .btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
+  .btn.ghost{border-color:transparent;background:transparent}
+  .btn.sm{height:28px;padding:0 10px;font-size:12px}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:18px}
+  .banner{display:flex;align-items:center;gap:10px;background:var(--warn-bg);border:1px solid #F5D9B8;border-left:3px solid var(--warn);border-radius:var(--radius);padding:11px 14px;margin-bottom:16px}
+  .banner.info{background:var(--brand-weak);border-color:var(--brand-line);border-left-color:var(--brand)}
+  .banner.warn2{background:var(--warn-bg);border-color:#F5D9B8;border-left-color:var(--warn)}
+  .banner b{font-weight:600}
+  .banner .sp{margin-left:auto;display:flex;gap:8px}
+
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:3px;font-weight:500;line-height:18px;white-space:nowrap}
+  .tag.draft{background:var(--warn-bg);color:#B26A15;border:1px solid #F5D9B8}
+  .tag.review{background:var(--brand-weak);color:var(--brand);border:1px solid var(--brand-line)}
+  .tag.pub{background:var(--ok-bg);color:var(--ok);border:1px solid #B9E5D0}
+  .tag.rej{background:var(--err-bg);color:var(--err);border:1px solid #F5C2C2}
+  .tag.gray{background:#F1F4F8;color:var(--t2);border:1px solid var(--line-2)}
+  .tag.hot{background:var(--err-bg);color:var(--err);border:1px solid #F5C2C2}
+  .tag.mid{background:var(--warn-bg);color:#B26A15;border:1px solid #F5D9B8}
+
+  table{width:100%;border-collapse:collapse;background:#fff}
+  th{height:40px;background:#FAFBFC;border-bottom:1px solid var(--line);font-size:12px;font-weight:400;color:var(--t2);text-align:left;padding:0 14px;white-space:nowrap}
+  td{padding:10px 14px;border-bottom:1px solid #F0F3F7;font-size:13px;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#FAFCFF}
+
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:18px}
+  .tab{padding:9px 15px;font-size:13px;color:var(--t2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit}
+  .tab.on{color:var(--brand);border-bottom-color:var(--brand);font-weight:500}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .row{display:flex;align-items:center;gap:10px}
+  .sp{margin-left:auto}
+  .muted{color:var(--t3);font-size:12px}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
+  .ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* ===== 副本卡 ===== */
+  .dcard{background:#fff;border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:12px}
+  .dcard:hover{border-color:var(--brand-line)}
+  .dcard h3{font-size:14px;font-weight:600;margin-bottom:3px}
+  .meta-row{display:flex;gap:18px;margin-top:11px;font-size:12px;color:var(--t2);flex-wrap:wrap}
+
+  /* ===== diff ===== */
+  .diff{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:0}
+  .diff>div{padding:10px 12px;border-right:1px solid #F0F3F7;font-size:12.5px;word-break:break-word}
+  .diff>div:last-child{border-right:none}
+  .q{display:inline-block;background:#EEF2F7;border-radius:3px;padding:1px 6px;margin:2px 4px 2px 0;font-size:12px}
+  .q.add{background:var(--ok-bg);color:#137A50;border:1px solid #B9E5D0}
+  .q.del{background:var(--err-bg);color:#C13434;border:1px solid #F5C2C2;text-decoration:line-through}
+  .q.mod{background:var(--warn-bg);color:#B26A15;border:1px solid #F5D9B8}
+
+  /* ===== 对比栏 ===== */
+  .vs{display:grid;grid-template-columns:1fr 52px 1fr;align-items:stretch}
+  .vs-mid{display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:12px;background:#FAFBFC;border-left:1px solid var(--line);border-right:1px solid var(--line)}
+  .hit{border:1px solid var(--line);border-radius:6px;padding:11px 13px;margin-bottom:9px;background:#fff}
+  .hit.new{border-left:3px solid var(--ok);background:var(--ok-bg)}
+  .hit.gone{border-left:3px solid var(--err);background:var(--err-bg)}
+  .hit-h{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px}
+  .rank{background:#EEF2F7;border-radius:3px;padding:0 6px;font-size:11px;font-weight:600;color:var(--t2)}
+  .score{font-family:ui-monospace,Menlo,monospace;font-size:11.5px}
+  .score-up{color:var(--ok);font-weight:600}
+  .score-dn{color:var(--err);font-weight:600}
+
+  /* ===== 相似度条 ===== */
+  .simbar{height:5px;background:#EEF2F7;border-radius:3px;overflow:hidden;margin-top:5px}
+  .simbar i{display:block;height:100%;background:var(--err)}
+  .simbar i.mid{background:var(--warn)}
+
+  /* ===== 对比框 ===== */
+  .cmp{width:100%;min-height:330px;border:1px solid var(--line);border-radius:6px;padding:14px;background:#fff;font-size:13px;line-height:1.75}
+  .cmp-title{font-size:12px;color:var(--t3);margin-bottom:9px;display:flex;align-items:center;gap:7px}
+  mark{background:#FFF3C4;padding:0 2px;border-radius:2px}
+  .chk{display:inline-block;width:14px;height:14px;border:1px solid var(--brand);border-radius:3px;background:var(--brand);color:#fff;font-size:10px;text-align:center;line-height:14px;margin-right:5px;vertical-align:-2px}
+
+  /* ===== 弹窗 ===== */
+  .mask{position:fixed;inset:0;background:rgba(20,28,40,.42);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+  .mask.on{display:flex}
+  .dlg{background:#fff;border-radius:10px;width:100%;max-width:460px;box-shadow:0 16px 48px rgba(16,42,84,.24);max-height:90vh;overflow:auto}
+  .dlg-h{padding:16px 20px;border-bottom:1px solid var(--line);font-size:15px;font-weight:600}
+  .dlg-b{padding:20px}
+  .dlg-f{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:9px;justify-content:flex-end}
+  .fld{margin-bottom:15px}
+  .fld label{display:block;font-size:12.5px;color:var(--t2);margin-bottom:6px}
+  .fld input[type=text],.fld textarea,.fld select{width:100%;height:34px;border:1px solid var(--line-2);border-radius:var(--radius);padding:0 10px;font-size:13px;font-family:inherit;color:var(--t1);background:#fff}
+  .fld textarea{height:64px;padding:8px 10px;resize:vertical}
+  .fld input:focus,.fld textarea:focus{outline:none;border-color:var(--brand)}
+  .cb{display:flex;align-items:center;gap:8px;padding:7px 0;font-size:13px;cursor:pointer}
+  .cb input{width:15px;height:15px;accent-color:var(--brand)}
+
+  /* ===== 提示条 ===== */
+  .note{background:#FAFBFC;border:1px solid var(--line);border-radius:var(--radius);padding:11px 13px;font-size:12.5px;color:var(--t2);margin-bottom:14px}
+  .note b{color:var(--t1)}
+  .empty{text-align:center;padding:44px 20px;color:var(--t3)}
+  .page{display:none}
+  .page.on{display:block}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ 侧边栏 ============ -->
+  <aside class="rail">
+    <div class="rail-logo">
+      <svg width="26" height="26" viewBox="0 0 40 40" fill="none">
+        <circle cx="20" cy="20" r="19" fill="#065BC1"/>
+        <path d="M8 25L15 16L21 22L27 13L33 25" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <b>和君纵达</b>
+    </div>
+    <nav class="rail-nav" id="nav">
+      <div class="rail-cap">知识库</div>
+      <div class="rail-item" data-p="p1"><span>▤</span>副本管理</div>
+      <div class="rail-item" data-p="p2"><span>⇄</span>检索对比</div>
+      <div class="rail-item" data-p="p3"><span>✓</span>相似问审核</div>
+      <div class="rail-item" data-p="p4"><span>✦</span>智能生成相似问</div>
+      <div class="rail-item" data-p="p5"><span>⧉</span>相近知识点检测</div>
+      <div class="rail-item" data-p="p6"><span>◎</span>检索测试（三层验证）</div>
+    </nav>
+  </aside>
+
+  <!-- ============ 内容 ============ -->
+  <div class="main">
+    <div class="topbar">
+      <div class="crumb">知识库 / 客服知识库 <span style="margin:0 6px">/</span> <b id="crumb">副本管理</b></div>
+      <div class="sp"></div>
+      <span class="tag draft">草稿副本</span>
+      <span class="muted">zhangsan</span>
+    </div>
+    <div class="content">
+
+      <!-- ===== P1 副本列表 ===== -->
+      <section class="page on" id="p1">
+        <h1>副本管理</h1>
+        <p class="sub">调整相似问、近义词前先建副本，验证效果后再提交审核发布到生产库。</p>
+
+        <div class="banner info">
+          <b>🔒</b>
+          <div>当前生产库 <b>客服知识库</b> 有 <b>2 个待审核副本</b>，共影响 <b>47 条</b>相似问改动待确认。</div>
+          <div class="sp"><button class="btn sm pri" onclick="go('p3')">去审核</button></div>
+        </div>
+
+        <div class="row" style="margin-bottom:14px">
+          <h2 style="margin:0">全部副本（3）</h2>
+          <div class="sp"></div>
+          <button class="btn pri" onclick="openDlg('dlg-new')">＋ 新建副本</button>
+        </div>
+
+        <!-- 副本卡 -->
+        <div class="dcard">
+          <div class="row">
+            <h3>客服知识库-退款问题优化</h3>
+            <span class="tag review">审核中</span>
+            <div class="sp"></div>
+            <button class="btn sm" onclick="go('p2')">检索对比</button>
+            <button class="btn sm pri" onclick="go('p3')">查看审核</button>
+          </div>
+          <p class="muted" style="margin-top:4px">补充「申请退款」「退款多久到账」等 12 条相似问，覆盖客服高频问法。</p>
+          <div class="meta-row">
+            <span>创建人 zhangsan</span><span>创建于 10-19 14:22</span>
+            <span>相似问改动 <b style="color:var(--warn)">+18 / ~9 / -3</b></span>
+            <span>影响 chunk <b>47</b> 个</span>
+          </div>
+        </div>
+
+        <div class="dcard">
+          <div class="row">
+            <h3>客服知识库-近义词补充</h3>
+            <span class="tag draft">草稿</span>
+            <div class="sp"></div>
+            <button class="btn sm" onclick="go('p4')">继续编辑</button>
+            <button class="btn sm" onclick="go('p2')">测试效果</button>
+            <button class="btn sm pri">提交审核</button>
+          </div>
+          <p class="muted" style="margin-top:4px">为「注销」「销户」等业务词补充近义词组，减少因表述不一导致的召回失败。</p>
+          <div class="meta-row">
+            <span>创建人 lisi</span><span>创建于 10-19 10:05</span>
+            <span>相似问改动 <b style="color:var(--warn)">+6</b></span>
+            <span>影响 chunk <b style="color:var(--warn)">31</b> 个</span>
+          </div>
+        </div>
+
+        <div class="dcard" style="opacity:.72">
+          <div class="row">
+            <h3>客服知识库-去重合并试验</h3>
+            <span class="tag pub">已发布</span>
+            <div class="sp"></div>
+            <button class="btn sm">查看发布记录</button>
+          </div>
+          <p class="muted" style="margin-top:4px">合并 3 组重复知识点，审核通过后已并入生产库。</p>
+          <div class="meta-row">
+            <span>审核人 wangwu</span><span>发布于 10-18 17:30</span>
+            <span>合并 chunk <b>6</b> 个</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== P2 检索对比 ===== -->
+      <section class="page" id="p2">
+        <div class="banner warn2">
+          <b>🧪</b>
+          <div>当前对比 <b>生产库</b> 与 <b>草稿副本「客服知识库-近义词补充」</b>，两侧使用完全相同的检索参数。</div>
+          <div class="sp"><span class="muted">同义词 8 组 · 向量权重 0.30</span></div>
+        </div>
+
+        <h1>检索对比</h1>
+        <p class="sub">同一问题分别检索生产库与副本，直观看到排序变化与新增召回。</p>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="row" style="margin-bottom:12px">
+            <span style="font-weight:500">测试问题</span>
+            <div class="sp"></div>
+            <span class="muted">共 3 组测试用例 · 来自真实问法统计</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+            <span class="tag review" style="cursor:pointer;padding:4px 10px">退款怎么申请</span>
+            <span class="tag gray" style="cursor:pointer;padding:4px 10px">钱什么时候退回来</span>
+            <span class="tag gray" style="cursor:pointer;padding:4px 10px">不想用了能退吗</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" value="退款怎么申请，需要多久能到账？" style="flex:1;height:36px;border:1px solid var(--line-2);border-radius:var(--radius);padding:0 11px;font-size:13px;font-family:inherit">
+            <button class="btn pri">对比检索</button>
+          </div>
+        </div>
+
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="vs">
+            <div style="padding:13px 16px;border-bottom:1px solid var(--line);background:#FAFBFC">
+              <b>生产库</b> <span class="muted">当前线上版本</span>
+            </div>
+            <div class="vs-mid">VS</div>
+            <div style="padding:13px 16px;border-bottom:1px solid var(--line);background:var(--warn-bg)">
+              <b>草稿副本</b> <span class="muted">已补充近义词「退款/退单/退费」</span>
+            </div>
+          </div>
+          <div class="vs">
+            <div style="padding:16px">
+              <div class="hit">
+                <div class="hit-h"><span class="rank">1</span><span class="muted">退款申请流程.docx</span><div class="sp"></div><span class="score muted">0.61</span></div>
+                <div>用户在「我的订单」中点击<span class="q">申请售后</span>，选择退款原因并提交…</div>
+                <div class="muted" style="margin-top:5px">命中字段：content_ltks</div>
+              </div>
+              <div class="hit">
+                <div class="hit-h"><span class="rank">2</span><span class="muted">退款到账时间说明.md</span><div class="sp"></div><span class="score muted">0.55</span></div>
+                <div>退款到账时间取决于支付渠道，通常<span class="q">1-3 个工作日</span>…</div>
+              </div>
+              <div class="hit">
+                <div class="hit-h"><span class="rank">3</span><span class="muted">客服常见问题汇总.xlsx</span><div class="sp"></div><span class="score muted">0.48</span></div>
+                <div>退款相关问题请参考以下常见问答…</div>
+              </div>
+            </div>
+            <div class="vs-mid"></div>
+            <div style="padding:16px">
+              <div class="hit new">
+                <div class="hit-h"><span class="rank">1</span><span class="muted">退款到账时间说明.md</span><div class="sp"></div><span class="score score-up">0.84 ↑0.29</span></div>
+                <div>退款到账时间取决于支付渠道，通常<span class="q">1-3 个工作日</span>；<mark>退单、退费均指同一业务</mark>…</div>
+                <div class="muted" style="margin-top:5px">✅ 新命中：相似问「<b>退单</b>」「<b>退费</b>」</div>
+              </div>
+              <div class="hit">
+                <div class="hit-h"><span class="rank">2</span><span class="muted">退款申请流程.docx</span><div class="sp"></div><span class="score score-up">0.77 ↑0.16</span></div>
+                <div>用户在「我的订单」中点击<span class="q">申请售后</span>，选择退款原因并提交…</div>
+                <div class="muted" style="margin-top:5px">✅ 新命中：相似问「<b>怎么申请退款</b>」</div>
+              </div>
+              <div class="hit gone">
+                <div class="hit-h"><span class="rank">—</span><span class="muted">客服常见问题汇总.xlsx</span><div class="sp"></div><span class="score score-dn">已跌出</span></div>
+                <div class="muted">在副本中降至第 5 名，被更精确的知识点挤出。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="note" style="margin-top:16px">
+          <b>变化解读：</b>补充近义词后，原第 2 名的「退款到账时间说明」升至第 1 名（0.55 → 0.84），
+          说明用户问「退单」时也能命中正确知识点。掉出榜单的「常见问题汇总」是内容较泛导致的，
+          属预期内。改动有效，可提交审核。
+        </div>
+      </section>
+
+      <!-- ===== P3 审核 ===== -->
+      <section class="page" id="p3">
+        <div class="banner info">
+          <b>👤</b>
+          <div>审核人：<b>wangwu</b> · 提交人：zhangsan · 提交于 10-19 15:10</div>
+          <div class="sp">
+            <button class="btn sm danger" onclick="act('已驳回')">驳回</button>
+            <button class="btn sm ok" onclick="act('审核通过并已合并到生产库')">审核通过并发布</button>
+          </div>
+        </div>
+
+        <h1>相似问改动审核</h1>
+        <p class="sub">副本「客服知识库-退款问题优化」相对生产库的改动明细。</p>
+
+        <div class="grid3" style="margin-bottom:16px">
+          <div class="card">
+            <div class="muted">新增相似问</div>
+            <div style="font-size:26px;font-weight:600;color:var(--ok);margin-top:4px">+18</div>
+          </div>
+          <div class="card">
+            <div class="muted">修改相似问</div>
+            <div style="font-size:26px;font-weight:600;color:var(--warn);margin-top:4px">~9</div>
+          </div>
+          <div class="card">
+            <div class="muted">删除相似问</div>
+            <div style="font-size:26px;font-weight:600;color:var(--err);margin-top:4px">−3</div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+            <b style="font-size:14px">影响面预估</b>
+            <div class="sp"></div>
+            <span class="muted">共 <b style="color:var(--t1)">47</b> 条生产 chunk 相似问将被更新 · 涉及 <b style="color:var(--t1)">6</b> 篇文档</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1.1fr 1fr 1fr;background:#FAFBFC;border-bottom:1px solid var(--line);font-size:12px;color:var(--t2)">
+            <div style="padding:9px 14px">知识点内容</div>
+            <div style="padding:9px 14px;border-left:1px solid #F0F3F7">生产库现状</div>
+            <div style="padding:9px 14px;border-left:1px solid #F0F3F7">副本改动后</div>
+          </div>
+          <div class="diff">
+            <div><b>申请退款</b><br><span class="muted">退款申请流程.docx</span></div>
+            <div><span class="q del">怎么退款</span><span class="q del">退款流程</span></div>
+            <div><span class="q del">怎么退款</span><span class="q add">退款怎么申请</span><span class="q add">申请退款流程</span><span class="q add">我要退款</span></div>
+          </div>
+          <div class="diff" style="border-top:1px solid #F0F3F7">
+            <div><b>退款到账时间</b><br><span class="muted">退款到账时间说明.md</span></div>
+            <div><span class="q del">几天到账</span><span class="q del">退款周期</span></div>
+            <div><span class="q add">退款什么时候到</span><span class="q add">退费要等多久</span><span class="q add">退单多久</span><span class="q add">几天到账</span></div>
+          </div>
+          <div class="diff" style="border-top:1px solid #F0F3F7">
+            <div><b>注销账户</b><br><span class="muted">账户注销指引.md</span></div>
+            <div><span class="q">注销</span><span class="q">销户</span></div>
+            <div><span class="q mod">注销</span><span class="q mod">销户</span><span class="q add">怎么注销账号</span><span class="q add">不想要这个账号了</span></div>
+          </div>
+          <div class="diff" style="border-top:1px solid #F0F3F7">
+            <div><b>发票开具</b><br><span class="muted">发票申请说明.pdf</span></div>
+            <div><span class="q del">开发票</span><span class="q del">怎么要发票</span></div>
+            <div><span class="q add">开票</span><span class="q add">我要发票怎么弄</span></div>
+          </div>
+        </div>
+
+        <div class="note" style="margin-top:16px">
+          <b>冲突检查：</b>✅ 生产库自副本创建后未被他人修改，本次发布不会覆盖他人改动。
+        </div>
+      </section>
+
+      <!-- ===== P4 智能生成 ===== -->
+      <section class="page" id="p4">
+        <h1>智能生成相似问</h1>
+        <p class="sub">用大模型为已有知识点补充相似问，采纳后写入草稿副本，不直接影响生产库。</p>
+
+        <div class="banner info">
+          <b>✦</b>
+          <div>已选择 <b>23</b> 个知识点（来自「客服知识库-近义词补充」副本），生成结果<b>必须人工确认</b>后才会写入。</div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="row" style="margin-bottom:12px">
+            <b>生成范围</b>
+            <div class="sp"></div>
+            <span class="tag review">上次生成：10-19 10:32</span>
+          </div>
+          <div class="row" style="gap:10px;flex-wrap:wrap">
+            <select style="height:34px;border:1px solid var(--line-2);border-radius:var(--radius);padding:0 10px;font-family:inherit;font-size:13px">
+              <option>全库（23 个知识点）</option>
+              <option>按文档：客服常见问题汇总.xlsx</option>
+              <option>按解析状态：已完成</option>
+            </select>
+            <select style="height:34px;border:1px solid var(--line-2);border-radius:var(--radius);padding:0 10px;font-family:inherit;font-size:13px">
+              <option>每条生成 3 个</option>
+              <option>每条生成 5 个</option>
+            </select>
+            <button class="btn pri" onclick="gen()">✦ 开始生成</button>
+          </div>
+          <p class="muted" style="margin-top:10px">生成会调用大模型，约需 1~2 分钟。超过 500 条将自动转为后台任务并支持断点续跑。</p>
+        </div>
+
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+            <b style="font-size:14px">生成结果</b>
+            <div class="sp"></div>
+            <span class="muted">已选 <b id="cnt" style="color:var(--brand)">0</b> 条</span>
+            <button class="btn sm" onclick="allCk(1)">全选</button>
+            <button class="btn sm" onclick="allCk(0)">清空</button>
+            <button class="btn sm pri" onclick="act('已采纳 0 条写入草稿副本')">采纳所选</button>
+          </div>
+          <table>
+            <thead><tr><th style="width:34px"></th><th style="width:26%">知识点</th><th>候选相似问</th><th style="width:110px">原文已有</th></tr></thead>
+            <tbody id="genbody">
+              <tr>
+                <td><span class="chk" onclick="this.classList.toggle('off');this.innerHTML=this.classList.contains('off')?'':'✓'">✓</span></td>
+                <td><b>申请退款</b><br><span class="muted">退款申请流程.docx</span></td>
+                <td><span class="q">退款流程是怎样的</span><span class="q">我要申请退款</span><span class="q">怎么操作退款</span></td>
+                <td><span class="q mod">怎么退款</span><span class="q mod">退款流程</span></td>
+              </tr>
+              <tr>
+                <td><span class="chk" onclick="this.classList.toggle('off');this.innerHTML=this.classList.contains('off')?'':'✓';upd()">✓</span></td>
+                <td><b>退款到账时间</b><br><span class="muted">退款到账时间说明.md</span></td>
+                <td><span class="q">退单多久能收到钱</span><span class="q">退费什么时候到</span><span class="q">退款几天到账</span></td>
+                <td><span class="q mod">几天到账</span><span class="q mod">退款周期</span></td>
+              </tr>
+              <tr>
+                <td><span class="chk" onclick="this.classList.toggle('off');this.innerHTML=this.classList.contains('off')?'':'✓';upd()">✓</span></td>
+                <td><b>注销账户</b><br><span class="muted">账户注销指引.md</span></td>
+                <td><span class="q">怎么把账号销掉</span><span class="q">账号不要了怎么处理</span><span class="q">能注销用户吗</span></td>
+                <td><span class="q mod">注销</span><span class="q mod">销户</span></td>
+              </tr>
+              <tr>
+                <td><span class="chk" onclick="this.classList.toggle('off');this.innerHTML=this.classList.contains('off')?'':'✓';upd()">✓</span></td>
+                <td><b>发票开具</b><br><span class="muted">发票申请说明.pdf</span></td>
+                <td><span class="q">怎么开发票给我</span><span class="q">能开专票吗</span><span class="q">发票在哪申请</span></td>
+                <td><span class="q mod">开发票</span><span class="q mod">怎么要发票</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===== P5 相近知识点 ===== -->
+      <section class="page" id="p5">
+        <h1>相近知识点检测</h1>
+        <p class="sub">找出语义高度相似的知识点，避免互相「抢召回」导致结果不稳定。</p>
+
+        <div class="grid2" style="margin-bottom:16px">
+          <div class="card">
+            <div class="row" style="margin-bottom:10px">
+              <b>入库扫描</b>
+              <div class="sp"></div>
+              <span class="muted">上次扫描：10-19 09:40</span>
+            </div>
+            <p class="muted" style="margin-bottom:12px">对全库知识点做向量两两比对，找出相似度超过阈值的组合。数据量大时自动转后台任务。</p>
+            <div class="row" style="gap:10px;flex-wrap:wrap">
+              <label class="muted">相似度阈值</label>
+              <select style="height:34px;border:1px solid var(--line-2);border-radius:var(--radius);padding:0 10px;font-family:inherit;font-size:13px">
+                <option>≥ 0.90（推荐）</option>
+                <option>≥ 0.85</option>
+                <option>≥ 0.80</option>
+              </select>
+              <button class="btn pri" onclick="act('扫描任务已提交，后台运行中…')">开始扫描</button>
+            </div>
+          </div>
+          <div class="card" style="background:#FFFCF5;border-color:#F5D9B8">
+            <div class="row" style="margin-bottom:10px">
+              <b style="color:#B26A15">⚠ 检索时实时提示</b>
+            </div>
+            <p style="font-size:12.5px;color:#8A6A32;line-height:1.75">
+              用户提问时，若召回的前几条知识点彼此高度相似，前端会即时提示：
+            </p>
+            <div style="background:#fff;border:1px solid #F0DFC4;border-radius:5px;padding:10px 12px;font-size:12px;color:var(--t2);margin-top:10px">
+              ⚠️ 此问题命中了 <b style="color:var(--err)">3 个</b>高度相似的知识点（相似度 0.91~0.95），
+              可能是重复内容，建议合并后再上线。
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--line)">
+            <b style="font-size:14px">检测结果（6 组）</b>
+            <div class="sp"></div>
+            <span class="tag hot">4 组高相似</span>
+            <span class="tag mid">2 组需关注</span>
+          </div>
+          <table>
+            <thead><tr><th style="width:22%">知识点 A</th><th style="width:22%">知识点 B</th><th style="width:120px">相似度</th><th>判断</th><th style="width:170px">处理</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><b>退款到账时间</b><br><span class="muted ell">退款到账时间说明.md</span></td>
+                <td><b>退款周期说明</b><br><span class="muted ell">客服FAQ-2024.xlsx</span></td>
+                <td>
+                  <b class="score" style="color:var(--err)">0.94</b>
+                  <div class="simbar"><i style="width:94%"></i></div>
+                </td>
+                <td><span class="tag hot">高度重复</span><div class="muted" style="margin-top:3px">内容表述不同但语义一致</div></td>
+                <td>
+                  <button class="btn sm pri" onclick="act('已标记为合并，将两条合并为一个知识点')">合并</button>
+                  <button class="btn sm" onclick="act('已改写知识点 B')">改写</button>
+                  <button class="btn sm ghost" onclick="act('已标记为允许共存，不再提示')">允许共存</button>
+                </td>
+              </tr>
+              <tr>
+                <td><b>如何注销账号</b><br><span class="muted ell">账户注销指引.md</span></td>
+                <td><b>账号注销流程</b><br><span class="muted ell">新手指引.md</span></td>
+                <td>
+                  <b class="score" style="color:var(--err)">0.91</b>
+                  <div class="simbar"><i style="width:91%"></i></div>
+                </td>
+                <td><span class="tag hot">高度重复</span><div class="muted" style="margin-top:3px">同场景两份文档均有</div></td>
+                <td>
+                  <button class="btn sm pri" onclick="act('已标记为合并')">合并</button>
+                  <button class="btn sm" onclick="act('已改写知识点 B')">改写</button>
+                  <button class="btn sm ghost" onclick="act('已标记为允许共存')">允许共存</button>
+                </td>
+              </tr>
+              <tr>
+                <td><b>开发票流程</b><br><span class="muted ell">发票申请说明.pdf</span></td>
+                <td><b>发票怎么开</b><br><span class="muted ell">客服FAQ-2024.xlsx</span></td>
+                <td>
+                  <b class="score" style="color:var(--warn)">0.86</b>
+                  <div class="simbar"><i class="mid" style="width:86%"></i></div>
+                </td>
+                <td><span class="tag mid">需关注</span><div class="muted" style="margin-top:3px">部分场景重叠</div></td>
+                <td>
+                  <button class="btn sm" onclick="act('已改写知识点 B')">改写</button>
+                  <button class="btn sm ghost" onclick="act('已标记为允许共存')">允许共存</button>
+                </td>
+              </tr>
+              <tr>
+                <td><b>修改绑定手机</b><br><span class="muted ell">账号安全.md</span></td>
+                <td><b>换绑手机号</b><br><span class="muted ell">新手指引.md</span></td>
+                <td>
+                  <b class="score" style="color:var(--warn)">0.83</b>
+                  <div class="simbar"><i class="mid" style="width:83%"></i></div>
+                </td>
+                <td><span class="tag mid">需关注</span></td>
+                <td>
+                  <button class="btn sm ghost" onclick="act('已标记为允许共存')">允许共存</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="note" style="margin-top:16px">
+          <b>阈值说明：</b>分块策略会影响判定 —— 较短的知识片段之间天然更容易达到高相似度。
+          建议先用 <b>0.90</b> 观察，确认为有效误报后再下调。
+        </div>
+      </section>
+
+      <!-- ===== P6 三层验证 ===== -->
+      <section class="page" id="p6">
+        <h1>三层验证</h1>
+        <p class="sub">从检索层到最终回答，逐层确认副本改动是否真的带来改善。</p>
+
+        <div class="tabs">
+          <button class="tab on" onclick="tab(this,0)">L1 检索层</button>
+          <button class="tab" onclick="tab(this,1)">L2 对比层</button>
+          <button class="tab" onclick="tab(this,2)">L3 问答层</button>
+        </div>
+
+        <div id="t0">
+          <div class="card" style="margin-bottom:14px">
+            <div class="row" style="gap:10px">
+              <input type="text" value="退款怎么申请" style="flex:1;height:36px;border:1px solid var(--line-2);border-radius:var(--radius);padding:0 11px;font-family:inherit;font-size:13px">
+              <select style="height:36px;border:1px solid var(--line-2);border-radius:var(--radius);padding:0 10px;font-family:inherit;font-size:13px">
+                <option>草稿副本</option><option>生产库</option>
+              </select>
+              <button class="btn pri">检索</button>
+            </div>
+          </div>
+          <div class="note">
+            <b>归因说明：</b>检索结果会同时返回命中的相似问，可直接看出「是哪条相似问让这条内容被召回」。
+            此前该字段缺失，此为 P0 修复项。
+          </div>
+          <div class="hit">
+            <div class="hit-h"><span class="rank">1</span><span class="muted">退款申请流程.docx</span><div class="sp"></div>
+              <span class="score">综合 <b>0.77</b></span><span class="score muted">向量 0.71</span><span class="score muted">关键词 0.83</span>
+            </div>
+            <div>用户在「我的订单」中点击申请售后，选择退款原因并提交…</div>
+            <div style="margin-top:7px">✅ 命中相似问：<span class="q add">退款怎么申请</span><span class="q add">我要退款</span></div>
+          </div>
+          <div class="hit">
+            <div class="hit-h"><span class="rank">2</span><span class="muted">退款到账时间说明.md</span><div class="sp"></div>
+              <span class="score">综合 <b>0.63</b></span><span class="score muted">向量 0.59</span><span class="score muted">关键词 0.67</span>
+            </div>
+            <div>退款到账时间取决于支付渠道，通常 1-3 个工作日…</div>
+            <div style="margin-top:7px">✅ 命中相似问：<span class="q add">退款什么时候到</span></div>
+          </div>
+        </div>
+
+        <div id="t1" style="display:none">
+          <div class="banner info"><b>⇄</b><div>双栏并排展示生产库与副本的检索结果差异，完整对比见「检索对比」页。</div><div class="sp"><button class="btn sm" onclick="go('p2')">打开完整对比</button></div></div>
+          <div class="grid2">
+            <div class="card"><div class="muted" style="margin-bottom:9px">生产库</div><div class="hit" style="margin:0"><div class="hit-h"><span class="rank">1</span><span class="score muted">0.61</span></div><div class="muted">退款申请流程.docx</div></div></div>
+            <div class="card" style="border-color:var(--warn)"><div class="muted" style="margin-bottom:9px">草稿副本</div><div class="hit new" style="margin:0"><div class="hit-h"><span class="rank">1</span><span class="score score-up">0.84 ↑</span></div><div>退款到账时间说明.md</div></div></div>
+          </div>
+        </div>
+
+        <div id="t2" style="display:none">
+          <div class="banner warn2"><b>💬</b><div>问答层走真实问答链路，验证最终回答质量与引用是否正确。</div></div>
+          <div class="card" style="margin-bottom:14px">
+            <div class="cmp" style="min-height:auto;border:none;padding:0">
+              <div class="cmp-title">👤 用户提问</div>
+              <div>退款怎么申请，需要多久能到账？</div>
+            </div>
+          </div>
+          <div class="cmp">
+            <div class="cmp-title">🤖 回答（基于<b>草稿副本</b>）<span class="tag draft">草稿</span></div>
+            <div>申请退款有两种方式：</div>
+            <div style="margin:7px 0;padding-left:16px;border-left:2px solid var(--brand)">
+              1. 在「我的订单」页找到对应订单，点击<span class="q">申请售后</span>，选择退款原因后提交；
+            </div>
+            <div style="margin:7px 0;padding-left:16px;border-left:2px solid var(--brand)">
+              2. 联系人工客服协助办理。
+            </div>
+            <div style="margin-top:9px">退款到账时间取决于支付渠道，<mark>通常 1-3 个工作日</mark>。</div>
+            <div class="cmp-title" style="margin-top:14px">📎 引用来源</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <span class="tag review">退款到账时间说明.md · 相似度 0.84</span>
+              <span class="tag review">退款申请流程.docx · 相似度 0.77</span>
+            </div>
+            <div class="cmp-title" style="margin-top:14px">⚠ 干扰提示</div>
+            <div style="color:#B26A15;font-size:12.5px">
+              命中的 2 条知识点在「退款周期」维度上有重叠（相似度 0.86），建议合并以提升回答稳定性。
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============ 弹窗 ============ -->
+<div class="mask" id="dlg-new">
+  <div class="dlg">
+    <div class="dlg-h">新建副本</div>
+    <div class="dlg-b">
+      <div class="fld">
+        <label>副本名称</label>
+        <input type="text" value="客服知识库-退款问题优化">
+      </div>
+      <div class="fld">
+        <label>改动说明（便于审核人理解）</label>
+        <textarea>补充退款相关高频问法的相似问，覆盖「退单/退费」等表述差异。</textarea>
+      </div>
+      <div class="fld">
+        <label>复制范围</label>
+        <label class="cb"><input type="checkbox" checked> 相似问（question_kwd）</label>
+        <label class="cb"><input type="checkbox" checked> 近义词组</label>
+        <label class="cb"><input type="checkbox"> 检索参数（阈值 / 向量权重 / rerank）</label>
+        <label class="cb"><input type="checkbox" disabled> chunk 内容与向量 <span class="muted">（复用源库，无需重算）</span></label>
+      </div>
+      <div class="note" style="margin:0">
+        <b>说明：</b>副本创建会快照当前配置作为对比基准。因相似问不参与向量计算，
+        本操作<b>不会调用 embedding 模型</b>，通常秒级完成。
+      </div>
+    </div>
+    <div class="dlg-f">
+      <button class="btn" onclick="closeDlg()">取消</button>
+      <button class="btn pri" onclick="closeDlg();act('副本创建成功，可开始调整相似问')">创建副本</button>
+    </div>
+  </div>
+</div>
+
+<div class="mask" id="dlg-tip">
+  <div class="dlg" style="max-width:360px">
+    <div class="dlg-h">操作结果</div>
+    <div class="dlg-b"><div id="tipmsg" style="font-size:13px"></div></div>
+    <div class="dlg-f"><button class="btn pri" onclick="closeDlg()">知道了</button></div>
+  </div>
+</div>
+
+<script>
+const NAMES={p1:'副本管理',p2:'检索对比',p3:'相似问审核',p4:'智能生成相似问',p5:'相近知识点检测',p6:'三层验证'};
+function go(p){
+  document.querySelectorAll('.page').forEach(e=>e.classList.remove('on'));
+  document.getElementById(p).classList.add('on');
+  document.querySelectorAll('.rail-item').forEach(e=>e.classList.toggle('on',e.dataset.p===p));
+  document.getElementById('crumb').textContent=NAMES[p];
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('.rail-item').forEach(e=>e.onclick=()=>go(e.dataset.p));
+function tab(el,i){
+  el.parentNode.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  el.classList.add('on');
+  [0,1,2].forEach(k=>document.getElementById('t'+k).style.display=k===i?'block':'none');
+}
+function openDlg(id){document.getElementById(id).classList.add('on')}
+function closeDlg(){document.querySelectorAll('.mask').forEach(m=>m.classList.remove('on'))}
+document.querySelectorAll('.mask').forEach(m=>m.onclick=e=>{if(e.target===m)closeDlg()});
+function act(msg){
+  document.getElementById('tipmsg').innerHTML='✅ '+msg;
+  document.getElementById('dlg-tip').classList.add('on');
+}
+function upd(){document.getElementById('cnt').textContent=document.querySelectorAll('#genbody .chk:not(.off)').length}
+function allCk(v){document.querySelectorAll('#genbody .chk').forEach(c=>{c.classList.toggle('off',!v);c.innerHTML=v?'✓':''});upd()}
+function gen(){
+  act('已提交生成任务，正在调用大模型…<br><span style="color:#8A93A2;font-size:12px">23 个知识点 · 每条 3 个候选 · 预计 1~2 分钟</span>');
+}
+upd();
+</script>
+</body>
+</html>

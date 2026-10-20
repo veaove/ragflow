@@ -1,0 +1,2166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dify Chatflow / Workflow 增量原型 · RAGFlow</title>
+<style>
+  :root{
+    --brand:#065BC1; --brand-hover:#0550A8; --brand-weak:#EAF1FB; --brand-line:#BFD5F0;
+    --bg:#F5F7FA; --card:#FFFFFF;
+    --t1:#1B2431; --t2:#5A6474; --t3:#949EAC; --t4:#B8C0CC;
+    --line:#E7ECF3; --line-2:#DCE3ED;
+    --ok:#22A06B; --ok-bg:#E8F6EF; --ok-line:#BFE6D4;
+    --warn:#F2994A; --warn-bg:#FDF3E8; --warn-line:#F5D9B8; --warn-t:#B26A15;
+    --err:#EB5757; --err-bg:#FDECEC; --err-line:#F6C6C6;
+    --purple:#7C5CFC; --purple-bg:#F1EDFF; --purple-line:#D9CFFB;
+    --teal:#0E9384; --teal-bg:#E6F6F4;
+    --indigo:#4F5BD5; --indigo-bg:#EEF0FF;
+    --radius:5px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font);background:var(--bg);color:var(--t1);font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased;overflow:hidden}
+  button{font-family:inherit}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:#D6DDE7;border-radius:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  .hide{display:none !important}
+
+  /* ============ App shell ============ */
+  .app{display:flex;height:100vh}
+  .sidebar{width:216px;flex-shrink:0;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column}
+  .brand{display:flex;align-items:center;gap:9px;padding:15px 16px;border-bottom:1px solid var(--line)}
+  .brand-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#065BC1,#3E8BE8);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px}
+  .brand-name{font-size:13.5px;font-weight:600;line-height:1.35}
+  .brand-sub{font-size:11px;color:var(--t3)}
+  .nav{padding:8px 10px;flex:1;overflow-y:auto}
+  .nav-title{font-size:11px;color:var(--t3);padding:11px 10px 5px}
+  .nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--radius);color:var(--t2);cursor:pointer;font-size:13px;margin-bottom:2px;position:relative}
+  .nav-item:hover{background:#F3F6FA;color:var(--t1)}
+  .nav-item.active{background:var(--brand-weak);color:var(--brand);font-weight:500}
+  .nav-item.active::before{content:"";position:absolute;left:-10px;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:var(--brand)}
+  .nav-item .badge{margin-left:auto;font-size:10.5px;background:var(--brand);color:#fff;padding:0 6px;border-radius:8px;line-height:16px}
+  .nav-item .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);margin-left:auto}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .topnav{height:52px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 24px;flex-shrink:0}
+  .crumb{color:var(--t3);font-size:12px}
+  .crumb b{color:var(--t1);font-weight:500}
+  .topnav-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .avatar{width:28px;height:28px;border-radius:50%;background:var(--brand-weak);color:var(--brand);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+  .content{flex:1;overflow-y:auto;padding:20px 24px 40px}
+
+  /* ============ Common ============ */
+  .page-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px}
+  .page-head h1{font-size:19px;font-weight:600;line-height:1.4}
+  .page-head p{color:var(--t2);font-size:12.5px;margin-top:3px}
+  .page-head .actions{margin-left:auto;display:flex;gap:8px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 13px;border-radius:var(--radius);border:1px solid var(--line-2);background:#fff;color:var(--t1);font-size:13px;cursor:pointer;white-space:nowrap;transition:.15s}
+  .btn:hover{border-color:var(--brand);color:var(--brand)}
+  .btn.pri{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn.pri:hover{background:var(--brand-hover);border-color:var(--brand-hover);color:#fff}
+  .btn.ghost{border-color:transparent;background:transparent;color:var(--t2)}
+  .btn.ghost:hover{background:#F3F6FA;color:var(--t1)}
+  .btn.sm{height:27px;padding:0 10px;font-size:12px}
+  .btn svg{width:14px;height:14px}
+  .tag{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:10px;font-size:11.5px;line-height:18px;white-space:nowrap}
+  .tag.blue{background:var(--brand-weak);color:var(--brand);border:1px solid var(--brand-line)}
+  .tag.green{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-line)}
+  .tag.orange{background:var(--warn-bg);color:var(--warn-t);border:1px solid var(--warn-line)}
+  .tag.purple{background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-line)}
+  .tag.gray{background:#EEF2F7;color:var(--t2);border:1px solid var(--line-2)}
+  .tag.red{background:var(--err-bg);color:var(--err);border:1px solid var(--err-line)}
+  .tag.new{background:#E8F6EF;color:#0F7A4F;border:1px solid #BFE6D4;font-size:10px;padding:0 5px;line-height:15px;border-radius:4px}
+  .dot{width:5px;height:5px;border-radius:50%;display:inline-block;background:currentColor}
+  .table-wrap{background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  table{width:100%;border-collapse:collapse}
+  thead th{background:#F7F9FC;color:var(--t2);font-size:12px;font-weight:500;text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  tbody td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:13px}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#FAFCFE}
+  .cell-strong{font-weight:500}
+  .cell-sub{color:var(--t3);font-size:12px}
+  .link{color:var(--brand);cursor:pointer;font-size:12.5px}
+  .link:hover{text-decoration:underline}
+  .link.danger{color:var(--err)}
+  .tabs{display:flex;gap:22px;border-bottom:1px solid var(--line);margin-bottom:14px}
+  .tab{padding:8px 2px;font-size:13px;color:var(--t2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:6px}
+  .tab:hover{color:var(--t1)}
+  .tab.active{color:var(--brand);border-bottom-color:var(--brand);font-weight:500}
+  .tab .cnt{font-size:11px;background:#EEF2F7;color:var(--t2);padding:0 6px;border-radius:8px;line-height:17px}
+  .tab.active .cnt{background:var(--brand-weak);color:var(--brand)}
+  .search{display:flex;align-items:center;gap:7px;height:32px;padding:0 10px;border:1px solid var(--line-2);border-radius:var(--radius);background:#fff;min-width:250px}
+  .search input{border:0;outline:0;font-size:13px;width:100%;background:transparent;font-family:inherit}
+  .select{height:32px;padding:0 28px 0 10px;border:1px solid var(--line-2);border-radius:var(--radius);background:#fff;color:var(--t2);font-size:13px;appearance:none;cursor:pointer;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23949EAC' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat:no-repeat;background-position:right 9px center}
+  .input,.textarea{width:100%;border:1px solid var(--line-2);border-radius:var(--radius);padding:7px 10px;font-size:13px;font-family:inherit;color:var(--t1);outline:0;background:#fff}
+  .input:focus,.textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(6,91,193,.08)}
+  .textarea{min-height:70px;resize:vertical;line-height:1.6}
+  .field{margin-bottom:13px}
+  .field > label{display:block;font-size:12px;color:var(--t2);margin-bottom:5px}
+  .field .hint{font-size:11px;color:var(--t3);margin-top:4px}
+  .banner{display:flex;align-items:center;gap:9px;border-radius:var(--radius);padding:9px 12px;font-size:12px;margin-bottom:14px}
+  .banner.info{background:var(--brand-weak);border:1px solid var(--brand-line);color:#0B4A96}
+  .banner.warn{background:var(--warn-bg);border:1px solid var(--warn-line);color:#7A4A13}
+  .legend{display:flex;align-items:center;gap:14px;font-size:11.5px;color:var(--t2);padding:0 0 12px}
+  .legend .item{display:flex;align-items:center;gap:5px}
+
+  /* ============ App list ============ */
+  .app-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+  .app-card{background:#fff;border:1px solid var(--line);border-radius:9px;padding:15px 16px;cursor:pointer;transition:.15s}
+  .app-card:hover{border-color:var(--brand-line);box-shadow:0 4px 16px rgba(6,91,193,.06)}
+  .app-card .hd{display:flex;align-items:flex-start;gap:10px}
+  .app-ic{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:600;flex-shrink:0}
+  .app-ic.wf{background:linear-gradient(135deg,#065BC1,#3E8BE8)}
+  .app-ic.cf{background:linear-gradient(135deg,#7C5CFC,#A48BFF)}
+  .app-ic.ag{background:linear-gradient(135deg,#F2994A,#F7B267)}
+  .app-card .nm{font-size:13.5px;font-weight:600;line-height:1.35}
+  .app-card .ds{font-size:11.5px;color:var(--t3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:210px}
+  .app-card .meta{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:11px;border-top:1px solid var(--line);font-size:11.5px;color:var(--t3)}
+  .app-card .meta .right{margin-left:auto;display:flex;gap:6px}
+
+  /* ============ Editor ============ */
+  .editor{position:fixed;inset:0;background:var(--bg);display:none;flex-direction:column;z-index:40}
+  .editor.on{display:flex}
+  .ed-top{height:54px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 16px;flex-shrink:0}
+  .ed-back{width:28px;height:28px;border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--t2)}
+  .ed-back:hover{background:#F3F6FA}
+  .ed-title{display:flex;align-items:center;gap:8px;min-width:0}
+  .ed-title b{font-size:14px;font-weight:600;white-space:nowrap}
+  .ed-title .sub{font-size:11.5px;color:var(--t3)}
+  .ed-top .spacer{flex:1}
+  .save-state{font-size:11.5px;color:var(--t3);display:flex;align-items:center;gap:5px}
+  .ed-body{flex:1;display:flex;min-height:0}
+  .node-panel{width:224px;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;flex-shrink:0}
+  .np-search{padding:10px 12px;border-bottom:1px solid var(--line)}
+  .np-search .search{min-width:0;width:100%;height:30px}
+  .np-scroll{flex:1;overflow-y:auto;padding:8px 8px 20px}
+  .np-group{margin-bottom:6px}
+  .np-group-title{font-size:11px;color:var(--t3);padding:8px 8px 4px;letter-spacing:.2px}
+  .np-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:5px;cursor:grab;font-size:12.5px;color:var(--t1)}
+  .np-item:hover{background:#F3F6FA}
+  .np-ic{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;flex-shrink:0}
+  .np-item .new{margin-left:auto}
+  .canvas-wrap{flex:1;position:relative;overflow:auto;background-color:#F7F9FC;
+    background-image:radial-gradient(#DDE4EE 1px, transparent 1px);background-size:16px 16px}
+  .canvas{position:relative;width:1180px;height:620px}
+  .canvas.cf{width:1120px}
+  .node{position:absolute;width:200px;background:#fff;border:1px solid var(--line-2);border-radius:8px;padding:9px 11px;box-shadow:0 1px 3px rgba(16,24,40,.07);cursor:pointer;transition:.12s;user-select:none}
+  .node:hover{border-color:var(--brand-line);box-shadow:0 3px 10px rgba(6,91,193,.08)}
+  .node.sel{border-color:var(--brand);box-shadow:0 0 0 3px rgba(6,91,193,.1)}
+  .node .hd{display:flex;align-items:center;gap:8px}
+  .node .hd > div:last-child{min-width:0;flex:1}
+  .node .ic{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10.5px;flex-shrink:0}
+  .node .tt{font-size:12px;font-weight:600;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .node .st{font-size:10.5px;color:var(--t3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+  .node .badge{position:absolute;top:-8px;right:8px}
+  .port{position:absolute;width:8px;height:8px;border-radius:50%;background:#fff;border:1.6px solid var(--brand);z-index:2}
+  .port.in{left:-4px;top:50%;margin-top:-4px}
+  .port.out{right:-4px;top:50%;margin-top:-4px}
+  .port.out.branch{top:auto;bottom:-4px;right:50%;margin-right:-4px}
+  .edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .edge{fill:none;stroke:#B9C6D8;stroke-width:1.6}
+  .edge.hi{stroke:var(--brand);stroke-width:2}
+  .edge-label{font-size:10.5px;fill:var(--t3)}
+
+  .cfg-panel{width:332px;background:#fff;border-left:1px solid var(--line);display:flex;flex-direction:column;flex-shrink:0}
+  .cfg-head{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  .cfg-head .ic{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px}
+  .cfg-head b{font-size:13.5px;font-weight:600}
+  .cfg-head .x{margin-left:auto;cursor:pointer;color:var(--t3);font-size:18px}
+  .cfg-body{flex:1;overflow-y:auto;padding:14px 16px}
+  .cfg-section{font-size:11px;color:var(--t3);margin:14px 0 7px;padding-top:12px;border-top:1px solid var(--line)}
+  .cfg-section:first-child{margin-top:0;padding-top:0;border-top:0}
+  .cfg-body .field > label{font-size:11.5px}
+  .cfg-body .input,.cfg-body .textarea,.cfg-body .select{font-size:12.5px}
+  .chips{display:flex;flex-wrap:wrap;gap:4px}
+  .chip{display:inline-flex;align-items:center;gap:4px;background:#F1F5FA;border:1px solid #E1E9F3;color:#3A4A5E;padding:1px 7px;border-radius:10px;font-size:11px;line-height:18px}
+  .chip.brand{background:var(--brand-weak);border-color:var(--brand-line);color:var(--brand)}
+  .chip .x{cursor:pointer;color:var(--t3)}
+  .switch-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:12.5px}
+  .sw{width:32px;height:18px;border-radius:9px;background:#CDD6E3;position:relative;cursor:pointer;transition:.15s;flex-shrink:0}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.15s}
+  .sw.on{background:var(--brand)}
+  .sw.on::after{left:16px}
+
+  /* run panel */
+  .run-panel{height:0;background:#fff;border-top:1px solid var(--line);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;transition:height .18s}
+  .run-panel.on{height:250px}
+  .run-head{height:38px;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);flex-shrink:0}
+  .run-head .tabs2{display:flex;gap:16px}
+  .run-head .tabs2 span{font-size:12.5px;color:var(--t2);cursor:pointer;padding:9px 0;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .run-head .tabs2 span.on{color:var(--brand);border-bottom-color:var(--brand);font-weight:500}
+  .run-head .spacer{flex:1}
+  .run-body{flex:1;overflow-y:auto;padding:12px 14px;font-size:12px}
+  .run-empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--t3)}
+  .run-tab-body{display:none}
+  .run-tab-body.on{display:block}
+  .trace{display:flex;flex-direction:column;gap:0}
+  .tr-row{display:flex;gap:10px;padding:6px 0;border-left:2px solid var(--line);padding-left:12px;margin-left:6px;position:relative}
+  .tr-row::before{content:"";position:absolute;left:-5px;top:12px;width:8px;height:8px;border-radius:50%;background:var(--ok);border:2px solid #fff}
+  .tr-row .nm{width:120px;flex-shrink:0;font-weight:500;font-size:12px}
+  .tr-row .bar{flex:1;height:8px;border-radius:4px;background:#EEF2F7;position:relative;margin-top:5px}
+  .tr-row .bar i{position:absolute;height:100%;border-radius:4px;background:var(--brand)}
+  .tr-row .ms{width:56px;text-align:right;color:var(--t3);font-size:11px}
+  .kv{display:grid;grid-template-columns:110px 1fr;gap:4px 10px;font-size:12px}
+  .kv dt{color:var(--t3)}
+  .kv dd{color:var(--t1);word-break:break-all}
+  .code-box{background:#0F172A;color:#D6E0F0;border-radius:6px;padding:10px 12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.65;overflow-x:auto;white-space:pre}
+
+  /* chat preview */
+  .chat-preview{width:330px;background:#fff;border-left:1px solid var(--line);display:flex;flex-direction:column;flex-shrink:0}
+  .chat-preview.collapsed{display:none}
+  .cp-head{padding:11px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600}
+  .cp-head .tag{margin-left:auto}
+  .cp-body{flex:1;overflow-y:auto;padding:14px;background:#FBFCFE}
+  .msg{display:flex;gap:8px;margin-bottom:14px}
+  .msg .b{max-width:82%;padding:8px 11px;border-radius:9px;font-size:12px;line-height:1.6}
+  .msg.user{flex-direction:row-reverse}
+  .msg.user .b{background:var(--brand);color:#fff;border-bottom-right-radius:3px}
+  .msg.bot .b{background:#fff;border:1px solid var(--line);border-bottom-left-radius:3px}
+  .msg .av{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;background:var(--brand)}
+  .msg.bot .av{background:var(--purple)}
+  .cite{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--brand);background:var(--brand-weak);border-radius:9px;padding:0 6px;line-height:16px;margin-top:5px}
+  .cp-foot{border-top:1px solid var(--line);padding:10px 12px}
+  .cp-input{display:flex;gap:8px}
+  .cp-input .input{height:34px}
+  .conversation-vars{padding:8px 12px;border-top:1px solid var(--line);background:#FCFDFE;font-size:11px;color:var(--t2)}
+  .conversation-vars b{display:block;font-size:10.5px;color:var(--t3);margin-bottom:3px}
+
+  /* ============ Modal ============ */
+  .mask{position:fixed;inset:0;background:rgba(17,24,39,.45);display:none;align-items:flex-start;justify-content:center;z-index:100;padding:48px 20px;overflow-y:auto}
+  .mask.on{display:flex}
+  .modal{background:#fff;border-radius:10px;box-shadow:0 20px 60px rgba(16,24,40,.22);width:560px;max-width:100%;animation:pop .16s ease}
+  .modal.lg{width:860px}
+  .modal.md{width:720px}
+  @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:none}}
+  .modal-head{display:flex;align-items:center;gap:10px;padding:15px 20px;border-bottom:1px solid var(--line)}
+  .modal-head h3{font-size:15px;font-weight:600}
+  .modal-head .x{margin-left:auto;cursor:pointer;color:var(--t3);font-size:20px;line-height:1}
+  .modal-body{padding:18px 20px;max-height:calc(100vh - 200px);overflow-y:auto}
+  .modal-foot{display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line);background:#FCFDFE;border-radius:0 0 10px 10px}
+  .modal-foot .spacer{flex:1}
+  .type-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .type-card{border:1.5px solid var(--line-2);border-radius:9px;padding:15px 14px;cursor:pointer;transition:.15s}
+  .type-card:hover{border-color:var(--brand-line)}
+  .type-card.on{border-color:var(--brand);background:var(--brand-weak);box-shadow:0 0 0 3px rgba(6,91,193,.08)}
+  .type-card .ic{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:600;margin-bottom:9px}
+  .type-card b{font-size:13px}
+  .type-card p{font-size:11.5px;color:var(--t2);margin-top:4px;line-height:1.55}
+  .type-card .tag{margin-top:8px}
+
+  /* drawer */
+  .drawer-mask{position:fixed;inset:0;background:rgba(17,24,39,.35);display:none;z-index:90}
+  .drawer-mask.on{display:block}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:640px;background:#fff;box-shadow:-8px 0 30px rgba(16,24,40,.16);display:none;flex-direction:column;z-index:91}
+  .drawer.on{display:flex}
+  .drawer-head{padding:15px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  .drawer-head h3{font-size:15px;font-weight:600}
+  .drawer-head .x{margin-left:auto;cursor:pointer;color:var(--t3);font-size:20px}
+  .drawer-body{padding:16px 20px;overflow-y:auto;flex:1}
+  .drawer-foot{padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px}
+
+  .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(20px);background:#1B2431;color:#fff;padding:9px 16px;border-radius:6px;font-size:12.5px;opacity:0;pointer-events:none;transition:.25s;z-index:200}
+  .toast.on{opacity:1;transform:translateX(-50%)}
+  .page{display:none}
+  .page.on{display:block}
+  .modal-tab-body{display:none}
+  .modal-tab-body.on{display:block}
+
+  /* ============ 工作室 / 原生智能体 增量样式 ============ */
+  .dropdown{position:relative}
+  .dd-menu{position:absolute;right:0;top:38px;background:#fff;border:1px solid var(--line);border-radius:7px;box-shadow:0 8px 24px rgba(16,24,40,.14);min-width:176px;padding:5px;display:none;z-index:60}
+  .dd-menu.on{display:block}
+  .dd-item{padding:8px 11px;border-radius:5px;font-size:13px;color:var(--t1);cursor:pointer}
+  .dd-item:hover{background:#F3F6FA}
+
+  .section-title{font-size:13px;color:var(--t2);margin:24px 0 12px;padding-top:18px;border-top:1px solid var(--line)}
+  .tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:12px}
+  .tpl-card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 13px;cursor:pointer;display:flex;gap:10px;align-items:center;transition:.15s}
+  .tpl-card:hover{border-color:var(--brand-line);box-shadow:0 3px 12px rgba(6,91,193,.06)}
+  .tpl-card .t-ic{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:600;flex-shrink:0}
+  .tpl-card .t-nm{font-size:12.5px;font-weight:600}
+  .tpl-card .t-ds{font-size:11px;color:var(--t3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px}
+
+  .studio-legend{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+  .sl-card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .sl-hd{display:flex;align-items:center;gap:8px}
+  .sl-t{font-size:12.5px;font-weight:600}
+  .sl-b{font-size:12px;color:var(--t2);margin-top:6px;line-height:1.6}
+
+  .empty-box{background:#fff;border:1px dashed var(--line-2);border-radius:10px;padding:34px;text-align:center}
+
+  .pick-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .pick{border:1.5px solid var(--line-2);border-radius:10px;padding:16px;cursor:pointer;transition:.15s;position:relative;background:#fff}
+  .pick:hover{border-color:var(--brand-line)}
+  .pick.on{border-color:var(--brand);background:var(--brand-weak);box-shadow:0 0 0 3px rgba(6,91,193,.08)}
+  .pick .p-ic{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;margin-bottom:11px}
+  .pick .p-nm{font-size:14.5px;font-weight:600;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
+  .pick .p-en{font-size:11.5px;color:var(--t3);font-weight:400}
+  .pick .p-ds{font-size:12px;color:var(--t2);margin-top:7px;line-height:1.65}
+  .pick .p-fit{font-size:11px;color:var(--t3);margin-top:9px;padding-top:8px;border-top:1px dashed var(--line-2)}
+  .pick .check{position:absolute;top:14px;right:14px;width:19px;height:19px;border-radius:50%;background:var(--brand);color:#fff;display:none;align-items:center;justify-content:center;font-size:11px}
+  .pick.on .check{display:flex}
+  .req{color:var(--err);margin-right:2px}
+
+  /* ============ 视图切换 / 顶部创建 ============ */
+  .seg{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--radius);overflow:hidden;background:#fff}
+  .seg button{height:32px;padding:0 11px;border:0;background:#fff;font-size:12.5px;color:var(--t2);cursor:pointer;display:flex;align-items:center;gap:5px;font-family:inherit}
+  .seg button + button{border-left:1px solid var(--line-2)}
+  .seg button:hover{background:#F3F6FA}
+  .seg button.on{background:var(--brand-weak);color:var(--brand);font-weight:500}
+
+  .split{display:inline-flex}
+  .split .btn:first-child{border-top-right-radius:0;border-bottom-right-radius:0}
+  .split .btn:last-child{border-top-left-radius:0;border-bottom-left-radius:0;padding:0 9px}
+  .split .dd-menu{top:38px}
+
+  .sl-card{position:relative;cursor:pointer;transition:.15s}
+  .sl-card:hover{border-color:var(--brand-line);box-shadow:0 3px 12px rgba(6,91,193,.07)}
+  .sl-go{position:absolute;top:12px;right:12px;font-size:11px;color:var(--brand);background:var(--brand-weak);
+    border:1px solid var(--brand-line);border-radius:10px;padding:1px 9px;opacity:0;transition:.15s;white-space:nowrap}
+  .sl-card:hover .sl-go{opacity:1}
+  .sl-card .p-ic{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;margin-bottom:9px}
+
+  .tbl-name{display:flex;align-items:center;gap:9px}
+  .tbl-name .app-ic{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600;flex-shrink:0}
+  .row-act{display:flex;gap:10px}
+
+  /* ============ 搜索 + 分页 ============ */
+  .search{position:relative}
+  .search .search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:16px;height:16px;border-radius:50%;
+    background:#C6CFDB;color:#fff;font-size:11px;line-height:16px;text-align:center;cursor:pointer}
+  .search .search-clear:hover{background:var(--t3)}
+  .list-bar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .list-count{font-size:12px;color:var(--t3)}
+  .list-count b{color:var(--t1);font-weight:500}
+
+  .pager{display:flex;align-items:center;gap:12px;padding:12px 2px 0}
+  .pager-info{font-size:12px;color:var(--t3)}
+  .pager-info b{color:var(--t1);font-weight:500}
+  .pager-ctrl{margin-left:auto;display:flex;align-items:center;gap:4px}
+  .pg{min-width:28px;height:28px;padding:0 8px;border:1px solid var(--line-2);background:#fff;border-radius:var(--radius);
+    font-size:12.5px;color:var(--t2);cursor:pointer;font-family:inherit}
+  .pg:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
+  .pg:disabled{opacity:.4;cursor:not-allowed}
+  .pg.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:500}
+  .pg.dots{border:0;background:transparent;cursor:default;color:var(--t4)}
+  .pg-size{height:28px;font-size:12.5px}
+</style>
+</head>
+<body>
+
+<!-- ==================== 应用列表 ==================== -->
+<div class="app" id="appShell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">华</div>
+      <div>
+        <div class="brand-name">华夏基金 · 智能体平台</div>
+        <div class="brand-sub">RAGFlow Enterprise</div>
+      </div>
+    </div>
+    <nav class="nav" id="mainNav">
+      <div class="nav-item" id="navHome" onclick="showPage('home')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>首页</div>
+      <div class="nav-item" id="navKb" onclick="showPage('kb')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>知识库</div>
+      <div class="nav-item" id="navChat" onclick="showPage('chat')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>聊天</div>
+      <div class="nav-item" id="navSearch" onclick="showPage('search')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>搜索</div>
+      <div class="nav-item active" id="navAgent" onclick="showPage('agent')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><circle cx="12" cy="4" r="2"/><path d="M12 6v2"/><circle cx="8" cy="13" r="1"/><circle cx="16" cy="13" r="1"/></svg>智能体</div>
+      <div class="nav-item" id="navStudio" onclick="showPage('studio')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>工作室<span class="tag new" style="margin-left:auto">新增</span></div>
+      <div class="nav-item" id="navMemory" onclick="showPage('memory')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 5 12 5 12 19 7 19"/><polyline points="7 12 12 12 12 5"/></svg>记忆</div>
+      <div class="nav-item" id="navFiles" onclick="showPage('files')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>文件管理</div>
+    </nav>
+    <div style="padding:11px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--t3);display:flex;align-items:center;gap:6px">
+      <span class="dot" style="background:var(--ok)"></span> 生产环境
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topnav">
+      <div class="crumb" id="crumb">智能体</div>
+      <div class="topnav-right"><div class="avatar">刘</div></div>
+    </header>
+    <div class="content">
+
+      <!-- ==================== 智能体（原生，保持不动） ==================== -->
+      <div class="page on" id="page-agent">
+        <div class="page-head">
+          <div><h1>智能体</h1></div>
+          <div class="actions">
+            <button class="btn sm" onclick="toast('筛选面板（演示）')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              筛选
+            </button>
+            <div class="search" style="min-width:190px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#949EAC" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input id="agentSearch" placeholder="搜索智能体名称" oninput="onSearch('agent',this.value)">
+              <span class="search-clear hide" id="agentSearchClear" onclick="clearSearch('agent')">×</span>
+            </div>
+            <div class="seg" title="视图切换">
+              <button data-view="card" class="on" onclick="setView('card')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                卡片
+              </button>
+              <button data-view="table" onclick="setView('table')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="1.5"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
+                表格
+              </button>
+            </div>
+            <div class="dropdown split">
+              <button class="btn pri" onclick="closeCreateMenu();openModal('m-create-agent')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                创建应用
+              </button>
+              <button class="btn pri" onclick="toggleCreateMenu()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="dd-menu" id="agentCreateMenu">
+                <div class="dd-item" onclick="closeCreateMenu();openModal('m-create-agent')">从空白创建</div>
+                <div class="dd-item" onclick="closeCreateMenu();toast('从模板创建（演示）')">从模板创建</div>
+                <div class="dd-item" onclick="closeCreateMenu();openModal('m-dsl')">导入 JSON 文件</div>
+                <div class="dd-item" onclick="closeCreateMenu();toast('跳转编译算子模板（演示）')">编译算子</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="app-grid" id="agentGrid"><div class="app-card">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#22A06B,#4FC08D)">转</div>
+            <div style="min-width:0">
+              <div class="nm">转人工处理</div>
+              <div class="ds">识别转人工意图并移交坐席</div>
+            </div>
+          </div>
+          <div class="meta"><span class="cell-sub">上次保存于 20/10/2026</span><span class="tag orange">多轮引导</span><span class="right"><span class="link">运行</span></span></div>
+        </div><div class="app-card">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#F2994A,#F7B267)">M</div>
+            <div style="min-width:0">
+              <div class="nm">FAQ-Mindmap</div>
+              <div class="ds">按知识树逐层追问</div>
+            </div>
+          </div>
+          <div class="meta"><span class="cell-sub">上次保存于 20/10/2026</span><span class="tag purple">脑图</span><span class="right"><span class="link">运行</span></span></div>
+        </div><div class="app-card">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#4F5BD5,#7C8AF0)">G</div>
+            <div style="min-width:0">
+              <div class="nm">FAQ-graph</div>
+              <div class="ds">多跳图检索问答</div>
+            </div>
+          </div>
+          <div class="meta"><span class="cell-sub">上次保存于 20/10/2026</span><span class="tag purple">图谱</span><span class="right"><span class="link">运行</span></span></div>
+        </div><div class="app-card">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">T</div>
+            <div style="min-width:0">
+              <div class="nm">FAQ-Tree</div>
+              <div class="ds">决策树式 FAQ 导航</div>
+            </div>
+          </div>
+          <div class="meta"><span class="cell-sub">上次保存于 20/10/2026</span><span class="tag purple">树</span><span class="right"><span class="link">运行</span></span></div>
+        </div><div class="app-card">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#22A06B,#4FC08D)">Q</div>
+            <div style="min-width:0">
+              <div class="nm">Q&A</div>
+              <div class="ds">一问一答的轻量问答</div>
+            </div>
+          </div>
+          <div class="meta"><span class="cell-sub">上次保存于 20/10/2026</span><span class="tag green">问答</span><span class="right"><span class="link">运行</span></span></div>
+        </div><div class="app-card">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#7C5CFC,#A48BFF)">法</div>
+            <div style="min-width:0">
+              <div class="nm">法律条文</div>
+              <div class="ds">基于法规库的合规问答</div>
+            </div>
+          </div>
+          <div class="meta"><span class="cell-sub">上次保存于 20/10/2026</span><span class="tag purple">法规</span><span class="right"><span class="link">运行</span></span></div>
+        </div></div>
+<div class="table-wrap hide" id="agentTable" style="margin-bottom:4px">
+          <table>
+            <thead><tr>
+              <th style="width:34%">名称</th><th style="width:110px">类型</th><th style="width:110px">标签</th>
+              <th style="width:110px">状态</th><th style="width:130px">上次保存</th><th style="width:120px">操作</th>
+            </tr></thead>
+            <tbody>
+              <tr><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#22A06B,#4FC08D)">转</span><span class="cell-strong">转人工处理</span></div><div class="cell-sub" style="margin-left:35px">识别转人工意图并移交坐席</div></td><td><span class="tag gray">智能体</span></td><td><span class="tag orange">多轮引导</span></td><td><span class="tag green"><span class="dot"></span>已发布</span></td><td class="cell-sub">20/10/2026 14:22</td><td><div class="row-act"><span class="link">运行</span><span class="link">编辑</span><span class="link">日志</span></div></td></tr>
+              <tr><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#F2994A,#F7B267)">M</span><span class="cell-strong">FAQ-Mindmap</span></div><div class="cell-sub" style="margin-left:35px">按知识树逐层追问</div></td><td><span class="tag gray">智能体</span></td><td><span class="tag purple">脑图</span></td><td><span class="tag green"><span class="dot"></span>已发布</span></td><td class="cell-sub">20/10/2026 11:07</td><td><div class="row-act"><span class="link">运行</span><span class="link">编辑</span><span class="link">日志</span></div></td></tr>
+              <tr><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#4F5BD5,#7C8AF0)">G</span><span class="cell-strong">FAQ-graph</span></div><div class="cell-sub" style="margin-left:35px">多跳图检索问答</div></td><td><span class="tag gray">智能体</span></td><td><span class="tag purple">图谱</span></td><td><span class="tag green"><span class="dot"></span>已发布</span></td><td class="cell-sub">20/10/2026 10:41</td><td><div class="row-act"><span class="link">运行</span><span class="link">编辑</span><span class="link">日志</span></div></td></tr>
+              <tr><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">T</span><span class="cell-strong">FAQ-Tree</span></div><div class="cell-sub" style="margin-left:35px">决策树式 FAQ 导航</div></td><td><span class="tag gray">智能体</span></td><td><span class="tag purple">树</span></td><td><span class="tag green"><span class="dot"></span>已发布</span></td><td class="cell-sub">19/10/2026 17:55</td><td><div class="row-act"><span class="link">运行</span><span class="link">编辑</span><span class="link">日志</span></div></td></tr>
+              <tr><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#22A06B,#4FC08D)">Q</span><span class="cell-strong">Q&A</span></div><div class="cell-sub" style="margin-left:35px">一问一答的轻量问答</div></td><td><span class="tag gray">智能体</span></td><td><span class="tag green">问答</span></td><td><span class="tag green"><span class="dot"></span>已发布</span></td><td class="cell-sub">19/10/2026 09:30</td><td><div class="row-act"><span class="link">运行</span><span class="link">编辑</span><span class="link">日志</span></div></td></tr>
+              <tr><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#7C5CFC,#A48BFF)">法</span><span class="cell-strong">法律条文</span></div><div class="cell-sub" style="margin-left:35px">基于法规库的合规问答</div></td><td><span class="tag gray">智能体</span></td><td><span class="tag purple">法规</span></td><td><span class="tag gray">草稿</span></td><td class="cell-sub">18/10/2026 16:12</td><td><div class="row-act"><span class="link">运行</span><span class="link">编辑</span><span class="link">日志</span></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+<div class="empty-box hide" id="agentEmpty" style="padding:28px">
+          <div style="font-size:13px;color:var(--t2)">没有匹配的智能体</div>
+          <div style="font-size:12px;color:var(--t3);margin-top:4px">换个关键词试试，或清空搜索条件</div>
+          <button class="btn sm" style="margin-top:12px" onclick="clearSearch('agent')">清空搜索</button>
+        </div>
+        <div class="pager">
+          <span class="pager-info" id="agentPagerInfo"></span>
+          <div class="pager-ctrl" id="agentPagerCtrl"></div>
+          <select class="select pg-size" onchange="setPageSize('agent',this.value)">
+            <option value="8">8 条/页</option>
+            <option value="12" selected>12 条/页</option>
+            <option value="24">24 条/页</option>
+            <option value="48">48 条/页</option>
+          </select>
+        </div>
+        <div class="section-title">内置解析流程</div>
+        <div class="tpl-grid"><div class="tpl-card" onclick="toast('用「通用」模板创建（演示）')">
+          <div class="t-ic" style="background:linear-gradient(135deg,#7C5CFC,#A48BFF)">通</div>
+          <div style="min-width:0">
+            <div class="t-nm">通用</div>
+            <div class="t-ds">此模板采用通用…</div>
+          </div>
+        </div><div class="tpl-card" onclick="toast('用「问答」模板创建（演示）')">
+          <div class="t-ic" style="background:linear-gradient(135deg,#F2994A,#F7B267)">问</div>
+          <div style="min-width:0">
+            <div class="t-nm">问答</div>
+            <div class="t-ds">此模板从解析…</div>
+          </div>
+        </div><div class="tpl-card" onclick="toast('用「手册」模板创建（演示）')">
+          <div class="t-ic" style="background:linear-gradient(135deg,#22A06B,#4FC08D)">手</div>
+          <div style="min-width:0">
+            <div class="t-nm">手册</div>
+            <div class="t-ds">此模板将解析…</div>
+          </div>
+        </div><div class="tpl-card" onclick="toast('用「表格」模板创建（演示）')">
+          <div class="t-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">表</div>
+          <div style="min-width:0">
+            <div class="t-nm">表格</div>
+            <div class="t-ds">此模板从解析…</div>
+          </div>
+        </div><div class="tpl-card" onclick="toast('用「论文」模板创建（演示）')">
+          <div class="t-ic" style="background:linear-gradient(135deg,#4F5BD5,#7C8AF0)">论</div>
+          <div style="min-width:0">
+            <div class="t-nm">论文</div>
+            <div class="t-ds">此模板将解析…</div>
+          </div>
+        </div><div class="tpl-card" onclick="toast('用「书籍」模板创建（演示）')">
+          <div class="t-ic" style="background:linear-gradient(135deg,#B26A15,#D08B4A)">书</div>
+          <div style="min-width:0">
+            <div class="t-nm">书籍</div>
+            <div class="t-ds">此模板将解析…</div>
+          </div>
+        </div><div class="tpl-card" onclick="toast('用「演示文档」模板创建（演示）')">
+          <div class="t-ic" style="background:linear-gradient(135deg,#22A06B,#4FC08D)">演</div>
+          <div style="min-width:0">
+            <div class="t-nm">演示文档</div>
+            <div class="t-ds">此模板将解析…</div>
+          </div>
+        </div><div class="tpl-card" onclick="toast('用「图片与视频」模板创建（演示）')">
+          <div class="t-ic" style="background:linear-gradient(135deg,#F2994A,#F7B267)">图</div>
+          <div style="min-width:0">
+            <div class="t-nm">图片与视频</div>
+            <div class="t-ds">此模板通过OC…</div>
+          </div>
+        </div><div class="tpl-card" onclick="toast('用「全文」模板创建（演示）')">
+          <div class="t-ic" style="background:linear-gradient(135deg,#949EAC,#B8C0CC)">全</div>
+          <div style="min-width:0">
+            <div class="t-nm">全文</div>
+            <div class="t-ds">此模板将解析…</div>
+          </div>
+        </div></div>
+      </div>
+
+      <!-- ==================== 工作室（Dify Studio 风格，新增） ==================== -->
+      <div class="page" id="page-studio">
+        <div class="page-head">
+          <div>
+            <h1>工作室</h1>
+            <p>对话流（Chatflow）与任务流（Workflow）的统一入口。智能体（Agent）与数据管道仍在「智能体」模块，不在此处创建。</p>
+          </div>
+          <div class="actions">
+            <div class="seg" title="视图切换">
+              <button data-view="card" class="on" onclick="setView('card')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                卡片
+              </button>
+              <button data-view="table" onclick="setView('table')">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="1.5"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
+                表格
+              </button>
+            </div>
+            <button class="btn" onclick="openRuns()">运行日志</button>
+            <button class="btn" onclick="openModal('m-dsl')">导入 DSL</button>
+            <button class="btn pri" onclick="openModal('m-create-studio')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>创建应用</button>
+          </div>
+        </div>
+
+        <div class="studio-legend">
+          <div class="sl-card" onclick="openStudioCreate('chatflow')">
+            <span class="sl-go">创建对话流 →</span>
+            <div class="sl-hd"><span class="p-ic" style="background:linear-gradient(135deg,#7C5CFC,#A48BFF)">💬</span><span><span class="tag purple">对话流</span> <span class="sl-t">Chatflow</span></span></div>
+            <div class="sl-b">开始 → 回答。流式输出、引用溯源、会话变量，面向「人和 AI 对话」的场景。</div>
+          </div>
+          <div class="sl-card" onclick="openStudioCreate('workflow')">
+            <span class="sl-go">创建任务流 →</span>
+            <div class="sl-hd"><span class="p-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">⚙</span><span><span class="tag blue">任务流</span> <span class="sl-t">Workflow</span></span></div>
+            <div class="sl-b">开始 → 结束。输出结构化 JSON，无会话，面向「系统与系统」的场景。</div>
+          </div>
+        </div>
+
+        <div class="list-bar">
+          <div class="search" style="min-width:230px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#949EAC" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="studioSearch" placeholder="搜索应用名称" oninput="onSearch('studio',this.value)">
+            <span class="search-clear hide" id="studioSearchClear" onclick="clearSearch('studio')">×</span>
+          </div>
+          <span class="list-count" id="studioCount"></span>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active" onclick="filterStudio(this,'all')">全部 <span class="cnt" id="cntAll">7</span></div>
+          <div class="tab" onclick="filterStudio(this,'wf')">任务流 <span class="cnt" id="cntWf">4</span></div>
+          <div class="tab" onclick="filterStudio(this,'cf')">对话流 <span class="cnt" id="cntCf">3</span></div>
+        </div>
+
+        <div class="app-grid" id="studioGrid"><div class="app-card" data-type="Workflow" onclick="openEditor('workflow')">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">净</div>
+            <div style="min-width:0">
+              <div class="nm">每日净值播报生成</div>
+              <div class="ds">定时拉取净值 → 生成播报文案 → 推送</div>
+            </div>
+          </div>
+          <div class="meta"><span class="tag blue">任务流</span><span class="tag green"><span class="dot"></span>已发布 v1</span><span class="right"><span>今天 09:00</span></span></div>
+        </div><div class="app-card" data-type="Workflow" onclick="openEditor('workflow')">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">审</div>
+            <div style="min-width:0">
+              <div class="nm">开户材料预审</div>
+              <div class="ds">抽取身份证/银行卡信息并校验完整性</div>
+            </div>
+          </div>
+          <div class="meta"><span class="tag blue">任务流</span><span class="tag gray">草稿</span><span class="right"><span>昨天 18:20</span></span></div>
+        </div><div class="app-card" data-type="Workflow" onclick="openEditor('workflow')">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">工</div>
+            <div style="min-width:0">
+              <div class="nm">工单摘要生成</div>
+              <div class="ds">把长对话压缩成结构化摘要与待办</div>
+            </div>
+          </div>
+          <div class="meta"><span class="tag blue">任务流</span><span class="tag green"><span class="dot"></span>已发布 v2</span><span class="right"><span>昨天 16:08</span></span></div>
+        </div><div class="app-card" data-type="Workflow" onclick="openEditor('workflow')">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">监</div>
+            <div style="min-width:0">
+              <div class="nm">监管报送数据校验</div>
+              <div class="ds">多源数据合并 → 规则校验 → 生成报送包</div>
+            </div>
+          </div>
+          <div class="meta"><span class="tag blue">任务流</span><span class="tag green"><span class="dot"></span>已发布 v3</span><span class="right"><span>10-18 11:30</span></span></div>
+        </div><div class="app-card" data-type="Chatflow" onclick="openEditor('chatflow')">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#7C5CFC,#A48BFF)">对</div>
+            <div style="min-width:0">
+              <div class="nm">基金问答助手</div>
+              <div class="ds">基于基金 FAQ 与产品文档的对话式问答</div>
+            </div>
+          </div>
+          <div class="meta"><span class="tag purple">对话流</span><span class="tag green"><span class="dot"></span>已发布 v3</span><span class="right"><span>2 分钟前</span></span></div>
+        </div><div class="app-card" data-type="Chatflow" onclick="openEditor('chatflow')">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#7C5CFC,#A48BFF)">寒</div>
+            <div style="min-width:0">
+              <div class="nm">寒暄分流</div>
+              <div class="ds">识别问候/转人工/情绪，路由到对应话术</div>
+            </div>
+          </div>
+          <div class="meta"><span class="tag purple">对话流</span><span class="tag gray">草稿</span><span class="right"><span>今天 10:15</span></span></div>
+        </div><div class="app-card" data-type="Chatflow" onclick="openEditor('chatflow')">
+          <div class="hd">
+            <div class="app-ic" style="background:linear-gradient(135deg,#7C5CFC,#A48BFF)">售</div>
+            <div style="min-width:0">
+              <div class="nm">售后工单引导</div>
+              <div class="ds">多轮收集必要信息并生成工单草稿</div>
+            </div>
+          </div>
+          <div class="meta"><span class="tag purple">对话流</span><span class="tag green"><span class="dot"></span>已发布 v1</span><span class="right"><span>10-18 09:02</span></span></div>
+        </div></div>
+        <div class="table-wrap hide" id="studioTable">
+          <table>
+            <thead><tr>
+              <th style="width:30%">名称</th><th style="width:100px">类型</th><th style="width:110px">状态</th>
+              <th style="width:90px">版本</th><th style="width:110px">最近运行</th><th style="width:130px">更新时间</th><th style="width:150px">操作</th>
+            </tr></thead>
+            <tbody>
+              <tr style="cursor:pointer" onclick="openEditor('workflow')"><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">净</span><span class="cell-strong">每日净值播报生成</span></div><div class="cell-sub" style="margin-left:35px">定时拉取净值 → 生成播报文案 → 推送</div></td><td><span class="tag blue">任务流</span></td><td><span class="tag green"><span class="dot"></span>已发布</span></td><td class="cell-sub">v1</td><td class="cell-sub">今天 09:00</td><td class="cell-sub">今天 09:00</td><td><div class="row-act"><span class="link">运行</span><span class="link">日志</span><span class="link">更多</span></div></td></tr>
+              <tr style="cursor:pointer" onclick="openEditor('workflow')"><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">审</span><span class="cell-strong">开户材料预审</span></div><div class="cell-sub" style="margin-left:35px">抽取身份证/银行卡信息并校验完整性</div></td><td><span class="tag blue">任务流</span></td><td><span class="tag gray">草稿</span></td><td class="cell-sub">—</td><td class="cell-sub">—</td><td class="cell-sub">昨天 18:20</td><td><div class="row-act"><span class="link">编辑</span><span class="link">发布</span><span class="link">更多</span></div></td></tr>
+              <tr style="cursor:pointer" onclick="openEditor('workflow')"><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">工</span><span class="cell-strong">工单摘要生成</span></div><div class="cell-sub" style="margin-left:35px">把长对话压缩成结构化摘要与待办</div></td><td><span class="tag blue">任务流</span></td><td><span class="tag green"><span class="dot"></span>已发布</span></td><td class="cell-sub">v2</td><td class="cell-sub">昨天 16:08</td><td class="cell-sub">昨天 16:10</td><td><div class="row-act"><span class="link">运行</span><span class="link">日志</span><span class="link">更多</span></div></td></tr>
+              <tr style="cursor:pointer" onclick="openEditor('workflow')"><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">监</span><span class="cell-strong">监管报送数据校验</span></div><div class="cell-sub" style="margin-left:35px">多源数据合并 → 规则校验 → 生成报送包</div></td><td><span class="tag blue">任务流</span></td><td><span class="tag green"><span class="dot"></span>已发布</span></td><td class="cell-sub">v3</td><td class="cell-sub">10-18 11:30</td><td class="cell-sub">10-18 11:34</td><td><div class="row-act"><span class="link">运行</span><span class="link">日志</span><span class="link">更多</span></div></td></tr>
+              <tr style="cursor:pointer" onclick="openEditor('chatflow')"><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#7C5CFC,#A48BFF)">对</span><span class="cell-strong">基金问答助手</span></div><div class="cell-sub" style="margin-left:35px">基于基金 FAQ 与产品文档的对话式问答</div></td><td><span class="tag purple">对话流</span></td><td><span class="tag green"><span class="dot"></span>已发布</span></td><td class="cell-sub">v3</td><td class="cell-sub">2 分钟前</td><td class="cell-sub">2 分钟前</td><td><div class="row-act"><span class="link">运行</span><span class="link">日志</span><span class="link">更多</span></div></td></tr>
+              <tr style="cursor:pointer" onclick="openEditor('chatflow')"><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#7C5CFC,#A48BFF)">寒</span><span class="cell-strong">寒暄分流</span></div><div class="cell-sub" style="margin-left:35px">识别问候/转人工/情绪，路由到对应话术</div></td><td><span class="tag purple">对话流</span></td><td><span class="tag gray">草稿</span></td><td class="cell-sub">—</td><td class="cell-sub">今天 10:15</td><td class="cell-sub">今天 10:15</td><td><div class="row-act"><span class="link">编辑</span><span class="link">发布</span><span class="link">更多</span></div></td></tr>
+              <tr style="cursor:pointer" onclick="openEditor('chatflow')"><td><div class="tbl-name"><span class="app-ic" style="background:linear-gradient(135deg,#7C5CFC,#A48BFF)">售</span><span class="cell-strong">售后工单引导</span></div><div class="cell-sub" style="margin-left:35px">多轮收集必要信息并生成工单草稿</div></td><td><span class="tag purple">对话流</span></td><td><span class="tag green"><span class="dot"></span>已发布</span></td><td class="cell-sub">v1</td><td class="cell-sub">10-18 09:02</td><td class="cell-sub">10-18 09:06</td><td><div class="row-act"><span class="link">运行</span><span class="link">日志</span><span class="link">更多</span></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+                <div class="pager">
+          <span class="pager-info" id="studioPagerInfo"></span>
+          <div class="pager-ctrl" id="studioPagerCtrl"></div>
+          <select class="select pg-size" onchange="setPageSize('studio',this.value)">
+            <option value="8">8 条/页</option>
+            <option value="12" selected>12 条/页</option>
+            <option value="24">24 条/页</option>
+            <option value="48">48 条/页</option>
+          </select>
+        </div>
+        <div class="empty-box hide" id="studioEmpty">
+          <div id="studioEmptyText" style="font-size:13px;color:var(--t2);margin-bottom:4px">该类型下还没有应用</div>
+          <div id="studioEmptySub" style="font-size:12px;color:var(--t3)">从空白画布开始，或用模板快速起步</div>
+          <button id="studioEmptyBtn" class="btn pri sm" style="margin-top:12px" onclick="openModal('m-create-studio')">创建应用</button>
+          <button id="studioEmptyClear" class="btn sm hide" style="margin-top:12px" onclick="clearSearch('studio')">清空搜索</button>
+        </div>
+      </div>
+
+      <!-- ==================== 其他模块占位 ==================== -->
+      <div class="page" id="page-ph">
+        <div class="empty-box" style="margin-top:60px">
+          <div style="font-size:13px;color:var(--t2)">「<span id="phName">首页</span>」不在本原型范围内</div>
+          <div style="font-size:12px;color:var(--t3);margin-top:4px">本原型只演示「智能体」与新增的「工作室」两个模块的入口与创建交互</div>
+          <button class="btn sm" style="margin-top:12px" onclick="showPage('agent')">返回智能体</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- ==================== Workflow 编辑器 ==================== -->
+<div class="editor" id="ed-workflow">
+  <div class="ed-top">
+    <div class="ed-back" onclick="closeEditor()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    </div>
+    <div class="ed-title">
+      <b>每日净值播报生成</b>
+      <span class="tag gray">草稿</span>
+      <span class="tag blue">任务流</span>
+      <span class="sub">v1 · 未发布变更</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="save-state"><span class="dot" style="background:var(--ok)"></span> 已自动保存 22:31</div>
+    <button class="btn sm" onclick="openModal('m-vars')">变量</button>
+    <button class="btn sm" onclick="openModal('m-versions')">
+      版本
+      <span class="tag new">增量</span>
+    </button>
+    <button class="btn sm" onclick="toggleRun()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      试运行
+    </button>
+    <button class="btn sm" onclick="openModal('m-validate')">校验</button>
+    <button class="btn sm pri" onclick="openModal('m-publish')">发布</button>
+  </div>
+  <div class="ed-body">
+    <aside class="node-panel">
+      <div class="np-search">
+        <div class="search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#949EAC" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input placeholder="搜索节点">
+        </div>
+      </div>
+      <div class="np-scroll">
+        <div class="np-group">
+          <div class="np-group-title">入口 / 出口</div>
+          <div class="np-item"><span class="np-ic" style="background:#22A06B">开</span>开始</div>
+          <div class="np-item"><span class="np-ic" style="background:#EB5757">结</span>结束 <span class="tag new">增量</span></div>
+        </div>
+        <div class="np-group">
+          <div class="np-group-title">模型</div>
+          <div class="np-item"><span class="np-ic" style="background:#7C5CFC">LLM</span>大模型 <span class="tag new">增量</span></div>
+          <div class="np-item"><span class="np-ic" style="background:#F2994A">智</span>智能体</div>
+          <div class="np-item"><span class="np-ic" style="background:#B26A15">提</span>参数提取 <span class="tag new">增量</span></div>
+          <div class="np-item"><span class="np-ic" style="background:#0E9384">分</span>问题分类</div>
+        </div>
+        <div class="np-group">
+          <div class="np-group-title">知识</div>
+          <div class="np-item"><span class="np-ic" style="background:#065BC1">检</span>知识检索</div>
+          <div class="np-item"><span class="np-ic" style="background:#4F5BD5">索</span>知识索引</div>
+        </div>
+        <div class="np-group">
+          <div class="np-group-title">逻辑</div>
+          <div class="np-item"><span class="np-ic" style="background:#F2994A">if</span>条件分支</div>
+          <div class="np-item"><span class="np-ic" style="background:#7C5CFC">迭</span>迭代</div>
+          <div class="np-item"><span class="np-ic" style="background:#7C5CFC">循</span>循环</div>
+          <div class="np-item"><span class="np-ic" style="background:#0E9384">聚</span>变量聚合</div>
+          <div class="np-item"><span class="np-ic" style="background:#0E9384">赋</span>变量赋值</div>
+          <div class="np-item"><span class="np-ic" style="background:#0E9384">列</span>列表操作</div>
+        </div>
+        <div class="np-group">
+          <div class="np-group-title">数据</div>
+          <div class="np-item"><span class="np-ic" style="background:#5A6474">码</span>代码执行</div>
+          <div class="np-item"><span class="np-ic" style="background:#4F5BD5">模</span>模板转换 <span class="tag new">增量</span></div>
+          <div class="np-item"><span class="np-ic" style="background:#0E9384">HTTP</span>HTTP 请求</div>
+          <div class="np-item"><span class="np-ic" style="background:#5A6474">文</span>文档提取</div>
+        </div>
+        <div class="np-group">
+          <div class="np-group-title">集成</div>
+          <div class="np-item"><span class="np-ic" style="background:#5A6474">具</span>工具</div>
+          <div class="np-item"><span class="np-ic" style="background:#065BC1">子</span>子工作流 <span class="tag new">增量</span></div>
+          <div class="np-item"><span class="np-ic" style="background:#5A6474">M</span>MCP</div>
+        </div>
+        <div class="np-group">
+          <div class="np-group-title">人机协同</div>
+          <div class="np-item"><span class="np-ic" style="background:#F2994A">等</span>等待输入</div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="canvas-wrap">
+      <div class="canvas" id="canvas-wf">
+        <svg class="edges">
+          <path class="edge" d="M 300 252 C 320 252, 320 252, 340 252"/>
+          <path class="edge" d="M 540 252 C 570 252, 570 252, 600 252"/>
+          <path class="edge" d="M 800 252 C 830 252, 830 252, 860 252"/>
+        </svg>
+
+        <div class="node sel" data-node="start" style="left:100px;top:220px">
+          <span class="port out"></span>
+          <div class="hd"><div class="ic" style="background:#22A06B">开</div><div><div class="tt">开始</div><div class="st">输入：date, channel</div></div></div>
+        </div>
+
+        <div class="node" data-node="retrieval" style="left:340px;top:220px">
+          <span class="port in"></span><span class="port out"></span>
+          <div class="hd"><div class="ic" style="background:#065BC1">检</div><div><div class="tt">知识检索</div><div class="st">基金FAQ知识库 · Top5</div></div></div>
+        </div>
+
+        <div class="node" data-node="llm" style="left:600px;top:220px">
+          <span class="port in"></span><span class="port out"></span>
+          <span class="badge tag new">增量</span>
+          <div class="hd"><div class="ic" style="background:#7C5CFC">LLM</div><div><div class="tt">生成播报文案</div><div class="st">Qwen2.5-72B · 温度 0.3</div></div></div>
+        </div>
+
+        <div class="node" data-node="end" style="left:860px;top:220px">
+          <span class="port in"></span>
+          <span class="badge tag new">增量</span>
+          <div class="hd"><div class="ic" style="background:#EB5757">结</div><div><div class="tt">结束</div><div class="st">输出：broadcast_text</div></div></div>
+        </div>
+
+        <div style="position:absolute;left:340px;top:380px;width:520px;background:#FFFDF5;border:1px dashed #EAD9A8;border-radius:7px;padding:10px 12px;font-size:11.5px;color:#7A6A34;line-height:1.65">
+          <b>Workflow 契约</b>：开始节点声明输入，结束节点声明输出；发布后通过同步/异步 API 调用，返回 JSON。没有对话、没有会话变量。
+        </div>
+      </div>
+    </div>
+
+    <aside class="cfg-panel">
+      <div class="cfg-head" id="cfg-title-wf">
+        <div class="ic" style="background:#22A06B">开</div>
+        <b>开始</b>
+        <button class="btn sm" style="margin-left:auto" onclick="toast('已单节点运行（演示）')">▶ 单节点运行</button>
+        <span class="x" style="margin-left:8px" onclick="toast('演示原型：关闭面板')">×</span>
+      </div>
+      <div class="cfg-body">
+        <!-- start -->
+        <div class="cfg-panel-body" id="cfg-wf-start">
+          <div class="cfg-section">输入字段</div>
+          <div class="field"><label>date <span class="cell-sub">（文本，必填）</span></label><input class="input" value="{sys.date}"></div>
+          <div class="field"><label>channel <span class="cell-sub">（选项：APP / 微信 / 官网）</span></label><input class="input" value="APP"></div>
+          <div class="banner info" style="margin-top:10px"><span>输入字段会出现在 API 请求体中，也作为下游节点变量。</span></div>
+        </div>
+        <!-- retrieval -->
+        <div class="cfg-panel-body hide" id="cfg-wf-retrieval">
+          <div class="cfg-section">知识库</div>
+          <div class="field"><select class="select" style="width:100%"><option>基金 FAQ 知识库</option><option>产品文档库</option></select></div>
+          <div class="field"><label>检索模式</label><select class="select" style="width:100%"><option>混合检索（向量 + 全文）</option><option>仅向量</option><option>仅全文</option></select></div>
+          <div class="cfg-section">参数</div>
+          <div class="field"><label>Top K</label><input class="input" value="5"></div>
+          <div class="field"><label>相似度阈值</label><input class="input" value="0.30"></div>
+          <div class="sw-row"><span>返回引用元数据</span><span class="sw on" onclick="this.classList.toggle('on')"></span></div>
+          <div class="cfg-section">输出变量</div>
+          <div class="chips"><span class="chip brand">result[]</span><span class="chip">citation</span><span class="chip">doc_aggs</span></div>
+        </div>
+        <!-- llm -->
+        <div class="cfg-panel-body hide" id="cfg-wf-llm">
+          <div class="cfg-section">模型</div>
+          <div class="field"><select class="select" style="width:100%"><option>Qwen2.5-72B-Instruct</option><option>DeepSeek-V3</option></select></div>
+          <div class="field"><label>温度</label><input class="input" value="0.3"></div>
+          <div class="cfg-section">提示词</div>
+          <div class="field"><label>系统</label><textarea class="textarea">你是华夏基金的播报编辑，请根据检索到的净值信息生成一段面向客户的播报文案，不得加入未提供的数据。</textarea></div>
+          <div class="field"><label>用户</label><textarea class="textarea">日期：{start@date}
+渠道：{start@channel}
+检索结果：{retrieval@result}</textarea></div>
+          <div class="cfg-section">输出</div>
+          <div class="field"><label>输出变量名</label><input class="input" value="broadcast_text"></div>
+          <div class="cfg-section">异常与重试 <span class="tag new">增量</span></div>
+          <div class="sw-row"><span>启用重试</span><span class="sw on" onclick="this.classList.toggle('on')"></span></div>
+          <div class="field" style="margin-top:6px"><label>最大重试次数</label><input class="input" value="2"></div>
+          <div class="field"><label>异常策略</label><select class="select" style="width:100%"><option>失败分支</option><option>使用默认值</option><option>终止</option></select></div>
+        </div>
+        <!-- end -->
+        <div class="cfg-panel-body hide" id="cfg-wf-end">
+          <div class="cfg-section">输出字段 <span class="tag new">增量</span></div>
+          <div class="field"><label>broadcast_text <span class="cell-sub">（文本）</span></label><input class="input" value="{llm@broadcast_text}"></div>
+          <button class="btn sm" style="width:100%;margin-top:2px">+ 添加输出字段</button>
+          <div class="cfg-section">发布契约</div>
+          <div class="banner info" style="margin:0"><span>结束节点定义的字段就是 API 的响应体结构；未定义的变量不会返回。</span></div>
+          <div class="cfg-section">响应示例</div>
+          <div class="code-box">{
+  "broadcast_text": "今日华夏成长混合净值..."
+}</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- run panel -->
+  <div class="run-panel" id="run-wf">
+    <div class="run-head">
+      <div class="tabs2">
+        <span class="on" onclick="runTab(this,'wf-result')">运行结果</span>
+        <span onclick="runTab(this,'wf-vars')">变量</span>
+        <span onclick="runTab(this,'wf-trace')">Tracing</span>
+      </div>
+      <span class="tag green"><span class="dot"></span>运行成功 · 2.4s</span>
+      <span class="spacer"></span>
+      <span class="cell-sub">run_id: 7f3c…a91</span>
+      <button class="btn sm" onclick="toast('已停止运行，已完成节点结果保留')">停止</button>
+      <button class="btn sm ghost" onclick="toggleRun()">收起</button>
+    </div>
+    <div class="run-body">
+      <div class="run-tab-body on" id="wf-result">
+        <div class="kv">
+          <dt>状态</dt><dd>成功（1.2s）</dd>
+          <dt>输入</dt><dd>{ "date": "2026-10-19", "channel": "APP" }</dd>
+          <dt>输出</dt><dd>broadcast_text：今日华夏成长混合净值 1.8234，较上一交易日上涨 0.62%…</dd>
+          <dt>Token</dt><dd>输入 812 / 输出 246 / 合计 1058</dd>
+        </div>
+      </div>
+      <div class="run-tab-body" id="wf-vars">
+        <div class="kv">
+          <dt>start@date</dt><dd>2026-10-19</dd>
+          <dt>start@channel</dt><dd>APP</dd>
+          <dt>retrieval@result</dt><dd>[5 条] 华夏成长混合净值、申购费率…</dd>
+          <dt>llm@broadcast_text</dt><dd>今日华夏成长混合净值 1.8234…</dd>
+        </div>
+        <div class="banner info" style="margin-top:12px"><span>变量检查器为增量能力：可查看每个节点的实际输出，并支持临时改写后重跑下游。</span></div>
+      </div>
+      <div class="run-tab-body" id="wf-trace">
+        <div class="trace">
+          <div class="tr-row"><div class="nm">开始</div><div class="bar"><i style="left:0;width:2%"></i></div><div class="ms">12ms</div></div>
+          <div class="tr-row"><div class="nm">知识检索</div><div class="bar"><i style="left:4%;width:18%"></i></div><div class="ms">186ms</div></div>
+          <div class="tr-row"><div class="nm">生成播报文案</div><div class="bar"><i style="left:24%;width:66%;background:#7C5CFC"></i></div><div class="ms">1.98s</div></div>
+          <div class="tr-row"><div class="nm">结束</div><div class="bar"><i style="left:92%;width:2%"></i></div><div class="ms">4ms</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Chatflow 编辑器 ==================== -->
+<div class="editor" id="ed-chatflow">
+  <div class="ed-top">
+    <div class="ed-back" onclick="closeEditor()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    </div>
+    <div class="ed-title">
+      <b>基金问答助手</b>
+      <span class="tag green">已发布 v3</span>
+      <span class="tag purple">对话流</span>
+      <span class="sub">草稿有未发布变更</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="save-state"><span class="dot" style="background:var(--ok)"></span> 已自动保存 22:34</div>
+    <button class="btn sm" onclick="openModal('m-vars')">变量</button>
+    <button class="btn sm" onclick="openModal('m-versions')">版本 <span class="tag new">增量</span></button>
+    <button class="btn sm" onclick="toggleChatPreview()">调试预览</button>
+    <button class="btn sm" onclick="toggleRun('cf')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      试运行
+    </button>
+    <button class="btn sm pri" onclick="openModal('m-publish')">发布</button>
+  </div>
+  <div class="ed-body">
+    <aside class="node-panel">
+      <div class="np-search">
+        <div class="search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#949EAC" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input placeholder="搜索节点">
+        </div>
+      </div>
+      <div class="np-scroll">
+        <div class="np-group">
+          <div class="np-group-title">入口 / 出口</div>
+          <div class="np-item"><span class="np-ic" style="background:#22A06B">开</span>开始</div>
+          <div class="np-item"><span class="np-ic" style="background:#22A06B">答</span>回答 <span class="tag new">增量</span></div>
+        </div>
+        <div class="np-group">
+          <div class="np-group-title">模型</div>
+          <div class="np-item"><span class="np-ic" style="background:#7C5CFC">LLM</span>大模型 <span class="tag new">增量</span></div>
+          <div class="np-item"><span class="np-ic" style="background:#F2994A">智</span>智能体</div>
+          <div class="np-item"><span class="np-ic" style="background:#B26A15">提</span>参数提取 <span class="tag new">增量</span></div>
+          <div class="np-item"><span class="np-ic" style="background:#0E9384">分</span>问题分类</div>
+        </div>
+        <div class="np-group">
+          <div class="np-group-title">知识</div>
+          <div class="np-item"><span class="np-ic" style="background:#065BC1">检</span>知识检索</div>
+        </div>
+        <div class="np-group">
+          <div class="np-group-title">逻辑</div>
+          <div class="np-item"><span class="np-ic" style="background:#F2994A">if</span>条件分支</div>
+          <div class="np-item"><span class="np-ic" style="background:#7C5CFC">迭</span>迭代</div>
+          <div class="np-item"><span class="np-ic" style="background:#7C5CFC">循</span>循环</div>
+          <div class="np-item"><span class="np-ic" style="background:#0E9384">赋</span>变量赋值</div>
+        </div>
+        <div class="np-group">
+          <div class="np-group-title">数据</div>
+          <div class="np-item"><span class="np-ic" style="background:#5A6474">码</span>代码执行</div>
+          <div class="np-item"><span class="np-ic" style="background:#4F5BD5">模</span>模板转换 <span class="tag new">增量</span></div>
+          <div class="np-item"><span class="np-ic" style="background:#0E9384">HTTP</span>HTTP 请求</div>
+        </div>
+        <div class="np-group">
+          <div class="np-group-title">人机协同</div>
+          <div class="np-item"><span class="np-ic" style="background:#F2994A">等</span>等待输入</div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="canvas-wrap">
+      <div class="canvas cf" id="canvas-cf">
+        <svg class="edges">
+          <path class="edge" d="M 250 252 C 265 252, 265 252, 280 252"/>
+          <path class="edge" d="M 480 252 C 495 252, 495 252, 510 252"/>
+          <path class="edge" d="M 710 252 C 725 252, 725 252, 740 252"/>
+          <path class="edge" d="M 610 288 L 610 326"/>
+          <text class="edge-label" x="618" y="314">写会话变量</text>
+        </svg>
+
+        <div class="node sel" data-node="start" style="left:50px;top:220px">
+          <span class="port out"></span>
+          <div class="hd"><div class="ic" style="background:#22A06B">开</div><div><div class="tt">开始</div><div class="st">sys.query · 会话变量</div></div></div>
+        </div>
+
+        <div class="node" data-node="retrieval" style="left:280px;top:220px">
+          <span class="port in"></span><span class="port out"></span>
+          <div class="hd"><div class="ic" style="background:#065BC1">检</div><div><div class="tt">知识检索</div><div class="st">基金FAQ · Top5 · 引用</div></div></div>
+        </div>
+
+        <div class="node" data-node="llm" style="left:510px;top:220px">
+          <span class="port in"></span><span class="port out"></span>
+          <span class="badge tag new">增量</span>
+          <div class="hd"><div class="ic" style="background:#7C5CFC">LLM</div><div><div class="tt">生成回答</div><div class="st">Qwen2.5-72B · 流式</div></div></div>
+        </div>
+
+        <div class="node" data-node="answer" style="left:740px;top:220px">
+          <span class="port in"></span>
+          <span class="badge tag new">增量</span>
+          <div class="hd"><div class="ic" style="background:#22A06B">答</div><div><div class="tt">回答</div><div class="st">流式输出 · 带引用</div></div></div>
+        </div>
+
+        <div class="node" data-node="assigner" style="left:510px;top:332px">
+          <span class="port in" style="left:50%;top:-4px;margin:0;margin-left:-4px"></span>
+          <span class="badge tag new">会话变量</span>
+          <div class="hd"><div class="ic" style="background:#0E9384">赋</div><div><div class="tt">变量赋值</div><div class="st">写会话变量 last_topic</div></div></div>
+        </div>
+
+        <div style="position:absolute;left:50px;top:450px;width:890px;background:#F7F4FF;border:1px dashed #D9CFFB;border-radius:7px;padding:10px 12px;font-size:11.5px;color:#5B4A9E;line-height:1.65">
+          <b>Chatflow 契约</b>：开始 → 检索 → LLM → 回答，回答节点流式输出并携带引用；LLM 同时写入会话变量 <code>last_topic</code>，供下一轮使用。会话变量按 Conversation 持久化，不跨会话。
+        </div>
+      </div>
+    </div>
+
+    <aside class="cfg-panel" style="width:270px">
+      <div class="cfg-head" id="cfg-title-cf">
+        <div class="ic" style="background:#22A06B">开</div>
+        <b>开始</b>
+        <button class="btn sm" style="margin-left:auto" onclick="toast('已单节点运行（演示）')">▶ 单节点运行</button>
+        <span class="x" style="margin-left:8px" onclick="toast('演示原型：关闭面板')">×</span>
+      </div>
+      <div class="cfg-body">
+        <div class="cfg-panel-body" id="cfg-cf-start">
+          <div class="cfg-section">输入</div>
+          <div class="field"><label>用户输入</label><input class="input" value="{sys.query}"></div>
+          <div class="cfg-section">会话变量 <span class="tag new">增量</span></div>
+          <div class="chips" style="margin-bottom:8px"><span class="chip brand">user_city</span><span class="chip brand">last_topic</span><span class="chip brand">risk_level</span></div>
+          <button class="btn sm" style="width:100%">+ 新建会话变量</button>
+          <div class="banner info" style="margin-top:10px"><span>会话变量按 Conversation 持久化，只在当前会话内可见、可写。</span></div>
+        </div>
+        <div class="cfg-panel-body hide" id="cfg-cf-retrieval">
+          <div class="cfg-section">知识库</div>
+          <div class="field"><select class="select" style="width:100%"><option>基金 FAQ 知识库</option></select></div>
+          <div class="field"><label>Top K</label><input class="input" value="5"></div>
+          <div class="field"><label>相似度阈值</label><input class="input" value="0.30"></div>
+          <div class="sw-row"><span>返回引用</span><span class="sw on" onclick="this.classList.toggle('on')"></span></div>
+        </div>
+        <div class="cfg-panel-body hide" id="cfg-cf-llm">
+          <div class="cfg-section">模型</div>
+          <div class="field"><select class="select" style="width:100%"><option>Qwen2.5-72B-Instruct</option></select></div>
+          <div class="field"><label>温度</label><input class="input" value="0.5"></div>
+          <div class="cfg-section">提示词</div>
+          <div class="field"><label>系统</label><textarea class="textarea">你是华夏基金智能客服小夏。回答必须基于检索结果，不得编造；不确定时明确说明。</textarea></div>
+          <div class="field"><label>用户</label><textarea class="textarea">用户问题：{sys.query}
+检索结果：{retrieval@result}
+会话变量：{conversation@last_topic}</textarea></div>
+          <div class="cfg-section">异常与重试 <span class="tag new">增量</span></div>
+          <div class="sw-row"><span>启用重试</span><span class="sw on" onclick="this.classList.toggle('on')"></span></div>
+        </div>
+        <div class="cfg-panel-body hide" id="cfg-cf-assigner">
+          <div class="cfg-section">赋值目标</div>
+          <div class="field"><select class="select" style="width:100%"><option>conversation.last_topic</option></select></div>
+          <div class="cfg-section">赋值来源</div>
+          <div class="field"><select class="select" style="width:100%"><option>{llm@topic}</option><option>{sys.query}</option></select></div>
+          <div class="banner info" style="margin-top:10px"><span>写入后在本会话后续轮次可直接引用；会话结束后不跨会话保留。</span></div>
+        </div>
+        <div class="cfg-panel-body hide" id="cfg-cf-answer">
+          <div class="cfg-section">回答内容 <span class="tag new">增量</span></div>
+          <div class="field"><label>内容</label><textarea class="textarea">{llm@answer}</textarea></div>
+          <div class="sw-row"><span>流式输出</span><span class="sw on" onclick="this.classList.toggle('on')"></span></div>
+          <div class="sw-row"><span>携带引用</span><span class="sw on" onclick="this.classList.toggle('on')"></span></div>
+          <div class="sw-row"><span>支持 Markdown</span><span class="sw on" onclick="this.classList.toggle('on')"></span></div>
+          <div class="cfg-section">发布约束</div>
+          <div class="banner warn" style="margin:0"><span>Chatflow 发布前必须至少有一个可达的回答节点；不允许包含结束节点。</span></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- chat debug preview -->
+    <aside class="chat-preview collapsed" id="chatPreview">
+      <div class="cp-head">
+        调试预览
+        <span class="tag purple">对话流</span>
+      </div>
+      <div class="cp-body">
+        <div class="msg user"><div class="av">刘</div><div class="b">华夏成长混合今天净值多少？</div></div>
+        <div class="msg bot"><div class="av">夏</div><div class="b">
+          今日华夏成长混合净值 1.8234，较上一交易日上涨 0.62%。净值一般交易日 19:00 后更新，您也可以在 APP 首页查看。
+          <div><span class="cite">引用 · 基金FAQ知识库 / 净值在哪里查</span></div>
+        </div></div>
+        <div class="msg user"><div class="av">刘</div><div class="b">那赎回要多久到账？</div></div>
+        <div class="msg bot"><div class="av">夏</div><div class="b">
+          到账时间取决于基金类型：货币基金多为 T+0 或 T+1；债券型、股票型一般 T+1 至 T+4 个工作日。
+          <div><span class="cite">引用 · 基金FAQ知识库 / 赎回基金多久到账</span></div>
+        </div></div>
+      </div>
+      <div class="conversation-vars">
+        <b>会话变量（实时）</b>
+        user_city = 上海 · last_topic = 净值查询 · risk_level = R3
+      </div>
+      <div class="cp-foot">
+        <div class="cp-input">
+          <input class="input" placeholder="输入测试问题…">
+          <button class="btn pri sm" onclick="toast('已发送（演示）')">发送</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="run-panel" id="run-cf">
+    <div class="run-head">
+      <div class="tabs2">
+        <span class="on" onclick="runTab(this,'cf-result')">本轮结果</span>
+        <span onclick="runTab(this,'cf-vars')">变量</span>
+        <span onclick="runTab(this,'cf-trace')">Tracing</span>
+      </div>
+      <span class="tag green"><span class="dot"></span>运行成功 · 1.7s</span>
+      <span class="spacer"></span>
+      <button class="btn sm" onclick="toast('已停止生成')">停止</button>
+      <button class="btn sm ghost" onclick="toggleRun('cf')">收起</button>
+    </div>
+    <div class="run-body">
+      <div class="run-tab-body on" id="cf-result">
+        <div class="kv">
+          <dt>用户输入</dt><dd>华夏成长混合今天净值多少？</dd>
+          <dt>回答</dt><dd>今日华夏成长混合净值 1.8234，较上一交易日上涨 0.62%…</dd>
+          <dt>引用</dt><dd>基金FAQ知识库 / 基金净值在哪里查</dd>
+          <dt>会话</dt><dd>conv_9f2a…（第 3 轮）</dd>
+        </div>
+      </div>
+      <div class="run-tab-body" id="cf-vars">
+        <div class="kv">
+          <dt>sys.query</dt><dd>华夏成长混合今天净值多少？</dd>
+          <dt>retrieval@result</dt><dd>[5 条] 净值查询、基金净值更新…</dd>
+          <dt>llm@answer</dt><dd>今日华夏成长混合净值 1.8234…</dd>
+          <dt>conversation.last_topic</dt><dd>净值查询</dd>
+        </div>
+      </div>
+      <div class="run-tab-body" id="cf-trace">
+        <div class="trace">
+          <div class="tr-row"><div class="nm">开始</div><div class="bar"><i style="left:0;width:3%"></i></div><div class="ms">10ms</div></div>
+          <div class="tr-row"><div class="nm">知识检索</div><div class="bar"><i style="left:5%;width:20%"></i></div><div class="ms">192ms</div></div>
+          <div class="tr-row"><div class="nm">生成回答</div><div class="bar"><i style="left:27%;width:62%;background:#7C5CFC"></i></div><div class="ms">1.46s</div></div>
+          <div class="tr-row"><div class="nm">变量赋值</div><div class="bar"><i style="left:91%;width:3%"></i></div><div class="ms">8ms</div></div>
+          <div class="tr-row"><div class="nm">回答</div><div class="bar"><i style="left:95%;width:3%"></i></div><div class="ms">12ms</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 运行日志页 ==================== -->
+<div class="editor" id="runsPage">
+  <div class="ed-top">
+    <div class="ed-back" onclick="closeRuns()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    </div>
+    <div class="ed-title"><b>运行日志</b><span class="sub">全部 Workflow / Chatflow 运行记录</span></div>
+    <div class="spacer"></div>
+    <button class="btn sm" onclick="toast('已刷新')">刷新</button>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:18px 24px">
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <div class="search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#949EAC" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="runsSearch" placeholder="搜索 run_id 或应用名" oninput="applyRuns()">
+        <span class="search-clear hide" id="runsSearchClear" onclick="clearRunsSearch()">×</span>
+      </div>
+      <select class="select"><option>全部应用</option><option>每日净值播报生成</option><option>基金问答助手</option></select>
+      <select class="select" id="runStatusFilter" onchange="filterRuns(this.value)">
+        <option value="all">全部状态</option>
+        <option value="succeeded">成功</option>
+        <option value="failed">失败</option>
+        <option value="stopped">已停止</option>
+      </select>
+      <span class="list-count" id="runsCount" style="margin-left:auto"></span>
+    </div>
+
+    <div class="table-wrap">
+      <table id="runsTable">
+        <thead>
+          <tr>
+            <th style="width:170px">run_id</th>
+            <th style="width:170px">应用</th>
+            <th style="width:90px">触发方式</th>
+            <th style="width:90px">状态</th>
+            <th style="width:80px">耗时</th>
+            <th style="width:110px">Token</th>
+            <th style="width:140px">开始时间</th>
+            <th style="width:80px">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-status="succeeded" onclick="openDrawer()" style="cursor:pointer">
+            <td class="cell-strong">7f3c9a2e…a77</td>
+            <td>每日净值播报生成 <span class="tag blue">任务流</span></td>
+            <td class="cell-sub">API</td>
+            <td><span class="tag green"><span class="dot"></span>成功</span></td>
+            <td class="cell-sub">2.4s</td>
+            <td class="cell-sub">1058</td>
+            <td class="cell-sub">今天 09:00:02</td>
+            <td><span class="link">详情</span></td>
+          </tr>
+          <tr data-status="failed" onclick="openDrawer()" style="cursor:pointer">
+            <td class="cell-strong">9d1e4b27…c30</td>
+            <td>开户材料预审 <span class="tag blue">任务流</span></td>
+            <td class="cell-sub">API</td>
+            <td><span class="tag red"><span class="dot"></span>失败</span></td>
+            <td class="cell-sub">1.1s</td>
+            <td class="cell-sub">412</td>
+            <td class="cell-sub">今天 08:42:11</td>
+            <td><span class="link">详情</span></td>
+          </tr>
+          <tr data-status="succeeded" onclick="openDrawer()" style="cursor:pointer">
+            <td class="cell-strong">2b8a71f4…e19</td>
+            <td>基金问答助手 <span class="tag purple">对话流</span></td>
+            <td class="cell-sub">WebApp</td>
+            <td><span class="tag green"><span class="dot"></span>成功</span></td>
+            <td class="cell-sub">1.7s</td>
+            <td class="cell-sub">836</td>
+            <td class="cell-sub">今天 08:30:45</td>
+            <td><span class="link">详情</span></td>
+          </tr>
+          <tr data-status="stopped" onclick="openDrawer()" style="cursor:pointer">
+            <td class="cell-strong">4c6f90ab…d52</td>
+            <td>基金问答助手 <span class="tag purple">对话流</span></td>
+            <td class="cell-sub">调试</td>
+            <td><span class="tag gray"><span class="dot"></span>已停止</span></td>
+            <td class="cell-sub">0.6s</td>
+            <td class="cell-sub">128</td>
+            <td class="cell-sub">今天 08:12:03</td>
+            <td><span class="link">详情</span></td>
+          </tr>
+          <tr data-status="succeeded" onclick="openDrawer()" style="cursor:pointer">
+            <td class="cell-strong">6e2d18c7…b84</td>
+            <td>工单摘要生成 <span class="tag blue">任务流</span></td>
+            <td class="cell-sub">API</td>
+            <td><span class="tag green"><span class="dot"></span>成功</span></td>
+            <td class="cell-sub">3.2s</td>
+            <td class="cell-sub">1420</td>
+            <td class="cell-sub">昨天 18:20:31</td>
+            <td><span class="link">详情</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="run-empty hide" id="runsEmpty">当前筛选条件下没有运行记录</div>
+    </div>
+    <div class="pager">
+      <span class="pager-info" id="runsPagerInfo"></span>
+      <div class="pager-ctrl" id="runsPagerCtrl"></div>
+      <select class="select pg-size" onchange="setRunsSize(this.value)">
+        <option value="10" selected>10 条/页</option>
+        <option value="20">20 条/页</option>
+        <option value="50">50 条/页</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Modal: 创建智能体（原生，保持不动） ==================== -->
+<div class="mask" id="m-create-agent">
+  <div class="modal md">
+    <div class="modal-head"><h3>创建智能体</h3><span class="x" onclick="closeModal('m-create-agent')">×</span></div>
+    <div class="modal-body">
+      <div class="field"><label><span class="req">*</span>选择智能体类型</label></div>
+      <div class="pick-grid" id="agentPicks">
+        <div class="pick on" data-type="agent" onclick="pickSimple(this,'agentPicks')">
+          <span class="check">✓</span>
+          <div class="p-ic" style="background:#1B2431">🤖</div>
+          <div class="p-nm">智能体流程</div>
+          <div class="p-ds">多轮对话、工具调用、子智能体编排，面向对话式应用。</div>
+        </div>
+        <div class="pick" data-type="ingestion" onclick="pickSimple(this,'agentPicks')">
+          <span class="check">✓</span>
+          <div class="p-ic" style="background:#949EAC">≡</div>
+          <div class="p-nm">Ingestion pipeline</div>
+          <div class="p-ds">文档解析与知识入库的数据加工流程。</div>
+        </div>
+      </div>
+      <div class="field" style="margin-top:18px"><label><span class="req">*</span>名称</label><input class="input" placeholder="请输入名称"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn" onclick="closeModal('m-create-agent')">取消</button>
+      <button class="btn pri" onclick="closeModal('m-create-agent');toast('已创建智能体（原生交互不变）')">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Modal: 创建应用（工作室，Dify Studio 风格） ==================== -->
+<div class="mask" id="m-create-studio">
+  <div class="modal lg">
+    <div class="modal-head"><h3>创建应用</h3><span class="x" onclick="closeModal('m-create-studio')">×</span></div>
+    <div class="modal-body">
+      <div class="field"><label><span class="req">*</span>选择应用类型</label>
+        <div class="hint" style="margin:0 0 8px">类型决定可用节点、是否有会话、以及发布后的调用契约，创建后不可更改。</div>
+      </div>
+      <div class="pick-grid" id="studioPicks">
+        <div class="pick on" data-type="chatflow" onclick="pickStudioType(this)">
+          <span class="check">✓</span>
+          <div class="p-ic" style="background:linear-gradient(135deg,#7C5CFC,#A48BFF)">💬</div>
+          <div class="p-nm">对话流 <span class="p-en">Chatflow</span></div>
+          <div class="p-ds">固定编排「开始 → 检索/工具 → 回答」，回答节点流式输出并携带引用；支持会话变量与多轮记忆。</div>
+          <div class="p-fit">适合：智能客服、知识问答、多轮引导式对话</div>
+        </div>
+        <div class="pick" data-type="workflow" onclick="pickStudioType(this)">
+          <span class="check">✓</span>
+          <div class="p-ic" style="background:linear-gradient(135deg,#065BC1,#3E8BE8)">⚙</div>
+          <div class="p-nm">任务流 <span class="p-en">Workflow</span></div>
+          <div class="p-ds">固定编排「开始 → 处理 → 结束」，结束节点声明输出字段即为 API 响应体；没有会话概念。</div>
+          <div class="p-fit">适合：定时批处理、数据加工、第三方系统集成</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px">
+        <div class="field"><label><span class="req">*</span>名称</label><input class="input" placeholder="例如：每日净值播报生成"></div>
+        <div class="field"><label>图标</label><div style="display:flex;gap:8px;align-items:center">
+          <span style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#065BC1,#3E8BE8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:600">净</span>
+          <button class="btn sm" onclick="toast('更换图标（演示）')">更换</button>
+        </div></div>
+      </div>
+      <div class="field"><label>描述</label><textarea class="textarea" placeholder="一句话说明这个应用做什么"></textarea></div>
+      <div class="field"><label>起步模板</label>
+        <select class="select" style="width:100%">
+          <option>空白画布（开始 → 回答 / 结束）</option>
+          <option>知识库问答（开始 → 检索 → LLM → 回答）</option>
+          <option>结构化抽取（开始 → 参数提取 → 结束）</option>
+          <option>文档加工（开始 → 模板 → 结束）</option>
+        </select>
+      </div>
+      <div class="banner info" style="margin:0">
+        <span>要创建智能体（Agent）或数据管道？请使用左侧「智能体」模块，本模块只承载 Chatflow 与 Workflow。</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="cell-sub">创建后进入画布，可在发布前随时改名</span>
+      <span class="spacer"></span>
+      <button class="btn" onclick="closeModal('m-create-studio')">取消</button>
+      <button class="btn pri" onclick="createStudioApp()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Modal: 发布 ==================== -->
+<div class="mask" id="m-publish">
+  <div class="modal lg">
+    <div class="modal-head"><h3>发布应用</h3><span class="x" onclick="closeModal('m-publish')">×</span></div>
+    <div class="modal-body">
+      <div class="banner info"><span>发布将生成不可变版本快照；发布后可随时回滚到任意历史版本。</span></div>
+      <div class="tabs">
+        <div class="tab active" onclick="pubTab(this,'pub-api')">API</div>
+        <div class="tab" onclick="pubTab(this,'pub-web')">WebApp</div>
+        <div class="tab" onclick="pubTab(this,'pub-embed')">嵌入</div>
+      </div>
+      <div class="modal-tab-body on" id="pub-api">
+        <div class="field"><label>接口地址</label><input class="input" value="https://ragflow.hxfund.com/api/v1/workflows/run"></div>
+        <div class="field"><label>API Key <span class="tag new">增量</span></label>
+          <div style="display:flex;gap:8px"><input class="input" value="wf-sk-••••••••••••8f2a"><button class="btn sm" onclick="toast('已复制')">复制</button><button class="btn sm" onclick="openModal('m-apikeys')">管理</button></div>
+          <div class="hint">每个应用独立密钥，可单独限流与审计；不再复用租户 Token。调用时以画布 owner 身份运行，不依赖用户 Session。</div>
+        </div>
+        <div class="field"><label>调用示例</label>
+          <div class="code-box">curl -X POST 'https://ragflow.hxfund.com/api/v1/workflows/run' \
+  -H 'Authorization: Bearer wf-sk-...' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "inputs": { "date": "2026-10-19", "channel": "APP" },
+    "response_mode": "blocking"
+  }'</div>
+        </div>
+        <div class="sw-row"><span>启用异步模式（返回 task_id，轮询结果）</span><span class="sw on" onclick="this.classList.toggle('on')"></span></div>
+      </div>
+      <div class="modal-tab-body" id="pub-web">
+        <div class="field"><label>访问链接</label><input class="input" value="https://ragflow.hxfund.com/app/7f3c9a2e"></div>
+        <div class="field"><label>访问控制</label><select class="select" style="width:100%"><option>公开（任何人可访问）</option><option>仅登录用户</option><option>密码访问</option></select></div>
+        <div class="banner info" style="margin-bottom:0"><span>Chatflow 的 WebApp 是对话页面；Workflow 的 WebApp 是表单 + 结果页。</span></div>
+      </div>
+      <div class="modal-tab-body" id="pub-embed">
+        <div class="field"><label>iframe 嵌入</label>
+          <div class="code-box">&lt;iframe
+  src="https://ragflow.hxfund.com/app/7f3c9a2e"
+  style="width:100%;height:640px;border:0"
+  allow="microphone"&gt;
+&lt;/iframe&gt;</div>
+        </div>
+        <div class="field"><label>script 嵌入</label>
+          <div class="code-box">&lt;script&gt;
+  window.RAGFlowConfig = { appId: "7f3c9a2e" };
+&lt;/script&gt;
+&lt;script src="https://ragflow.hxfund.com/embed.js"&gt;&lt;/script&gt;</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="cell-sub">发布后线上立即生效，可在「版本」中回滚</span>
+      <span class="spacer"></span>
+      <button class="btn" onclick="closeModal('m-publish')">取消</button>
+      <button class="btn pri" onclick="closeModal('m-publish');toast('已发布 v4，线上已生效')">确认发布</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Modal: 版本历史 ==================== -->
+<div class="mask" id="m-versions">
+  <div class="modal md">
+    <div class="modal-head"><h3>版本历史</h3><span class="x" onclick="closeModal('m-versions')">×</span></div>
+    <div class="modal-body">
+      <div class="banner info"><span>版本快照不可变；「恢复」会把该版本内容写回草稿，不会直接影响线上。</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>版本</th><th>发布时间</th><th>发布人</th><th>备注</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr><td class="cell-strong">v3 <span class="tag green">当前线上</span></td><td class="cell-sub">今天 10:02</td><td>刘问胜</td><td class="cell-sub">补充净值引用</td><td><span class="link" onclick="toast('已打开 v3 预览')">预览</span></td></tr>
+            <tr><td class="cell-strong">v2</td><td class="cell-sub">昨天 16:40</td><td>刘问胜</td><td class="cell-sub">调整提示词</td><td><span class="link" onclick="toast('已恢复 v2 到草稿')">恢复</span> <span class="link" onclick="toast('已下载 DSL')">下载</span></td></tr>
+            <tr><td class="cell-strong">v1</td><td class="cell-sub">10-17 09:12</td><td>刘问胜</td><td class="cell-sub">首次发布</td><td><span class="link" onclick="toast('已恢复 v1 到草稿')">恢复</span> <span class="link" onclick="toast('已下载 DSL')">下载</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="link" onclick="closeModal('m-versions');openModal('m-conflict')">模拟并发冲突</span><span class="spacer"></span><button class="btn" onclick="closeModal('m-versions')">关闭</button></div>
+  </div>
+</div>
+
+<!-- ==================== Modal: 变量 ==================== -->
+<div class="mask" id="m-vars">
+  <div class="modal md">
+    <div class="modal-head"><h3>变量</h3><span class="x" onclick="closeModal('m-vars')">×</span></div>
+    <div class="modal-body">
+      <div class="tabs">
+        <div class="tab active" onclick="varTab(this,'var-env')">环境变量</div>
+        <div class="tab" onclick="varTab(this,'var-conv')">会话变量 <span class="tag new">增量</span></div>
+      </div>
+      <div class="modal-tab-body on" id="var-env">
+        <div class="banner info"><span>环境变量只读，按版本快照持久化；适合放 API 地址、渠道标识等非敏感配置。</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>名称</th><th>值</th><th>类型</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td class="cell-strong">API_BASE</td><td>https://api.hxfund.com</td><td><span class="tag gray">文本</span></td><td><span class="link">编辑</span></td></tr>
+              <tr><td class="cell-strong">APP_CHANNEL</td><td>APP</td><td><span class="tag gray">文本</span></td><td><span class="link">编辑</span></td></tr>
+              <tr><td class="cell-strong">SIGN_SECRET</td><td>••••••••</td><td><span class="tag red">密钥</span></td><td><span class="link">编辑</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <button class="btn sm" style="margin-top:10px">+ 新建环境变量</button>
+      </div>
+      <div class="modal-tab-body" id="var-conv">
+        <div class="banner info"><span>会话变量只在 Chatflow 中可用，按 Conversation 持久化，不跨会话。</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>名称</th><th>默认值</th><th>类型</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td class="cell-strong">user_city</td><td class="cell-sub">—</td><td><span class="tag gray">文本</span></td><td><span class="link">编辑</span></td></tr>
+              <tr><td class="cell-strong">last_topic</td><td class="cell-sub">—</td><td><span class="tag gray">文本</span></td><td><span class="link">编辑</span></td></tr>
+              <tr><td class="cell-strong">risk_level</td><td class="cell-sub">R1</td><td><span class="tag gray">文本</span></td><td><span class="link">编辑</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <button class="btn sm" style="margin-top:10px">+ 新建会话变量</button>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn" onclick="closeModal('m-vars')">关闭</button></div>
+  </div>
+</div>
+
+<!-- ==================== Modal: API Key 管理 ==================== -->
+<div class="mask" id="m-apikeys">
+  <div class="modal md">
+    <div class="modal-head"><h3>API Key 管理</h3><span class="x" onclick="closeModal('m-apikeys')">×</span></div>
+    <div class="modal-body">
+      <div class="banner info"><span>Key 只存哈希，明文仅在创建时展示一次；轮换后旧 Key 保留 24 小时宽限。</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>前缀</th><th>状态</th><th>限流</th><th>最近使用</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr><td class="cell-strong">wf-sk-…8f2a</td><td><span class="tag green"><span class="dot"></span>启用</span></td><td class="cell-sub">60 RPM / 5 并发</td><td class="cell-sub">2 分钟前</td><td><span class="link" onclick="toast('已轮换，旧 Key 24h 后失效')">轮换</span> <span class="link danger" onclick="toast('已禁用')">禁用</span></td></tr>
+            <tr><td class="cell-strong">wf-sk-…1c07</td><td><span class="tag gray">已禁用</span></td><td class="cell-sub">30 RPM / 2 并发</td><td class="cell-sub">昨天</td><td><span class="link" onclick="toast('已启用')">启用</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <button class="btn sm" style="margin-top:10px" onclick="toast('已创建，请立即保存明文')">+ 新建 Key</button>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn" onclick="closeModal('m-apikeys')">关闭</button></div>
+  </div>
+</div>
+
+<!-- ==================== Modal: 发布校验失败 ==================== -->
+<div class="mask" id="m-validate">
+  <div class="modal md">
+    <div class="modal-head"><h3>发布校验未通过</h3><span class="x" onclick="closeModal('m-validate')">×</span></div>
+    <div class="modal-body">
+      <div class="banner warn"><span>共 3 个问题，修复后才能发布。点击问题可定位到对应节点。</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:90px">类型</th><th>问题</th><th style="width:110px">节点</th><th style="width:60px">操作</th></tr></thead>
+          <tbody>
+            <tr><td><span class="tag red">阻塞</span></td><td>结束节点未配置任何输出字段，无法定义 API 响应体</td><td class="cell-sub">结束</td><td><span class="link" onclick="closeModal('m-validate');toast('已定位到结束节点')">定位</span></td></tr>
+            <tr><td><span class="tag red">阻塞</span></td><td>变量 <code>{llm@summary}</code> 引用的节点已被删除</td><td class="cell-sub">生成播报文案</td><td><span class="link" onclick="closeModal('m-validate');toast('已定位到该节点')">定位</span></td></tr>
+            <tr><td><span class="tag orange">警告</span></td><td>环境变量 <code>SIGN_SECRET</code> 为 secret 类型但未配置值</td><td class="cell-sub">全局</td><td><span class="link" style="white-space:nowrap" onclick="closeModal('m-validate');openModal('m-vars')">去配置</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn" onclick="closeModal('m-validate')">关闭</button><button class="btn pri" disabled>修复后重新校验</button></div>
+  </div>
+</div>
+
+<!-- ==================== Modal: 并发编辑冲突 ==================== -->
+<div class="mask" id="m-conflict">
+  <div class="modal">
+    <div class="modal-head"><h3>应用已被他人修改</h3><span class="x" onclick="closeModal('m-conflict')">×</span></div>
+    <div class="modal-body">
+      <div class="banner warn"><span>你编辑期间，<b>刘问胜</b> 于 22:41 发布了 v3。你的草稿基于 v2，直接保存会覆盖对方改动。</span></div>
+      <div class="field"><label>差异摘要</label>
+        <div class="code-box">节点「生成播报文案」：提示词已变更
+节点「结束」：输出字段新增 1 个
+版本：v2 → v3</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('m-conflict');toast('已保留本地草稿')">保留本地草稿</button>
+      <span class="spacer"></span>
+      <button class="btn" onclick="closeModal('m-conflict');toast('已放弃本地改动')">放弃本地改动</button>
+      <button class="btn pri" onclick="closeModal('m-conflict');toast('已基于 v3 重新编辑')">基于最新版本重编辑</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Modal: 导入 DSL ==================== -->
+<div class="mask" id="m-dsl">
+  <div class="modal md">
+    <div class="modal-head"><h3>导入 DSL</h3><span class="x" onclick="closeModal('m-dsl')">×</span></div>
+    <div class="modal-body">
+      <div class="banner info"><span>支持 RAGFlow DSL（带 schema_version）；未知节点会明确报错，不会静默丢弃。</span></div>
+      <div class="field"><label>目标形态</label><select class="select" style="width:100%"><option>自动识别</option><option>Workflow</option><option>Chatflow</option></select></div>
+      <div class="field"><label>DSL JSON</label><textarea class="textarea" style="min-height:160px" placeholder='{ "schema_version": 1, "components": { ... } }'></textarea></div>
+      <div class="banner warn" style="margin:0"><span>示例：若 DSL 含 <code>Answer</code> 节点但目标形态是 Workflow，导入会被拒绝并提示形态不匹配。</span></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn" onclick="closeModal('m-dsl')">取消</button><button class="btn pri" onclick="closeModal('m-dsl');toast('DSL 校验通过，已导入')">校验并导入</button></div>
+  </div>
+</div>
+
+<!-- ==================== Drawer: 运行详情 ==================== -->
+<div class="drawer-mask" id="drawerMask" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawerRun">
+  <div class="drawer-head">
+    <h3>运行详情</h3>
+    <span class="tag green"><span class="dot"></span>成功</span>
+    <span class="x" onclick="closeDrawer()">×</span>
+  </div>
+  <div class="drawer-body">
+    <div class="kv" style="margin-bottom:16px">
+      <dt>run_id</dt><dd>7f3c9a2e-5b1d-4c8a-a91f-2d6e8b0c4a77</dd>
+      <dt>开始时间</dt><dd>2026-10-19 09:00:02</dd>
+      <dt>耗时</dt><dd>2.4s</dd>
+      <dt>Token</dt><dd>输入 812 / 输出 246 / 合计 1058</dd>
+    </div>
+    <div style="font-size:12px;color:var(--t3);margin-bottom:8px">节点执行</div>
+    <div class="trace">
+      <div class="tr-row"><div class="nm">开始</div><div class="bar"><i style="left:0;width:2%"></i></div><div class="ms">12ms</div></div>
+      <div class="tr-row"><div class="nm">知识检索</div><div class="bar"><i style="left:4%;width:18%"></i></div><div class="ms">186ms</div></div>
+      <div class="tr-row"><div class="nm">生成播报文案</div><div class="bar"><i style="left:24%;width:66%;background:#7C5CFC"></i></div><div class="ms">1.98s</div></div>
+      <div class="tr-row"><div class="nm">结束</div><div class="bar"><i style="left:92%;width:2%"></i></div><div class="ms">4ms</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--t3);margin:16px 0 8px">节点输出 · 生成播报文案</div>
+    <div class="code-box">{
+  "broadcast_text": "今日华夏成长混合净值 1.8234，较上一交易日上涨 0.62%。",
+  "usage": { "prompt_tokens": 812, "completion_tokens": 246 }
+}</div>
+  </div>
+  <div class="drawer-foot">
+    <span class="spacer" style="flex:1"></span>
+    <button class="btn" onclick="closeDrawer()">关闭</button>
+    <button class="btn" onclick="toast('已复制 run_id')">复制 run_id</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  /* ---------- toast ---------- */
+  document.addEventListener('click', function(e){
+    if(!e.target.closest('.dropdown')) closeCreateMenu();
+  });
+  let toastTimer;
+  function toast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>t.classList.remove('on'), 2200);
+  }
+
+  /* ---------- 页面切换 ---------- */
+  const PAGE_NAME = {home:'首页',kb:'知识库',chat:'聊天',search:'搜索',agent:'智能体',studio:'工作室',memory:'记忆',files:'文件管理'};
+  function showPage(p){
+    const isAgent = p==='agent', isStudio = p==='studio';
+    document.getElementById('page-agent').classList.toggle('on', isAgent);
+    document.getElementById('page-studio').classList.toggle('on', isStudio);
+    document.getElementById('page-ph').classList.toggle('on', !isAgent && !isStudio);
+    if(!isAgent && !isStudio) document.getElementById('phName').textContent = PAGE_NAME[p] || p;
+    document.getElementById('crumb').textContent = PAGE_NAME[p] || p;
+    document.querySelectorAll('#mainNav .nav-item').forEach(n=>n.classList.remove('active'));
+    const el = document.getElementById('nav' + p.charAt(0).toUpperCase() + p.slice(1));
+    if(el) el.classList.add('active');
+  }
+
+
+  /* ---------- 视图切换（卡片 / 表格） ---------- */
+  let viewMode = 'card';
+  function setView(m){
+    viewMode = m;
+    [['agentGrid','agentTable'],['studioGrid','studioTable']].forEach(([g,t])=>{
+      const grid = document.getElementById(g), table = document.getElementById(t);
+      // 用 hide 类切换而不是 inline style：.hide 带 !important，inline 覆盖不了
+      if(grid) grid.classList.toggle('hide', m!=='card');
+      if(table) table.classList.toggle('hide', m!=='table');
+    });
+    const empty = document.getElementById('studioEmpty');
+    if(empty && m==='table') empty.classList.add('hide');
+    document.querySelectorAll('.seg [data-view]').forEach(b=>b.classList.toggle('on', b.dataset.view===m));
+    try{ localStorage.setItem('rf.view', m); }catch(e){}
+  }
+  function restoreView(){
+    let v = 'card';
+    try{ v = localStorage.getItem('rf.view') || 'card'; }catch(e){}
+    setView(v);
+  }
+
+  function openStudioCreate(type){
+    const target = document.querySelector(`#studioPicks .pick[data-type="${type}"]`);
+    if(target) target.click();
+    openModal('m-create-studio');
+  }
+
+  function toggleCreateMenu(){
+    document.getElementById('agentCreateMenu').classList.toggle('on');
+  }
+  function closeCreateMenu(){
+    document.getElementById('agentCreateMenu').classList.remove('on');
+  }
+
+  function archiveApp(el){
+    event.stopPropagation();
+    const card = el.closest('.app-card');
+    card.style.opacity = '.55';
+    el.textContent = '已归档';
+    el.onclick = null;
+    toast('已归档，默认列表隐藏，API 返回 APP_ARCHIVED');
+  }
+
+  /* ---------- modal ---------- */
+  function openModal(id){
+    document.getElementById(id).classList.add('on');
+    document.body.style.overflow='hidden';
+  }
+  function closeModal(id){
+    document.getElementById(id).classList.remove('on');
+    document.body.style.overflow='';
+  }
+  document.querySelectorAll('.mask').forEach(m=>{
+    m.addEventListener('mousedown', e=>{ if(e.target===m) closeModal(m.id); });
+  });
+
+  /* ---------- 创建：智能体（原生） / 工作室（新增） ---------- */
+  function pickSimple(el, groupId){
+    document.querySelectorAll('#'+groupId+' .pick').forEach(c=>c.classList.remove('on'));
+    el.classList.add('on');
+  }
+  function pickStudioType(el){
+    document.querySelectorAll('#studioPicks .pick').forEach(c=>c.classList.remove('on'));
+    el.classList.add('on');
+  }
+  let studioPicked = 'chatflow';
+  function createStudioApp(){
+    studioPicked = document.querySelector('#studioPicks .pick.on').dataset.type;
+    closeModal('m-create-studio');
+    openEditor(studioPicked==='chatflow' ? 'chatflow' : 'workflow');
+  }
+
+  /* ---------- editor ---------- */
+  function openEditor(kind){
+    document.getElementById('appShell').style.display='none';
+    document.getElementById(kind==='workflow' ? 'ed-workflow' : 'ed-chatflow').classList.add('on');
+  }
+  function closeEditor(){
+    document.querySelectorAll('.editor').forEach(e=>e.classList.remove('on'));
+    document.getElementById('appShell').style.display='flex';
+  }
+
+  /* ---------- node selection ---------- */
+  function bindNodes(rootId, prefix){
+    const root = document.getElementById(rootId);
+    const editor = root.closest('.editor');
+    root.querySelectorAll('.node').forEach(n=>{
+      n.addEventListener('click', ()=>{
+        root.querySelectorAll('.node').forEach(x=>x.classList.remove('sel'));
+        n.classList.add('sel');
+        const type = n.dataset.node;
+        editor.querySelectorAll('.cfg-panel-body').forEach(p=>p.classList.add('hide'));
+        const panel = editor.querySelector('#cfg-'+prefix+'-'+type);
+        if(panel) panel.classList.remove('hide');
+        const title = editor.querySelector('#cfg-title-'+prefix);
+        if(title){
+          const tt = n.querySelector('.tt')?.textContent || '';
+          const ic = n.querySelector('.ic');
+          title.innerHTML = '<div class="ic" style="background:'+(ic?ic.style.background:'#065BC1')+'">'+(ic?ic.textContent:'·')+'</div><b>'+tt+'</b><button class="btn sm" style="margin-left:auto" onclick="toast(\'已单节点运行（演示）\')">▶ 单节点运行</button><span class="x" style="margin-left:8px" onclick="toast(\'演示原型：关闭面板\')">×</span>';
+        }
+      });
+    });
+  }
+  bindNodes('canvas-wf','wf');
+  bindNodes('canvas-cf','cf');
+
+  function toggleChatPreview(){
+    document.getElementById('chatPreview').classList.toggle('collapsed');
+  }
+
+  /* ---------- run panel ---------- */
+  const runOpen={wf:false,cf:false};
+  function toggleRun(kind){
+    const k = kind || 'wf';
+    runOpen[k] = !runOpen[k];
+    document.getElementById('run-'+k).classList.toggle('on', runOpen[k]);
+  }
+  function runTab(el, id){
+    el.parentElement.querySelectorAll('span').forEach(s=>s.classList.remove('on'));
+    el.classList.add('on');
+    const panel = el.closest('.run-panel');
+    panel.querySelectorAll('.run-tab-body').forEach(b=>b.classList.remove('on'));
+    const target = document.getElementById(id);
+    if(target) target.classList.add('on');
+  }
+
+  /* ---------- modal tabs ---------- */
+  function pubTab(el, id){
+    const modal = el.closest('.modal');
+    modal.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+    modal.querySelectorAll('.modal-tab-body').forEach(b=>b.classList.remove('on'));
+    const t = document.getElementById(id);
+    if(t) t.classList.add('on');
+  }
+  function varTab(el, id){
+    const modal = el.closest('.modal');
+    modal.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+    modal.querySelectorAll('.modal-tab-body').forEach(b=>b.classList.remove('on'));
+    const t = document.getElementById(id);
+    if(t) t.classList.add('on');
+  }
+
+  /* ---------- drawer ---------- */
+  function openDrawer(){
+    document.getElementById('drawerMask').classList.add('on');
+    document.getElementById('drawerRun').classList.add('on');
+  }
+  function closeDrawer(){
+    document.getElementById('drawerMask').classList.remove('on');
+    document.getElementById('drawerRun').classList.remove('on');
+  }
+
+
+  /* ---------- 列表：搜索 + 分页（卡片 / 表格两视图共用同一份状态） ---------- */
+  const listState = {
+    agent:  { kw:'', page:1, size:12 },
+    studio: { kw:'', page:1, size:12, type:'all' },
+  };
+
+  function itemName(el){
+    const n = el.querySelector('.nm') || el.querySelector('.cell-strong');
+    return (n && n.textContent || '').trim();
+  }
+
+  function applyList(page){
+    const st = listState[page];
+    const cards = [...document.querySelectorAll('#'+page+'Grid .app-card')];
+    const rows  = [...document.querySelectorAll('#'+page+'Table tbody tr')];
+    const kw = st.kw.trim().toLowerCase();
+    const idx = [];
+    cards.forEach((c,i)=>{
+      let ok = !kw || itemName(c).toLowerCase().indexOf(kw) >= 0;
+      if(page==='studio' && st.type!=='all'){
+        ok = ok && (st.type==='wf' ? c.dataset.type==='Workflow' : c.dataset.type==='Chatflow');
+      }
+      if(ok) idx.push(i);
+    });
+    const total = idx.length;
+    const pages = Math.max(1, Math.ceil(total / st.size));
+    if(st.page > pages) st.page = pages;
+    const cur = new Set(idx.slice((st.page-1)*st.size, (st.page-1)*st.size + st.size));
+    cards.forEach((c,i)=> c.classList.toggle('hide', !cur.has(i)));
+    rows.forEach((r,i)=> r.classList.toggle('hide', !cur.has(i)));
+
+    if(page==='studio'){
+      const empty = document.getElementById('studioEmpty');
+      empty.classList.toggle('hide', total>0);
+      const searching = kw.length>0;
+      document.getElementById('studioEmptyText').textContent = searching ? '没有匹配「'+st.kw+'」的应用' : '该类型下还没有应用';
+      document.getElementById('studioEmptySub').textContent = searching ? '换个关键词，或清空搜索条件' : '从空白画布开始，或用模板快速起步';
+      document.getElementById('studioEmptyBtn').classList.toggle('hide', searching);
+      document.getElementById('studioEmptyClear').classList.toggle('hide', !searching);
+    } else {
+      document.getElementById('agentEmpty').classList.toggle('hide', total>0);
+    }
+
+    const cnt = document.getElementById(page+'Count');
+    if(cnt) cnt.innerHTML = total ? ('筛选出 <b>'+total+'</b> 个应用') : '';
+    const clr = document.getElementById(page+'SearchClear');
+    if(clr) clr.classList.toggle('hide', kw.length===0);
+
+    renderPager(page, total, pages, st.page);
+  }
+
+  function renderPager(page, total, pages, cur){
+    const info = document.getElementById(page+'PagerInfo');
+    const ctrl = document.getElementById(page+'PagerCtrl');
+    if(!info || !ctrl) return;
+    const size = listState[page].size;
+    const from = total ? (cur-1)*size + 1 : 0;
+    const to = Math.min(total, cur*size);
+    info.innerHTML = total
+      ? ('第 <b>'+from+'-'+to+'</b> 条 / 共 <b>'+total+'</b> 条 · 第 '+cur+'/'+pages+' 页')
+      : '暂无数据';
+
+    const btn = (label, target, disabled, on) =>
+      '<button class="pg'+(on?' on':'')+'"'+(disabled?' disabled':'')+
+      ' data-p="'+target+'" onclick="gotoPage(\''+page+'\', this.dataset.p)">'+label+'</button>';
+
+    let nums = [];
+    if(pages <= 7){ for(let i=1;i<=pages;i++) nums.push(i); }
+    else{
+      nums.push(1);
+      const a = Math.max(2, cur-1), b = Math.min(pages-1, cur+1);
+      if(a > 2) nums.push('...');
+      for(let i=a;i<=b;i++) nums.push(i);
+      if(b < pages-1) nums.push('...');
+      nums.push(pages);
+    }
+    if(total === 0){ ctrl.innerHTML = ''; return; }
+    let h = '<button class="pg" data-p="'+(cur-1)+'"'+(cur===1?' disabled':'')+
+            ' onclick="gotoPage(\''+page+'\', this.dataset.p)">‹</button>';
+    nums.forEach(n=>{
+      if(n==='...') h += '<button class="pg dots">…</button>';
+      else h += btn(n, n, false, n===cur);
+    });
+    h += '<button class="pg" data-p="'+(cur+1)+'"'+(cur===pages?' disabled':'')+
+         ' onclick="gotoPage(\''+page+'\', this.dataset.p)">›</button>';
+    ctrl.innerHTML = h;
+  }
+
+  function onSearch(page, val){
+    listState[page].kw = val;
+    listState[page].page = 1;
+    applyList(page);
+  }
+  function clearSearch(page){
+    const el = document.getElementById(page+'Search');
+    if(el) el.value = '';
+    listState[page].kw = '';
+    listState[page].page = 1;
+    applyList(page);
+  }
+  function setPageSize(page, v){
+    listState[page].size = parseInt(v, 10) || 12;
+    listState[page].page = 1;
+    applyList(page);
+  }
+  function gotoPage(page, n){
+    const st = listState[page];
+    const pages = Math.max(1, Math.ceil(
+      [...document.querySelectorAll('#'+page+'Grid .app-card')].filter(c=>{
+        const kw = st.kw.trim().toLowerCase();
+        if(kw && itemName(c).toLowerCase().indexOf(kw) < 0) return false;
+        if(page==='studio' && st.type!=='all'){
+          return st.type==='wf' ? c.dataset.type==='Workflow' : c.dataset.type==='Chatflow';
+        }
+        return true;
+      }).length / st.size));
+    st.page = Math.min(Math.max(1, parseInt(n,10)||1), pages);
+    applyList(page);
+  }
+
+  /* ---------- 工作室类型筛选 ---------- */
+  function filterStudio(el, type){
+    el.parentElement.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+    listState.studio.type = type;
+    listState.studio.page = 1;
+    updateStudioCounts();
+    applyList('studio');
+  }
+  function updateStudioCounts(){
+    const cards = [...document.querySelectorAll('#studioGrid .app-card')];
+    const wf = cards.filter(c=>c.dataset.type==='Workflow').length;
+    const cf = cards.filter(c=>c.dataset.type==='Chatflow').length;
+    document.getElementById('cntAll').textContent = cards.length;
+    document.getElementById('cntWf').textContent = wf;
+    document.getElementById('cntCf').textContent = cf;
+  }
+
+  /* ---------- 补充示例数据，让分页可感知 ---------- */
+  function seedListData(){
+    const STUDIO = [
+      ['投研报告摘要生成','Workflow','抓取研报 PDF → 提炼观点 → 生成结构化摘要','已发布','v2','10-18 15:31','10-18 15:20','研'],
+      ['客户风险测评','Workflow','问卷输入 → 规则打分 → 生成风险等级','已发布','v1','10-18 14:02','10-18 14:05','险'],
+      ['营销短信生成','Workflow','模板转换 + LLM 润色 → 合规短信','草稿','—','—','10-18 11:20','营'],
+      ['对账单流水核对','Workflow','拉取账单 → 规则比对 → 输出差异清单','已发布','v3','10-17 17:45','10-17 18:02','账'],
+      ['基金适当性匹配','Workflow','客户画像 → 产品筛选 → 生成匹配清单','已发布','v1','10-17 15:12','10-17 15:30','配'],
+      ['净值异动播报','Workflow','监控阈值 → 触发 → 生成异动说明','草稿','—','—','10-17 10:08','异'],
+      ['理财产品问答','Chatflow','产品要素问答，支持多轮追问','已发布','v2','10-16 16:40','10-16 16:52','理'],
+      ['售后进度查询','Chatflow','按订单号查询处理进度','已发布','v1','10-16 11:25','10-16 11:40','进'],
+      ['活动规则解读','Chatflow','解析活动细则并回答用户提问','草稿','—','今天 09:15','今天 09:02','活'],
+    ];
+    const AGENTS = [
+      ['合同审阅助手','多轮引导','orange','识别合同类型并逐条提示风险','已发布','20/10 16:40','合'],
+      ['面试问题生成','问答','green','按岗位 JD 生成结构化面试题','已发布','20/10 15:12','面'],
+      ['表单填写引导','多轮引导','orange','逐步追问补全开户表单','草稿','20/10 14:05','表'],
+      ['舆情摘要','图谱','purple','抓取多源舆情并生成摘要','已发布','20/10 10:33','舆'],
+      ['会议纪要','脑图','purple','从录音转写中提取决议与待办','已发布','19/10 18:20','会'],
+      ['知识库巡检','问答','green','检查知识库覆盖度并给出补录建议','草稿','19/10 15:44','巡'],
+      ['工单预处理','树','purple','按问题类型路由到对应处理组','已发布','19/10 14:02','单'],
+      ['多语种翻译','图谱','purple','中英互译并保留专业术语','已发布','19/10 11:35','译'],
+    ];
+
+    function statusTag(st){
+      return st==='已发布'
+        ? '<span class="tag green"><span class="dot"></span>已发布</span>'
+        : '<span class="tag gray">草稿</span>';
+    }
+    function actCell(st){
+      return st==='已发布'
+        ? '<span class="link">运行</span><span class="link">日志</span><span class="link">更多</span>'
+        : '<span class="link">编辑</span><span class="link">发布</span><span class="link">更多</span>';
+    }
+
+    const sGrid = document.getElementById('studioGrid');
+    const sTb = document.querySelector('#studioTable tbody');
+    STUDIO.forEach(function(it){
+      const name=it[0], type=it[1], desc=it[2], stt=it[3], ver=it[4], last=it[5], upd=it[6], letter=it[7];
+      const isCf = type==='Chatflow';
+      const bg = isCf ? 'linear-gradient(135deg,#7C5CFC,#A48BFF)' : 'linear-gradient(135deg,#065BC1,#3E8BE8)';
+      const tag = isCf ? '<span class="tag purple">对话流</span>' : '<span class="tag blue">任务流</span>';
+      const editor = isCf ? 'chatflow' : 'workflow';
+      sGrid.insertAdjacentHTML('beforeend',
+        '<div class="app-card" data-type="'+type+'" onclick="openEditor(\'+editor+\')">'+
+          '<div class="hd"><div class="app-ic" style="background:'+bg+'">'+letter+'</div>'+
+          '<div style="min-width:0"><div class="nm">'+name+'</div><div class="ds">'+desc+'</div></div></div>'+
+          '<div class="meta">'+tag+statusTag(stt)+'<span class="right"><span>'+upd+'</span></span></div>'+
+        '</div>');
+      sTb.insertAdjacentHTML('beforeend',
+        '<tr style="cursor:pointer" onclick="openEditor(\'+editor+\')">'+
+          '<td><div class="tbl-name"><span class="app-ic" style="background:'+bg+'">'+letter+'</span>'+
+          '<span class="cell-strong">'+name+'</span></div>'+
+          '<div class="cell-sub" style="margin-left:35px">'+desc+'</div></td>'+
+          '<td>'+tag+'</td><td>'+statusTag(stt)+'</td>'+
+          '<td class="cell-sub">'+(ver||'—')+'</td>'+
+          '<td class="cell-sub">'+(last||'—')+'</td>'+
+          '<td class="cell-sub">'+upd+'</td>'+
+          '<td><div class="row-act">'+actCell(stt)+'</div></td>'+
+        '</tr>');
+    });
+
+    const aGrid = document.getElementById('agentGrid');
+    const aTb = document.querySelector('#agentTable tbody');
+    AGENTS.forEach(function(it){
+      const name=it[0], tagName=it[1], tagColor=it[2], desc=it[3], stt=it[4], upd=it[5], letter=it[6];
+      const tag = '<span class="tag '+tagColor+'">'+tagName+'</span>';
+      aGrid.insertAdjacentHTML('beforeend',
+        '<div class="app-card">'+
+          '<div class="hd"><div class="app-ic" style="background:#1B2431">'+letter+'</div>'+
+          '<div style="min-width:0"><div class="nm">'+name+'</div><div class="ds">'+desc+'</div></div></div>'+
+          '<div class="meta"><span class="cell-sub">上次保存于 '+upd+'</span>'+tag+
+          '<span class="right"><span class="link">运行</span></span></div>'+
+        '</div>');
+      aTb.insertAdjacentHTML('beforeend',
+        '<tr><td><div class="tbl-name"><span class="app-ic" style="background:#1B2431">'+letter+'</span>'+
+        '<span class="cell-strong">'+name+'</span></div>'+
+        '<div class="cell-sub" style="margin-left:35px">'+desc+'</div></td>'+
+        '<td><span class="tag gray">智能体</span></td><td>'+tag+'</td><td>'+statusTag(stt)+'</td>'+
+        '<td class="cell-sub">'+upd+'</td>'+
+        '<td><div class="row-act">'+actCell(stt)+'</div></td></tr>');
+    });
+  }
+
+  function initLists(){
+    seedListData();
+    updateStudioCounts();
+    applyList('agent');
+    applyList('studio');
+  }
+
+  // 视图偏好必须在所有 let/const 声明之后恢复（否则命中 TDZ）
+  initLists();
+  restoreView();
+
+  /* ---------- runs page ---------- */
+  let runsSeeded = false;
+  function openRuns(){
+    if(!runsSeeded){ seedRuns(); runsSeeded = true; applyRuns(); }
+    document.getElementById('appShell').style.display='none';
+    document.getElementById('runsPage').classList.add('on');
+    document.getElementById('runsPage').style.display='flex';
+  }
+  function closeRuns(){
+    document.getElementById('runsPage').classList.remove('on');
+    document.getElementById('runsPage').style.display='none';
+    document.getElementById('appShell').style.display='flex';
+  }
+  const runsState = { kw:'', status:'all', page:1, size:10 };
+
+  function seedRuns(){
+    const tb = document.querySelector('#runsTable tbody');
+    const APPS = [
+      ['每日净值播报生成','任务流','succeeded','2.4s','1058'],
+      ['开户材料预审','任务流','failed','1.1s','412'],
+      ['基金问答助手','对话流','succeeded','1.7s','836'],
+      ['基金问答助手','对话流','stopped','0.6s','128'],
+      ['工单摘要生成','任务流','succeeded','3.2s','1420'],
+      ['监管报送数据校验','任务流','succeeded','5.6s','2310'],
+      ['理财产品问答','对话流','succeeded','1.2s','702'],
+      ['对账单流水核对','任务流','failed','2.8s','988'],
+      ['售后进度查询','对话流','succeeded','0.9s','421'],
+      ['客户风险测评','任务流','succeeded','4.1s','1673'],
+      ['基金适当性匹配','任务流','succeeded','6.3s','2502'],
+      ['活动规则解读','对话流','failed','1.4s','355'],
+    ];
+    const IDS = ['a91','b02','c73','d18','e45','f60','a27','b89','c34','d51','e06','f92'];
+    const TIMES = ['昨天 17:40','昨天 16:22','昨天 15:08','昨天 14:51','昨天 13:30','昨天 11:04',
+                   '10-18 17:20','10-18 16:02','10-18 14:36','10-18 11:58','10-18 10:41','10-18 09:15'];
+    APPS.forEach(function(it,i){
+      const name=it[0], kind=it[1], stt=it[2], dur=it[3], tok=it[4];
+      const tag = kind==='对话流'
+        ? '<span class="tag purple">对话流</span>'
+        : '<span class="tag blue">任务流</span>';
+      const status = stt==='succeeded'
+        ? '<span class="tag green"><span class="dot"></span>成功</span>'
+        : (stt==='failed'
+            ? '<span class="tag red"><span class="dot"></span>失败</span>'
+            : '<span class="tag gray"><span class="dot"></span>已停止</span>');
+      tb.insertAdjacentHTML('beforeend',
+        '<tr data-status="'+stt+'" onclick="openDrawer()" style="cursor:pointer">'+
+          '<td class="cell-strong">'+IDS[i]+'1d'+(30+i)+'…'+IDS[i]+'</td>'+
+          '<td>'+name+' '+tag+'</td>'+
+          '<td class="cell-sub">API</td><td>'+status+'</td>'+
+          '<td class="cell-sub">'+dur+'</td><td class="cell-sub">'+tok+'</td>'+
+          '<td class="cell-sub">'+TIMES[i]+'</td>'+
+          '<td><span class="link">详情</span></td>'+
+        '</tr>');
+    });
+  }
+
+  function applyRuns(){
+    const st = runsState;
+    const kw = st.kw.trim().toLowerCase();
+    const rows = [...document.querySelectorAll('#runsTable tbody tr')];
+    const hit = [];
+    rows.forEach(function(tr,i){
+      let ok = st.status==='all' || tr.dataset.status===st.status;
+      if(kw) ok = ok && tr.textContent.toLowerCase().indexOf(kw) >= 0;
+      if(ok) hit.push(i);
+    });
+    const total = hit.length;
+    const pages = Math.max(1, Math.ceil(total/st.size));
+    if(st.page > pages) st.page = pages;
+    const cur = new Set(hit.slice((st.page-1)*st.size, (st.page-1)*st.size + st.size));
+    rows.forEach(function(tr,i){ tr.classList.toggle('hide', !cur.has(i)); });
+
+    document.getElementById('runsEmpty').classList.toggle('hide', total>0);
+    document.getElementById('runsCount').innerHTML = '筛选出 <b>'+total+'</b> 条记录';
+    document.getElementById('runsSearchClear').classList.toggle('hide', kw.length===0);
+
+    const info = document.getElementById('runsPagerInfo');
+    const ctrl = document.getElementById('runsPagerCtrl');
+    const from = total ? (st.page-1)*st.size+1 : 0;
+    const to = Math.min(total, st.page*st.size);
+    info.innerHTML = total
+      ? ('第 <b>'+from+'-'+to+'</b> 条 / 共 <b>'+total+'</b> 条 · 第 '+st.page+'/'+pages+' 页')
+      : '暂无数据';
+    if(total === 0){ ctrl.innerHTML = ''; return; }
+
+    const mk = (label, target, disabled, on) =>
+      '<button class="pg'+(on?' on':'')+'"'+(disabled?' disabled':'')+
+      ' data-p="'+target+'" onclick="gotoRunsPage(this.dataset.p)">'+label+'</button>';
+    let nums = [];
+    for(let i=1;i<=pages;i++) nums.push(i);
+    let h = '<button class="pg" data-p="'+(st.page-1)+'"'+(st.page===1?' disabled':'')+' onclick="gotoRunsPage(this.dataset.p)">‹</button>';
+    nums.forEach(function(n){ h += mk(n, n, false, n===st.page); });
+    h += '<button class="pg" data-p="'+(st.page+1)+'"'+(st.page===pages?' disabled':'')+' onclick="gotoRunsPage(this.dataset.p)">›</button>';
+    ctrl.innerHTML = h;
+  }
+
+  function filterRuns(status){
+    runsState.status = status;
+    runsState.page = 1;
+    applyRuns();
+  }
+  function gotoRunsPage(n){
+    const pages = Math.max(1, Math.ceil(
+      [...document.querySelectorAll('#runsTable tbody tr')].filter(tr=>{
+        if(runsState.status!=='all' && tr.dataset.status!==runsState.status) return false;
+        const kw = runsState.kw.trim().toLowerCase();
+        if(kw && tr.textContent.toLowerCase().indexOf(kw) < 0) return false;
+        return true;
+      }).length / runsState.size));
+    runsState.page = Math.min(Math.max(1, parseInt(n,10)||1), pages);
+    applyRuns();
+  }
+  function setRunsSize(v){
+    runsState.size = parseInt(v,10) || 10;
+    runsState.page = 1;
+    applyRuns();
+  }
+  function clearRunsSearch(){
+    const el = document.getElementById('runsSearch');
+    if(el) el.value = '';
+    runsState.kw = '';
+    runsState.page = 1;
+    applyRuns();
+  }
+</script>
+</body>
+</html>

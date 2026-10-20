@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAQ 词表与相似问工作台 · 交互原型</title>
+<style>
+  :root{
+    --brand:#065BC1; --brand-hover:#0550A8; --brand-weak:#EAF1FB; --brand-line:#BFD5F0;
+    --bg:#F5F7FA; --card:#FFFFFF;
+    --t1:#1B2431; --t2:#5A6474; --t3:#949EAC; --t4:#B8C0CC;
+    --line:#E7ECF3; --line-2:#DCE3ED;
+    --ok:#22A06B; --ok-bg:#E8F6EF; --ok-line:#BFE6D4;
+    --warn:#F2994A; --warn-bg:#FDF3E8; --warn-line:#F5D9B8; --warn-t:#B26A15;
+    --err:#EB5757; --err-bg:#FDECEC; --err-line:#F6C6C6;
+    --radius:5px;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font);background:var(--bg);color:var(--t1);font-size:13px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:#D6DDE7;border-radius:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  /* ---------- Layout ---------- */
+  .app{display:flex;min-height:100vh}
+  .sidebar{width:232px;flex-shrink:0;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:9px;padding:16px 18px;border-bottom:1px solid var(--line)}
+  .brand-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#065BC1,#3E8BE8);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0}
+  .brand-name{font-size:14px;font-weight:600}
+  .brand-sub{font-size:11px;color:var(--t3);line-height:1.3}
+
+  .kb-switch{margin:12px 14px 6px;padding:9px 11px;border:1px solid var(--line-2);border-radius:var(--radius);display:flex;align-items:center;gap:8px;cursor:pointer;background:#FAFBFD}
+  .kb-switch:hover{border-color:var(--brand-line);background:var(--brand-weak)}
+  .kb-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex-shrink:0}
+  .kb-meta{min-width:0;flex:1}
+  .kb-meta b{display:block;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kb-meta span{font-size:11px;color:var(--t3)}
+
+  .nav{padding:6px 10px;overflow-y:auto;flex:1}
+  .nav-title{font-size:11px;color:var(--t3);padding:12px 10px 6px;letter-spacing:.3px}
+  .nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--radius);color:var(--t2);cursor:pointer;font-size:13px;margin-bottom:2px;transition:.15s;position:relative}
+  .nav-item:hover{background:#F3F6FA;color:var(--t1)}
+  .nav-item.active{background:var(--brand-weak);color:var(--brand);font-weight:500}
+  .nav-item.active::before{content:"";position:absolute;left:-10px;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:var(--brand)}
+  .nav-item svg{width:15px;height:15px;flex-shrink:0;opacity:.85}
+  .nav-badge{margin-left:auto;font-size:11px;background:var(--warn);color:#fff;padding:0 6px;border-radius:8px;font-weight:600;line-height:16px}
+  .nav-badge.blue{background:var(--brand)}
+
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .topbar{height:52px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 24px;position:sticky;top:0;z-index:30}
+  .crumb{color:var(--t3);font-size:12px}
+  .crumb b{color:var(--t1);font-weight:500}
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .avatar{width:28px;height:28px;border-radius:50%;background:var(--brand-weak);color:var(--brand);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+
+  .content{padding:18px 24px 40px;max-width:1560px;width:100%}
+
+  /* ---------- Banner ---------- */
+  .banner{display:flex;align-items:center;gap:10px;border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;font-size:12.5px}
+  .banner.pending{background:var(--warn-bg);border:1px solid var(--warn-line);border-left:3px solid var(--warn);color:#7A4A13}
+  .banner.info{background:var(--brand-weak);border:1px solid var(--brand-line);border-left:3px solid var(--brand);color:#0B4A96}
+  .banner b{font-weight:600}
+  .banner .spacer{flex:1}
+  .banner .mini{padding:0 10px;height:26px;font-size:12px}
+
+  /* ---------- Page head ---------- */
+  .page-head{display:flex;align-items:flex-start;gap:16px;margin-bottom:14px}
+  .page-head h1{font-size:19px;font-weight:600;line-height:1.4}
+  .page-head p{color:var(--t2);font-size:12.5px;margin-top:3px}
+  .page-head .actions{margin-left:auto;display:flex;gap:8px;flex-shrink:0}
+
+  /* ---------- Buttons ---------- */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 13px;border-radius:var(--radius);border:1px solid var(--line-2);background:#fff;color:var(--t1);font-size:13px;cursor:pointer;transition:.15s;white-space:nowrap}
+  .btn:hover{border-color:var(--brand);color:var(--brand)}
+  .btn.pri{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn.pri:hover{background:var(--brand-hover);border-color:var(--brand-hover);color:#fff}
+  .btn.ghost{border-color:transparent;background:transparent;color:var(--t2)}
+  .btn.ghost:hover{background:#F3F6FA;color:var(--t1)}
+  .btn.danger{color:var(--err);border-color:var(--err-line)}
+  .btn.danger:hover{background:var(--err-bg)}
+  .btn.sm{height:28px;padding:0 10px;font-size:12px}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn svg{width:14px;height:14px}
+
+  /* ---------- Tabs ---------- */
+  .tabs{display:flex;gap:24px;border-bottom:1px solid var(--line);margin-bottom:14px}
+  .tab{padding:9px 2px;font-size:13.5px;color:var(--t2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:6px}
+  .tab:hover{color:var(--t1)}
+  .tab.active{color:var(--brand);border-bottom-color:var(--brand);font-weight:500}
+  .tab .cnt{font-size:11px;background:#EEF2F7;color:var(--t2);padding:1px 6px;border-radius:8px}
+  .tab.active .cnt{background:var(--brand-weak);color:var(--brand)}
+
+  /* ---------- Toolbar ---------- */
+  .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+  .toolbar .grow{flex:1}
+  .search{display:flex;align-items:center;gap:7px;height:32px;padding:0 10px;border:1px solid var(--line-2);border-radius:var(--radius);background:#fff;min-width:260px}
+  .search svg{width:14px;height:14px;color:var(--t3)}
+  .search input{border:0;outline:0;font-size:13px;width:100%;background:transparent;color:var(--t1);font-family:inherit}
+  .search input::placeholder{color:var(--t4)}
+  .select{height:32px;padding:0 28px 0 10px;border:1px solid var(--line-2);border-radius:var(--radius);background:#fff;color:var(--t2);font-size:13px;appearance:none;cursor:pointer;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23949EAC' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat:no-repeat;background-position:right 9px center}
+
+  /* ---------- Table ---------- */
+  .table-wrap{background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  table{width:100%;border-collapse:collapse}
+  thead th{background:#F7F9FC;color:var(--t2);font-size:12px;font-weight:500;text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  tbody td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:13px}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:#FAFCFE}
+  .cell-strong{font-weight:500;color:var(--t1)}
+  .cell-sub{color:var(--t3);font-size:12px}
+  .cell-actions{display:flex;gap:12px;align-items:center;white-space:nowrap}
+  .link{color:var(--brand);cursor:pointer;font-size:12.5px}
+  .link:hover{text-decoration:underline}
+  .link.danger{color:var(--err)}
+  .truncate{max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .chips{display:flex;flex-wrap:wrap;gap:4px}
+  .chip{display:inline-flex;align-items:center;gap:4px;background:#F1F5FA;border:1px solid #E1E9F3;color:#3A4A5E;padding:1px 7px;border-radius:10px;font-size:11.5px;line-height:18px}
+  .chip.brand{background:var(--brand-weak);border-color:var(--brand-line);color:var(--brand)}
+  .chip .x{cursor:pointer;color:var(--t3);font-size:12px}
+  .chip .x:hover{color:var(--err)}
+
+  /* ---------- Tags ---------- */
+  .tag{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:10px;font-size:11.5px;line-height:18px;white-space:nowrap}
+  .tag.live{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-line)}
+  .tag.pending{background:var(--warn-bg);color:var(--warn-t);border:1px solid var(--warn-line)}
+  .tag.draft{background:#EEF2F7;color:var(--t2);border:1px solid var(--line-2)}
+  .tag.err{background:var(--err-bg);color:var(--err);border:1px solid var(--err-line)}
+  .tag.blue{background:var(--brand-weak);color:var(--brand);border:1px solid var(--brand-line)}
+  .dot{width:5px;height:5px;border-radius:50%;display:inline-block;background:currentColor}
+
+  /* ---------- Cards / stats ---------- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:8px;padding:13px 16px}
+  .stat dt{color:var(--t2);font-size:12px;margin-bottom:4px}
+  .stat dd{font-size:22px;font-weight:600;line-height:1.3}
+  .stat dd small{font-size:12px;font-weight:400;color:var(--t3);margin-left:4px}
+
+  /* ---------- Empty ---------- */
+  .empty{padding:60px 20px;text-align:center;color:var(--t3)}
+  .empty .ico{width:48px;height:48px;border-radius:50%;background:#F1F5FA;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;color:var(--t3)}
+
+  /* ---------- Pagination ---------- */
+  .pager{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px 14px;color:var(--t2);font-size:12.5px}
+  .pager .pg{display:flex;gap:4px}
+  .pager .pg span{min-width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:4px;cursor:pointer;border:1px solid transparent}
+  .pager .pg span:hover{background:#F1F5FA}
+  .pager .pg span.on{background:var(--brand-weak);color:var(--brand);border-color:var(--brand-line)}
+
+  /* ---------- Modal ---------- */
+  .mask{position:fixed;inset:0;background:rgba(17,24,39,.45);display:none;align-items:flex-start;justify-content:center;z-index:100;padding:48px 20px;overflow-y:auto}
+  .mask.on{display:flex}
+  .modal{background:#fff;border-radius:10px;box-shadow:0 20px 60px rgba(16,24,40,.22);width:560px;max-width:100%;animation:pop .16s ease}
+  .modal.lg{width:1120px}
+  .modal.md{width:760px}
+  @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:none}}
+  .modal-head{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line)}
+  .modal-head h3{font-size:15px;font-weight:600}
+  .modal-head .x{margin-left:auto;cursor:pointer;color:var(--t3);font-size:20px;line-height:1;padding:2px 6px;border-radius:4px}
+  .modal-head .x:hover{background:#F1F5FA;color:var(--t1)}
+  .modal-body{padding:18px 20px;max-height:calc(100vh - 210px);overflow-y:auto}
+  .modal-foot{display:flex;align-items:center;gap:8px;padding:13px 20px;border-top:1px solid var(--line);background:#FCFDFE;border-radius:0 0 10px 10px}
+  .modal-foot .spacer{flex:1}
+
+  /* ---------- Form ---------- */
+  .field{margin-bottom:15px}
+  .field > label{display:block;font-size:12.5px;color:var(--t2);margin-bottom:6px}
+  .field > label .req{color:var(--err)}
+  .input,.textarea{width:100%;border:1px solid var(--line-2);border-radius:var(--radius);padding:8px 10px;font-size:13px;font-family:inherit;color:var(--t1);outline:0;transition:.15s;background:#fff}
+  .input:focus,.textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(6,91,193,.08)}
+  .textarea{min-height:78px;resize:vertical;line-height:1.6}
+  .hint{font-size:11.5px;color:var(--t3);margin-top:5px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+  /* ---------- Test modal ---------- */
+  .test-head{background:linear-gradient(180deg,#F7FAFE,#fff);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:16px}
+  .test-queries{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .qchip{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line-2);border-radius:15px;padding:4px 10px;font-size:12.5px}
+  .qchip .x{cursor:pointer;color:var(--t3)}
+  .qchip .x:hover{color:var(--err)}
+  .test-params{display:flex;gap:18px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--t2)}
+  .test-params .p{display:flex;align-items:center;gap:6px}
+  .test-params .input{width:70px;height:28px;padding:0 8px;font-size:12px}
+  .test-params .select{height:28px;font-size:12px}
+
+  .compare-block{border:1px solid var(--line);border-radius:8px;margin-bottom:14px;overflow:hidden}
+  .compare-title{display:flex;align-items:center;gap:9px;padding:9px 14px;background:#F7F9FC;border-bottom:1px solid var(--line);font-size:13px;font-weight:500}
+  .compare-title .idx{width:20px;height:20px;border-radius:50%;background:var(--brand);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:600}
+  .expand-line{padding:8px 14px;background:#FBFCFE;border-bottom:1px solid var(--line);font-size:12px;color:var(--t2);display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+  .expand-line b{color:var(--t1);font-weight:500;flex-shrink:0}
+  .arrow{color:var(--t3)}
+
+  .cmp-grid{display:grid;grid-template-columns:1fr 1fr}
+  .cmp-col{padding:12px 14px}
+  .cmp-col:first-child{border-right:1px solid var(--line)}
+  .cmp-col-head{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t2);margin-bottom:8px}
+  .cmp-col-head b{color:var(--t1);font-size:12.5px}
+  .cmp-col-head .tag{margin-left:auto}
+
+  .hit{display:flex;gap:9px;padding:9px 10px;border:1px solid transparent;border-radius:6px;margin-bottom:6px;background:#FAFBFD}
+  .hit:last-child{margin-bottom:0}
+  .hit.new{border-color:var(--ok-line);background:var(--ok-bg)}
+  .hit.gone{border-color:var(--err-line);background:var(--err-bg)}
+  .hit .rank{width:20px;height:20px;border-radius:4px;background:#E9EEF5;color:var(--t2);font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:600;margin-top:1px}
+  .hit.new .rank{background:var(--ok);color:#fff}
+  .hit .body{min-width:0;flex:1}
+  .hit .q{font-weight:500;font-size:12.5px;margin-bottom:2px;display:flex;align-items:center;gap:6px}
+  .hit .a{color:var(--t2);font-size:11.5px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .hit .meta{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:11px;color:var(--t3)}
+  .score{font-variant-numeric:tabular-nums;font-weight:600;color:var(--t1)}
+  .delta{font-size:11px;font-weight:600;padding:0 5px;border-radius:8px;line-height:16px}
+  .delta.up{background:var(--ok-bg);color:var(--ok)}
+  .delta.down{background:var(--err-bg);color:var(--err)}
+  .delta.same{background:#EEF2F7;color:var(--t3)}
+
+  .cmp-summary{display:flex;gap:10px;padding:11px 14px;background:#F7F9FC;border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--t2);flex-wrap:wrap}
+  .cmp-summary b{color:var(--t1)}
+  .cmp-summary .item{display:flex;align-items:center;gap:5px}
+
+  /* ---------- Generate wizard ---------- */
+  .steps{display:flex;align-items:center;gap:8px;margin-bottom:18px}
+  .step{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--t3)}
+  .step .n{width:22px;height:22px;border-radius:50%;background:#EEF2F7;color:var(--t3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600}
+  .step.on{color:var(--brand)}
+  .step.on .n{background:var(--brand);color:#fff}
+  .step.done .n{background:var(--ok-bg);color:var(--ok)}
+  .step-line{width:36px;height:1px;background:var(--line-2)}
+
+  .gen-table td{padding:9px 12px}
+  .gen-q{font-weight:500;font-size:12.5px}
+  .cand{display:flex;align-items:flex-start;gap:7px;margin-bottom:6px}
+  .cand:last-child{margin-bottom:0}
+  .cand label{display:flex;align-items:flex-start;gap:7px;cursor:pointer;font-size:12px;color:var(--t1)}
+  .cand input{margin-top:3px;accent-color:var(--brand)}
+  .cand .src{font-size:10.5px;color:var(--t3);margin-left:4px}
+
+  /* ---------- Side drawer for similar question edit ---------- */
+  .drawer-mask{position:fixed;inset:0;background:rgba(17,24,39,.35);display:none;z-index:90}
+  .drawer-mask.on{display:block}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:520px;background:#fff;box-shadow:-8px 0 30px rgba(16,24,40,.16);display:none;flex-direction:column;z-index:91}
+  .drawer.on{display:flex}
+  .drawer-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center}
+  .drawer-head h3{font-size:15px;font-weight:600}
+  .drawer-head .x{margin-left:auto;cursor:pointer;color:var(--t3);font-size:20px}
+  .drawer-body{padding:18px 20px;overflow-y:auto;flex:1}
+  .drawer-foot{padding:13px 20px;border-top:1px solid var(--line);display:flex;gap:8px}
+  .readonly-box{background:#F7F9FC;border:1px solid var(--line);border-radius:6px;padding:10px 12px;font-size:12.5px;color:var(--t2);line-height:1.65}
+  .readonly-box b{color:var(--t1);display:block;margin-bottom:4px;font-size:12.5px}
+
+  /* ---------- Misc ---------- */
+  .page{display:none}
+  .page.on{display:block}
+  .tabs-body{display:none}
+  .tabs-body.on{display:block}
+  .toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%) translateY(20px);background:#1B2431;color:#fff;padding:9px 16px;border-radius:6px;font-size:12.5px;opacity:0;pointer-events:none;transition:.25s;z-index:200}
+  .toast.on{opacity:1;transform:translateX(-50%)}
+  .hint-line{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--t2);background:#F7F9FC;border:1px dashed var(--line-2);border-radius:6px;padding:9px 11px;margin-bottom:14px}
+  .hint-line svg{width:14px;height:14px;color:var(--brand);flex-shrink:0;margin-top:2px}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ Sidebar ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">华</div>
+      <div>
+        <div class="brand-name">华夏基金 · 知识运营</div>
+        <div class="brand-sub">智能客服后台</div>
+      </div>
+    </div>
+
+    <div class="kb-switch" title="切换知识库">
+      <span class="kb-dot"></span>
+      <div class="kb-meta">
+        <b>基金 FAQ 知识库</b>
+        <span>qa 解析 · 8 个问答对</span>
+      </div>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#949EAC" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-title">知识库</div>
+      <div class="nav-item" data-page="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        概览
+      </div>
+      <div class="nav-item" data-page="docs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        文档
+      </div>
+      <div class="nav-item" data-page="chunks">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        分块
+      </div>
+      <div class="nav-item" data-page="retrieval">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        检索测试
+      </div>
+
+      <div class="nav-title">知识调优</div>
+      <div class="nav-item active" data-page="vocab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        词表管理
+      </div>
+      <div class="nav-item" data-page="similar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        相似问管理
+      </div>
+      <div class="nav-item" data-page="changes">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        变更中心
+        <span class="nav-badge">3</span>
+      </div>
+    </nav>
+
+    <div style="padding:12px 14px;border-top:1px solid var(--line);font-size:11.5px;color:var(--t3);display:flex;align-items:center;gap:7px">
+      <span class="dot" style="background:var(--ok)"></span> 生产环境 · 已发布 v2.4
+    </div>
+  </aside>
+
+  <!-- ============ Main ============ -->
+  <main class="main">
+    <header class="topbar">
+      <div class="crumb">知识库 / <b>基金 FAQ 知识库</b> / <span id="crumbPage">词表管理</span></div>
+      <div class="topbar-right">
+        <button class="btn sm ghost" onclick="toast('已同步最新配置')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          刷新
+        </button>
+        <div class="avatar">刘</div>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- 待生效变更条（全局） -->
+      <div class="banner pending" id="pendingBanner">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>当前有 <b>3 项待生效变更</b>（同义词 1 项、专有词 1 项、相似问 1 项），<b>尚未影响线上检索</b>。</span>
+        <span class="spacer"></span>
+        <button class="btn sm" onclick="openModal('modal-test')">测试对比</button>
+        <button class="btn sm" onclick="discardAll()">全部放弃</button>
+        <button class="btn sm pri" onclick="publishAll()">发布全部</button>
+      </div>
+
+      <!-- ================= Page: 词表管理 ================= -->
+      <section class="page on" id="page-vocab">
+        <div class="page-head">
+          <div>
+            <h1>词表管理</h1>
+            <p>维护同义词、近义词与专有词汇别名，用于查询扩展。修改后先进入待生效区，测试通过再发布。</p>
+          </div>
+          <div class="actions">
+            <button class="btn" onclick="openModal('modal-import')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              批量导入
+            </button>
+            <button class="btn pri" onclick="openGroupModal()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              新增词组
+            </button>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active" data-tab="synonym">同义词 / 近义词 <span class="cnt">9</span></div>
+          <div class="tab" data-tab="proper">专有词汇表 <span class="cnt">8</span></div>
+        </div>
+
+        <!-- 同义词 -->
+        <div class="tabs-body on" id="tab-synonym">
+          <div class="hint-line">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>同义词/近义词用于「整句改写」：用户说「退款」「退钱」「退费」，都能召回到标准问「赎回基金多久到账」。同时适用于 FAQ 库与寒暄库。</span>
+          </div>
+
+          <div class="toolbar">
+            <div class="search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input placeholder="搜索词组名、标准词或词条">
+            </div>
+            <select class="select"><option>全部作用域</option><option>当前知识库</option><option>租户全局</option></select>
+            <select class="select"><option>全部状态</option><option>已生效</option><option>待生效</option></select>
+            <span class="grow"></span>
+            <span class="cell-sub">共 9 个词组</span>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:170px">词组名称</th>
+                  <th style="width:150px">标准词</th>
+                  <th>同义词 / 近义词</th>
+                  <th style="width:150px">作用域</th>
+                  <th style="width:70px">词条数</th>
+                  <th style="width:130px">更新时间</th>
+                  <th style="width:90px">状态</th>
+                  <th style="width:130px">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="cell-strong">退款类说法</td>
+                  <td>赎回基金多久到账</td>
+                  <td><div class="chips"><span class="chip">退款</span><span class="chip">退钱</span><span class="chip">退费</span><span class="chip brand">+ 待新增：钱什么时候退</span></div></td>
+                  <td class="cell-sub">基金 FAQ 知识库</td>
+                  <td>3</td>
+                  <td class="cell-sub">2026-10-19 15:20</td>
+                  <td><span class="tag pending"><span class="dot"></span>待生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link" onclick="openModal('modal-test')">测试</span><span class="link danger" onclick="toast('已放弃该变更')">放弃</span></div></td>
+                </tr>
+                <tr>
+                  <td class="cell-strong">购买类说法</td>
+                  <td>基金怎么买</td>
+                  <td><div class="chips"><span class="chip">买入</span><span class="chip">认购</span><span class="chip">申购</span><span class="chip">在哪买</span></div></td>
+                  <td class="cell-sub">基金 FAQ 知识库</td>
+                  <td>4</td>
+                  <td class="cell-sub">2026-10-18 14:05</td>
+                  <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link danger" onclick="toast('已删除，进入待生效变更')">删除</span></div></td>
+                </tr>
+                <tr>
+                  <td class="cell-strong">费率类说法</td>
+                  <td>申购基金费率是多少</td>
+                  <td><div class="chips"><span class="chip">手续费</span><span class="chip">申购费</span><span class="chip">买入费率</span></div></td>
+                  <td class="cell-sub">租户全局（华夏基金）</td>
+                  <td>3</td>
+                  <td class="cell-sub">2026-10-17 10:30</td>
+                  <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link danger">删除</span></div></td>
+                </tr>
+                <tr>
+                  <td class="cell-strong">净值查询说法</td>
+                  <td>基金净值在哪里查</td>
+                  <td><div class="chips"><span class="chip">净值</span><span class="chip">今日净值</span><span class="chip">净值怎么查</span></div></td>
+                  <td class="cell-sub">基金 FAQ 知识库</td>
+                  <td>3</td>
+                  <td class="cell-sub">2026-10-17 09:12</td>
+                  <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link danger">删除</span></div></td>
+                </tr>
+                <tr>
+                  <td class="cell-strong">转人工说法</td>
+                  <td>怎么转人工</td>
+                  <td><div class="chips"><span class="chip">人工</span><span class="chip">人工客服</span><span class="chip">找人工</span><span class="chip">真人</span></div></td>
+                  <td class="cell-sub">寒暄知识库</td>
+                  <td>4</td>
+                  <td class="cell-sub">2026-10-16 16:40</td>
+                  <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link danger">删除</span></div></td>
+                </tr>
+                <tr>
+                  <td class="cell-strong">问候类说法</td>
+                  <td>你好</td>
+                  <td><div class="chips"><span class="chip">您好</span><span class="chip">哈喽</span><span class="chip">hi</span><span class="chip">在吗</span></div></td>
+                  <td class="cell-sub">寒暄知识库</td>
+                  <td>4</td>
+                  <td class="cell-sub">2026-10-16 16:38</td>
+                  <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link danger">删除</span></div></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="pager">
+              <span>共 9 条</span>
+              <div class="pg"><span>‹</span><span class="on">1</span><span>2</span><span>›</span></div>
+              <select class="select" style="height:26px"><option>10 条/页</option><option>20 条/页</option><option>50 条/页</option></select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 专有词汇表 -->
+        <div class="tabs-body" id="tab-proper">
+          <div class="hint-line">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>专有词汇表用于「实体归一」：把产品全称、简称、别名映射到同一个标准词，避免「50ETF」「上证50」检索不到「华夏上证50ETF」。</span>
+          </div>
+
+          <div class="toolbar">
+            <div class="search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input placeholder="搜索标准词、别名或领域">
+            </div>
+            <select class="select"><option>全部类型</option><option>基金产品</option><option>指数</option><option>机构</option><option>业务术语</option></select>
+            <select class="select"><option>全部作用域</option><option>当前知识库</option><option>租户全局</option></select>
+            <span class="grow"></span>
+            <span class="cell-sub">共 8 条</span>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:190px">标准词</th>
+                  <th style="width:100px">类型</th>
+                  <th>别名 / 简称</th>
+                  <th style="width:120px">所属领域</th>
+                  <th style="width:160px">作用域</th>
+                  <th style="width:90px">状态</th>
+                  <th style="width:120px">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="cell-strong">华夏上证 50ETF</td>
+                  <td><span class="tag blue">基金产品</span></td>
+                  <td><div class="chips"><span class="chip">50ETF</span><span class="chip">上证50</span><span class="chip brand">+ 待新增：华夏50</span></div></td>
+                  <td class="cell-sub">基金</td>
+                  <td class="cell-sub">租户全局（华夏基金）</td>
+                  <td><span class="tag pending"><span class="dot"></span>待生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link" onclick="openModal('modal-test')">测试</span><span class="link danger">放弃</span></div></td>
+                </tr>
+                <tr>
+                  <td class="cell-strong">华夏成长混合</td>
+                  <td><span class="tag blue">基金产品</span></td>
+                  <td><div class="chips"><span class="chip">华夏成长</span><span class="chip">成长混合</span></div></td>
+                  <td class="cell-sub">基金</td>
+                  <td class="cell-sub">租户全局（华夏基金）</td>
+                  <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link danger">删除</span></div></td>
+                </tr>
+                <tr>
+                  <td class="cell-strong">华夏基金</td>
+                  <td><span class="tag blue">机构</span></td>
+                  <td><div class="chips"><span class="chip">华夏</span><span class="chip">华夏基金股份有限公司</span></div></td>
+                  <td class="cell-sub">基金</td>
+                  <td class="cell-sub">租户全局（华夏基金）</td>
+                  <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link danger">删除</span></div></td>
+                </tr>
+                <tr>
+                  <td class="cell-strong">申购</td>
+                  <td><span class="tag blue">业务术语</span></td>
+                  <td><div class="chips"><span class="chip">买入</span><span class="chip">认购</span><span class="chip">买进</span></div></td>
+                  <td class="cell-sub">基金</td>
+                  <td class="cell-sub">基金 FAQ 知识库</td>
+                  <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link danger">删除</span></div></td>
+                </tr>
+                <tr>
+                  <td class="cell-strong">赎回</td>
+                  <td><span class="tag blue">业务术语</span></td>
+                  <td><div class="chips"><span class="chip">卖出</span><span class="chip">取出</span><span class="chip">提现</span></div></td>
+                  <td class="cell-sub">基金</td>
+                  <td class="cell-sub">基金 FAQ 知识库</td>
+                  <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link danger">删除</span></div></td>
+                </tr>
+                <tr>
+                  <td class="cell-strong">风险测评</td>
+                  <td><span class="tag blue">业务术语</span></td>
+                  <td><div class="chips"><span class="chip">风险测试</span><span class="chip">风险问卷</span><span class="chip">测评</span></div></td>
+                  <td class="cell-sub">基金</td>
+                  <td class="cell-sub">租户全局（华夏基金）</td>
+                  <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                  <td><div class="cell-actions"><span class="link" onclick="openGroupModal()">编辑</span><span class="link danger">删除</span></div></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="pager">
+              <span>共 8 条</span>
+              <div class="pg"><span>‹</span><span class="on">1</span><span>›</span></div>
+              <select class="select" style="height:26px"><option>10 条/页</option><option>20 条/页</option></select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= Page: 相似问管理 ================= -->
+      <section class="page" id="page-similar">
+        <div class="page-head">
+          <div>
+            <h1>相似问管理</h1>
+            <p>为每个标准问维护多种用户问法。支持手工编辑，或基于「现有问答 + 提示词」批量生成候选。</p>
+          </div>
+          <div class="actions">
+            <button class="btn" onclick="toast('已下载相似问模板')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              下载模板
+            </button>
+            <button class="btn" onclick="openModal('modal-import')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              批量导入
+            </button>
+            <button class="btn pri" onclick="openGenerate()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="M19 15l.9 2.1 2.1.9-2.1.9L19 21l-.9-2.1-2.1-.9 2.1-.9z"/></svg>
+              批量生成
+            </button>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input placeholder="搜索标准问或相似问">
+          </div>
+          <select class="select"><option>全部文档</option><option>基金FAQ知识库</option><option>寒暄知识库</option></select>
+          <select class="select"><option>全部状态</option><option>已生效</option><option>待生效</option><option>无相似问</option></select>
+          <span class="grow"></span>
+          <span class="cell-sub">共 20 个问答对</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:220px">标准问</th>
+                <th>答案摘要</th>
+                <th style="width:300px">相似问</th>
+                <th style="width:130px">来源文档</th>
+                <th style="width:90px">状态</th>
+                <th style="width:150px">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="cell-strong">基金怎么买</td>
+                <td><div class="truncate cell-sub" style="max-width:300px">您可通过以下渠道购买华夏基金产品：1）官网、APP、微信服务号；2）银行、证券公司等代销机构…</div></td>
+                <td>
+                  <div class="chips">
+                    <span class="chip">工资理财去哪买</span>
+                    <span class="chip">在哪买基金</span>
+                    <span class="chip brand">+ 待新增：刚发的工资怎么买基金</span>
+                  </div>
+                </td>
+                <td class="cell-sub">基金FAQ知识库</td>
+                <td><span class="tag pending"><span class="dot"></span>待生效</span></td>
+                <td><div class="cell-actions"><span class="link" onclick="openSimilarDrawer('基金怎么买')">编辑</span><span class="link" onclick="openGenerate('基金怎么买')">生成</span><span class="link danger">放弃</span></div></td>
+              </tr>
+              <tr>
+                <td class="cell-strong">赎回基金多久到账</td>
+                <td><div class="truncate cell-sub" style="max-width:300px">到账时间取决于基金类型：货币基金多为 T+0 或 T+1；债券型、股票型一般 T+1 至 T+4 个工作日…</div></td>
+                <td><div class="chips"><span class="chip">退款要多久</span><span class="chip">钱什么时候到账</span></div></td>
+                <td class="cell-sub">基金FAQ知识库</td>
+                <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                <td><div class="cell-actions"><span class="link" onclick="openSimilarDrawer('赎回基金多久到账')">编辑</span><span class="link" onclick="openGenerate('赎回基金多久到账')">生成</span><span class="link danger">删除</span></div></td>
+              </tr>
+              <tr>
+                <td class="cell-strong">申购基金费率是多少</td>
+                <td><div class="truncate cell-sub" style="max-width:300px">申购费率因产品和销售渠道而异。股票型基金标准申购费通常为 1.2% 至 1.5%…</div></td>
+                <td><div class="chips"><span class="chip">手续费多少</span><span class="chip">买入费率</span><span class="chip">申购费</span></div></td>
+                <td class="cell-sub">基金FAQ知识库</td>
+                <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                <td><div class="cell-actions"><span class="link" onclick="openSimilarDrawer('申购基金费率是多少')">编辑</span><span class="link" onclick="openGenerate('申购基金费率是多少')">生成</span><span class="link danger">删除</span></div></td>
+              </tr>
+              <tr>
+                <td class="cell-strong">基金净值在哪里查</td>
+                <td><div class="truncate cell-sub" style="max-width:300px">您可在华夏基金官网、官方 APP、微信服务号查询每日净值；一般交易日 19:00 后可查看当日净值更新…</div></td>
+                <td><div class="chips"><span class="chip">今日净值</span><span class="chip">净值怎么查</span></div></td>
+                <td class="cell-sub">基金FAQ知识库</td>
+                <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                <td><div class="cell-actions"><span class="link" onclick="openSimilarDrawer('基金净值在哪里查')">编辑</span><span class="link" onclick="openGenerate('基金净值在哪里查')">生成</span><span class="link danger">删除</span></div></td>
+              </tr>
+              <tr>
+                <td class="cell-strong">什么是基金定投</td>
+                <td><div class="truncate cell-sub" style="max-width:300px">基金定投是在固定时间以固定金额自动申购同一只基金的投资方式，能够平摊成本、分散择时风险…</div></td>
+                <td><div class="chips"><span class="chip">定投是什么</span></div></td>
+                <td class="cell-sub">基金FAQ知识库</td>
+                <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                <td><div class="cell-actions"><span class="link" onclick="openSimilarDrawer('什么是基金定投')">编辑</span><span class="link" onclick="openGenerate('什么是基金定投')">生成</span><span class="link danger">删除</span></div></td>
+              </tr>
+              <tr>
+                <td class="cell-strong">你好</td>
+                <td><div class="truncate cell-sub" style="max-width:300px">您好，我是华夏基金智能客服小夏，很高兴为您服务～请问有什么可以帮您？</div></td>
+                <td><div class="chips"><span class="chip">您好</span><span class="chip">哈喽</span><span class="chip">在吗</span></div></td>
+                <td class="cell-sub">寒暄知识库</td>
+                <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                <td><div class="cell-actions"><span class="link" onclick="openSimilarDrawer('你好')">编辑</span><span class="link" onclick="openGenerate('你好')">生成</span><span class="link danger">删除</span></div></td>
+              </tr>
+              <tr>
+                <td class="cell-strong">怎么转人工</td>
+                <td><div class="truncate cell-sub" style="max-width:300px">您可以直接对我说「转人工」或「人工客服」，我会立即为您转接。人工服务时间一般为交易日 9:00-17:00…</div></td>
+                <td><div class="chips"><span class="chip">人工客服</span><span class="chip">找人工</span><span class="chip">真人</span></div></td>
+                <td class="cell-sub">寒暄知识库</td>
+                <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                <td><div class="cell-actions"><span class="link" onclick="openSimilarDrawer('怎么转人工')">编辑</span><span class="link" onclick="openGenerate('怎么转人工')">生成</span><span class="link danger">删除</span></div></td>
+              </tr>
+              <tr>
+                <td class="cell-strong">基金分红方式有哪些</td>
+                <td><div class="truncate cell-sub" style="max-width:300px">基金分红有现金分红和红利再投资两种方式。现金分红直接到账银行卡；红利再投资将红利转为基金份额…</div></td>
+                <td><span class="cell-sub">— 暂无相似问</span></td>
+                <td class="cell-sub">基金FAQ知识库</td>
+                <td><span class="tag live"><span class="dot"></span>已生效</span></td>
+                <td><div class="cell-actions"><span class="link" onclick="openSimilarDrawer('基金分红方式有哪些')">编辑</span><span class="link" onclick="openGenerate('基金分红方式有哪些')">生成</span><span class="link danger">删除</span></div></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pager">
+            <span>共 20 条</span>
+            <div class="pg"><span>‹</span><span class="on">1</span><span>2</span><span>3</span><span>›</span></div>
+            <select class="select" style="height:26px"><option>10 条/页</option><option>20 条/页</option></select>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= Page: 变更中心 ================= -->
+      <section class="page" id="page-changes">
+        <div class="page-head">
+          <div>
+            <h1>变更中心</h1>
+            <p>所有修改先进入这里暂存，测试对比通过后再发布。发布前不会影响线上检索。</p>
+          </div>
+          <div class="actions">
+            <button class="btn" onclick="discardAll()">全部放弃</button>
+            <button class="btn" onclick="openModal('modal-test')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              测试对比
+            </button>
+            <button class="btn pri" onclick="publishAll()">发布全部</button>
+          </div>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><dt>待生效变更</dt><dd>3 <small>项</small></dd></div>
+          <div class="stat"><dt>涉及问答对 / 词条</dt><dd>5 <small>条</small></dd></div>
+          <div class="stat"><dt>最近修改</dt><dd style="font-size:15px;padding-top:5px">今天 15:20</dd></div>
+          <div class="stat"><dt>上次发布</dt><dd style="font-size:15px;padding-top:5px">今天 10:02</dd></div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:110px">变更类型</th>
+                <th style="width:190px">对象</th>
+                <th>变更前</th>
+                <th>变更后</th>
+                <th style="width:100px">操作人</th>
+                <th style="width:130px">时间</th>
+                <th style="width:90px">状态</th>
+                <th style="width:80px">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="tag blue">同义词</span></td>
+                <td class="cell-strong">退款类说法 / 赎回基金多久到账</td>
+                <td><div class="chips"><span class="chip">退款</span><span class="chip">退钱</span><span class="chip">退费</span></div></td>
+                <td><div class="chips"><span class="chip">退款</span><span class="chip">退钱</span><span class="chip">退费</span><span class="chip brand">钱什么时候退</span></div></td>
+                <td class="cell-sub">刘问胜</td>
+                <td class="cell-sub">15:20</td>
+                <td><span class="tag pending"><span class="dot"></span>待生效</span></td>
+                <td><span class="link danger" onclick="toast('已撤销该变更')">撤销</span></td>
+              </tr>
+              <tr>
+                <td><span class="tag blue">专有词</span></td>
+                <td class="cell-strong">华夏上证 50ETF</td>
+                <td><div class="chips"><span class="chip">50ETF</span><span class="chip">上证50</span></div></td>
+                <td><div class="chips"><span class="chip">50ETF</span><span class="chip">上证50</span><span class="chip brand">华夏50</span></div></td>
+                <td class="cell-sub">刘问胜</td>
+                <td class="cell-sub">14:58</td>
+                <td><span class="tag pending"><span class="dot"></span>待生效</span></td>
+                <td><span class="link danger" onclick="toast('已撤销该变更')">撤销</span></td>
+              </tr>
+              <tr>
+                <td><span class="tag blue">相似问</span></td>
+                <td class="cell-strong">基金怎么买</td>
+                <td><div class="chips"><span class="chip">工资理财去哪买</span><span class="chip">在哪买基金</span></div></td>
+                <td><div class="chips"><span class="chip">工资理财去哪买</span><span class="chip">在哪买基金</span><span class="chip brand">刚发的工资怎么买基金</span></div></td>
+                <td class="cell-sub">刘问胜</td>
+                <td class="cell-sub">15:12</td>
+                <td><span class="tag pending"><span class="dot"></span>待生效</span></td>
+                <td><span class="link danger" onclick="toast('已撤销该变更')">撤销</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="empty" id="changesEmpty" style="display:none">
+            <div class="ico">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            </div>
+            暂无待生效变更，所有修改均已发布
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 其他占位页 ================= -->
+      <section class="page" id="page-overview">
+        <div class="page-head"><div><h1>概览</h1><p>知识库运行概况（本原型重点在词表与相似问，此处为占位）。</p></div></div>
+        <div class="empty"><div class="ico">▦</div>概览页占位</div>
+      </section>
+      <section class="page" id="page-docs">
+        <div class="page-head"><div><h1>文档</h1><p>知识库文档列表（占位）。</p></div></div>
+        <div class="empty"><div class="ico">▤</div>文档页占位</div>
+      </section>
+      <section class="page" id="page-chunks">
+        <div class="page-head"><div><h1>分块</h1><p>分块结果与编辑（占位）。</p></div></div>
+        <div class="empty"><div class="ico">☰</div>分块页占位</div>
+      </section>
+      <section class="page" id="page-retrieval">
+        <div class="page-head"><div><h1>检索测试</h1><p>原有单库检索测试（占位），本原型新增的是「测试对比」弹窗。</p></div></div>
+        <div class="empty"><div class="ico">⌕</div>检索测试页占位</div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- ===================== Modal: 测试对比 ===================== -->
+<div class="mask" id="modal-test">
+  <div class="modal lg">
+    <div class="modal-head">
+      <div>
+        <h3>测试对比 · 原配置 vs 新配置</h3>
+        <div style="font-size:12px;color:var(--t3);margin-top:2px">待生效变更不会影响线上，这里用同一批问题分别跑两套配置</div>
+      </div>
+      <span class="x" onclick="closeModal('modal-test')">×</span>
+    </div>
+    <div class="modal-body">
+      <!-- 输入区 -->
+      <div class="test-head">
+        <div style="font-size:12.5px;color:var(--t2);margin-bottom:7px;font-weight:500">测试问题 <span class="cell-sub">（最多 10 条，每条单独对比）</span></div>
+        <div class="test-queries" id="queryList">
+          <span class="qchip">50ETF 能买吗 <span class="x" onclick="this.parentNode.remove()">×</span></span>
+          <span class="qchip">工资理财去哪买 <span class="x" onclick="this.parentNode.remove()">×</span></span>
+          <span class="qchip">退款要多久 <span class="x" onclick="this.parentNode.remove()">×</span></span>
+          <span class="qchip" style="border-style:dashed;color:var(--brand);cursor:pointer" onclick="addQuery()">+ 添加问题</span>
+        </div>
+        <div class="test-params">
+          <div class="p">Top K <input class="input" value="5"></div>
+          <div class="p">相似度阈值 <input class="input" value="0.20"></div>
+          <div class="p">关键词权重 <input class="input" value="0.70"></div>
+          <div class="p">Rerank <select class="select"><option>不启用</option><option>启用</option></select></div>
+          <span class="grow" style="flex:1"></span>
+          <button class="btn pri sm" onclick="runTest()">开始测试</button>
+        </div>
+      </div>
+
+      <!-- 结果区 -->
+      <div id="testResults">
+        <!-- Query 1 -->
+        <div class="compare-block">
+          <div class="compare-title"><span class="idx">1</span> 50ETF 能买吗 <span class="tag pending" style="margin-left:auto">词表扩展 + 相似问 有变化</span></div>
+          <div class="expand-line">
+            <b>查询扩展</b>
+            <span>原：<span class="chip">50ETF</span><span class="chip">能买吗</span></span>
+            <span class="arrow">→</span>
+            <span>新：<span class="chip">50ETF</span><span class="chip brand">华夏上证50ETF</span><span class="chip brand">上证50</span><span class="chip brand">华夏50</span><span class="chip">能买吗</span></span>
+          </div>
+          <div class="cmp-grid">
+            <div class="cmp-col">
+              <div class="cmp-col-head"><b>原配置（已生效）</b><span class="tag live">线上</span></div>
+              <div class="hit">
+                <div class="rank">1</div>
+                <div class="body">
+                  <div class="q">基金怎么买</div>
+                  <div class="a">您可通过以下渠道购买华夏基金产品：官网、APP、微信服务号，或银行、证券公司等代销机构。</div>
+                  <div class="meta"><span class="score">0.612</span><span>相似问命中：—</span></div>
+                </div>
+              </div>
+              <div class="hit">
+                <div class="rank">2</div>
+                <div class="body">
+                  <div class="q">申购基金费率是多少</div>
+                  <div class="a">申购费率因产品和销售渠道而异，股票型基金标准申购费通常为 1.2% 至 1.5%。</div>
+                  <div class="meta"><span class="score">0.487</span><span>相似问命中：—</span></div>
+                </div>
+              </div>
+              <div class="hit">
+                <div class="rank">3</div>
+                <div class="body">
+                  <div class="q">开户需要准备什么</div>
+                  <div class="a">个人开户需准备本人有效身份证和一张银行储蓄卡，通过 APP 或官网在线完成实名认证。</div>
+                  <div class="meta"><span class="score">0.401</span><span>相似问命中：—</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="cmp-col">
+              <div class="cmp-col-head"><b>新配置（待生效）</b><span class="tag pending">未发布</span></div>
+              <div class="hit new">
+                <div class="rank">1</div>
+                <div class="body">
+                  <div class="q">华夏上证 50ETF <span class="tag blue" style="font-size:10px">新增召回</span></div>
+                  <div class="a">华夏上证 50ETF 跟踪上证 50 指数，可通过场内证券账户或场外基金账户申购，具体以产品合同为准。</div>
+                  <div class="meta"><span class="score">0.874</span><span class="delta up">+0.262</span><span>命中别名：华夏50</span></div>
+                </div>
+              </div>
+              <div class="hit">
+                <div class="rank">2</div>
+                <div class="body">
+                  <div class="q">基金怎么买</div>
+                  <div class="a">您可通过以下渠道购买华夏基金产品：官网、APP、微信服务号，或银行、证券公司等代销机构。</div>
+                  <div class="meta"><span class="score">0.612</span><span class="delta same">不变</span><span>相似问命中：—</span></div>
+                </div>
+              </div>
+              <div class="hit">
+                <div class="rank">3</div>
+                <div class="body">
+                  <div class="q">申购基金费率是多少</div>
+                  <div class="a">申购费率因产品和销售渠道而异，股票型基金标准申购费通常为 1.2% 至 1.5%。</div>
+                  <div class="meta"><span class="score">0.487</span><span class="delta down">↓1</span><span>相似问命中：—</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Query 2 -->
+        <div class="compare-block">
+          <div class="compare-title"><span class="idx">2</span> 工资理财去哪买 <span class="tag pending" style="margin-left:auto">相似问命中变化</span></div>
+          <div class="expand-line">
+            <b>查询扩展</b>
+            <span style="color:var(--t3)">本次变更不涉及该 query 的同义词，扩展词无变化</span>
+          </div>
+          <div class="cmp-grid">
+            <div class="cmp-col">
+              <div class="cmp-col-head"><b>原配置（已生效）</b><span class="tag live">线上</span></div>
+              <div class="hit">
+                <div class="rank">1</div>
+                <div class="body">
+                  <div class="q">基金怎么买</div>
+                  <div class="a">您可通过以下渠道购买华夏基金产品：官网、APP、微信服务号，或银行、证券公司等代销机构。</div>
+                  <div class="meta"><span class="score">0.708</span><span>相似问命中：工资理财去哪买</span></div>
+                </div>
+              </div>
+              <div class="hit">
+                <div class="rank">2</div>
+                <div class="body">
+                  <div class="q">什么是基金定投</div>
+                  <div class="a">基金定投是在固定时间以固定金额自动申购同一只基金，能够平摊成本、分散择时风险。</div>
+                  <div class="meta"><span class="score">0.533</span><span>相似问命中：—</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="cmp-col">
+              <div class="cmp-col-head"><b>新配置（待生效）</b><span class="tag pending">未发布</span></div>
+              <div class="hit">
+                <div class="rank">1</div>
+                <div class="body">
+                  <div class="q">基金怎么买</div>
+                  <div class="a">您可通过以下渠道购买华夏基金产品：官网、APP、微信服务号，或银行、证券公司等代销机构。</div>
+                  <div class="meta"><span class="score">0.821</span><span class="delta up">+0.113</span><span>相似问命中：刚发的工资怎么买基金</span></div>
+                </div>
+              </div>
+              <div class="hit">
+                <div class="rank">2</div>
+                <div class="body">
+                  <div class="q">什么是基金定投</div>
+                  <div class="a">基金定投是在固定时间以固定金额自动申购同一只基金，能够平摊成本、分散择时风险。</div>
+                  <div class="meta"><span class="score">0.533</span><span class="delta same">不变</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Query 3 -->
+        <div class="compare-block">
+          <div class="compare-title"><span class="idx">3</span> 退款要多久 <span class="tag pending" style="margin-left:auto">同义词扩展命中</span></div>
+          <div class="expand-line">
+            <b>查询扩展</b>
+            <span>原：<span class="chip">退款</span><span class="chip">要多久</span></span>
+            <span class="arrow">→</span>
+            <span>新：<span class="chip">退款</span><span class="chip brand">赎回</span><span class="chip brand">退钱</span><span class="chip brand">退费</span><span class="chip brand">钱什么时候退</span><span class="chip">要多久</span></span>
+          </div>
+          <div class="cmp-grid">
+            <div class="cmp-col">
+              <div class="cmp-col-head"><b>原配置（已生效）</b><span class="tag live">线上</span></div>
+              <div class="hit">
+                <div class="rank">1</div>
+                <div class="body">
+                  <div class="q">申购基金费率是多少</div>
+                  <div class="a">申购费率因产品和销售渠道而异，股票型基金标准申购费通常为 1.2% 至 1.5%。</div>
+                  <div class="meta"><span class="score">0.352</span><span>相似问命中：—</span></div>
+                </div>
+              </div>
+              <div class="hit gone">
+                <div class="rank">2</div>
+                <div class="body">
+                  <div class="q">基金分红方式有哪些 <span class="tag err" style="font-size:10px">错误命中</span></div>
+                  <div class="a">基金分红有现金分红和红利再投资两种方式，现金分红直接到账银行卡。</div>
+                  <div class="meta"><span class="score">0.318</span><span>相似问命中：—</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="cmp-col">
+              <div class="cmp-col-head"><b>新配置（待生效）</b><span class="tag pending">未发布</span></div>
+              <div class="hit new">
+                <div class="rank">1</div>
+                <div class="body">
+                  <div class="q">赎回基金多久到账 <span class="tag blue" style="font-size:10px">新增召回</span></div>
+                  <div class="a">到账时间取决于基金类型：货币基金多为 T+0 或 T+1；债券型、股票型一般 T+1 至 T+4 个工作日。</div>
+                  <div class="meta"><span class="score">0.796</span><span class="delta up">新进 Top1</span><span>同义词命中：退钱 / 钱什么时候退</span></div>
+                </div>
+              </div>
+              <div class="hit">
+                <div class="rank">2</div>
+                <div class="body">
+                  <div class="q">申购基金费率是多少</div>
+                  <div class="a">申购费率因产品和销售渠道而异，股票型基金标准申购费通常为 1.2% 至 1.5%。</div>
+                  <div class="meta"><span class="score">0.352</span><span class="delta down">↓1</span></div>
+                </div>
+              </div>
+              <div class="hit new">
+                <div class="rank">3</div>
+                <div class="body">
+                  <div class="q">华夏上证 50ETF</div>
+                  <div class="a">华夏上证 50ETF 跟踪上证 50 指数，可通过场内证券账户或场外基金账户申购。</div>
+                  <div class="meta"><span class="score">0.331</span><span class="delta up">新进</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cmp-summary">
+          <div class="item"><b>汇总</b></div>
+          <div class="item"><span class="delta up">新增召回 3 条</span></div>
+          <div class="item"><span class="delta up">排名上升 1 条</span></div>
+          <div class="item"><span class="delta down">排名下降 2 条</span></div>
+          <div class="item"><span class="delta same">无变化 4 条</span></div>
+          <div class="item" style="margin-left:auto;color:var(--warn-t)">⚠ 建议重点确认：Query 3 的「华夏上证 50ETF」是否属于本次预期召回</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="cell-sub">测试结果仅本次有效，发布后线上生效</span>
+      <span class="spacer"></span>
+      <button class="btn" onclick="closeModal('modal-test')">关闭</button>
+      <button class="btn" onclick="toast('已保存测试记录，可在变更中心查看')">保存测试记录</button>
+      <button class="btn pri" onclick="publishAll(true)">确认发布</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== Modal: 新增/编辑词组 ===================== -->
+<div class="mask" id="modal-group">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="groupModalTitle">新增词组</h3>
+      <span class="x" onclick="closeModal('modal-group')">×</span>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>词组名称 <span class="req">*</span></label>
+        <input class="input" value="退款类说法" placeholder="如：退款类说法、华夏产品别名">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>类型 <span class="req">*</span></label>
+          <select class="select" style="width:100%">
+            <option>同义词 / 近义词</option>
+            <option>专有词汇（基金产品）</option>
+            <option>专有词汇（机构）</option>
+            <option>专有词汇（业务术语）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>作用域 <span class="req">*</span></label>
+          <select class="select" style="width:100%">
+            <option>当前知识库（基金 FAQ 知识库）</option>
+            <option>租户全局（华夏基金）</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>标准词 <span class="req">*</span></label>
+        <input class="input" value="赎回基金多久到账" placeholder="该词组指向的标准词或标准问题">
+        <div class="hint">检索时，组内任一词条都会扩展出标准词；标准词本身必须是知识库中已有的问法或术语。</div>
+      </div>
+      <div class="field">
+        <label>同义词 / 别名 <span class="req">*</span></label>
+        <div class="chips" style="margin-bottom:8px">
+          <span class="chip">退款 <span class="x" onclick="this.parentNode.remove()">×</span></span>
+          <span class="chip">退钱 <span class="x" onclick="this.parentNode.remove()">×</span></span>
+          <span class="chip">退费 <span class="x" onclick="this.parentNode.remove()">×</span></span>
+          <span class="chip brand">钱什么时候退 <span class="x" onclick="this.parentNode.remove()">×</span></span>
+        </div>
+        <input class="input" placeholder="输入后按回车添加，单组最多 200 个词条" onkeydown="if(event.key==='Enter'){addChip(this)}">
+      </div>
+      <div class="field">
+        <label>备注</label>
+        <textarea class="textarea" placeholder="说明这组词的用途，便于后续维护"></textarea>
+      </div>
+      <div class="banner info" style="margin:0">
+        <span>保存后进入 <b>待生效区</b>，不会立即影响线上检索。请在变更中心完成测试对比后再发布。</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn" onclick="closeModal('modal-group')">取消</button>
+      <button class="btn pri" onclick="saveGroup()">保存为待生效变更</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== Modal: 批量导入 ===================== -->
+<div class="mask" id="modal-import">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>批量导入词表 / 相似问</h3>
+      <span class="x" onclick="closeModal('modal-import')">×</span>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>导入类型</label>
+        <select class="select" style="width:100%">
+          <option>同义词 / 近义词</option>
+          <option>专有词汇表</option>
+          <option>相似问</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>作用域</label>
+        <select class="select" style="width:100%">
+          <option>当前知识库（基金 FAQ 知识库）</option>
+          <option>租户全局（华夏基金）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>上传文件 <span class="req">*</span></label>
+        <div style="border:1px dashed var(--line-2);border-radius:6px;padding:26px;text-align:center;color:var(--t3);cursor:pointer" onclick="toast('已选择文件：词表模板.xlsx')">
+          <div style="font-size:22px;margin-bottom:6px">⬆</div>
+          点击选择文件，或将文件拖到此处
+          <div class="hint">支持 .xlsx / .csv，单次最多 2000 行</div>
+        </div>
+      </div>
+      <div class="banner info" style="margin:0">
+        <span>导入内容同样进入 <b>待生效区</b>，并在变更中心生成一条「批量导入」变更记录。</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn" onclick="closeModal('modal-import')">取消</button>
+      <button class="btn pri" onclick="closeModal('modal-import');toast('已导入 12 条，进入待生效区')">开始导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== Modal: 批量生成相似问 ===================== -->
+<div class="mask" id="modal-generate">
+  <div class="modal md">
+    <div class="modal-head">
+      <div>
+        <h3>批量生成相似问</h3>
+        <div style="font-size:12px;color:var(--t3);margin-top:2px">基于现有问答 + 提示词生成候选，人工勾选后才进入待生效区</div>
+      </div>
+      <span class="x" onclick="closeModal('modal-generate')">×</span>
+    </div>
+    <div class="modal-body">
+      <div class="steps">
+        <div class="step on" id="gstep1"><span class="n">1</span> 选择范围与提示词</div>
+        <div class="step-line"></div>
+        <div class="step" id="gstep2"><span class="n">2</span> 生成候选</div>
+        <div class="step-line"></div>
+        <div class="step" id="gstep3"><span class="n">3</span> 勾选采纳</div>
+      </div>
+
+      <!-- Step 1 -->
+      <div id="genStep1">
+        <div class="field">
+          <label>生成范围 <span class="req">*</span></label>
+          <select class="select" style="width:100%">
+            <option>全库（20 个问答对）</option>
+            <option>按文档：基金FAQ知识库（8 条）</option>
+            <option>按文档：寒暄知识库（12 条）</option>
+            <option>仅无相似问的问答对（3 条）</option>
+            <option>当前选中：基金怎么买</option>
+          </select>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>每个标准问生成数量</label>
+            <select class="select" style="width:100%">
+              <option>3 条</option><option>5 条</option><option>8 条</option><option>10 条</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>生成模型</label>
+            <select class="select" style="width:100%">
+              <option>租户默认模型（Qwen2.5-72B）</option>
+              <option>其他已配置模型</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>提示词 <span class="hint" style="display:inline">可修改，修改后仅影响本次生成</span></label>
+          <textarea class="textarea" style="min-height:110px">你是基金行业客服训练师。请针对给定的标准问题与答案，生成 3 条用户在真实咨询中可能使用的相似问法。
+
+要求：
+1. 口语化，贴近用户真实表达，不要照抄标准问；
+2. 覆盖不同说法（如「怎么买」「在哪买」「能不能买」）；
+3. 不要改变原意，不要引入答案中没有的信息；
+4. 只输出相似问，每行一条，不要编号和解释。</textarea>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div id="genStep2" style="display:none">
+        <div style="padding:30px 0;text-align:center">
+          <div style="font-size:13px;color:var(--t2);margin-bottom:14px">正在生成相似问，请稍候…</div>
+          <div style="height:6px;background:#EEF2F7;border-radius:3px;overflow:hidden;max-width:420px;margin:0 auto">
+            <div id="genBar" style="height:100%;width:0;background:var(--brand);transition:width .3s"></div>
+          </div>
+          <div class="hint" id="genProgress" style="margin-top:10px">已完成 0 / 20 个问答对</div>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div id="genStep3" style="display:none">
+        <div class="banner info" style="margin-bottom:12px">
+          <span>已生成 <b>60 条候选</b>，默认勾选置信度较高的 <b>38 条</b>。可逐条取消。</span>
+        </div>
+        <div class="table-wrap" style="max-height:360px;overflow-y:auto">
+          <table class="gen-table">
+            <thead><tr><th style="width:200px">标准问</th><th>候选相似问</th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="gen-q">基金怎么买</td>
+                <td>
+                  <div class="cand"><label><input type="checkbox" checked> 刚发的工资怎么买基金 <span class="src">高置信</span></label></div>
+                  <div class="cand"><label><input type="checkbox" checked> 买基金去哪里开户 <span class="src">高置信</span></label></div>
+                  <div class="cand"><label><input type="checkbox"> 基金购买流程是什么 <span class="src">中置信</span></label></div>
+                </td>
+              </tr>
+              <tr>
+                <td class="gen-q">赎回基金多久到账</td>
+                <td>
+                  <div class="cand"><label><input type="checkbox" checked> 钱什么时候能到账 <span class="src">高置信</span></label></div>
+                  <div class="cand"><label><input type="checkbox" checked> 退款要等几天 <span class="src">高置信</span></label></div>
+                  <div class="cand"><label><input type="checkbox"> 卖出基金后多久到银行卡 <span class="src">中置信</span></label></div>
+                </td>
+              </tr>
+              <tr>
+                <td class="gen-q">申购基金费率是多少</td>
+                <td>
+                  <div class="cand"><label><input type="checkbox" checked> 买基金手续费多少 <span class="src">高置信</span></label></div>
+                  <div class="cand"><label><input type="checkbox" checked> 申购费怎么算 <span class="src">高置信</span></label></div>
+                  <div class="cand"><label><input type="checkbox"> 有没有费率优惠 <span class="src">中置信</span></label></div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="cell-sub" id="genFootHint">生成结果需人工确认，不会自动写入</span>
+      <span class="spacer"></span>
+      <button class="btn" onclick="closeModal('modal-generate')">取消</button>
+      <button class="btn" id="genPrev" style="display:none" onclick="genBack()">上一步</button>
+      <button class="btn pri" id="genNext" onclick="genNext()">开始生成</button>
+      <button class="btn pri" id="genSave" style="display:none" onclick="saveGenerated()">加入待生效变更（38 条）</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== Drawer: 编辑相似问 ===================== -->
+<div class="drawer-mask" id="drawerMask" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawerSimilar">
+  <div class="drawer-head">
+    <h3>编辑相似问</h3>
+    <span class="x" onclick="closeDrawer()">×</span>
+  </div>
+  <div class="drawer-body">
+    <div class="field">
+      <div class="readonly-box"><b>标准问</b><span id="drawerQ">基金怎么买</span></div>
+    </div>
+    <div class="field">
+      <div class="readonly-box"><b>答案</b>您可通过以下渠道购买华夏基金产品：1）华夏基金官网、官方 APP、微信服务号；2）银行、证券公司等代销机构。首次购买需先开户并完成风险测评。</div>
+    </div>
+    <div class="field">
+      <label>相似问 <span class="req">*</span> <span class="hint" style="display:inline">每个问答对建议 3~8 条</span></label>
+      <div class="chips" style="margin-bottom:8px">
+        <span class="chip">工资理财去哪买 <span class="x" onclick="this.parentNode.remove()">×</span></span>
+        <span class="chip">在哪买基金 <span class="x" onclick="this.parentNode.remove()">×</span></span>
+        <span class="chip brand">刚发的工资怎么买基金 <span class="x" onclick="this.parentNode.remove()">×</span></span>
+      </div>
+      <input class="input" placeholder="输入相似问后按回车添加" onkeydown="if(event.key==='Enter'){addChip(this)}">
+    </div>
+    <div class="field">
+      <label>生成相似问</label>
+      <button class="btn" style="width:100%" onclick="closeDrawer();openGenerate('基金怎么买')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/></svg>
+        基于当前问答 + 提示词生成候选
+      </button>
+      <div class="hint">生成结果会先进入候选列表，勾选后才写入待生效区。</div>
+    </div>
+    <div class="field">
+      <label>生效方式</label>
+      <div class="banner info" style="margin:0">
+        <span>保存后进入 <b>待生效区</b>，不影响线上。需在变更中心测试对比后发布。</span>
+      </div>
+    </div>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn" onclick="closeDrawer()">取消</button>
+    <span class="spacer" style="flex:1"></span>
+    <button class="btn pri" onclick="closeDrawer();toast('已保存相似问，进入待生效区')">保存为待生效变更</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  /* ---------- 页面切换 ---------- */
+  const pageNames = {vocab:'词表管理', similar:'相似问管理', changes:'变更中心', overview:'概览', docs:'文档', chunks:'分块', retrieval:'检索测试'};
+  document.querySelectorAll('.nav-item[data-page]').forEach(el => {
+    el.addEventListener('click', () => {
+      const page = el.dataset.page;
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      el.classList.add('active');
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
+      const target = document.getElementById('page-' + page);
+      if (target) target.classList.add('on');
+      document.getElementById('crumbPage').textContent = pageNames[page] || '';
+      window.scrollTo({top:0});
+    });
+  });
+
+  /* ---------- Tab 切换 ---------- */
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const group = tab.parentElement;
+      group.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const body = tab.closest('.page');
+      body.querySelectorAll('.tabs-body').forEach(b => b.classList.remove('on'));
+      const target = document.getElementById('tab-' + tab.dataset.tab);
+      if (target) target.classList.add('on');
+    });
+  });
+
+  /* ---------- Modal ---------- */
+  function openModal(id){
+    document.getElementById(id).classList.add('on');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeModal(id){
+    document.getElementById(id).classList.remove('on');
+    document.body.style.overflow = '';
+  }
+  document.querySelectorAll('.mask').forEach(m => {
+    m.addEventListener('mousedown', e => { if (e.target === m) closeModal(m.id); });
+  });
+
+  /* ---------- 编辑词组 ---------- */
+  function openGroupModal(){
+    document.getElementById('groupModalTitle').textContent = '编辑词组';
+    openModal('modal-group');
+  }
+  function saveGroup(){
+    closeModal('modal-group');
+    toast('已保存为待生效变更，请到变更中心测试对比');
+  }
+  function addChip(input){
+    const v = input.value.trim();
+    if(!v) return;
+    const chip = document.createElement('span');
+    chip.className = 'chip brand';
+    chip.innerHTML = v + ' <span class="x">×</span>';
+    chip.querySelector('.x').onclick = () => chip.remove();
+    input.parentNode.querySelector('.chips').appendChild(chip);
+    input.value = '';
+  }
+
+  /* ---------- 相似问抽屉 ---------- */
+  function openSimilarDrawer(q){
+    document.getElementById('drawerQ').textContent = q;
+    document.getElementById('drawerMask').classList.add('on');
+    document.getElementById('drawerSimilar').classList.add('on');
+  }
+  function closeDrawer(){
+    document.getElementById('drawerMask').classList.remove('on');
+    document.getElementById('drawerSimilar').classList.remove('on');
+  }
+
+  /* ---------- 生成向导 ---------- */
+  let genStep = 1;
+  function openGenerate(){
+    genStep = 1;
+    setGenStep(1);
+    openModal('modal-generate');
+  }
+  function setGenStep(n){
+    genStep = n;
+    ['genStep1','genStep2','genStep3'].forEach((id,i)=>{
+      document.getElementById(id).style.display = (i+1===n)?'block':'none';
+    });
+    ['gstep1','gstep2','gstep3'].forEach((id,i)=>{
+      const el = document.getElementById(id);
+      el.classList.remove('on','done');
+      if(i+1===n) el.classList.add('on');
+      if(i+1<n) el.classList.add('done');
+    });
+    document.getElementById('genPrev').style.display = n>1 && n<3 ? 'inline-flex':'none';
+    document.getElementById('genNext').style.display = n<3 ? 'inline-flex':'none';
+    document.getElementById('genSave').style.display = n===3 ? 'inline-flex':'none';
+    if(n===1) document.getElementById('genNext').textContent = '开始生成';
+  }
+  function genNext(){
+    if(genStep===1){
+      setGenStep(2);
+      document.getElementById('genNext').style.display='none';
+      let p = 0;
+      const timer = setInterval(()=>{
+        p += 8;
+        document.getElementById('genBar').style.width = Math.min(p,100)+'%';
+        document.getElementById('genProgress').textContent = '已完成 '+Math.min(Math.round(p/100*20),20)+' / 20 个问答对';
+        if(p>=100){
+          clearInterval(timer);
+          setTimeout(()=>setGenStep(3), 350);
+        }
+      }, 120);
+    }
+  }
+  function genBack(){ setGenStep(genStep-1); }
+  function saveGenerated(){
+    closeModal('modal-generate');
+    toast('已将 38 条相似问加入待生效变更');
+  }
+
+  /* ---------- 测试 ---------- */
+  function addQuery(){
+    const wrap = document.getElementById('queryList');
+    const chip = document.createElement('span');
+    chip.className = 'qchip';
+    chip.innerHTML = '新测试问题 <span class="x">×</span>';
+    chip.querySelector('.x').onclick = () => chip.remove();
+    wrap.insertBefore(chip, wrap.lastElementChild);
+  }
+  function runTest(){
+    const btn = event.target;
+    const old = btn.textContent;
+    btn.textContent = '测试中…';
+    btn.disabled = true;
+    setTimeout(()=>{
+      btn.textContent = old;
+      btn.disabled = false;
+      toast('测试完成：3 个问题，新增召回 3 条');
+      document.getElementById('testResults').scrollIntoView({behavior:'smooth', block:'start'});
+    }, 700);
+  }
+  function publishAll(fromModal){
+    if(fromModal) closeModal('modal-test');
+    toast('已发布 3 项变更，线上检索已更新');
+    document.getElementById('pendingBanner').style.display='none';
+    const badge = document.querySelector('.nav-badge');
+    if(badge) badge.style.display='none';
+  }
+  function discardAll(){
+    toast('已放弃全部待生效变更，线上未受影响');
+    document.getElementById('pendingBanner').style.display='none';
+    const badge = document.querySelector('.nav-badge');
+    if(badge) badge.style.display='none';
+  }
+
+  /* ---------- Toast ---------- */
+  let toastTimer;
+  function toast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>t.classList.remove('on'), 2200);
+  }
+</script>
+</body>
+</html>
