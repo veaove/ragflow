@@ -224,11 +224,11 @@ export default function TestingForm({
       }
     }, 600);
 
-    return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-      }
-    };
+    // The pending save is deliberately not cancelled here: the debounce exists
+    // to collapse slider drags, not to drop them. Clearing the timer on every
+    // re-run would also cancel it on unmount, so changing a setting and
+    // leaving the page within 600ms would silently lose the change. The body
+    // above already cancels the previous timer before scheduling a new one.
   }, [settingsSnapshot, knowledgeBaseId, t]);
 
   function onSubmit() {
