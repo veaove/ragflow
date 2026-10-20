@@ -1,5 +1,6 @@
 import { CardContainer } from '@/components/card-container';
 import { AgentCategory } from '@/constants/agent';
+import { Routes } from '@/routes';
 import {
   LIST_MAX_DISPLAYED_PAGES,
   LIST_PAGE_SIZE_OPTIONS,
@@ -13,7 +14,13 @@ import {
   useFetchAgentFilters,
   useFetchAgentListByPage,
 } from '@/hooks/use-agent-request';
-import { MessageSquareText, Play, Upload, Workflow } from 'lucide-react';
+import {
+  MessageSquareText,
+  Play,
+  ScrollText,
+  Upload,
+  Workflow,
+} from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -107,6 +114,15 @@ export default function Studio() {
         </div>
         <div className="flex items-center gap-2">
           <ViewToggle mode={viewMode} onChange={setViewMode} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(Routes.StudioRuns)}
+            data-testid="studio-open-runs"
+          >
+            <ScrollText className="size-4" />
+            {t('studio.runLog')}
+          </Button>
           <Button
             variant="outline"
             size="sm"

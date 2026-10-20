@@ -344,6 +344,7 @@ export default {
   // flow
   listAgentTemplate: `${restAPIv1}/agents/templates`,
   listAgents: `${restAPIv1}/agents`,
+  listRuns: `${restAPIv1}/runs`,
   listAgentTags: `${restAPIv1}/agents/tags`,
   updateAgentTags: (agentId: string) => `${restAPIv1}/agents/${agentId}/tags`,
   createAgent: `${restAPIv1}/agents`,

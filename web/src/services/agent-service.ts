@@ -28,6 +28,7 @@ const {
   createAgent,
   updateAgent: updateAgentApi,
   listAgents,
+  listRuns,
   deleteAgent,
   agentChatCompletion,
   resetAgent,
@@ -67,6 +68,10 @@ const methods = {
   },
   listAgents: {
     url: listAgents,
+    method: 'get',
+  },
+  listRuns: {
+    url: api.listRuns,
     method: 'get',
   },
   listAgentTags: {

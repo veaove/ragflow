@@ -45,8 +45,13 @@ func (h *RunHandler) ListRuns(c *gin.Context) {
 		common.ErrorWithCode(c, code, msg)
 		return
 	}
-	canvasID := c.Query("canvas_id")
-	status := c.Query("status")
+	filter := dao.AgentRunListFilter{
+		CanvasID:    c.Query("canvas_id"),
+		Status:      c.Query("status"),
+		TriggerType: c.Query("trigger_type"),
+		Keywords:    c.Query("keywords"),
+		Sort:        c.Query("sort"),
+	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	if page < 1 {
@@ -56,12 +61,15 @@ func (h *RunHandler) ListRuns(c *gin.Context) {
 		size = 20
 	}
 	offset := (page - 1) * size
-	runs, err := dao.NewAgentRunDAO().List(c.Request.Context(), dao.DB, canvasID, status, size, offset)
+	runs, total, err := dao.NewAgentRunDAO().ListWithFilter(c.Request.Context(), dao.DB, filter, size, offset)
 	if err != nil {
 		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
 		return
 	}
-	common.SuccessWithData(c, runs, "success")
+	common.SuccessWithData(c, gin.H{
+		"runs":  runs,
+		"total": total,
+	}, "success")
 }
 
 // GetRun handles GET /runs/:run_id.
