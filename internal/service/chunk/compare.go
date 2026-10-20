@@ -28,6 +28,8 @@ import (
 	"ragflow/internal/entity"
 	"ragflow/internal/service"
 	"ragflow/internal/service/nlp"
+
+	"go.uber.org/zap"
 )
 
 // scoreEpsilon is the threshold below which two similarity scores are treated
@@ -81,6 +83,24 @@ func (s *ChunkService) RetrievalCompare(
 	}
 
 	override, extraTokens, capInfo := buildInjections(diff, req.Question, language, shadowSimilar)
+
+	// Observability: when a comparison shows "no effect", this line answers the
+	// first question every time — was anything actually injected? Logged at
+	// info because the comparison is a user-initiated, low-frequency action.
+	overrideTokens := make([]string, 0, len(override))
+	for tk := range override {
+		overrideTokens = append(overrideTokens, tk)
+	}
+	common.Info("retrieval compare injections built",
+		zap.String("dataset_id", datasetID),
+		zap.String("change_set_id", changeSetID),
+		zap.String("question", req.Question),
+		zap.Int("synonym_override_tokens", len(override)),
+		zap.Strings("synonym_override_keys", overrideTokens),
+		zap.Int("extra_token_chunks", len(extraTokens)),
+		zap.Int("affected_chunks", capInfo.affectedChunks),
+		zap.Int("skipped_similar", capInfo.skipped),
+		zap.Bool("shadow_similar", shadowSimilar))
 
 	// Baseline: the configuration as it is live right now.
 	baselineReq := req.RetrievalTestRequest

@@ -104,6 +104,19 @@ export function TestCompareDialog({
     );
   }, [diff]);
 
+  // 同义词条数的「现在 → 发布后」对比。只报「+N 条」容易让人误以为
+  // 已生效里也有这些词，把两侧总数摆出来才能看清差异到底在哪。
+  const synonymCounts = useMemo(() => {
+    if (!diff) return { live: 0, total: 0 };
+    return diff.synonyms.reduce(
+      (acc, g) => ({
+        live: acc.live + g.before.length,
+        total: acc.total + g.after.length,
+      }),
+      { live: 0, total: 0 },
+    );
+  }, [diff]);
+
   const runCompare = useCallback(async () => {
     const q = query.trim();
     if (!q) {
@@ -238,8 +251,22 @@ export function TestCompareDialog({
           <div className="rounded bg-bg-card p-3 text-sm">
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-text-secondary">
               <span>待生效：相似问 +{addedSimilar.length} 条</span>
-              <span>同义词/专有词 +{addedSynonym.length} 条</span>
+              {addedSynonym.length > 0 && (
+                <span data-testid="synonym-count-compare">
+                  同义词：已生效 {synonymCounts.live} 条 → 发布后{' '}
+                  {synonymCounts.total} 条（新增 {addedSynonym.length} 条）
+                </span>
+              )}
+              {addedSynonym.length === 0 && (
+                <span>同义词/专有词 +0 条</span>
+              )}
             </div>
+            {addedSynonym.length > 0 && (
+              <div className="mt-1 text-xs text-text-secondary">
+                以下词条<b className="text-text-primary">仅存在于变更集</b>
+                ，发布后才会参与检索：
+              </div>
+            )}
             {addedSynonym.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {addedSynonym.slice(0, 20).map((w) => (
