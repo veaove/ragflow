@@ -14,13 +14,7 @@ import {
   useFetchAgentFilters,
   useFetchAgentListByPage,
 } from '@/hooks/use-agent-request';
-import {
-  MessageSquareText,
-  Play,
-  ScrollText,
-  Upload,
-  Workflow,
-} from 'lucide-react';
+import { MessageSquareText, Play, ScrollText, Workflow } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -122,14 +116,6 @@ export default function Studio() {
           >
             <ScrollText className="size-4" />
             {t('studio.runLog')}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate('/agents')}
-          >
-            <Upload className="size-4" />
-            {t('flow.importJsonFile')}
           </Button>
           <Button size="sm" onClick={() => setCreateType('chatflow')}>
             <Play className="size-4" />

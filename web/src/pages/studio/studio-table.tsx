@@ -9,6 +9,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useTranslation } from 'react-i18next';
+import { Trash2 } from 'lucide-react';
+import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import { useDeleteAgent } from '@/hooks/use-agent-request';
 import { IFlow } from '@/interfaces/database/agent';
 import { CanvasCategoryToFlowType, FlowType } from '../agents/constant';
 
@@ -31,6 +34,7 @@ export function StudioTable({
   onCreate: () => void;
 }) {
   const { t } = useTranslation();
+  const { deleteAgent } = useDeleteAgent();
 
   if (!loading && apps.length === 0) {
     return <EmptyAppCard type={EmptyCardType.Agent} onClick={onCreate} />;
@@ -82,22 +86,47 @@ export function StudioTable({
                 </span>
               </TableCell>
               <TableCell className="text-text-secondary">
-                {t('studio.versionN', { n: 1 })}
+                {app.latest_version_seq
+                  ? t('studio.versionN', { n: app.latest_version_seq })
+                  : t('common.none')}
               </TableCell>
               <TableCell className="text-text-secondary">
-                {t('common.none')}
+                {app.last_run_time
+                  ? new Date(app.last_run_time).toLocaleString()
+                  : t('common.none')}
               </TableCell>
               <TableCell className="text-text-secondary">
-                {app.update_date || '-'}
+                {app.update_date ||
+                  (app.update_time
+                    ? new Date(app.update_time).toLocaleString()
+                    : t('common.none'))}
               </TableCell>
               <TableCell className="text-right">
-                <button
-                  type="button"
-                  className="text-sm text-accent-primary"
-                  onClick={() => onOpen(app.id)}
-                >
-                  {t('common.edit')}
-                </button>
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    className="text-sm text-accent-primary"
+                    onClick={() => onOpen(app.id)}
+                    data-testid="studio-table-edit"
+                  >
+                    {t('common.edit')}
+                  </button>
+                  {/* 删除与卡片视图的能力对齐：表格能看到应用，就要能删掉它，
+                      否则用户只能切回卡片视图才能删（产品文档 3.4 同源原则）。 */}
+                  <ConfirmDeleteDialog
+                    onOk={() => deleteAgent(app.id)}
+                    title={t('deleteModal.delAgent')}
+                  >
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-sm text-state-error"
+                      data-testid="studio-table-delete"
+                    >
+                      <Trash2 className="size-3.5" />
+                      {t('common.delete')}
+                    </button>
+                  </ConfirmDeleteDialog>
+                </div>
               </TableCell>
             </TableRow>
           ))}

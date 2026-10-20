@@ -83,6 +83,10 @@ export declare interface IFlow {
   release?: boolean;
   release_time?: number;
   last_publish_time?: number;
+  /** Highest published version snapshot (0 = never published). */
+  latest_version_seq?: number;
+  /** Most recent run start, epoch ms. */
+  last_run_time?: number;
   datasets?: Pick<IDataset, 'id' | 'name' | 'avatar'>[];
   tags?: string;
 }

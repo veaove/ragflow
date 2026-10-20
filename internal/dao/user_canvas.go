@@ -211,6 +211,15 @@ type UserCanvasListItem struct {
 	Tags           string  `gorm:"column:tags"`
 	CreateTime     *int64  `gorm:"column:create_time"`
 	UpdateTime     *int64  `gorm:"column:update_time"`
+	// Release is the publication state. The list must expose it: the Agent /
+	// Studio tables render a "状态" column and let users filter on it, so the
+	// value has to come from the row (not be inferred on the client).
+	Release bool `gorm:"column:release"`
+	// LatestVersionSeq is the highest published version snapshot, or 0 when
+	// the canvas has never been published.
+	LatestVersionSeq int `gorm:"column:latest_version_seq"`
+	// LastRunTime is the most recent run start (epoch ms), nil when never run.
+	LastRunTime *int64 `gorm:"column:last_run_time"`
 }
 
 // ListByIDs lists permission-filtered canvases with optional metadata filters.
@@ -233,7 +242,12 @@ func (dao *UserCanvasDAO) ListByIDs(ctx context.Context, db *gorm.DB, canvasIDs,
 		user_canvas.canvas_category,
 		user_canvas.tags,
 		user_canvas.create_time,
-		user_canvas.update_time`).
+		user_canvas.update_time,
+		user_canvas.release,
+		COALESCE((SELECT MAX(v.version_seq) FROM user_canvas_version v
+		          WHERE v.user_canvas_id = user_canvas.id), 0) AS latest_version_seq,
+		(SELECT MAX(r.create_time) FROM agent_run r
+		 WHERE r.canvas_id = user_canvas.id) AS last_run_time`).
 		Joins("LEFT JOIN user ON user_canvas.user_id = user.id").
 		Where("user_canvas.id IN ?", canvasIDs)
 	if len(ownerIDs) > 0 {

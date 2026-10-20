@@ -1,6 +1,8 @@
 export default {
   translation: {
     common: {
+      all: 'All',
+      none: '-',
       new: 'New',
       confirm: 'Confirm',
       back: 'Back',

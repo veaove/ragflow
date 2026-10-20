@@ -450,6 +450,12 @@ type AgentItem struct {
 	CreateTime     *int64  `json:"create_time,omitempty"`
 	UpdateTime     *int64  `json:"update_time,omitempty"`
 	ReleaseTime    *int64  `json:"release_time,omitempty"`
+	// Release is the publication state; the Studio table renders and filters on it.
+	Release bool `json:"release"`
+	// LatestVersionSeq drives the table's "版本" column (v1, v2, ...).
+	LatestVersionSeq int `json:"latest_version_seq"`
+	// LastRunTime drives the "最近运行" column (epoch ms).
+	LastRunTime *int64 `json:"last_run_time,omitempty"`
 	// Type discriminates agent vs compilation-template-group items in the merged
 	// /agents response. It is set only for merged items (agent => "agent").
 	Type string `json:"type,omitempty"`
@@ -596,6 +602,9 @@ func toAgentItem(c *dao.UserCanvasListItem) *AgentItem {
 		Tags:           c.Tags,
 		CreateTime:     c.CreateTime,
 		UpdateTime:     c.UpdateTime,
+		Release:        c.Release,
+		LatestVersionSeq: c.LatestVersionSeq,
+		LastRunTime:    c.LastRunTime,
 	}
 }
 

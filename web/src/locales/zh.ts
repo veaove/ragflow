@@ -1,6 +1,8 @@
 export default {
   translation: {
     common: {
+      all: '全部',
+      none: '-',
       new: '新增',
       confirm: '确定',
       back: '返回',

@@ -52,9 +52,9 @@ function FlowTypeCards({ value, onChange }: FlowTypeCardProps) {
 
   return (
     <section className="flex gap-10">
-      // 只保留两个原生项（产品文档 6.1 定稿）：Chatflow / Workflow 已迁到
-      // 「工作室」模块独立入口，编译算子移到列表页 + 下拉。弹窗回到原生比例，
-      // 中文标签不再被四个卡片挤压换行。
+      {/* 只保留两个原生项（产品文档 6.1 定稿）：Chatflow / Workflow 已迁到
+          「工作室」模块独立入口，编译算子移到列表页 + 下拉。弹窗回到原生比例，
+          中文标签不再被四个卡片挤压换行。 */}
       {[FlowType.Agent, FlowType.Flow].map((val) => {
         const isActive = value === val;
         const config = FlowTypeConfig[val];

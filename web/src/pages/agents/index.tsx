@@ -218,14 +218,6 @@ export default function Agents() {
             onChange={handleFilterSubmit}
             value={filterValue}
           >
-            {/* 排序 + 发布状态筛选：与工作室共用同一套规则
-                （产品文档 3.4「两个页面规则完全一致」）。 */}
-            <ReleaseFilterSelect value={release} onChange={setRelease} />
-            <ListSortSelect value={sortKey} onChange={setSort} />
-            {hasActiveFilter && (
-              <ResetFilterButton onReset={resetFilters} />
-            )}
-
             {/* 拆分按钮：主按钮一步到位开创建弹窗，箭头收低频入口
                 （产品文档 3.1 智能体侧做法）。此前只有一个 + 图标，
                 用户必须展开才知道能建什么。 */}
@@ -284,6 +276,15 @@ export default function Agents() {
               </DropdownMenu>
             </div>
           </ListFilterBar>
+
+          {/* 排序 + 发布状态筛选单独一行：放进标题行右侧会和「创建应用」
+              拆分按钮抢宽度（窄屏直接把按钮挤掉），独立一行更稳。
+              规则与工作室页共用同一套组件与 hook（产品文档 3.4）。 */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <ReleaseFilterSelect value={release} onChange={setRelease} />
+            <ListSortSelect value={sortKey} onChange={setSort} />
+            {hasActiveFilter && <ResetFilterButton onReset={resetFilters} />}
+          </div>
         </header>
 
         {emptyState === 'content' ? (
