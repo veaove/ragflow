@@ -30,11 +30,21 @@ type QcTestHit struct {
 	End     int    `json:"end"`   // rune offset (exclusive)
 }
 
+// QcTestRange is one highlighted region as rune offsets. Unlike QcTestHit it is
+// per OCCURRENCE, so the drawer can highlight every repetition of a keyword
+// instead of only the first one.
+type QcTestRange struct {
+	Start int `json:"start"`
+	End   int `json:"end"`
+}
+
 // QcTestResult is the rule-test preview returned by /qc/rules/test.
 type QcTestResult struct {
-	HitCount    int         `json:"hit_count"`
-	Hits        []QcTestHit `json:"hits"`
-	Highlighted string      `json:"highlighted"`
+	// HitCount counts matched OCCURRENCES (「命中 N 处」), not distinct keywords.
+	HitCount    int           `json:"hit_count"`
+	Hits        []QcTestHit   `json:"hits"`
+	Ranges      []QcTestRange `json:"ranges"`
+	Highlighted string        `json:"highlighted"`
 }
 
 type qcSpan struct {
@@ -45,55 +55,65 @@ type qcSpan struct {
 // QcTestMatch tests keywords against text without persisting anything. It is
 // the server twin of the front-end drawer preview, sharing the same semantics.
 func QcTestMatch(keywords []string, matchMode, text string) (*QcTestResult, error) {
-	rule := entity.QcRule{
-		ID:        "test",
-		Keywords:  keywords,
-		MatchMode: matchMode,
-		Scope:     entity.QcScopeBoth,
+	// One synthetic rule per keyword. CompiledRules.Match reports at most one
+	// match per rule, so packing every keyword into a single rule made the
+	// preview report at most one hit no matter how many keywords matched —
+	// 「保本」「稳赚」both present still returned hit_count=1.
+	rules := make([]entity.QcRule, 0, len(keywords))
+	seenKw := make(map[string]bool, len(keywords))
+	for _, kw := range keywords {
+		kw = strings.TrimSpace(kw)
+		if kw == "" || seenKw[kw] {
+			continue
+		}
+		seenKw[kw] = true
+		rules = append(rules, entity.QcRule{
+			ID:        "test-" + kw,
+			Keywords:  []string{kw},
+			MatchMode: matchMode,
+			Scope:     entity.QcScopeBoth,
+		})
 	}
-	compiled, err := CompileRules([]entity.QcRule{rule})
+	if len(rules) == 0 {
+		return &QcTestResult{Hits: []QcTestHit{}, Ranges: []QcTestRange{}, Highlighted: text}, nil
+	}
+
+	compiled, err := CompileRules(rules)
 	if err != nil {
 		return nil, err
 	}
 
 	matches := compiled.Match(text, entity.QcScopeBoth)
-	// Rebuild spans from the matched fragments so we can highlight precisely.
 	spans := make([]qcSpan, 0, len(matches))
-	seen := make(map[string]bool)
 	hits := make([]QcTestHit, 0, len(matches))
 	for _, m := range matches {
-		if m.MatchedText == "" || seen[m.MatchedText] {
+		if m.MatchedText == "" {
 			continue
 		}
-		seen[m.MatchedText] = true
-		for _, span := range findRuneSpans(text, m.MatchedText) {
-			spans = append(spans, span)
+		found := findRuneSpans(text, m.MatchedText)
+		if len(found) == 0 {
+			continue
 		}
+		spans = append(spans, found...)
+		// Best effort: report the first occurrence as the keyword's offsets.
 		hits = append(hits, QcTestHit{
 			Keyword: m.MatchedText,
-			Start:   0,
-			End:     0,
+			Start:   found[0].start,
+			End:     found[0].end,
 		})
 	}
 
-	// Deduplicate/merge overlapping spans and build the highlight.
 	merged := mergeSpans(spans)
-	highlighted := buildHighlight(text, merged)
-
-	// Fill real offsets into hits (best effort: first occurrence each).
-	runes := []rune(text)
-	_ = runes
-	for i := range hits {
-		if s := findRuneSpans(text, hits[i].Keyword); len(s) > 0 {
-			hits[i].Start = s[0].start
-			hits[i].End = s[0].end
-		}
+	ranges := make([]QcTestRange, 0, len(merged))
+	for _, s := range merged {
+		ranges = append(ranges, QcTestRange{Start: s.start, End: s.end})
 	}
 
 	return &QcTestResult{
-		HitCount:    len(hits),
+		HitCount:    len(merged),
 		Hits:        hits,
-		Highlighted: highlighted,
+		Ranges:      ranges,
+		Highlighted: buildHighlight(text, merged),
 	}, nil
 }
 
@@ -136,7 +156,9 @@ func mergeSpans(spans []qcSpan) []qcSpan {
 	merged := []qcSpan{spans[0]}
 	for _, s := range spans[1:] {
 		last := &merged[len(merged)-1]
-		if s.start <= last.end {
+		// Strict overlap only: back-to-back occurrences of the same keyword
+		// ("保本保本") are two hits, and merging them would undercount.
+		if s.start < last.end {
 			if s.end > last.end {
 				last.end = s.end
 			}

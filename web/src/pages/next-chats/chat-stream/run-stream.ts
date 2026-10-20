@@ -3,7 +3,9 @@
  * keep writing into the store) after the chat page unmounts, so that navigating
  * away mid-answer and back shows the stream still in progress.
  */
+import message from '@/components/ui/message';
 import { IMessage, Variable } from '@/interfaces/database/chat';
+import i18n from '@/locales/config';
 import {
   CompletionChunk,
   parseCompletionEventStream,
@@ -61,6 +63,10 @@ export async function runChatCompletionStream({
   let pendingChunk: CompletionChunk | undefined;
   let lastFlushAt = 0;
 
+  // Warn-level hits arrive on every chunk whose text still contains the
+  // keyword, so each rule may only surface a toast once per stream.
+  const warnedRuleIds = new Set<string>();
+
   const flushAnswer = () => {
     if (!pendingChunk) return;
     applyAnswer(conversationId, {
@@ -93,7 +99,32 @@ export async function runChatCompletionStream({
 
     try {
       for await (const chunk of parseCompletionEventStream(response)) {
-        accumulatedAnswer = mergeAnswerChunk(accumulatedAnswer, chunk);
+        // A block retracts everything streamed so far: the backend has already
+        // replaced the answer with the replacement message, so appending it
+        // would render "half original answer + replacement". The terminal
+        // chunk that follows a block carries an empty answer (it exists only
+        // to close the stream), so it must not wipe the replacement either.
+        if (chunk.qc_event?.blocked) {
+          if (chunk.answer) {
+            accumulatedAnswer = chunk.answer;
+          }
+        } else {
+          accumulatedAnswer = mergeAnswerChunk(accumulatedAnswer, chunk);
+        }
+
+        // warn / info-level hit: the answer keeps streaming, the user just
+        // gets a hint. `info` hits never reach the client (handled server-side).
+        const qcEvent = chunk.qc_event;
+        if (qcEvent && !qcEvent.blocked) {
+          const ruleKey = qcEvent.rule_id || qcEvent.rule_name || 'qc';
+          if (!warnedRuleIds.has(ruleKey)) {
+            warnedRuleIds.add(ruleKey);
+            message.warning(
+              qcEvent.prompt_message || i18n.t('chat.qcWarnHint'),
+            );
+          }
+        }
+
         pendingChunk = pendingChunk ? { ...pendingChunk, ...chunk } : chunk;
 
         // The first chunk flushes immediately (lastFlushAt is 0), so the empty

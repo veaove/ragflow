@@ -63,8 +63,11 @@ export interface IQcTestHit {
 }
 
 export interface IQcTestResult {
+  /** 命中「处」数：按出现次数计，不是按关键词去重计。 */
   hit_count: number;
   hits: IQcTestHit[];
+  /** 每一处命中的 rune 区间（可多段，用于逐处高亮）。 */
+  ranges?: { start: number; end: number }[];
   highlighted: string;
 }
 

@@ -507,6 +507,8 @@ export default {
       createAssistant: '新建助理',
       assistantSetting: '助理設置',
       qcRules: '質檢規則',
+      qcBlockedBanner: '該回答已被質檢攔截',
+      qcWarnHint: '該回答可能不符合內容規範',
       promptEngine: '提示引擎',
       modelSetting: '模型設置',
       chat: '聊天',

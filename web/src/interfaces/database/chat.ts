@@ -219,6 +219,29 @@ export interface IMessage extends Message {
   awaitingServerId?: boolean;
   reference?: IReference; // the latest news has reference
   conversationId?: string; // To distinguish which conversation the message belongs to
+  // Quality-inspection hint carried by the SSE chunk that produced this
+  // answer. Live-stream only: it is not persisted server-side.
+  qc_event?: IQcEvent;
+}
+
+/**
+ * Quality-inspection hint attached to an answer chunk (`QcEvent` in
+ * internal/service/chat_pipeline.go — the JSON tags there are the client
+ * contract). Only warn / block hits fill it; info hits are persisted without a
+ * client hint.
+ *
+ * When `blocked` is true the backend has already replaced the answer with the
+ * replacement message, so the client must REPLACE its accumulated text rather
+ * than append: a block that fires after clean text has streamed would
+ * otherwise render as "half original answer + replacement".
+ */
+export interface IQcEvent {
+  rule_id?: string;
+  rule_name?: string;
+  severity?: string;
+  matched_text?: string;
+  prompt_message?: string;
+  blocked?: boolean;
 }
 
 export interface IClientConversation extends IConversation {

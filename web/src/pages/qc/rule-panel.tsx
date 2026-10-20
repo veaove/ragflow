@@ -130,10 +130,18 @@ const emptyEditor = (): EditorState => ({
   testText: '',
 });
 
-const parseKeywords = (text: string): string[] => {
+/**
+ * Splits the keyword textarea into keywords.
+ *
+ * Regex mode splits on newlines only: a comma is legal inside a quantifier
+ * (`{2,3}`) or a character class, so splitting on it would silently shred a
+ * valid pattern into pieces that no longer compile.
+ */
+const parseKeywords = (text: string, matchMode: QcMatchMode): string[] => {
+  const separator = matchMode === 'regex' ? /\n/ : /[\n,，]/;
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const raw of text.split(/[\n,，]/)) {
+  for (const raw of text.split(separator)) {
     const kw = raw.trim();
     if (kw && !seen.has(kw)) {
       seen.add(kw);
@@ -169,6 +177,12 @@ export function QcRulePanel({
   const [page, setPage] = React.useState(1);
   const [loading, setLoading] = React.useState(false);
   const [editor, setEditor] = React.useState<EditorState | null>(null);
+
+  // Switching apps invalidates the page offset: keeping page 3 after selecting
+  // an app with one page of rules would render an empty list with no way back.
+  React.useEffect(() => {
+    setPage(1);
+  }, [appType, appId]);
 
   const reload = React.useCallback(async () => {
     if (!appId) return;
@@ -218,7 +232,7 @@ export function QcRulePanel({
       toast.error('请填写规则名称');
       return;
     }
-    const keywords = parseKeywords(state.keywordsText);
+    const keywords = parseKeywords(state.keywordsText, state.matchMode);
     if (keywords.length === 0) {
       toast.error('请至少添加一个关键词');
       return;
@@ -547,32 +561,50 @@ function RuleEditor({
     setTestResult(null);
   }, [state]);
 
-  const runTest = React.useCallback(async () => {
-    if (!draft) return;
-    const keywords = parseKeywords(draft.keywordsText);
-    if (keywords.length === 0 || !draft.testText.trim()) {
+  // Debounced live preview. It used to run on blur only, which contradicted the
+  // "输入后自动预览" hint and silently skipped the last edit when the user hit
+  // 保存 straight from the textarea.
+  const testText = draft?.testText ?? '';
+  const keywordsText = draft?.keywordsText ?? '';
+  const matchMode: QcMatchMode = draft?.matchMode ?? 'contains';
+
+  React.useEffect(() => {
+    const keywords = parseKeywords(keywordsText, matchMode);
+    if (keywords.length === 0 || !testText.trim()) {
       setTestResult(null);
       return;
     }
-    try {
-      const response = await testQcRule({
-        keywords,
-        match_mode: draft.matchMode,
-        text: draft.testText,
-      });
-      setTestResult(response?.data?.data ?? null);
-    } catch {
-      setTestResult(null);
-    }
-  }, [draft]);
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await testQcRule({
+          keywords,
+          match_mode: matchMode,
+          text: testText,
+        });
+        if (!cancelled) setTestResult(response?.data?.data ?? null);
+      } catch {
+        if (!cancelled) setTestResult(null);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [testText, keywordsText, matchMode]);
 
   const highlighted = React.useMemo(() => {
-    if (!draft || !testResult || testResult.hits.length === 0) return null;
-    const runes = Array.from(draft.testText);
-    const spans = testResult.hits
-      .filter((h) => h.end > h.start)
-      .sort((a, b) => a.start - b.start);
+    if (!draft || !testResult) return null;
+    // Prefer the per-occurrence ranges: `hits` only carries the first
+    // occurrence of each keyword, so highlighting from it would miss repeats.
+    const raw = testResult.ranges?.length
+      ? testResult.ranges
+      : testResult.hits
+          .filter((h) => h.end > h.start)
+          .map((h) => ({ start: h.start, end: h.end }));
+    const spans = [...raw].sort((a, b) => a.start - b.start);
     if (spans.length === 0) return null;
+    const runes = Array.from(draft.testText);
     const nodes: React.ReactNode[] = [];
     let prev = 0;
     spans.forEach((h, i) => {
@@ -616,7 +648,9 @@ function RuleEditor({
 
             <div>
               <label className="mb-1 block text-sm text-text-secondary">
-                触发关键词 *（每行一个，或逗号分隔，最多 50 个）
+                {draft.matchMode === 'regex'
+                  ? '正则表达式 *（每行一个，最多 50 个）'
+                  : '触发关键词 *（每行一个，或逗号分隔，最多 50 个）'}
               </label>
               <Textarea
                 rows={4}
@@ -728,7 +762,6 @@ function RuleEditor({
                 onChange={(e) =>
                   setDraft({ ...draft, testText: e.target.value })
                 }
-                onBlur={runTest}
               />
               {testResult && (
                 <div className="mt-2 text-sm">

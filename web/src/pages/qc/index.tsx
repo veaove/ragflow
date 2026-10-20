@@ -266,6 +266,9 @@ function HitsPanel() {
   const [severity, setSeverity] = React.useState('');
   const [scope, setScope] = React.useState('');
   const [sessionId, setSessionId] = React.useState('');
+  // Committed separately from the input: reading `sessionId` directly in the
+  // query's dependency list fired one request per keystroke.
+  const [appliedSessionId, setAppliedSessionId] = React.useState('');
   const [from, setFrom] = React.useState('');
   const [to, setTo] = React.useState('');
   const [detail, setDetail] = React.useState<IQcHit | null>(null);
@@ -276,7 +279,7 @@ function HitsPanel() {
       const params: Record<string, any> = { page, size: PAGE_SIZE };
       if (severity) params.severity = severity;
       if (scope) params.scope = scope;
-      if (sessionId.trim()) params.session_id = sessionId.trim();
+      if (appliedSessionId) params.session_id = appliedSessionId;
       if (from) params.from = new Date(from).getTime();
       if (to) params.to = new Date(to).getTime() + 86399999;
       const response = await listQcHits(params);
@@ -287,11 +290,16 @@ function HitsPanel() {
     } finally {
       setLoading(false);
     }
-  }, [page, severity, scope, sessionId, from, to]);
+  }, [page, severity, scope, appliedSessionId, from, to]);
 
   React.useEffect(() => {
     reload();
   }, [reload]);
+
+  const applySessionFilter = () => {
+    setAppliedSessionId(sessionId.trim());
+    setPage(1);
+  };
 
   const openDetail = async (hit: IQcHit) => {
     try {
@@ -307,7 +315,7 @@ function HitsPanel() {
       const params: Record<string, any> = {};
       if (severity) params.severity = severity;
       if (scope) params.scope = scope;
-      if (sessionId.trim()) params.session_id = sessionId.trim();
+      if (appliedSessionId) params.session_id = appliedSessionId;
       if (from) params.from = new Date(from).getTime();
       if (to) params.to = new Date(to).getTime() + 86399999;
       const response = await exportQcHits(params);
@@ -373,11 +381,14 @@ function HitsPanel() {
         </select>
         <Input
           className="h-9 w-52"
-          placeholder="会话 ID / 命中文本"
+          placeholder="会话 ID，回车查询"
           value={sessionId}
           onChange={(e) => setSessionId(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') applySessionFilter();
+          }}
         />
-        <Button size="sm" variant="outline" onClick={() => setPage(1)}>
+        <Button size="sm" variant="outline" onClick={applySessionFilter}>
           查询
         </Button>
         <Button size="sm" onClick={doExport}>

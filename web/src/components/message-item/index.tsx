@@ -15,6 +15,7 @@
  */
 
 import { MessageType } from '@/constants/chat';
+import { useTranslate } from '@/hooks/common-hooks';
 import { IRegenerateMessage, IRemoveMessageById } from '@/hooks/logic-hooks';
 import {
   IMessage,
@@ -73,8 +74,14 @@ const MessageItem = ({
   isLast = false,
 }: IProps) => {
   const { theme } = useTheme();
+  const { t } = useTranslate('chat');
   const isAssistant = item.role === MessageType.Assistant;
   const isUser = item.role === MessageType.User;
+
+  // The backend already swapped the answer for the replacement message, so this
+  // banner only explains WHY the answer looks like that. Live streams only —
+  // qc_event is not persisted with the message.
+  const qcBlocked = isAssistant && item.qc_event?.blocked === true;
 
   const uploadedFiles = useMemo(() => {
     return item?.files ?? [];
@@ -151,6 +158,12 @@ const MessageItem = ({
                 sendLoading={sendLoading}
                 deleteDisabled={deleteDisabled}
               ></UserGroupButton>
+            )}
+            {qcBlocked && (
+              <div className="flex items-center gap-2 self-start rounded-md border border-state-error bg-state-error-5 px-3 py-1.5 text-sm text-state-error">
+                <SvgIcon name="error" width={16} className="size-4" />
+                <span>{t('qcBlockedBanner')}</span>
+              </div>
             )}
             {/* Show message content if there's any text besides the download */}
             {(messageContent || sendLoading) && (

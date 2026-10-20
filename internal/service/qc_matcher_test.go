@@ -220,3 +220,56 @@ func TestExtractWorkflowAnswerText(t *testing.T) {
 		t.Fatalf("flatten: %q", got)
 	}
 }
+
+// TestQcTestMatchCountsEveryKeyword pins the /qc/rules/test preview: it packs
+// every keyword of the drawer into one request, so it must report one hit per
+// matching keyword. It used to build a SINGLE synthetic rule, and Match stops
+// at the first matching keyword per rule — 「保本」+「稳赚」both present still
+// came back as hit_count=1.
+func TestQcTestMatchCountsEveryKeyword(t *testing.T) {
+	res, err := QcTestMatch([]string{"保本", "稳赚"}, "contains", "这个产品保本高收益，稳赚不赔。")
+	if err != nil {
+		t.Fatalf("QcTestMatch: %v", err)
+	}
+	if res.HitCount != 2 {
+		t.Fatalf("hit_count = %d, want 2", res.HitCount)
+	}
+	if len(res.Ranges) != 2 {
+		t.Fatalf("ranges = %d, want 2", len(res.Ranges))
+	}
+	keywords := map[string]bool{}
+	for _, h := range res.Hits {
+		keywords[h.Keyword] = true
+	}
+	if !keywords["保本"] || !keywords["稳赚"] {
+		t.Fatalf("hits = %+v, want both keywords", res.Hits)
+	}
+}
+
+// TestQcTestMatchCountsRepeatedOccurrences pins that hit_count counts
+// occurrences, so 「保本保本」 is two hits rather than one merged range.
+func TestQcTestMatchCountsRepeatedOccurrences(t *testing.T) {
+	res, err := QcTestMatch([]string{"保本"}, "contains", "保本保本")
+	if err != nil {
+		t.Fatalf("QcTestMatch: %v", err)
+	}
+	if res.HitCount != 2 {
+		t.Fatalf("hit_count = %d, want 2", res.HitCount)
+	}
+	// Both halves must still be highlighted separately.
+	if res.Highlighted != "<mark>保本</mark><mark>保本</mark>" {
+		t.Fatalf("highlighted = %q", res.Highlighted)
+	}
+}
+
+// TestQcTestMatchRegex pins the regex preview, which is what exposed the
+// first-rune fast-path defect (a regex-only rule set never matched).
+func TestQcTestMatchRegex(t *testing.T) {
+	res, err := QcTestMatch([]string{"保本.{0,4}收益"}, "regex", "这个产品保本高收益。")
+	if err != nil {
+		t.Fatalf("QcTestMatch: %v", err)
+	}
+	if res.HitCount != 1 {
+		t.Fatalf("hit_count = %d, want 1 (highlighted=%q)", res.HitCount, res.Highlighted)
+	}
+}

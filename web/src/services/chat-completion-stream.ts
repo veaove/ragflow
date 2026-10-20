@@ -11,7 +11,7 @@
  */
 import { Authorization } from '@/constants/authorization';
 import { ResponseType } from '@/interfaces/database/base';
-import { IMessage, Variable } from '@/interfaces/database/chat';
+import { IMessage, IQcEvent, Variable } from '@/interfaces/database/chat';
 import api from '@/utils/api';
 import { getAuthorization } from '@/utils/authorization-util';
 import { EventSourceParserStream } from 'eventsource-parser/stream';
@@ -26,11 +26,17 @@ export type ChatCompletionStreamParams = {
   llmSetting?: Variable;
 };
 
+/**
+ * `qc_event` is the quality-inspection hint described by `IQcEvent`. It is
+ * declared in the interface layer so the message type can carry it too — see
+ * the doc comment there for the replace-vs-append contract.
+ */
 export type CompletionChunk = {
   answer?: string;
   final?: boolean;
   start_to_think?: boolean;
   end_to_think?: boolean;
+  qc_event?: IQcEvent;
   [key: string]: any;
 };
 

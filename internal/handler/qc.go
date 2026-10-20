@@ -207,6 +207,12 @@ func (h *QcHandler) ListRules(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeArgumentError, "app_type and app_id are required")
 		return
 	}
+	// Reject an unknown app_type as a bad argument rather than letting
+	// resolveAppOwner's generic error surface as a 500.
+	if appType != entity.QcAppTypeChat && appType != entity.QcAppTypeCanvas {
+		common.ErrorWithCode(c, common.CodeArgumentError, "invalid app_type")
+		return
+	}
 	owner, err := resolveAppOwner(c, appType, appID)
 	if err != nil {
 		if errors.Is(err, errQcAppNotFound) {

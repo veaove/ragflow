@@ -1272,6 +1272,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       cancel: '取消',
       chatSetting: '聊天设置',
       qcRules: '质检规则',
+      qcBlockedBanner: '该回答已被质检拦截',
+      qcWarnHint: '该回答可能不符合内容规范',
       avatarHidden: '隐藏头像',
       locale: '语言',
       tocEnhance: 'PageIndex',
