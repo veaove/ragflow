@@ -103,6 +103,33 @@ func RerankByModel(
 	rankFeature map[string]float64,
 	language string,
 ) (sim []float64, tsim []float64, vsim []float64, err error) {
+	return RerankByModelWithExtra(ctx, rerankModel, chunks, ids, field, query,
+		tkWeight, vtWeight, cfield, qb, rankFeature, language, nil)
+}
+
+// RerankByModelWithExtra is RerankByModel plus an injection point for
+// per-chunk extra tokens.
+//
+// extraChunkTokens[chunkID] is appended to that chunk's token list before
+// TokenSimilarity runs, which raises its tsim exactly as a published similar
+// question would (a similar question enters scoring through question_tks, i.e.
+// the same token list, and never reaches the reranker's natural-text input).
+// The map is request-scoped and nil for every production call path except the
+// change-set comparison, so ordinary retrieval is unaffected.
+func RerankByModelWithExtra(
+	ctx context.Context,
+	rerankModel *models.RerankModel,
+	chunks []map[string]interface{},
+	ids []string,
+	field map[string]map[string]interface{},
+	query string,
+	tkWeight, vtWeight float64,
+	cfield string,
+	qb *QueryBuilder,
+	rankFeature map[string]float64,
+	language string,
+	extraChunkTokens map[string][]string,
+) (sim []float64, tsim []float64, vsim []float64, err error) {
 	if chunks == nil || len(chunks) == 0 {
 		return []float64{}, []float64{}, []float64{}, nil
 	}
@@ -147,6 +174,10 @@ func RerankByModel(
 		tks = append(tks, titleTks...)
 		tks = append(tks, importantKwd...)
 		tks = append(tks, questionTks...)
+		// Injected similar-question tokens, when this comparison asked for them.
+		if extra, ok := extraChunkTokens[chunkID]; ok {
+			tks = append(tks, extra...)
+		}
 		insTw = append(insTw, tks)
 
 		// Feed the reranker the natural chunk text (markup preserved), not the

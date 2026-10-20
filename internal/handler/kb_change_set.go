@@ -153,6 +153,38 @@ func (h *ChangeSetHandler) GetChangeSetDiff(c *gin.Context) {
 	common.SuccessWithData(c, diff, "success")
 }
 
+// RetrievalCompare handles POST /datasets/:dataset_id/change-sets/:change_set_id/retrieval-compare.
+//
+// It retrieves the same question twice — once against the live configuration,
+// once against the configuration the pending change set would produce — and
+// returns both sides plus their diff. The comparison never mutates the index
+// and never publishes anything.
+func (h *ChangeSetHandler) RetrievalCompare(c *gin.Context) {
+	user, code, message := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, message)
+		return
+	}
+	var req service.RetrievalCompareRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, "Invalid request: "+err.Error())
+		return
+	}
+	datasetID := c.Param("dataset_id")
+	// The retrieval-test shape requires dataset_ids; the comparison always runs
+	// against the dataset in the path, so fill it in when the caller omitted it.
+	if len(req.Datasets) == 0 {
+		req.Datasets = common.StringSlice{datasetID}
+	}
+	result, err := chunk.NewChunkService().RetrievalCompare(
+		c.Request.Context(), user.ID, datasetID, c.Param("change_set_id"), &req)
+	if err != nil {
+		respondChangeSetError(c, err)
+		return
+	}
+	common.SuccessWithData(c, result, "success")
+}
+
 // GenerateSimilarQuestions handles POST /datasets/:dataset_id/change-sets/generate-questions.
 func (h *ChangeSetHandler) GenerateSimilarQuestions(c *gin.Context) {
 	user, code, message := GetUser(c)

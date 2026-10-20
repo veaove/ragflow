@@ -42,6 +42,13 @@ type RetrievalTestRequest struct {
 	Highlight              *bool                  `json:"highlight,omitempty"`
 	SimilarityThreshold    *float64               `json:"similarity_threshold,omitempty"`
 	VectorSimilarityWeight *float64               `json:"vector_similarity_weight,omitempty"`
+
+	// SynonymOverride / ExtraChunkTokens are the change-set comparison's
+	// injection points. They are deliberately not serialised: an external
+	// caller must not be able to fabricate dictionary entries or chunk tokens.
+	// Only RetrievalCompare sets them, in-process.
+	SynonymOverride  map[string][]string `json:"-"`
+	ExtraChunkTokens map[string][]string `json:"-"`
 }
 
 // RetrievalTestResponse retrieval test response
@@ -50,6 +57,13 @@ type RetrievalTestResponse struct {
 	DocAggs []map[string]interface{} `json:"doc_aggs"`
 	Labels  *map[string]float64      `json:"labels"`
 	Total   int64                    `json:"total"`
+	// UsedRerank reports whether a rerank model participated in scoring.
+	// The comparison needs it: similar-question simulation only works on the
+	// rerank path (it injects into the token list TokenSimilarity reads),
+	// while the no-rerank path fuses inside the engine where the application
+	// layer cannot reach. Not serialised — it is a capability signal, not
+	// result data.
+	UsedRerank bool `json:"-"`
 }
 
 // GetChunkRequest request for getting a chunk by ID

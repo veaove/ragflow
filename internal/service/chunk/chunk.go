@@ -418,6 +418,9 @@ func (s *ChunkService) RetrievalTest(ctx context.Context, req *service.Retrieval
 		EmbeddingModel:         embeddingModel,
 		Highlight:              req.Highlight,
 		Language:               entity.KnowledgebasesLanguage(kbRecords),
+		// Comparison injection points; nil for every ordinary request.
+		SynonymOverride:  req.SynonymOverride,
+		ExtraChunkTokens: req.ExtraChunkTokens,
 	}
 
 	// Call RetrievalService to perform retrieval
@@ -448,6 +451,9 @@ func (s *ChunkService) RetrievalTest(ctx context.Context, req *service.Retrieval
 		DocAggs: retrievalResult.DocAggs,
 		Labels:  &labels,
 		Total:   retrievalResult.Total,
+		// Whether the rerank path scored this request; the comparison uses it
+		// to decide whether similar-question simulation is available at all.
+		UsedRerank: rerankModel != nil,
 	}, nil
 }
 

@@ -86,6 +86,15 @@ type RetrievalRequest struct {
 	// bridge a wording gap the query's own words cannot cross; the scoring pass
 	// then uses the engine's kNN score directly instead of re-scoring tokens.
 	VectorOnly bool
+	// SynonymOverride replaces the live synonym list for specific tokens when
+	// building the query string. Sparse: tokens absent from the map still use
+	// the live dictionary. Request-scoped; nil on every production path except
+	// the change-set retrieval comparison.
+	SynonymOverride map[string][]string
+	// ExtraChunkTokens appends tokens to specific chunks before token
+	// similarity is computed, simulating similar questions added to a chunk
+	// that is not yet indexed. Same scoping rules as SynonymOverride.
+	ExtraChunkTokens map[string][]string
 	// Language is the dataset language ("" = English); diacritic-folding
 	// languages (Slovak, Czech) fold the query so its tokens match index tokens.
 	Language string
@@ -195,6 +204,8 @@ func (s *RetrievalService) Retrieval(ctx context.Context, req *RetrievalRequest)
 		VectorOnly:             req.VectorOnly,
 		Filter:                 req.Filter,
 		Language:               req.Language,
+		SynonymOverride:        req.SynonymOverride,
+		ExtraChunkTokens:       req.ExtraChunkTokens,
 	}
 	searchResult, err := s.Search(ctx, searchReq)
 	if err != nil {
@@ -493,7 +504,7 @@ func (s *RetrievalService) scoreSearchResult(ctx context.Context, req *Retrieval
 	useVastbase := engine.IsVastbase(s.docEngine.GetType())
 
 	if req.RerankModel != nil && searchResult.Total > 0 {
-		return RerankByModel(
+		return RerankByModelWithExtra(
 			ctx,
 			req.RerankModel,
 			searchResult.Chunks,
@@ -506,6 +517,7 @@ func (s *RetrievalService) scoreSearchResult(ctx context.Context, req *Retrieval
 			qb,
 			*req.RankFeature,
 			req.Language,
+			req.ExtraChunkTokens,
 		)
 	}
 
@@ -638,6 +650,10 @@ type RetrievalSearchRequest struct {
 	VectorSimilarityWeight *float64
 	AllowDenseFallback     *bool
 	// Language is the dataset language ("" = English).
+	// SynonymOverride / ExtraChunkTokens are the change-set comparison
+	// injection points; nil on every ordinary search path.
+	SynonymOverride  map[string][]string
+	ExtraChunkTokens map[string][]string
 	Language string
 }
 
@@ -792,7 +808,7 @@ func (s *RetrievalService) Search(ctx context.Context, req *RetrievalSearchReque
 	// of only at index time.
 	tenantID := firstNonEmpty(req.TenantIDs)
 	datasetID := firstNonEmpty(req.KbIDs)
-	matchText, keywords := GetQueryBuilder().QuestionScoped(ctx, tenantID, datasetID, req.Question, "", minMatch(req.VectorSimilarityWeight, 0.3), req.Language)
+	matchText, keywords := GetQueryBuilder().QuestionScopedWithOverride(ctx, tenantID, datasetID, req.Question, "", minMatch(req.VectorSimilarityWeight, 0.3), req.Language, req.SynonymOverride)
 	for _, k := range keywords {
 		kwds[k] = struct{}{}
 	}
@@ -895,7 +911,7 @@ func (s *RetrievalService) Search(ctx context.Context, req *RetrievalSearchReque
 					// and lower vector similarity threshold (0.17 vs default 0.1-0.2).
 					// This provides a second chance for queries that were too strict
 					// on the first attempt.
-					matchText, _ := GetQueryBuilder().QuestionScoped(ctx, tenantID, datasetID, req.Question, "qa", minMatch(req.VectorSimilarityWeight, 0.1), req.Language)
+					matchText, _ := GetQueryBuilder().QuestionScopedWithOverride(ctx, tenantID, datasetID, req.Question, "qa", minMatch(req.VectorSimilarityWeight, 0.1), req.Language, req.SynonymOverride)
 					matchDense = cloneDenseExpr(denseTemplate)
 					matchDense.ExtraOptions["similarity"] = 0.17
 					if req.VectorOnly || matchText == nil {

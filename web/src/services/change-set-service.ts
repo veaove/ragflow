@@ -65,6 +65,72 @@ export interface IGenerateCandidate {
   error?: string;
 }
 
+/** One retrieved chunk in either comparison column. */
+export interface ICompareHit {
+  chunk_id: string;
+  doc_keyword?: string;
+  content?: string;
+  similarity: number;
+  /** 1-based, so the UI can render "#1" directly. */
+  rank: number;
+}
+
+export interface ICompareSide {
+  hits: ICompareHit[];
+  took_ms: number;
+  total: number;
+}
+
+export interface ICompareDiffItem {
+  chunk_id: string;
+  doc_keyword?: string;
+  content?: string;
+  similarity?: number;
+  rank?: number;
+  before_rank?: number;
+  after_rank?: number;
+  before_score?: number;
+  after_score?: number;
+  delta?: number;
+  /** Only set on removed items. */
+  reason?: 'pushed_out_of_topk' | 'not_recalled';
+}
+
+export interface ICompareDiffSummary {
+  baseline_count: number;
+  candidate_count: number;
+  added_count: number;
+  removed_count: number;
+  reordered_count: number;
+  displaced_count: number;
+  score_changed_count: number;
+  avg_delta_on_common: number;
+  common_count: number;
+}
+
+export interface ICompareDiff {
+  added: ICompareDiffItem[];
+  removed: ICompareDiffItem[];
+  reordered_common: ICompareDiffItem[];
+  score_changed: ICompareDiffItem[];
+  summary: ICompareDiffSummary;
+}
+
+export interface ICompareCapability {
+  synonym_simulated: boolean;
+  similar_q_simulated: boolean;
+  unsolved_reasons: string[];
+  affected_chunk_count: number;
+  skipped_similar_count: number;
+}
+
+export interface IRetrievalCompareResult {
+  baseline: ICompareSide;
+  candidate: ICompareSide;
+  diff: ICompareDiff;
+  capability: ICompareCapability;
+}
+
 export const listChangeSets = (datasetId: string) =>
   request.get(`${restAPIv1}/datasets/${datasetId}/change-sets`);
 
@@ -129,4 +195,30 @@ export const discardChangeSet = (datasetId: string, changeSetId: string) =>
   request.post(
     `${restAPIv1}/datasets/${datasetId}/change-sets/discard`,
     { data: { change_set_id: changeSetId } },
+  );
+
+/**
+ * 影子检索对比：同一问题跑两遍（原配置 / 原配置+变更集），返回双栏结果与差异。
+ *
+ * 不重建索引：同义词通过 query 扩写精确模拟，相似问通过注入 chunk token 模拟
+ * （仅 rerank 路径可模拟，能力由返回的 capability 告知）。
+ */
+export const retrievalCompare = (
+  datasetId: string,
+  changeSetId: string,
+  data: {
+    dataset_ids: string[];
+    question: string;
+    top_k?: number;
+    similarity_threshold?: number;
+    vector_similarity_weight?: number;
+    page?: number;
+    size?: number;
+    doc_ids?: string[];
+    shadow_similar_questions?: boolean;
+  },
+) =>
+  request.post(
+    `${restAPIv1}/datasets/${datasetId}/change-sets/${changeSetId}/retrieval-compare`,
+    { data },
   );

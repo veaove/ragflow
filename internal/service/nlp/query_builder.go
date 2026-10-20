@@ -292,6 +292,22 @@ func (qb *QueryBuilder) Question(txt string, tbl string, minMatch float64, langu
 // Passing an empty tenantID/datasetID keeps the base-dictionary-only behaviour,
 // which is what Question delegates to.
 func (qb *QueryBuilder) QuestionScoped(ctx context.Context, tenantID, datasetID, txt string, tbl string, minMatch float64, language string) (*types.MatchTextExpr, []string) {
+	return qb.QuestionScopedWithOverride(ctx, tenantID, datasetID, txt, tbl, minMatch, language, nil)
+}
+
+// QuestionScopedWithOverride builds the query exactly like QuestionScoped, but
+// lets the caller substitute the synonym list for specific tokens.
+//
+// This is the injection point behind the change-set retrieval comparison: the
+// candidate side passes live-dictionary entries merged with the pending change
+// set's synonyms, so the query string it produces is byte-for-byte what a real
+// publish would produce. Tokens missing from the map still fall back to the
+// live dictionary, which keeps the map a sparse overlay rather than a full
+// replacement.
+//
+// The map is request-scoped; it never touches the package-level QueryBuilder
+// singleton or its per-dataset cache, so concurrent requests stay isolated.
+func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID, datasetID, txt string, tbl string, minMatch float64, language string, synonymOverride map[string][]string) (*types.MatchTextExpr, []string) {
 	// originalQuery stores the original input text for later use in query expression.
 	originalQuery := txt
 
@@ -387,6 +403,12 @@ func (qb *QueryBuilder) QuestionScoped(ctx context.Context, tenantID, datasetID,
 			tk := tw.tk
 			// Lookup synonyms (limit to 8 per Python)
 			tkSyns := qb.synonym.LookupScoped(ctx, tenantID, datasetID, tk, 8)
+			// A hit in the override map replaces the live list for this token.
+			// Callers pre-merge live + pending, so this is "the dictionary as
+			// it would be after publishing", not "only the pending entries".
+			if override, ok := synonymOverride[tk]; ok {
+				tkSyns = override
+			}
 			if len(tkSyns) > 0 {
 				// Format synonyms with weight boost: term^weight
 				var synParts []string
