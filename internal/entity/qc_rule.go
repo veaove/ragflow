@@ -98,8 +98,13 @@ type QcRule struct {
 	Severity      string     `gorm:"column:severity;size:16;not null;default:warn" json:"severity"`
 	Action        string     `gorm:"column:action;size:24;not null;default:log_and_alert" json:"action"`
 	PromptMessage string     `gorm:"column:prompt_message;size:500;not null" json:"prompt_message"`
-	Enabled       bool       `gorm:"column:enabled;not null;default:1" json:"enabled"`
-	CreatedBy     string     `gorm:"column:created_by;size:64" json:"created_by,omitempty"`
+	// Enabled has NO `default` tag on purpose. GORM omits a zero-value field
+	// from the INSERT when the column declares a default and lets the database
+	// fill it in, so `default:1` silently turned "create this rule disabled"
+	// into an enabled rule — the exact opposite of what the caller asked for.
+	// What the caller sets is now what gets stored.
+	Enabled   bool   `gorm:"column:enabled;not null" json:"enabled"`
+	CreatedBy string `gorm:"column:created_by;size:64" json:"created_by,omitempty"`
 	BaseModel
 }
 

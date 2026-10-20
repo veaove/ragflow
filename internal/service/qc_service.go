@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -253,9 +254,18 @@ func flattenWorkflowOutputs(outputs any) string {
 	case string:
 		return v
 	case map[string]any:
+		// Iterate in a fixed key order. Go randomises map iteration, and this
+		// flattened text is what the hit's matched text and surrounding context
+		// are cut from, so an unstable order made the recorded evidence differ
+		// between two identical workflow runs.
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
 		var sb strings.Builder
-		for _, val := range v {
-			if s := flattenWorkflowOutputs(val); s != "" {
+		for _, k := range keys {
+			if s := flattenWorkflowOutputs(v[k]); s != "" {
 				if sb.Len() > 0 {
 					sb.WriteByte(' ')
 				}
