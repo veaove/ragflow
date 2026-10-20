@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"ragflow/internal/common"
 	"ragflow/internal/entity"
@@ -28,6 +29,10 @@ import (
 
 // QcRuleDAO quality-inspection rule data access object.
 type QcRuleDAO struct{}
+
+// qcSelectionMigrationSetting marks the one-time switch from implicit to
+// explicit rule selection; see EnsureExplicitSelection.
+const qcSelectionMigrationSetting = "qc.selection_explicit"
 
 // NewQcRuleDAO create QC rule DAO.
 func NewQcRuleDAO() *QcRuleDAO {
@@ -128,21 +133,25 @@ func (dao *QcRuleDAO) List(ctx context.Context, db *gorm.DB, filter QcRuleListFi
 	return rules, total, nil
 }
 
-// ListEnabledByApp loads all enabled rules that apply to an app: the rules
-// whose home app is this one, plus every rule another app created but this app
-// selected in its settings. Called once at the start of a session to compile
-// the matcher.
+// ListEnabledByApp loads the rules that are switched on for an app: the
+// enabled rules this app explicitly selected in its settings.
+//
+// A rule's (app_type, app_id) is only where it was CREATED — that is what the
+// QC menu filters on and what ownership checks use. It does not apply a rule by
+// itself: applying is expressed by a qc_rule_binding row, so the checkbox list
+// in the app settings is the single source of truth for what actually runs.
+// (It used to be "home rules apply implicitly", which made a rule show up as
+// checked in the UI while nothing about that selection was ever persisted.)
 func (dao *QcRuleDAO) ListEnabledByApp(ctx context.Context, db *gorm.DB, appType, appID string) ([]entity.QcRule, error) {
 	var rules []entity.QcRule
 	err := db.WithContext(ctx).
 		Table("qc_rule AS r").
 		Select("r.*").
 		Joins(
-			"LEFT JOIN qc_rule_binding AS b ON b.rule_id = r.id AND b.app_type = ? AND b.app_id = ?",
+			"INNER JOIN qc_rule_binding AS b ON b.rule_id = r.id AND b.app_type = ? AND b.app_id = ?",
 			appType, appID,
 		).
 		Where("r.enabled = ?", true).
-		Where("(r.app_type = ? AND r.app_id = ?) OR b.id IS NOT NULL", appType, appID).
 		Order("r.create_time ASC").
 		Find(&rules).Error
 	if err != nil {
@@ -151,9 +160,113 @@ func (dao *QcRuleDAO) ListEnabledByApp(ctx context.Context, db *gorm.DB, appType
 	return rules, nil
 }
 
+// EnsureHomeBindings backfills one binding row per rule for the app the rule
+// was created in. Selection used to be implicit for a rule's home app, so
+// without this backfill every rule created before the switch to explicit
+// selection would silently stop applying. Idempotent on its own (rules that
+// already have the binding are skipped), but see EnsureExplicitSelection for
+// why it must not run unconditionally.
+func (dao *QcRuleDAO) EnsureHomeBindings(ctx context.Context, db *gorm.DB) error {
+	if !db.WithContext(ctx).Migrator().HasTable(&entity.QcRule{}) ||
+		!db.WithContext(ctx).Migrator().HasTable(&entity.QcRuleBinding{}) {
+		return nil
+	}
+	var rules []entity.QcRule
+	if err := db.WithContext(ctx).Where("app_id <> ''").Find(&rules).Error; err != nil {
+		return err
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	// Existing bindings, so a re-run is a no-op. Bounded by the rule count
+	// (qc.max_rules_per_tenant caps it at a few hundred).
+	var bindings []entity.QcRuleBinding
+	if err := db.WithContext(ctx).Select("rule_id", "app_type", "app_id").Find(&bindings).Error; err != nil {
+		return err
+	}
+	type bindingKey struct{ ruleID, appType, appID string }
+	seen := make(map[bindingKey]bool, len(bindings))
+	for _, b := range bindings {
+		seen[bindingKey{b.RuleID, b.AppType, b.AppID}] = true
+	}
+
+	now := time.Now().Local().UnixMilli()
+	for _, r := range rules {
+		k := bindingKey{r.ID, r.AppType, r.AppID}
+		if seen[k] {
+			continue
+		}
+		// Two processes starting at once can both miss the marker; the unique
+		// index on (rule_id, app_type, app_id) decides the winner and the loser
+		// must not fail the whole migration.
+		if err := db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).
+			Create(&entity.QcRuleBinding{
+				ID:         common.GenerateToken(),
+				TenantID:   r.TenantID,
+				RuleID:     r.ID,
+				AppType:    r.AppType,
+				AppID:      r.AppID,
+				CreateTime: now,
+			}).Error; err != nil {
+			return err
+		}
+		seen[k] = true
+	}
+	return nil
+}
+
+// EnsureExplicitSelection runs the one-time migration from "a rule applies
+// implicitly to the app it was created in" to "a rule applies only where it is
+// explicitly selected".
+//
+// It is guarded by a system_settings marker rather than by "is the binding
+// missing?" — a missing binding also means "the user unticked this rule", so an
+// unguarded re-run would silently re-enable rules people had turned off. Runs
+// at most once per database, forever.
+func (dao *QcRuleDAO) EnsureExplicitSelection(ctx context.Context, db *gorm.DB) error {
+	if !db.WithContext(ctx).Migrator().HasTable(&entity.QcRule{}) ||
+		!db.WithContext(ctx).Migrator().HasTable(&entity.QcRuleBinding{}) {
+		return nil
+	}
+	settings := NewSystemSettingsDAO()
+	done, err := settings.Exists(ctx, db, qcSelectionMigrationSetting)
+	if err != nil {
+		return err
+	}
+	if done {
+		return nil
+	}
+	if err := dao.EnsureHomeBindings(ctx, db); err != nil {
+		return err
+	}
+	return settings.SaveOrCreate(ctx, db, qcSelectionMigrationSetting, "true", "qc", "bool")
+}
+
+// CreateWithHomeBinding inserts a rule together with the binding that makes it
+// apply to the app it was created in, so a rule added in the QC menu is
+// immediately in effect there.
+func (dao *QcRuleDAO) CreateWithHomeBinding(ctx context.Context, db *gorm.DB, rule *entity.QcRule) error {
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(rule).Error; err != nil {
+			return err
+		}
+		if rule.AppID == "" {
+			return nil
+		}
+		return tx.Create(&entity.QcRuleBinding{
+			ID:         common.GenerateToken(),
+			TenantID:   rule.TenantID,
+			RuleID:     rule.ID,
+			AppType:    rule.AppType,
+			AppID:      rule.AppID,
+			CreateTime: time.Now().Local().UnixMilli(),
+		}).Error
+	})
+}
+
 // ListSelectable lists every rule the tenant could apply to an app, together
-// with the ids currently in effect for that app (home rules + bound rules).
-// This is what the "选用规则" selector renders.
+// with whether it is currently in effect for that app. This is what the
+// "选用规则" selector renders.
 func (dao *QcRuleDAO) ListSelectable(ctx context.Context, db *gorm.DB, tenantID, appType, appID string) ([]QcRuleSelection, error) {
 	var rules []entity.QcRule
 	if err := db.WithContext(ctx).
@@ -180,19 +293,20 @@ func (dao *QcRuleDAO) ListSelectable(ctx context.Context, db *gorm.DB, tenantID,
 		home := r.AppType == appType && r.AppID == appID
 		out = append(out, QcRuleSelection{
 			QcRule: r,
-			// Home rules always apply and cannot be deselected; a bound rule is
-			// selected explicitly in this app's settings.
-			Selected: home || bound[r.ID],
+			// Selected mirrors the binding table exactly: the checkbox state is
+			// the stored state, for home rules too. Home is only a label saying
+			// where the rule was created.
+			Selected: bound[r.ID],
 			Home:     home,
 		})
 	}
 	return out, nil
 }
 
-// ReplaceBindings makes want the complete set of rules this app references from
-// other apps. Home rules are never stored as bindings (they apply implicitly)
-// and unknown/foreign rule ids are ignored, so a stale selection can't attach
-// another tenant's rule.
+// ReplaceBindings makes want the complete set of rules this app references.
+// Every selected rule gets a row, including rules created in this app, so the
+// checkbox list is backed 1:1 by the database. Unknown/foreign rule ids are
+// ignored, so a stale selection can't attach another tenant's rule.
 func (dao *QcRuleDAO) ReplaceBindings(ctx context.Context, db *gorm.DB, tenantID, appType, appID string, want []string) error {
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("tenant_id = ? AND app_type = ? AND app_id = ?", tenantID, appType, appID).
@@ -209,9 +323,6 @@ func (dao *QcRuleDAO) ReplaceBindings(ctx context.Context, db *gorm.DB, tenantID
 		}
 		now := time.Now().Local().UnixMilli()
 		for _, r := range owned {
-			if r.AppType == appType && r.AppID == appID {
-				continue // home rule: applies without a binding row
-			}
 			if err := tx.Create(&entity.QcRuleBinding{
 				ID:         common.GenerateToken(),
 				TenantID:   tenantID,
@@ -236,10 +347,11 @@ func (dao *QcRuleDAO) DeleteBindingsByRule(ctx context.Context, db *gorm.DB, rul
 // QcRuleSelection is one row of the app-level rule selector.
 type QcRuleSelection struct {
 	entity.QcRule
-	// Selected reports whether the rule is in effect for the queried app.
+	// Selected reports whether the rule is in effect for the queried app, i.e.
+	// a binding row exists. It is exactly what ReplaceBindings wrote.
 	Selected bool `json:"selected"`
-	// Home reports whether this app created the rule. Home rules always apply
-	// and the selector must not let them be unchecked.
+	// Home reports whether this app is where the rule was created. It is a
+	// label only — a home rule that is not selected does not run.
 	Home bool `json:"home"`
 }
 

@@ -327,7 +327,11 @@ func (h *QcHandler) CreateRule(c *gin.Context) {
 		Enabled:       enabled,
 		CreatedBy:     user.ID,
 	}
-	if err := dao.NewQcRuleDAO().Create(c.Request.Context(), dao.DB, rule); err != nil {
+	// Create the rule AND the binding to its own app in one transaction: the
+	// binding is what makes a rule run, so a rule born in this app has to be
+	// selected for it, or it would look active in the QC menu but inspect
+	// nothing.
+	if err := dao.NewQcRuleDAO().CreateWithHomeBinding(c.Request.Context(), dao.DB, rule); err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return
 	}
@@ -489,7 +493,8 @@ func (h *QcHandler) GetRuleSelection(c *gin.Context) {
 // UpdateRuleSelection handles PUT /qc/rules/selection.
 // Body: {"app_type":"chat","app_id":"...","rule_ids":["...","..."]}
 // The list is the complete set of rules this app should use; an empty list
-// clears every reference (home rules still apply and need no reference).
+// means this app runs no QC rule at all (home rules included — being the app a
+// rule was created in does not apply it).
 func (h *QcHandler) UpdateRuleSelection(c *gin.Context) {
 	user, code, msg := GetUser(c)
 	if code != common.CodeSuccess {

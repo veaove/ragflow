@@ -65,11 +65,14 @@ const severityTone: Record<string, string> = {
  * QcRuleSelector 是应用设置页里的质检区块。
  *
  * 这里**不创建规则** —— 规则统一在「质检」菜单里维护，应用侧只做「选用」：
- * 勾选即引用该规则，取消勾选即解除引用，改动立即生效（不进聊天设置的表单，
- * 因为规则选择与会话业务字段是两件事，混在一个保存按钮里容易被取消按钮吞掉）。
+ * 勾选即引用该规则，取消勾选即解除引用，改动立即落库并生效（不进聊天设置的
+ * 表单，因为规则选择与会话业务字段是两件事，混在一个保存按钮里容易被取消
+ * 按钮吞掉）。
  *
- * 规则本身归属某个应用（home）；本应用创建的规则恒生效，不可取消，
- * 面板上以「本应用创建」标记，其余规则都可自由勾选。
+ * 勾选状态就是数据库里的引用记录，**包括本应用创建的规则**：规则归属哪个应用
+ * 只表示它在哪里创建，不代表它自动生效。之前的实现让本应用创建的规则「隐式
+ * 生效且不能取消」，面板上依然显示为已勾选，于是出现「看着勾了、库里没有记录、
+ * 实际生效与否说不清」的错觉。
  */
 export function QcRuleSelector({
   appType,
@@ -110,7 +113,7 @@ export function QcRuleSelector({
   }, [reload]);
 
   const toggle = async (rule: IQcRuleSelection) => {
-    if (rule.home || saving) return;
+    if (saving) return;
 
     const next = rules.map((x) =>
       x.id === rule.id ? { ...x, selected: !x.selected } : x,
@@ -138,7 +141,9 @@ export function QcRuleSelector({
     }
   };
 
-  const selectedCount = rules.filter((x) => x.selected).length;
+  // 生效 = 已勾选且规则本身是启用状态；停用的规则即使勾着也不参与质检，
+  // 所以计数只统计真正会跑的规则，避免又一个「看着 2 条其实 1 条」。
+  const effectiveCount = rules.filter((x) => x.selected && x.enabled).length;
 
   return (
     <div className={cn('flex flex-col gap-3', className)}>
@@ -147,7 +152,7 @@ export function QcRuleSelector({
           {t('chat.qcRulesHint')}
           {rules.length > 0 && (
             <span className="ml-2 text-text-sub-title">
-              {t('chat.qcRulesSelectedCount', { selected: selectedCount })}
+              {t('chat.qcRulesSelectedCount', { selected: effectiveCount })}
             </span>
           )}
         </div>
@@ -160,6 +165,12 @@ export function QcRuleSelector({
         </Link>
       </div>
 
+      {rules.length > 0 && effectiveCount === 0 && (
+        <div className="rounded-md border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs text-orange-600">
+          {t('chat.qcRulesNoneActive')}
+        </div>
+      )}
+
       {rules.length === 0 ? (
         <div className="rounded-lg border border-border-base">
           <Empty
@@ -170,7 +181,6 @@ export function QcRuleSelector({
       ) : (
         <div className="flex flex-col gap-2">
           {rules.map((rule) => {
-            const locked = rule.home;
             return (
               <label
                 key={rule.id}
@@ -179,8 +189,8 @@ export function QcRuleSelector({
                   rule.selected
                     ? 'border-accent-primary/40 bg-accent-primary/5'
                     : 'border-border-base',
-                  locked || saving
-                    ? 'cursor-default'
+                  saving
+                    ? 'cursor-default opacity-70'
                     : 'cursor-pointer hover:border-accent-primary/40',
                 )}
               >
@@ -188,7 +198,7 @@ export function QcRuleSelector({
                   type="checkbox"
                   className="mt-0.5 size-4 shrink-0 accent-current"
                   checked={rule.selected}
-                  disabled={locked || saving}
+                  disabled={saving}
                   onChange={() => toggle(rule)}
                 />
                 <div className="min-w-0 flex-1">
@@ -196,7 +206,7 @@ export function QcRuleSelector({
                     <span className="truncate text-sm font-medium text-text-title">
                       {rule.name}
                     </span>
-                    {locked && (
+                    {rule.home && (
                       <span className="shrink-0 rounded bg-background-second px-1.5 py-0.5 text-xs text-text-sub-title">
                         {t('chat.qcRuleHomeTag')}
                       </span>

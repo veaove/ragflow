@@ -1377,14 +1377,16 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       qcRules: 'Quality inspection rules',
       qcBlockedBanner: 'This answer was blocked by quality inspection',
       qcRulesHint:
-        'Pick from the rules created in the Quality inspection menu. Changes apply to this app immediately.',
-      qcRulesSelectedCount: '{{selected}} selected',
+        'Tick a rule to enforce it on this app — saved immediately, and unticked rules are not checked. Creating a rule here or elsewhere makes no difference.',
+      qcRulesSelectedCount: '{{selected}} in effect',
+      qcRulesNoneActive:
+        'No rule is in effect for this app, so nothing gets inspected.',
       qcRulesManage: 'Manage rules in Quality inspection',
       qcRulesEmpty:
         'No quality inspection rule yet — create one in the Quality inspection menu first.',
       qcRulesLoading: 'Loading…',
       qcRuleHomeTag: 'Created here',
-      qcRuleDisabledTag: 'Disabled',
+      qcRuleDisabledTag: 'Disabled — not enforced',
       qcWarnHint: 'This answer may violate the content policy',
       tocEnhance: 'PageIndex',
       tocEnhanceTip: `During the parsing of the document, table of contents information was generated (see the 'Enable Table of Contents Extraction' option in the General method). This allows the large model to return table of contents items relevant to the user's query, thereby using these items to retrieve related chunks and apply weighting to these chunks during the sorting process. This approach mimics human information-searching behavior in books.`,

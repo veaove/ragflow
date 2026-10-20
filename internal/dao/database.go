@@ -317,6 +317,13 @@ func InitDB(ctx context.Context, migrateDB bool) error {
 	if err = migrateKnowledgebaseRerankColumn(ctx, DB); err != nil {
 		return err
 	}
+	// QC rule selection is explicit now (a rule applies to an app only when a
+	// qc_rule_binding row exists), so pre-existing rules need their home
+	// binding once. Best-effort: losing the backfill must not stop the server,
+	// and the DAO's marker keeps it from ever running twice.
+	if err = NewQcRuleDAO().EnsureExplicitSelection(ctx, DB); err != nil {
+		common.Warn("Failed to migrate QC rule selection", zap.Error(err))
+	}
 	// Seed built-in agent templates so the Go backend can serve the
 	// "create agent from template" catalogue without relying on Python-side
 	// initialization.

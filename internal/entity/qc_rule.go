@@ -81,9 +81,11 @@ func (k *QcKeywords) Scan(value interface{}) error {
 }
 
 // QcRule is a quality-inspection rule. Its (AppType, AppID) is the rule's HOME
-// app — where it was created in the QC menu. A rule can additionally be
-// referenced by other apps through QcRuleBinding, which is what the "选用规则"
-// selector in the chat / agent settings writes.
+// app — where it was created in the QC menu, used for ownership checks and for
+// filtering that menu. Being the home app does NOT apply the rule: a rule runs
+// for an app only while a QcRuleBinding row exists, which is what the "选用规则"
+// checkbox list in the chat / agent settings writes (one row per ticked rule,
+// home rules included).
 type QcRule struct {
 	ID            string     `gorm:"column:id;primaryKey;size:32" json:"id"`
 	TenantID      string     `gorm:"column:tenant_id;size:64;not null;index" json:"tenant_id"`
@@ -106,9 +108,10 @@ func (QcRule) TableName() string {
 	return "qc_rule"
 }
 
-// QcRuleBinding references a QC rule from an app that is NOT the rule's home
-// app. Effective rules for a session = the app's own rules + every bound rule,
-// which is how one rule created once in the QC menu serves many apps.
+// QcRuleBinding makes a rule apply to one app. It is the single source of
+// truth for "which rules run here": a rule applies to an app if and only if a
+// row exists for (rule, app), regardless of which app created it. One rule can
+// therefore serve many apps without being duplicated.
 type QcRuleBinding struct {
 	ID         string `gorm:"column:id;primaryKey;size:32" json:"id"`
 	TenantID   string `gorm:"column:tenant_id;size:64;not null;index" json:"tenant_id"`
