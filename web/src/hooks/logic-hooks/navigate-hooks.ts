@@ -114,6 +114,12 @@ export const useNavigatePage = () => {
     navigate(Routes.Agents);
   }, [navigate]);
 
+  // Studio (chatflow / workflow) has its own list route; the editor is shared
+  // with Agents, so the breadcrumb needs this to lead back to the right module.
+  const navigateToStudio = useCallback(() => {
+    navigate(Routes.Studio);
+  }, [navigate]);
+
   const navigateToAgentList = useCallback(() => {
     navigate(Routes.AgentList);
   }, [navigate]);
@@ -259,6 +265,7 @@ export const useNavigatePage = () => {
     getQueryString,
     navigateToChunk,
     navigateToAgents,
+    navigateToStudio,
     navigateToAgent,
     navigateToAgentExplore,
     navigateToAgentLogs,

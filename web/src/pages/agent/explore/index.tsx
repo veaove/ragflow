@@ -7,6 +7,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import { AgentCategory } from '@/constants/agent';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchSessionManually } from '@/hooks/use-agent-request';
 import { useCallback } from 'react';
@@ -24,6 +25,12 @@ export default function AgentExplore() {
   const { id } = useParams();
   const { flowDetail: agentDetail } = useFetchDataOnMount();
   const { fetchSessionManually, data: session } = useFetchSessionManually();
+
+  // Chatflow / workflow flows belong to Studio, not Agents; label the crumb the
+  // same way the editor does so both pages agree on which module you are in.
+  const isStudioCanvas =
+    agentDetail?.canvas_category === AgentCategory.ChatflowCanvas ||
+    agentDetail?.canvas_category === AgentCategory.WorkflowCanvas;
 
   const handleBackToAgent = useCallback(() => {
     const navigateFn = navigateToAgent(id as string);
@@ -45,7 +52,7 @@ export default function AgentExplore() {
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink onClick={handleBackToAgent}>
-                {t('header.flow')}
+                {isStudioCanvas ? t('header.studio') : t('header.flow')}
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />

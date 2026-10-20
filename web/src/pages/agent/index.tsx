@@ -130,6 +130,18 @@ export default function Agent() {
     saveGraph();
   }, [saveGraph]);
   const { flowDetail: agentDetail } = useFetchDataOnMount();
+  // Studio (chatflow / workflow) and Agents share this editor and both live
+  // under /agent/:id, so the URL cannot tell the two modules apart. The
+  // breadcrumb parent therefore comes from the canvas category itself —
+  // without this a studio flow was labelled 智能体.
+  const isStudioCanvas =
+    agentDetail?.canvas_category === AgentCategory.ChatflowCanvas ||
+    agentDetail?.canvas_category === AgentCategory.WorkflowCanvas;
+  // While the detail request is still in flight the category is unknown; fall
+  // back to the agent module, which is the editor's default home.
+  const parentCrumb = isStudioCanvas
+    ? { label: t('header.studio'), onClick: navigateToStudio }
+    : { label: t('header.flow'), onClick: navigateToAgents };
   const { issues, getLatestIssues } = useCanvasChecklist({
     ownerTenantId: agentDetail?.tenant_id,
     canvasID: id,
@@ -357,8 +369,8 @@ export default function Agent() {
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
-                <BreadcrumbLink onClick={navigateToAgents}>
-                  {t('header.flow')}
+                <BreadcrumbLink onClick={parentCrumb.onClick}>
+                  {parentCrumb.label}
                 </BreadcrumbLink>
               </BreadcrumbItem>
               <BreadcrumbSeparator />
