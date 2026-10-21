@@ -289,6 +289,27 @@ func realComponentBodyWithOptions(cpnID, componentClass, displayName string, com
 			return lastErr
 		}()
 		if invokeErr != nil {
+			// 异常策略（ND-03 的「默认值」模式）：节点配置 error_strategy=
+			// "default_value" 时，失败不中断整条流程，改为输出 error_default_value
+			// 并标记 __error_fallback__，下游可据此感知「该节点走了兜底值」。
+			// 取消/超时属控制流，不走兜底（用户主动取消不该被吞掉）。
+			if !errors.Is(invokeErr, context.Canceled) &&
+				!errors.Is(invokeErr, context.DeadlineExceeded) {
+				if strategy, _ := in["error_strategy"].(string); strategy == "default_value" {
+					if def, ok := in["error_default_value"]; ok {
+						common.Warn("agent: component failed, using fallback value",
+							zap.String("component_id", cpnID),
+							zap.String("component_class", componentClass),
+							zap.Error(invokeErr))
+						out = map[string]any{
+							"result":           def,
+							"__cpn_id__":       cpnID,
+							"__error_fallback__": true,
+						}
+						return out, nil
+					}
+				}
+			}
 			switch {
 			case errors.Is(invokeErr, context.Canceled):
 				// A user cancel is a normal control path; the authoritative
