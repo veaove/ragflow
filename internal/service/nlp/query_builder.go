@@ -436,7 +436,17 @@ func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID
 						// Do not escape here. Python's English branch embeds the
 						// cleaned synonym as-is; SubSpecialChar would also escape '-',
 						// which WordNet synonyms contain constantly.
-						synParts = append(synParts, fmt.Sprintf(`"%s"^%.4f`, syn, tw.w/4.0))
+						//
+						// A configured synonym carries the same weight as the term
+						// itself. It used to be tw.w/4 — a ranking-only discount —
+						// but scores are compared against an absolute
+						// similarity_threshold, so the discount silently became an
+						// admission gate: a chunk reachable only through a synonym
+						// scored ~0.18 and was filtered out at the default 0.2 while
+						// the app settings still listed the alias as configured.
+						// Weights below 1 still rank literal matches first; users
+						// arriving through an alias land slightly lower on ties.
+						synParts = append(synParts, fmt.Sprintf(`"%s"^%.4f`, syn, tw.w))
 						// Extend keywords with cleaned synonyms
 						keywords = append(keywords, syn)
 					}
@@ -675,7 +685,12 @@ func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID
 				}
 			}
 			if len(synParts) > 0 {
-				tmsStr = fmt.Sprintf("(%s)^5 OR (%s)^0.7", tmsStr, strings.Join(synParts, " OR "))
+				// The synonym branch carries the same boost as the literal
+				// segment (^0.7 vs ^5 was a 14% ranking hint). Like the
+				// non-Chinese branch, that discount was measured against an
+				// absolute similarity_threshold and ended up blocking chunks
+				// that were reachable only through a configured alias.
+				tmsStr = fmt.Sprintf("(%s)^5 OR (%s)^5", tmsStr, strings.Join(synParts, " OR "))
 			}
 		}
 

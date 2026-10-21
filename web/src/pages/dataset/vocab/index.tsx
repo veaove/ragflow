@@ -580,6 +580,12 @@ function VocabEditor({
                 placeholder={'华夏上证50ETF\n50ETF\n上证50'}
                 onChange={(e) => setDraft({ ...draft, wordsText: e.target.value })}
               />
+              {/* 同义词现在按标准词的等价权重参与检索，一个单字（如「买」）
+                  会把大量无关提问一并拉进来，所以先在这里提示一下。 */}
+              <p className="mt-1 text-xs text-text-sub-title">
+                同义词与标准词同等权重参与检索。请避免用单字（如「买」）当同义词，
+                否则会召回过多无关内容；建议每条 ≥2 个字、语义明确。
+              </p>
             </div>
 
             <div>
