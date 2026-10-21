@@ -16,11 +16,12 @@
 | 前端类型检查 | ✅ 203 个错误（基线 206，**净减 3**） | 无新增 |
 | 前端 lint | ✅ 0 error / 176 warning | 无新增 |
 | 前端单测 | ⚠️ 124/136 套件通过（12 套件 19 用例红） | 与昨日**完全同一批**，无新增 |
-| E2E · API | ⚠️ 28/28 + 补测 7/9 | 有 **1 个 P1 真实缺陷** |
+| E2E · API | ⚠️ 28/28 + 补测 7/9 | 有 **1 个 P1 真实缺陷**（已修复 `26d32c6db`，待部署） |
 | E2E · UI | ⚠️ 24/29（2 失败 / 3 跳过） | 有 **1 个 P2 可见缺陷** |
 
 **一句话**：后端和类型检查层面这次是干净的；但**检索测试设置的自动保存实际是坏的**（前端发的字段被后端白名单拒绝），
-这个必须修完再发；另外新加的列表表格把两个未翻译的 i18n key 直接暴露给了用户。
+已在 `26d32c6db` 修好并通过回归测试，**需重新编译部署才生效**；
+另外新加的列表表格把两个未翻译的 i18n key 直接暴露给了用户。
 
 ---
 
@@ -178,8 +179,11 @@ Tests:       19 failed, 955 passed, 974 total
 
 ### 6.1 【P1】检索测试设置的自动保存实际不生效——前端发的字段被后端白名单拒绝
 
-**现象**：知识库「检索测试」页改任何设置，后端返回 `code=101`，前端拿不到 `code===0`，
-所以**不会出现「保存成功」提示**，反而触发全局错误提示。
+> **状态：已修复（提交 `26d32c6db`），待重新编译部署生效。**
+
+**现象**：知识库「检索测试」页改任何设置，右上角报
+`101 Extra inputs are not permitted: similarity_threshold`，且永远看不到「保存成功」。
+（用户 10:40 截图复现，与此前 API 层实测一致。）
 
 **证据（线上实测，临时知识库）**：
 
@@ -204,10 +208,27 @@ PUT /api/v1/datasets/{id}  {"rerank_id":""}
 **影响**：`057a41df` / `5e0d7dc4` / `7a7b537d` 三个提交声称修好"设置自动保存并提示保存成功"，
 实际在真实接口上是失败的——只是前端把错误吞成了全局提示，容易被当成网络抖动。
 
-**建议修法（二选一）**：
-1. 后端把三个字段加进白名单并落到对应列（`knowledgebase.similarity_threshold` /
-   `keyword_similarity_weight`（注意命名反向，见下行权重语义）/ `rerank_id`）；
-2. 或前端改为塞进 `parser_config`（但列表与检索读取路径要同步，成本更高）。
+**已实施的修复**（提交 `26d32c6db`）：把三个字段加进 `updateDatasetAllowedFields`。
+只需改白名单——`UpdateDatasetRequest` 三个字段早已定义，service 也已实现
+（0..1 范围校验、`1 - keyword` 取反写 `vector_similarity_weight`、空串清空 `rerank_id`），
+缺的只是最外层这道闸。
+
+回归保护（均已在服务器跑通）：
+
+- `internal/handler/dataset_update_allowed_fields_test.go`
+  - `TestUpdateDatasetAcceptsRetrievalTestSettings`：白名单必须含这三个 key；
+  - `TestUpdateDatasetWhitelistCoversRequestJSONFields`：`UpdateDatasetRequest` 的每个
+    json 字段都必须在白名单里，防止再次漂移（`embd_id` 是无用的列级别名，显式跳过并注明）。
+- `internal/service/dataset/update_test.go`
+  - `TestUpdateDatasetPersistsRetrievalTestSettings`：写入并回读，验证权重取反、
+    空串清空 rerank 且不影响另外两个数值；
+  - `TestUpdateDatasetRejectsOutOfRangeRetrievalTestSettings`：越界值被拒。
+
+验证结果：`internal/handler` 与 `internal/service/dataset` 两包全部 PASS，0 失败。
+
+> **注意**：线上二进制仍是 `52e2112`，修复未生效。实测
+> `PUT /api/v1/datasets/{合法UUID} {"similarity_threshold":0.2}` 仍返回
+> `101 Extra inputs are not permitted`。需要一次重新编译 + 重启。
 
 > 另注：知识库权重列在库里叫 `vector_similarity_weight`（默认 0.3），接口对外叫
 > `keywords_similarity_weight`，写入时是 `1 - vector`。修的时候别按字面直写。
@@ -289,8 +310,9 @@ knowledgeBase: '知识库',    // Knowledge Base
 
 ## 八、给开发专家的事项（按优先级）
 
-1. **【P1】修检索测试设置保存**（§6.1）。这是本次唯一的 P1，且是"看起来已修好、实际没生效"的类型，
-   验收时最容易被漏掉。修完请用真实 PUT 验证，不要只看前端 toast。
+1. **【P1，已修复待部署】检索测试设置保存**（§6.1）。这是本次唯一的 P1，且是"看起来已修好、实际没生效"的类型，
+   验收时最容易被漏掉。修复提交 `26d32c6db`，回归测试已通过；**上线后请用真实 PUT 复验一次**，
+   不要只看前端 toast。
 2. **【P2】补 `common.description` / `common.knowledgeBase` 两个词条**（§6.3）——两行改动，
    顺手把 `create-studio-dialog` 与 `avatar-name-description` 的存量暴露点一起清掉。
 3. **【P2】`parser_config` 静默丢弃要么报错要么合并**（§6.2）。
