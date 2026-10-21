@@ -1572,3 +1572,92 @@ func TestUpdateDatasetPagerankUnchangedIsANoOpOnInfinity(t *testing.T) {
 		t.Fatalf("pagerank = %d, want the rejected update rolled back", persisted.Pagerank)
 	}
 }
+
+// TestUpdateDatasetPersistsRetrievalTestSettings covers the retrieval-test
+// panel's auto-save. The panel writes the keyword weight and the API reads it
+// back in the same units, while the column stores the vector weight — so the
+// write has to invert. This is also the layer that has to survive an empty
+// rerank_id, which the UI sends to clear a previously saved model.
+func TestUpdateDatasetPersistsRetrievalTestSettings(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "Original")
+	insertDatasetUpdateCanvas(t, "abcdef0123456789abcdef0123456789", "tenant-1")
+
+	threshold := 0.42
+	keywordWeight := 0.8
+	rerankID := "qwen3-rerank@tongyi"
+	svc := testDatasetUpdateService(t)
+
+	result, code, err := svc.UpdateDataset(t.Context(), "kb-1", "tenant-1",
+		service.UpdateDatasetRequest{
+			SimilarityThreshold:      &threshold,
+			KeywordsSimilarityWeight: &keywordWeight,
+			RerankID:                 &rerankID,
+		})
+	if err != nil || code != common.CodeSuccess {
+		t.Fatalf("UpdateDataset: code=%d err=%v", code, err)
+	}
+
+	persisted, getErr := dao.NewKnowledgebaseDAO().GetByID(t.Context(), db, "kb-1")
+	if getErr != nil {
+		t.Fatalf("get kb: %v", getErr)
+	}
+	if persisted.SimilarityThreshold != threshold {
+		t.Fatalf("similarity_threshold = %v, want %v", persisted.SimilarityThreshold, threshold)
+	}
+	// The column keeps the vector weight, so a keyword weight of 0.8 must land
+	// as 0.2. Getting this backwards silently degrades every retrieval run.
+	if want := 1 - keywordWeight; persisted.VectorSimilarityWeight != want {
+		t.Fatalf("vector_similarity_weight = %v, want %v (1 - keyword weight)", persisted.VectorSimilarityWeight, want)
+	}
+	if persisted.RerankID == nil || *persisted.RerankID != rerankID {
+		t.Fatalf("rerank_id = %v, want %q", persisted.RerankID, rerankID)
+	}
+	// The response has to speak the same units the caller sent.
+	if got, ok := result["keywords_similarity_weight"].(float64); !ok || got != keywordWeight {
+		t.Fatalf("response keywords_similarity_weight = %#v, want %v", result["keywords_similarity_weight"], keywordWeight)
+	}
+
+	// An empty rerank_id is meaningful: it clears the saved model.
+	empty := ""
+	if _, code, err = svc.UpdateDataset(t.Context(), "kb-1", "tenant-1",
+		service.UpdateDatasetRequest{RerankID: &empty}); err != nil || code != common.CodeSuccess {
+		t.Fatalf("clear rerank: code=%d err=%v", code, err)
+	}
+	cleared, getErr := dao.NewKnowledgebaseDAO().GetByID(t.Context(), db, "kb-1")
+	if getErr != nil {
+		t.Fatalf("get kb after clear: %v", getErr)
+	}
+	if cleared.RerankID != nil && *cleared.RerankID != "" {
+		t.Fatalf("rerank_id = %v, want cleared", *cleared.RerankID)
+	}
+	// Clearing the model must not disturb the two numeric settings.
+	if cleared.SimilarityThreshold != threshold || cleared.VectorSimilarityWeight != 1-keywordWeight {
+		t.Fatalf("numeric settings changed while clearing rerank: %v / %v",
+			cleared.SimilarityThreshold, cleared.VectorSimilarityWeight)
+	}
+}
+
+// TestUpdateDatasetRejectsOutOfRangeRetrievalTestSettings keeps the panel's
+// sliders honest: the same fields it writes must reject impossible values
+// instead of storing them.
+func TestUpdateDatasetRejectsOutOfRangeRetrievalTestSettings(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "Original")
+	insertDatasetUpdateCanvas(t, "abcdef0123456789abcdef0123456789", "tenant-1")
+
+	svc := testDatasetUpdateService(t)
+	tooHigh := 1.5
+	_, code, err := svc.UpdateDataset(t.Context(), "kb-1", "tenant-1",
+		service.UpdateDatasetRequest{SimilarityThreshold: &tooHigh})
+	if err == nil || code != common.CodeDataError {
+		t.Fatalf("similarity_threshold 1.5: code=%d err=%v, want CodeDataError", code, err)
+	}
+	_, code, err = svc.UpdateDataset(t.Context(), "kb-1", "tenant-1",
+		service.UpdateDatasetRequest{KeywordsSimilarityWeight: &tooHigh})
+	if err == nil || code != common.CodeDataError {
+		t.Fatalf("keywords_similarity_weight 1.5: code=%d err=%v, want CodeDataError", code, err)
+	}
+}

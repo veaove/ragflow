@@ -399,6 +399,15 @@ var updateDatasetAllowedFields = map[string]bool{
 	// enabled is the dataset enable/disable switch (distinct from the
 	// soft-delete "status" column, which the API never exposes for writing).
 	"enabled": true,
+	// Retrieval-test settings. The test panel persists its setup here so that
+	// reopening a knowledge base restores the same threshold, weight and rerank
+	// model; UpdateDatasetRequest carries all three and the service already
+	// validates the 0..1 range and inverts the keyword weight. They are listed
+	// here because this whitelist runs first: omitting them rejected the panel's
+	// save with "Extra inputs are not permitted", even though every layer below
+	// supported the fields.
+	"similarity_threshold": true, "keywords_similarity_weight": true,
+	"rerank_id": true,
 }
 
 func (h *DatasetsHandler) UpdateDataset(c *gin.Context) {
