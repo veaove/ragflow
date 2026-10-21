@@ -172,6 +172,7 @@ export function NodePanel({ operators }: { operators: Operator[] }) {
                   operators={group.ops}
                   isCustomDropdown
                   labelMap={STUDIO_LABELS}
+                  colored
                 />
               </ul>
             </div>

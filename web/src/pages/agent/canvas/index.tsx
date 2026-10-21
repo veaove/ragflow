@@ -58,6 +58,7 @@ import { ButtonEdge } from './edge';
 import { ReadonlyEdge } from './edge/readonly-edge';
 import styles from './index.module.less';
 import { RagNode } from './node';
+import { StudioNode } from './node/studio-node';
 import { AgentNode } from './node/agent-node';
 import { BeginNode } from './node/begin-node';
 import { CategorizeNode } from './node/categorize-node';
@@ -86,6 +87,7 @@ import { VariableAssignerNode } from './node/variable-assigner-node';
 
 export const nodeTypes: NodeTypes = {
   ragNode: RagNode,
+  studioNode: StudioNode,
   categorizeNode: CategorizeNode,
   beginNode: BeginNode,
   placeholderNode: PlaceholderNode,

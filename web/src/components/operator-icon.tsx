@@ -47,6 +47,34 @@ interface IProps {
   className?: string;
 }
 
+/**
+ * 节点图标配色（对齐原型 .np-item / .node 的彩色方块）。
+ * 只在工作室用 `colored` 时生效，智能体保持原样（默认不传）。
+ */
+export const OPERATOR_COLORS: Partial<Record<Operator, string>> = {
+  [Operator.Begin]: '#22A06B',
+  [Operator.End]: '#EB5757',
+  [Operator.Answer]: '#EB5757',
+  [Operator.LLM]: '#7C5CFC',
+  [Operator.Agent]: '#F2994A',
+  [Operator.ParameterExtractor]: '#B26A15',
+  [Operator.Categorize]: '#0E9384',
+  [Operator.Retrieval]: '#065BC1',
+  [Operator.Switch]: '#F2994A',
+  [Operator.Iteration]: '#7C5CFC',
+  [Operator.Loop]: '#7C5CFC',
+  [Operator.VariableAggregator]: '#0E9384',
+  [Operator.VariableAssigner]: '#0E9384',
+  [Operator.ListOperations]: '#0E9384',
+  [Operator.Code]: '#5A6474',
+  [Operator.TemplateTransform]: '#4F5BD5',
+  [Operator.Invoke]: '#0E9384',
+  [Operator.Tool]: '#5A6474',
+  [Operator.UserFillUp]: '#F2994A',
+  [Operator.StringTransform]: '#5A6474',
+  [Operator.DataOperations]: '#5A6474',
+};
+
 export const OperatorIconMap = {
   [Operator.Retrieval]: 'KR',
   [Operator.Begin]: 'house-plus',
@@ -135,7 +163,7 @@ class SvgErrorBoundary extends Component<{
   }
 }
 
-const OperatorIcon = ({ name, className }: IProps) => {
+const OperatorIconInner = ({ name, className }: IProps) => {
   const Icon = OperatorIconMap[name as keyof typeof OperatorIconMap];
   const svgIcon = SVGIconMap[name as keyof typeof SVGIconMap];
   const LucideIcon = LucideIconMap[name as keyof typeof LucideIconMap];
@@ -205,6 +233,26 @@ const OperatorIcon = ({ name, className }: IProps) => {
   }
 
   return <Empty></Empty>;
+};
+
+const OperatorIcon = ({
+  name,
+  className,
+  colored = false,
+}: IProps & { colored?: boolean }) => {
+  const color = OPERATOR_COLORS[name];
+  const inner = <OperatorIconInner name={name} className={className} />;
+  if (colored && color) {
+    return (
+      <span
+        className="flex size-6 shrink-0 items-center justify-center rounded-md text-white [&_svg]:size-3.5 [&_.icon]:size-3.5 [&_.icon]:text-[13px] [&_.icon]:leading-none"
+        style={{ backgroundColor: color }}
+      >
+        {inner}
+      </span>
+    );
+  }
+  return inner;
 };
 
 export default OperatorIcon;

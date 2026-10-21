@@ -25,6 +25,8 @@ export type OperatorItemProps = {
    * 直接改 i18n 会连着改掉智能体，所以用映射局部覆盖。
    */
   labelMap?: Partial<Record<Operator, string>>;
+  /** 图标用彩色方块（对齐原型），仅工作室面板传 true。 */
+  colored?: boolean;
 };
 
 export const HideModalContext = createContext<IModalProps<any>['showModal']>(
@@ -54,6 +56,7 @@ export function OperatorItemList({
   isCustomDropdown = false,
   mousePosition,
   labelMap,
+  colored = false,
 }: OperatorItemProps) {
   const { addCanvasNode } = useContext(AgentInstanceContext);
   const handleContext = useContext(HandleContext);
@@ -94,7 +97,7 @@ export function OperatorItemList({
   const renderOperatorItem = (operator: Operator) => {
     const commonContent = (
       <div className="hover:bg-background-card py-1 px-3 cursor-pointer rounded-sm flex gap-2 items-center justify-start">
-        <OperatorIcon name={operator} />
+        <OperatorIcon name={operator} colored={colored} />
         {displayName(operator)}
       </div>
     );
@@ -111,7 +114,7 @@ export function OperatorItemList({
               onClick={handleClick(operator)}
               onSelect={() => hideModal?.()}
             >
-              <OperatorIcon name={operator} />
+              <OperatorIcon name={operator} colored={colored} />
               {displayName(operator)}
             </DropdownMenuItem>
           )}

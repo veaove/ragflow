@@ -971,6 +971,11 @@ export const RestrictedUpstreamMap = {
 
 export const NodeMap = {
   [Operator.Begin]: 'beginNode',
+  [Operator.End]: 'studioNode',
+  [Operator.Answer]: 'studioNode',
+  [Operator.LLM]: 'studioNode',
+  [Operator.ParameterExtractor]: 'studioNode',
+  [Operator.TemplateTransform]: 'studioNode',
   [Operator.Categorize]: 'categorizeNode',
   [Operator.Retrieval]: 'retrievalNode',
   [Operator.Message]: 'messageNode',
