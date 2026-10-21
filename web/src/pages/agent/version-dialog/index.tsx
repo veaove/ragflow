@@ -18,6 +18,7 @@ import {
 } from '@/hooks/use-agent-request';
 import { IModalProps } from '@/interfaces/common';
 import { cn } from '@/lib/utils';
+import { DropdownProvider } from '@/pages/agent/canvas/context';
 import { formatDate } from '@/utils/date';
 import { ConnectionMode, ReactFlow, ReactFlowProvider } from '@xyflow/react';
 import { ArrowDownToLine } from 'lucide-react';
@@ -135,32 +136,40 @@ export function VersionDialog({
                     </Button>
                   </section>
                   <section className="relative flex-1">
-                    <ReactFlowProvider key={`flow-${selectedId}`}>
-                      <ReactFlow
-                        connectionMode={ConnectionMode.Loose}
-                        nodes={agent?.dsl.graph?.nodes || []}
-                        edges={
-                          agent?.dsl.graph?.edges.flatMap((x) => ({
-                            ...x,
-                            type: 'default',
-                          })) || []
-                        }
-                        fitView
-                        nodeTypes={nodeTypes}
-                        edgeTypes={{}}
-                        zoomOnScroll={true}
-                        panOnDrag={true}
-                        zoomOnDoubleClick={false}
-                        preventScrolling={true}
-                        minZoom={0.1}
-                        nodesDraggable={false}
-                        nodesConnectable={false}
-                        elementsSelectable={false}
-                      >
-                        <AgentBackground></AgentBackground>
-                        <Spotlight className="z-0" opcity={0.7} coverage={70} />
-                      </ReactFlow>
-                    </ReactFlowProvider>
+                    {/* The preview draws real canvas nodes, and their handles
+                        call useDropdownManager(). The dialog is portaled outside
+                        the editor's canvas providers, so without its own
+                        DropdownProvider opening "Versions" on the studio canvas
+                        threw "must be used within DropdownProvider" and took the
+                        whole page down to the error boundary. */}
+                    <DropdownProvider>
+                      <ReactFlowProvider key={`flow-${selectedId}`}>
+                        <ReactFlow
+                          connectionMode={ConnectionMode.Loose}
+                          nodes={agent?.dsl.graph?.nodes || []}
+                          edges={
+                            agent?.dsl.graph?.edges.flatMap((x) => ({
+                              ...x,
+                              type: 'default',
+                            })) || []
+                          }
+                          fitView
+                          nodeTypes={nodeTypes}
+                          edgeTypes={{}}
+                          zoomOnScroll={true}
+                          panOnDrag={true}
+                          zoomOnDoubleClick={false}
+                          preventScrolling={true}
+                          minZoom={0.1}
+                          nodesDraggable={false}
+                          nodesConnectable={false}
+                          elementsSelectable={false}
+                        >
+                          <AgentBackground></AgentBackground>
+                          <Spotlight className="z-0" opcity={0.7} coverage={70} />
+                        </ReactFlow>
+                      </ReactFlowProvider>
+                    </DropdownProvider>
                   </section>
                 </CardContent>
               </Card>

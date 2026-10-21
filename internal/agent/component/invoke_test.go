@@ -222,19 +222,45 @@ func TestInvoke_GetInputForm(t *testing.T) {
 
 // TestInvoke_BadMethod ensures invalid HTTP methods are rejected
 // before any network I/O happens.
+//
+// PATCH and DELETE stopped being "invalid" when the HTTP node gained the full
+// verb set, so the sample here has to be a verb the node genuinely refuses —
+// otherwise the test silently starts asserting a network error instead.
 func TestInvoke_BadMethod(t *testing.T) {
 	setupAllowAnyHost(t, true)
 
 	c, _ := NewInvokeComponent(nil)
 	_, err := c.Invoke(t.Context(), nil, map[string]any{
-		"method": "PATCH",
+		"method": "CONNECT",
 		"url":    "http://localhost:1",
 	})
 	if err == nil {
-		t.Fatal("expected error for PATCH method, got nil")
+		t.Fatal("expected error for CONNECT method, got nil")
 	}
 	if !strings.Contains(err.Error(), "invalid method") {
 		t.Errorf("error %q should mention invalid method", err.Error())
+	}
+}
+
+// TestInvoke_AcceptsExtendedMethods covers the verb set added for workflows:
+// PATCH and DELETE must pass validation and reach the transport. The probe URL
+// is unreachable on purpose — a connection error proves we got past the method
+// check, while an "invalid method" error would mean the verb is still refused.
+func TestInvoke_AcceptsExtendedMethods(t *testing.T) {
+	setupAllowAnyHost(t, true)
+
+	for _, method := range []string{"PATCH", "DELETE", "PUT"} {
+		c, _ := NewInvokeComponent(nil)
+		_, err := c.Invoke(t.Context(), nil, map[string]any{
+			"method": method,
+			"url":    "http://localhost:1",
+		})
+		if err == nil {
+			t.Fatalf("%s: expected a transport error from the unreachable probe URL", method)
+		}
+		if strings.Contains(err.Error(), "invalid method") {
+			t.Errorf("%s should be an accepted method, got %q", method, err.Error())
+		}
 	}
 }
 
