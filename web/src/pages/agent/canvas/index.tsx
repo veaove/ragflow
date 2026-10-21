@@ -340,6 +340,7 @@ function AgentCanvas({
     hideImage,
     clearActiveDropdown,
     removePlaceholderNode,
+    enableContextMenu,
   ]);
   const { lastNode, setDerivedMessages, startButNotFinishedNodeIds } =
     useNodeLoading({

@@ -1388,9 +1388,12 @@ func (s *AgentService) PublishAgent(ctx context.Context, userID, canvasID string
 }
 
 func (s *AgentService) saveOrReplaceVersionOptions(ctx context.Context, userID, canvasID string, dsl entity.JSONMap, title string, description *string, release bool, remark *string) dao.SaveOrReplaceLatestVersionOptions {
+	// 昵称取不到时不要回退成 userID：32 位内部 ID 展示给用户毫无意义
+	// （E2E 实测版本标题里出现过 `aa0024..._任务流_2026-10-21 16:28`）。
+	// 交给 buildVersionTitle 用中性前缀，版本靠 id 区分，不依赖标题唯一。
 	nickname, err := s.userDAO.GetNicknameByID(ctx, dao.DB, userID)
-	if err != nil || strings.TrimSpace(nickname) == "" {
-		nickname = userID
+	if err != nil {
+		nickname = ""
 	}
 	versionTitle := buildVersionTitle(nickname, title, time.Now())
 	return dao.SaveOrReplaceLatestVersionOptions{

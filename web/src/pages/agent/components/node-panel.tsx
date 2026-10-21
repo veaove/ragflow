@@ -97,12 +97,13 @@ export function NodePanel({ operators }: { operators: Operator[] }) {
   }, [operators]);
 
   const keyword = query.trim().toLowerCase();
-  // 搜索必须匹配「用户看到的名字」（大模型 / 条件分支），不是枚举值，
-  // 否则搜「大模型」找不到 LLM。
-  const label = (op: Operator) =>
-    STUDIO_LABELS[op] ?? t(`flow.${op.charAt(0).toLowerCase()}${op.slice(1)}`);
-
   const visibleGroups = useMemo(() => {
+    // label 放在 useMemo 内部：它是每次渲染新建的函数，放进依赖数组会让
+    // memo 永远失效；不放进依赖又会在 t 变化（切语言）时用旧闭包。
+    // 内联后依赖只需 groups/keyword/t，语义正确且无告警。
+    const label = (op: Operator) =>
+      STUDIO_LABELS[op] ?? t(`flow.${op.charAt(0).toLowerCase()}${op.slice(1)}`);
+
     if (!keyword) {
       return groups;
     }
