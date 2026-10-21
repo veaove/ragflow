@@ -571,6 +571,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 				memory.GET("", r.memoryHandler.ListMemories)
 				memory.GET("/:memory_id/config", r.memoryHandler.GetMemoryConfig)
 				memory.GET("/:memory_id", r.memoryHandler.GetMemoryMessages)
+				// 会话预览列的 hover 详情（懒加载）：只在悬停时按需拉取。
+				memory.GET("/:memory_id/sessions/:session_id/conversation", r.memoryHandler.GetSessionConversation)
 			}
 
 			// Message routes

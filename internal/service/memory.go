@@ -1731,6 +1731,23 @@ func (s *MemoryService) getMemoryConfig(ctx context.Context, memoryID string) (*
 	return formatRetDataFromMemoryListItem(memory), nil
 }
 
+// GetSessionConversation returns the latest question/answer pair of one
+// conversation. Called on hover only, so the memory list stays light.
+func (s *MemoryService) GetSessionConversation(ctx context.Context, userID, memoryID, sessionID string) (map[string]interface{}, error) {
+	if _, err := s.memoryWithAccess(ctx, userID, memoryID, permission.OperationRead); err != nil {
+		return nil, err
+	}
+	question, answer, err := dao.FetchSessionConversation(ctx, dao.DB, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"session_id": sessionID,
+		"question":   question,
+		"answer":     answer,
+	}, nil
+}
+
 func (s *MemoryService) GetMemoryMessages(ctx context.Context, userID, memoryID string, agentIDs []string, keywords string, page int, pageSize int) (map[string]interface{}, error) {
 	memory, err := s.memoryWithAccess(ctx, userID, memoryID, permission.OperationRead)
 	if err != nil {
@@ -1756,8 +1773,28 @@ func (s *MemoryService) GetMemoryMessages(ctx context.Context, userID, memoryID 
 		}
 	}
 
+	// 会话预览列：一次批量取每个 session 的最新用户提问（不是逐行查，避免 N+1）。
+	// 完整一问一答留给 hover 时按需拉取，列表不背这个包袱。
+	previewIDs := make([]string, 0, len(rawMessages))
+	for _, message := range rawMessages {
+		if sid, ok := message["session_id"].(string); ok && sid != "" {
+			previewIDs = append(previewIDs, sid)
+		}
+	}
+	sessionPreviews, previewErr := dao.FetchSessionPreviews(ctx, dao.DB, previewIDs)
+	if previewErr != nil {
+		// 预览是增强信息，取不到不应让整个列表失败。
+		sessionPreviews = map[string]*dao.LatestSessionPreview{}
+	}
+
 	for _, message := range rawMessages {
 		agentID, _ := message["agent_id"].(string)
+		message["session_question"] = ""
+		if sid, ok := message["session_id"].(string); ok {
+			if preview, ok := sessionPreviews[sid]; ok && preview != nil {
+				message["session_question"] = preview.Question
+			}
+		}
 		message["agent_name"] = "Unknown"
 		if name, ok := agentNames[agentID]; ok {
 			message["agent_name"] = name
@@ -1805,7 +1842,15 @@ func (s *MemoryService) listMemoryMessages(ctx context.Context, memory *entity.M
 		filter["agent_id"] = agentIDs
 	}
 	if keywords = strings.TrimSpace(keywords); keywords != "" {
-		filter["session_id"] = keywords
+		// 搜索要能命中「会话预览」里的对话文本，而不只是 session_id。
+		// 先在会话表里找出内容含关键词的 session，再把这些 id 交给 filter
+		// （Infinity 的 filter 支持数组 = IN）。没有文本命中时退回原行为，
+		// 保持「按 session_id 搜」的老用法不退化。
+		if ids, err := dao.SearchSessionIDsByContent(ctx, dao.DB, keywords, 500); err == nil && len(ids) > 0 {
+			filter["session_id"] = ids
+		} else {
+			filter["session_id"] = keywords
+		}
 	}
 	filter["memory_id"] = []string{memoryID}
 	indexNames := memorySearchIndexNames([]*entity.Memory{memory})

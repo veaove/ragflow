@@ -464,6 +464,35 @@ func (h *MemoryHandler) GetMemoryConfig(c *gin.Context) {
 //   - message: true
 //   - data.messages: Array of message objects
 //   - data.storage_type: Storage type
+// GetSessionConversation returns the latest question/answer pair of one
+// conversation. The memory list calls this on hover only (lazy loading), so
+// opening the table never pays for whole-conversation reads.
+func (h *MemoryHandler) GetSessionConversation(c *gin.Context) {
+	user, errorCode, errorMessage := GetUser(c)
+	if errorCode != common.CodeSuccess {
+		common.ErrorWithCode(c, errorCode, errorMessage)
+		return
+	}
+	userID := strings.TrimSpace(user.ID)
+	if userID == "" {
+		common.ResponseWithCodeData(c, common.CodeAuthenticationError, nil, "user id is required")
+		return
+	}
+	memoryID := strings.TrimSpace(c.Param("memory_id"))
+	sessionID := strings.TrimSpace(c.Param("session_id"))
+	if memoryID == "" || sessionID == "" {
+		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "memory_id and session_id are required")
+		return
+	}
+
+	data, err := h.memoryService.GetSessionConversation(c.Request.Context(), userID, memoryID, sessionID)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, data, "success")
+}
+
 func (h *MemoryHandler) GetMemoryMessages(c *gin.Context) {
 	user, errorCode, errorMessage := GetUser(c)
 	if errorCode != common.CodeSuccess {
