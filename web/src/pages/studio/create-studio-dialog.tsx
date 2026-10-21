@@ -21,7 +21,7 @@ import { MessageSquareText, Workflow } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AgentCategory } from '@/constants/agent';
 import { useSetAgent } from '@/hooks/use-agent-request';
-import { initialEmptyDsl } from '@/pages/agent/utils/dsl-bridge';
+import { initialStudioDsl } from '@/pages/agent/utils/dsl-bridge';
 
 export type StudioCreateKind = 'chatflow' | 'workflow';
 
@@ -67,13 +67,14 @@ export function CreateStudioDialog({ initialType = 'chatflow', hideModal }: Prop
 
   async function onSubmit(values: FormValues) {
     const meta = TYPE_META[selected];
-    // chatflow 走 agent 形态的空图（有 Begin/Answer 起步），workflow 同理；
-    // initialEmptyDsl(isAgent) 的 isAgent 只决定空图种子，与 canvas_category
-    // 解耦，这里显式传形态。
+    // 按形态取空图种子：Chatflow 是 Begin(对话式)→Answer，
+    // Workflow 是 Begin(任务式)→End。
+    // 之前这里硬编码 `initialEmptyDsl(true)`，于是「任务流」创建出来
+    // 带的是「对话式」的开始节点，形态从第一步就是错的。
     const ret = await setAgent({
       title: values.name,
       description: values.description || '',
-      dsl: initialEmptyDsl(true),
+      dsl: initialStudioDsl(selected),
       canvas_category: meta.category,
     });
     if (ret.code === 0) {

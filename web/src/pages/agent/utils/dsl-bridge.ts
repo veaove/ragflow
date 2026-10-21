@@ -38,7 +38,7 @@ import {
   IOperator,
   RAGFlowNodeType,
 } from '@/interfaces/database/agent';
-import { DataflowEmptyDsl } from '@/pages/agent/empty-dsl';
+import { ChatflowEmptyDsl, DataflowEmptyDsl, WorkflowEmptyDsl } from '@/pages/agent/empty-dsl';
 
 import { buildDslComponentsByGraph, buildDslGlobalVariables } from '../utils';
 
@@ -65,6 +65,18 @@ const normalizeGraphNodes = (nodes: RAGFlowNodeType[]): RAGFlowNodeType[] =>
 /** Initial empty DSL for a new canvas. `isAgent` picks agent vs dataflow seed. */
 export const initialEmptyDsl = (isAgent: boolean): DSL =>
   isAgent ? (EmptyDsl as unknown as DSL) : (DataflowEmptyDsl as unknown as DSL);
+
+/**
+ * 工作室两种形态的空图种子。
+ *
+ * 不能用 `initialEmptyDsl(isAgent)` 代替：`true` 给的是 agent 种子（Begin 是
+ * 对话式，任务流用它就从一开始错了），`false` 给的是数据管道（File + Parser）。
+ * 所以工作室必须按形态各取一个种子。
+ */
+export const initialStudioDsl = (kind: 'chatflow' | 'workflow'): DSL =>
+  (kind === 'workflow'
+    ? WorkflowEmptyDsl
+    : ChatflowEmptyDsl) as unknown as DSL;
 
 /**
  * Convert a parsed JSON object from a user-uploaded file into a
