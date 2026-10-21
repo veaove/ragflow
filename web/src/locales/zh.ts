@@ -81,9 +81,6 @@ export default {
       bulgarian: '保加利亚语',
       arabic: '阿拉伯语',
       language: '语言',
-      group: {
-        config: '配置中心',
-      },
       languageMessage: '请输入语言',
       languagePlaceholder: '请选择语言',
       copy: '复制',
@@ -223,6 +220,9 @@ export default {
       discord: 'Discord',
       github: 'GitHub',
       help: '帮助',
+      group: {
+        config: '配置中心',
+      },
     },
     skills: {
       title: 'Skills',

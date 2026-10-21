@@ -94,9 +94,6 @@ export default {
       slovak: 'Slovak',
       czech: 'Czech',
       language: 'Language',
-      group: {
-        config: 'Configuration',
-      },
       languageMessage: 'Please input your language!',
       languagePlaceholder: 'select your language',
       copy: 'Copy',
@@ -244,6 +241,9 @@ export default {
       discord: 'Discord',
       github: 'GitHub',
       help: 'Help',
+      group: {
+        config: 'Configuration',
+      },
     },
     skills: {
       title: 'Skills',

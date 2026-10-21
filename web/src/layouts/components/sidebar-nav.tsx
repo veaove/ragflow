@@ -105,6 +105,12 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     icon: ShieldCheck,
     'data-testid': 'nav-qc',
   } as SidebarMenuItem,
+  {
+    path: Routes.Files,
+    name: 'header.fileManager',
+    icon: MenuItemsIcon,
+    icon_name: 'file',
+  },
   // 配置中心：这 6 项原本藏在「用户设置」的二级菜单里，提到主菜单后
   // 由主菜单直接进入，页内不再显示设置侧边栏。
   {
@@ -149,12 +155,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     group: 'config',
     'data-testid': 'nav-config-team',
   } as SidebarMenuItem,
-  {
-    path: Routes.Files,
-    name: 'header.fileManager',
-    icon: MenuItemsIcon,
-    icon_name: 'file',
-  },
 ];
 
 export function useActivePath() {
