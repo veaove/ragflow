@@ -371,6 +371,7 @@ export default {
     `${restAPIv1}/agents/${agentId}/versions/${versionId}`,
   getAgent: (id: string) => `${restAPIv1}/agents/${id}`,
   runWorkflow: (canvasId: string) => `${restAPIv1}/workflows/${canvasId}/run`,
+  debugRun: (canvasId: string) => `${restAPIv1}/apps/${canvasId}/debug-run`,
   uploadAgentFile: (id?: string) => `${restAPIv1}/agents/${id}/upload`,
   createAgentSession: (agentId: string) =>
     `${restAPIv1}/agents/${agentId}/sessions`,

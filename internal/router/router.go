@@ -673,6 +673,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 			appRun := handler.NewAppRunHandler()
 			apps := v1.Group("/apps")
 			{
+				apps.POST("/:canvas_id/debug-run", appRun.DebugRun)
 				apps.GET("/:canvas_id/api-keys", appRun.ListKeys)
 				apps.POST("/:canvas_id/api-keys", appRun.CreateKey)
 				apps.POST("/:canvas_id/api-keys/:id/disable", appRun.DisableKey)

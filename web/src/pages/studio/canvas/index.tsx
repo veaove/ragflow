@@ -96,9 +96,9 @@ export default function StudioCanvas() {
     setRunTab('result');
     try {
       await saveGraph();
-      // 接口返回 { code, message, data }；401/APP_KEY_INVALID 表示应用级
-      // 密钥还没实现（PUB-08），错误信息直接展示给用户。
-      const { data } = await request.post(api.runWorkflow(id as string), {
+      // 试运行走用户身份的 debug 接口（/apps/:id/debug-run），
+      // 不是正式调用的 /workflows/:id/run（那个要应用密钥）。
+      const { data } = await request.post(api.debugRun(id as string), {
         inputs: {},
       });
       setRunResult(data as { code: number; message?: string; data?: { id?: string } });
@@ -268,8 +268,7 @@ export default function StudioCanvas() {
                 ) : (
                   <div className="rounded bg-state-error-bg p-3 text-state-error">
                     运行失败（code {runResult.code}）：
-                    {runResult.message ??
-                      '未知错误。若提示 APP_KEY_INVALID，说明应用级密钥（PUB-08）尚未实现。'}
+                    {runResult.message ?? '未知错误。'}
                   </div>
                 )
               ) : (

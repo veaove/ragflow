@@ -102,6 +102,30 @@ func (h *AppRunHandler) ChatFlow(c *gin.Context) {
 	streamAppEvents(c, events)
 }
 
+// DebugRun handles POST /apps/:canvas_id/debug-run — 编辑器内「试运行」。
+// 与 RunWorkflow 的区别：那个走应用密钥（app key），这个是编辑器内以当前
+// 登录用户身份预览运行，无需先发布/创建密钥。
+func (h *AppRunHandler) DebugRun(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	canvasID := c.Param("canvas_id")
+	var body service.AppRunRequest
+	_ = c.ShouldBindJSON(&body)
+	if body.ResponseMode == "" {
+		body.ResponseMode = "blocking"
+	}
+
+	events, runID, err := h.agentService.RunCanvasDebug(c.Request.Context(), user.ID, canvasID, body)
+	if err != nil {
+		respondAppRunError(c, err)
+		return
+	}
+	collectBlocking(c, events, runID)
+}
+
 // ListKeys handles GET /apps/:canvas_id/api-keys.
 func (h *AppRunHandler) ListKeys(c *gin.Context) {
 	_, code, msg := GetUser(c)

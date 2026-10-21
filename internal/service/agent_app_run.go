@@ -25,6 +25,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 )
 
 // ErrAppModeMismatch is returned when a canvas is invoked through the wrong
@@ -127,15 +128,34 @@ func runTriggerFromContext(ctx context.Context) string {
 // with the canvas owner's identity as the runtime tenant.
 //
 // V1.0 supports blocking + streaming only; async returns ErrResponseModeNotSupported.
+// RunCanvasDebug 是编辑器内的「试运行」：走用户身份（不是 app key），
+// 与 RunAgentAsApp 共用同一份核心执行逻辑（load + 幂等 + RunAgent），
+// 只是 trigger 标成 debug、权限改为「运行该画布的用户」。
+//
+// 为什么单独一个入口而不是复用 /workflows/:id/run：那个接口用应用级密钥
+// 鉴权（app key），编辑器内试运行没有 app key，且两者语义不同（debug 不
+// 计费、不进正式调用配额）。
+func (s *AgentService) RunCanvasDebug(ctx context.Context, userID, canvasID string, req AppRunRequest) (<-chan canvas.RunEvent, string, error) {
+	if _, err := s.loadCanvasForUser(ctx, userID, canvasID, permission.OperationRun); err != nil {
+		return nil, "", err
+	}
+	return s.runCanvas(ctx, canvasID, req, entity.RunTriggerDebug)
+}
+
+// RunAgentAsApp 是发布后的正式调用：先验应用密钥，再走与试运行相同的核心。
 func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey string, req AppRunRequest) (<-chan canvas.RunEvent, string, error) {
-	// 1. Validate the key → canvas binding (active + ownership).
 	key, err := NewAppKeyService().ResolveKey(ctx, plainKey, canvasID)
 	if err != nil {
 		return nil, "", err
 	}
 	req.APIKeyID = key.ID
+	return s.runCanvas(ctx, canvasID, req, entity.RunTriggerAPI)
+}
 
-	// 2. Load the canvas directly — NOT loadCanvasForUser (which would run
+// runCanvas 是两类入口（debug / app key）共用的核心：加载画布、拒绝 async、
+// 幂等去重、以画布 owner 身份跑一次 RunAgent。
+func (s *AgentService) runCanvas(ctx context.Context, canvasID string, req AppRunRequest, trigger string) (<-chan canvas.RunEvent, string, error) {
+	// Load the canvas directly — NOT loadCanvasForUser (which would run
 	// CheckCanvasPermission against a caller that has no user session).
 	canvasRow, err := s.canvasDAO.GetByID(ctx, dao.DB, canvasID)
 	if err != nil {
@@ -145,12 +165,12 @@ func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey str
 		return nil, "", err
 	}
 
-	// 3. Async is V1.1 — reject it loudly rather than faking it.
+	// Async is V1.1 — reject it loudly rather than faking it.
 	if req.ResponseMode == "async" {
 		return nil, "", ErrResponseModeNotSupported
 	}
 
-	// 4. Idempotency: same key + same canvas returns the first run (D8).
+	// Idempotency: same key + same canvas returns the first run (D8).
 	if req.IdempotencyKey != "" && s.agentRunDAO != nil && dao.DB != nil {
 		if existing, err := s.agentRunDAO.GetByIdempotencyKey(ctx, dao.DB, canvasID, req.IdempotencyKey); err == nil && existing != nil {
 			ch, rerr := s.replayRun(ctx, existing)
@@ -158,7 +178,7 @@ func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey str
 		}
 	}
 
-	// 5. Run with the canvas owner's identity (canvasRow.UserID) as the runtime
+	// Run with the canvas owner's identity (canvasRow.UserID) as the runtime
 	// tenant; RunAgent's loadCanvasForUser then passes for the owner.
 	ownerUserID := canvasRow.UserID
 	// The session id is passed through untouched: an empty value lets RunAgent
@@ -181,7 +201,7 @@ func (s *AgentService) RunAgentAsApp(ctx context.Context, canvasID, plainKey str
 	runID := common.GenerateUUID()
 	ctx = WithRunID(ctx, runID)
 	ctx = WithIdempotencyKey(ctx, req.IdempotencyKey)
-	ctx = WithRunTrigger(ctx, entity.RunTriggerAPI)
+	ctx = WithRunTrigger(ctx, trigger)
 	req.RunID = runID
 
 	events, err := s.RunAgent(ctx, ownerUserID, canvasID, sessionID, "", userInput, files)
