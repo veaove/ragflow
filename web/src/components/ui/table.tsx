@@ -8,7 +8,9 @@ const Table = React.forwardRef<
 >(({ className, rootClassName, ...props }, ref) => (
   <div
     className={cn(
-      'relative w-full overflow-auto rounded-2xl bg-bg-card scrollbar-auto',
+      // 列表统一外观：8px 圆角 + 白底 + 极淡描边，让表格在浅灰/白底页面上
+      // 都能立成一张卡片（原先 16px + 半透明灰，和设计稿不一致）。
+      'relative w-full overflow-auto rounded-lg bg-bg-base border border-border-light scrollbar-auto',
       rootClassName,
     )}
   >
@@ -28,7 +30,7 @@ const TableHeader = React.forwardRef<
   <thead
     ref={ref}
     className={cn(
-      '[&_tr]:border-b-0.5 top-0 sticky bg-bg-title z-10',
+      '[&_tr]:border-b-0 top-0 sticky bg-transparent z-10',
       className,
     )}
     {...props}
@@ -70,7 +72,7 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      'border-b-0.5 border-border-button transition-colors hover:bg-bg-card data-[state=selected]:bg-bg-card',
+      'border-b border-border-light transition-colors hover:bg-bg-card/60 data-[state=selected]:bg-bg-card',
       className,
     )}
     {...props}
@@ -86,7 +88,7 @@ const TableHead = React.forwardRef<
     ref={ref}
     className={cn(
       // 紧凑表格：表头 12px / 40px 行高，贴合企业后台的信息密度
-      'first-of-type:pl-6 last-of-type:pr-6 h-10 px-4 text-left align-middle font-normal text-xs text-text-secondary [&:has([role=checkbox])]:pr-0 ',
+      'first-of-type:pl-6 last-of-type:pr-6 h-11 px-4 text-left align-middle font-normal text-[13px] text-text-secondary [&:has([role=checkbox])]:pr-0 ',
       className,
     )}
     {...props}
@@ -101,7 +103,7 @@ const TableCell = React.forwardRef<
   <td
     ref={ref}
     className={cn(
-      'first-of-type:pl-6 last-of-type:pr-6 px-4 py-2.5 align-middle text-[13px] [&:has([role=checkbox])]:pr-0 text-text-primary font-normal',
+      'first-of-type:pl-6 last-of-type:pr-6 px-4 py-3.5 align-middle text-[13px] [&:has([role=checkbox])]:pr-0 text-text-primary font-normal',
       className,
     )}
     {...props}

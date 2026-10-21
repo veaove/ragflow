@@ -86,6 +86,7 @@ module.exports = {
         'border-default': 'var(--border-default)',
         'border-accent': 'var(--border-accent)',
         'border-button': 'var(--border-button)',
+        'border-light': 'var(--border-light)',
         'accent-primary': {
           DEFAULT: 'rgb(var(--accent-primary) / <alpha-value>)',
           5: 'rgba(var(--accent-primary) / 0.05)', // 5%

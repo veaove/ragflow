@@ -172,7 +172,8 @@ export function RAGFlowPagination({
               <PaginationItem
                 key={page}
                 className={cn('text-text-disabled', {
-                  ['bg-bg-card rounded-md text-text-primary']:
+                  // 当前页用系统品牌色实心块（对齐设计稿的选中态）
+                  ['bg-accent-primary rounded-md text-white']:
                     currentPage === page,
                 })}
               >

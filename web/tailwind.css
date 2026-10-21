@@ -93,6 +93,8 @@
     --text-disabled: #b2b5b7;
     /* Input  default color */
     --border-default: rgba(0, 0, 0, 0.2);
+    /* 列表行分隔线：比 border-default 淡得多，贴近企业后台的轻量感 */
+    --border-light: rgba(0, 0, 0, 0.06);
     /* Input accent color */
     --border-accent: #000000;
     --border-button: rgba(0, 0, 0, 0.1);
@@ -207,6 +209,7 @@
     --text-secondary: 178 181 183;
     --text-disabled: #75787a;
     --border-default: rgba(255, 255, 255, 0.2);
+    --border-light: rgba(255, 255, 255, 0.07);
     --border-accent: #ffffff;
     --border-button: rgba(255, 255, 255, 0.1);
 
