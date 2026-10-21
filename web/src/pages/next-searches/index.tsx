@@ -31,6 +31,10 @@ import { useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router';
 import { useFetchSearchList, useRenameSearch } from './hooks';
 import { SearchCard } from './search-card';
+import { SearchTable } from './search-table';
+import { ViewToggle } from '@/pages/studio/view-toggle';
+import { useListViewPreference } from '@/hooks/use-list-view-preference';
+import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 
 export default function SearchList() {
   // const { data } = useFetchFlowList();
@@ -50,6 +54,8 @@ export default function SearchList() {
     setFilterValue,
     handleFilterSubmit,
   } = useFetchSearchList();
+  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
+  const { navigateToSearch } = useNavigatePage();
   const owners = [
     buildOwnersFilter(list?.data?.search_apps ?? [], undefined, tc('owner')),
   ];
@@ -124,22 +130,35 @@ export default function SearchList() {
               </Button>
             </ListFilterBar>
           </header>
+          <div className="mb-3 flex justify-end px-5">
+            <ViewToggle mode={viewMode} onChange={setViewMode} />
+          </div>
 
           {list?.data?.search_apps?.length ? (
             <>
-              <CardContainer className="flex-1 overflow-auto px-5">
-                {list?.data.search_apps.map((x) => {
-                  return (
-                    <SearchCard
-                      key={x.id}
-                      data={x}
-                      showSearchRenameModal={() => {
-                        showSearchRenameModal(x);
-                      }}
-                    />
-                  );
-                })}
-              </CardContainer>
+              {viewMode === 'table' ? (
+                <div className="flex-1 overflow-auto px-5">
+                  <SearchTable
+                    rows={list?.data.search_apps ?? []}
+                    onOpen={(id) => navigateToSearch(id)()}
+                    showSearchRenameModal={showSearchRenameModal}
+                  />
+                </div>
+              ) : (
+                <CardContainer className="flex-1 overflow-auto px-5">
+                  {(list?.data.search_apps ?? []).map((x) => {
+                    return (
+                      <SearchCard
+                        key={x.id}
+                        data={x}
+                        showSearchRenameModal={() => {
+                          showSearchRenameModal(x);
+                        }}
+                      />
+                    );
+                  })}
+                </CardContainer>
+              )}
 
               <footer className="mt-4 px-5 pb-5">
                 <RAGFlowPagination

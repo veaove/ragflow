@@ -15,7 +15,11 @@ import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
+import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { ChatCard } from './chat-card';
+import { ChatTable } from './chat-table';
+import { ViewToggle } from '@/pages/studio/view-toggle';
+import { useListViewPreference } from '@/hooks/use-list-view-preference';
 import { useCreateChatDialog } from './hooks/use-create-chat';
 import { useRenameChat } from './hooks/use-rename-chat';
 
@@ -34,6 +38,8 @@ export default function ChatList() {
   } = useFetchChatList();
   const { t } = useTranslation();
   const { t: tc } = useTranslation('common');
+  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
+  const { navigateToChat } = useNavigatePage();
   const owners = [buildOwnersFilter(data?.chats ?? [], undefined, tc('owner'))];
   const {
     initialChatName,
@@ -112,16 +118,20 @@ export default function ChatList() {
     t,
   ]);
 
+  // data 的类型允许 undefined（请求还没回来），统一收窄一次，
+  // 避免每处 data.chats 都写可选链——漏一处就是一次运行时炸。
+  const chats = data?.chats ?? [];
+
   return (
     <>
-      {loading && !data.chats?.length ? (
+      {loading && !chats.length ? (
         <article
           className="size-full flex items-center justify-center"
           data-testid="chats-list"
         >
           <Spin size="large" />
         </article>
-      ) : data.chats?.length || searchString ? (
+      ) : chats.length || searchString ? (
         <article
           className="size-full min-w-0 flex flex-col"
           data-testid="chats-list"
@@ -142,18 +152,31 @@ export default function ChatList() {
               </Button>
             </ListFilterBar>
           </header>
+          <div className="mb-3 flex justify-end px-5">
+            <ViewToggle mode={viewMode} onChange={setViewMode} />
+          </div>
 
-          {data.chats?.length ? (
+          {chats.length ? (
             <>
-              <CardContainer className="flex-1 overflow-auto px-5">
-                {data.chats.map((x) => (
-                  <ChatCard
-                    key={x.id}
-                    data={x}
+              {viewMode === 'table' ? (
+                <div className="flex-1 overflow-auto px-5">
+                  <ChatTable
+                    rows={chats}
+                    onOpen={(id) => navigateToChat(id)()}
                     showChatRenameModal={showChatRenameModal}
                   />
-                ))}
-              </CardContainer>
+                </div>
+              ) : (
+                <CardContainer className="flex-1 overflow-auto px-5">
+                  {chats.map((x) => (
+                    <ChatCard
+                      key={x.id}
+                      data={x}
+                      showChatRenameModal={showChatRenameModal}
+                    />
+                  ))}
+                </CardContainer>
+              )}
 
               <footer className="mt-4 px-5 pb-5">
                 <RAGFlowPagination

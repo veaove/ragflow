@@ -33,6 +33,10 @@ import { DatasetCreatingDialog } from './dataset-creating-dialog';
 import { DatasetDisableBlockedDialog } from './dataset-disable-blocked-dialog';
 import { useSaveKnowledge } from './hooks';
 import { KnowledgeBaseTable } from './knowledge-base-table';
+import { DatasetCard } from './dataset-card';
+import { CardContainer } from '@/components/card-container';
+import { ViewToggle } from '@/pages/studio/view-toggle';
+import { useListViewPreference } from '@/hooks/use-list-view-preference';
 import { useRenameDataset } from './use-rename-dataset';
 
 type StatusFilter = 'all' | 'enabled' | 'disabled';
@@ -68,6 +72,7 @@ export default function Datasets() {
     hideDatasetRenameModal,
     showDatasetRenameModal,
   } = useRenameDataset();
+  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
 
   const filteredKbs = useMemo(() => {
     if (!kbs) return [];
@@ -190,6 +195,7 @@ export default function Datasets() {
                 </Button>
 
                 <div className="ml-auto flex items-center gap-3">
+                  <ViewToggle mode={viewMode} onChange={setViewMode} />
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" className="gap-1">
@@ -214,7 +220,17 @@ export default function Datasets() {
             </div>
           </header>
 
-          {filteredKbs?.length ? (
+          {filteredKbs?.length && viewMode === 'card' ? (
+            <CardContainer className="flex-1 overflow-auto px-5">
+              {filteredKbs.map((kb) => (
+                <DatasetCard
+                  key={kb.id}
+                  dataset={kb}
+                  showDatasetRenameModal={showDatasetRenameModal}
+                />
+              ))}
+            </CardContainer>
+          ) : filteredKbs?.length ? (
             <KnowledgeBaseTable
               data={filteredKbs}
               pagination={{

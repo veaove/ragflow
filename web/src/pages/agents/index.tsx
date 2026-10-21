@@ -19,7 +19,6 @@ import {
   LIST_PAGE_SIZE_OPTIONS,
 } from '@/constants/list-pagination';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
-import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchAgentListByPage } from '@/hooks/use-agent-request';
 import { useListSortAndFilter } from '@/hooks/use-list-sort-and-filter';
 import {
@@ -43,6 +42,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router';
 import { AgentCard } from './agent-card';
+import { AgentListTable } from './agent-list-table';
+import { ViewToggle } from '@/pages/studio/view-toggle';
+import { useListViewPreference } from '@/hooks/use-list-view-preference';
+import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { BuiltinCatalogProbe } from './builtin-catalog-probe';
 import {
   resolveAgentsEmptyState,
@@ -60,6 +63,7 @@ const CompilationGroupCategory = 'compilation_template_group';
 
 export default function Agents() {
   const { t } = useTranslation();
+  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
 
   // 排序 + 发布状态筛选：与工作室共用同一套规则（产品文档 3.4）。
   const {
@@ -112,7 +116,7 @@ export default function Agents() {
     loading: boolean;
   }>({ length: 0, loading: false });
 
-  const { navigateToAgentTemplates } = useNavigatePage();
+  const { navigateToAgentTemplates, navigateToAgent } = useNavigatePage();
   const navigate = useNavigate();
 
   const {
@@ -276,6 +280,9 @@ export default function Agents() {
               </DropdownMenu>
             </div>
           </ListFilterBar>
+          <div className="mt-3 flex justify-end">
+            <ViewToggle mode={viewMode} onChange={setViewMode} />
+          </div>
 
           {/* 排序 + 发布状态筛选单独一行：放进标题行右侧会和「创建应用」
               拆分按钮抢宽度（窄屏直接把按钮挤掉），独立一行更稳。
@@ -289,32 +296,57 @@ export default function Agents() {
 
         {emptyState === 'content' ? (
           <>
-            <CardContainer className="flex-1 overflow-auto px-5">
-              {data.map((x) =>
-                x.type === CompilationGroupCategory ? (
-                  <CompilationTemplateCard
-                    key={x.id}
-                    data={x}
-                    onClick={handleEditCompilation(x.id)}
-                    onDelete={handleDeleteCompilation}
-                  />
-                ) : (
-                  <AgentCard
-                    key={x.id}
-                    data={x}
-                    showAgentRenameModal={showAgentRenameModal}
-                  />
-                ),
-              )}
-
-              {builtinVisible && (
-                <BuiltinPipelineSection
-                  rawCategory={rawCategory}
-                  searchString={debouncedSearchString}
-                  showDivider={data.length > 0}
+            {viewMode === 'table' ? (
+              <div className="flex-1 overflow-auto px-5">
+                <AgentListTable
+                  rows={data as any}
+                  showAgentRenameModal={showAgentRenameModal}
+                  onOpen={(id) => {
+                    const item = data.find((x) => x.id === id);
+                    // 编译模板组不是画布应用，点了要进模板编辑页。
+                    if (item?.type === CompilationGroupCategory) {
+                      handleEditCompilation(id)();
+                      return;
+                    }
+                    navigateToAgent(id, item?.canvas_category as any);
+                  }}
                 />
-              )}
-            </CardContainer>
+                {builtinVisible && (
+                  <BuiltinPipelineSection
+                    rawCategory={rawCategory}
+                    searchString={debouncedSearchString}
+                    showDivider={data.length > 0}
+                  />
+                )}
+              </div>
+            ) : (
+              <CardContainer className="flex-1 overflow-auto px-5">
+                {data.map((x) =>
+                  x.type === CompilationGroupCategory ? (
+                    <CompilationTemplateCard
+                      key={x.id}
+                      data={x}
+                      onClick={handleEditCompilation(x.id)}
+                      onDelete={handleDeleteCompilation}
+                    />
+                  ) : (
+                    <AgentCard
+                      key={x.id}
+                      data={x}
+                      showAgentRenameModal={showAgentRenameModal}
+                    />
+                  ),
+                )}
+
+                {builtinVisible && (
+                  <BuiltinPipelineSection
+                    rawCategory={rawCategory}
+                    searchString={debouncedSearchString}
+                    showDivider={data.length > 0}
+                  />
+                )}
+              </CardContainer>
+            )}
 
             {data.length > 0 && (
               <footer className="mt-4 px-5 pb-5">
