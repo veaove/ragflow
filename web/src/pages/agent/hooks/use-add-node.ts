@@ -12,6 +12,11 @@ import {
   initialAgentValues,
   initialArXivValues,
   initialBeginValues,
+  initialEndValues,
+  initialAnswerValues,
+  initialLLMValues,
+  initialParameterExtractorValues,
+  initialTemplateTransformValues,
   initialBingValues,
   initialBrowserValues,
   initialCategorizeValues,
@@ -158,6 +163,15 @@ export const useInitializeOperatorParams = () => {
   const initialFormValuesMap = useMemo(() => {
     return {
       [Operator.Begin]: initialBeginValues,
+      [Operator.End]: initialEndValues,
+      [Operator.Answer]: initialAnswerValues,
+      // LLM / 参数提取和 Categorize 一样需要默认模型，否则打开表单要先手动选
+      [Operator.LLM]: { ...initialLLMValues, model_id: llmId },
+      [Operator.ParameterExtractor]: {
+        ...initialParameterExtractorValues,
+        model_id: llmId,
+      },
+      [Operator.TemplateTransform]: initialTemplateTransformValues,
       [Operator.Retrieval]: initialRetrievalValues,
       [Operator.Categorize]: {
         ...initialCategorizeValues,

@@ -17,7 +17,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { NotebookPen } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatSheet } from '../chat/chat-sheet';
 import {
@@ -44,6 +44,13 @@ import { usePlaceholderManager } from '../hooks/use-placeholder-manager';
 import { useDropdownManager } from './context';
 
 import { AgentBackground } from '@/components/canvas/background';
+import { NodePanel } from '../components/node-panel';
+import {
+  AgentOperatorList,
+  ChatflowOperatorList,
+  WorkflowOperatorList,
+} from '../constant';
+import { AgentCategory } from '@/constants/agent';
 import Spotlight from '@/components/spotlight';
 import { useNodeFocusRequest } from '../hooks/use-node-focus-request';
 import { useNodeLoading } from '../hooks/use-node-loading';
@@ -132,6 +139,12 @@ interface IProps {
   drawerVisible?: boolean;
   hideDrawer?: () => void;
   readOnly?: boolean;
+  /**
+   * 应用形态，决定左侧节点面板里能出现哪些节点。
+   * 由父组件从 agentDetail.canvas_category 传入——画布本身查不到，
+   * 而 nodeTypes/表单之间没有形态概念，只有这里能一次性卡住。
+   */
+  canvasCategory?: string;
 }
 
 const NoopDrawer = () => {};
@@ -140,6 +153,7 @@ function AgentCanvas({
   drawerVisible = false,
   hideDrawer = NoopDrawer,
   readOnly = false,
+  canvasCategory,
 }: IProps) {
   const { t } = useTranslation();
   const {
@@ -153,6 +167,18 @@ function AgentCanvas({
     onEdgeMouseLeave,
   } = useSelectCanvasData();
   const isValidConnection = useValidateConnection();
+
+  // 形态决定节点目录：Workflow 只给 End、Chatflow 只给 Answer，两者互斥。
+  // 这三个常量早就定义好了（constant/index.tsx），但一直没人消费——现在面板接上。
+  const panelOperators = useMemo(() => {
+    if (canvasCategory === AgentCategory.WorkflowCanvas) {
+      return WorkflowOperatorList;
+    }
+    if (canvasCategory === AgentCategory.ChatflowCanvas) {
+      return ChatflowOperatorList;
+    }
+    return AgentOperatorList;
+  }, [canvasCategory]);
 
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance<any, any>>();
@@ -400,6 +426,7 @@ function AgentCanvas({
             onBeforeDelete={handleBeforeDelete}
             panActivationKeyCode={null}
           >
+            {!readOnly && <NodePanel operators={panelOperators} />}
             <AgentBackground></AgentBackground>
             <Spotlight className="z-0" opcity={0.7} coverage={70} />
             <Controls

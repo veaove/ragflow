@@ -272,6 +272,42 @@ export enum AgentDialogueMode {
   Webhook = 'Webhook',
 }
 
+// Workflow / Chatflow 新增一线节点的初始值。字段名必须与各自表单一致
+// （end-form 读 outputs[]，answer-form 读 content/stream/with_citation，
+// llm-form 读 model_id/system_prompt/user_prompt/temperature/max_tokens，
+// parameter-extractor-form 读 input/model_id/instruction/fields[]，
+// template-transform-form 读 template/variables）。
+// 之前这五个节点虽然表单齐了，但没登记初始值，从面板加出来会拿到 undefined。
+export const initialEndValues = {
+  outputs: [] as { name: string; type: string; value: string }[],
+};
+
+export const initialAnswerValues = {
+  content: '',
+  stream: true,
+  with_citation: true,
+};
+
+export const initialLLMValues = {
+  model_id: '',
+  system_prompt: '',
+  user_prompt: '',
+  temperature: 0.7,
+  max_tokens: 1024,
+};
+
+export const initialParameterExtractorValues = {
+  input: '',
+  model_id: '',
+  instruction: '',
+  fields: [] as { name: string; type: string; required: boolean }[],
+};
+
+export const initialTemplateTransformValues = {
+  template: '',
+  variables: [] as string[],
+};
+
 export const initialBeginValues = {
   mode: AgentDialogueMode.Conversational,
   prologue: `Hi! I'm your assistant. What can I do for you?`,
