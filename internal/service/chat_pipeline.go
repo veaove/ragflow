@@ -113,6 +113,11 @@ type AsyncChatResult struct {
 	AnswerIsAuthoritative bool
 	// Internal-only: accumulated answer for building the decorated final result.
 	accumulatedAnswer string
+	// FirstTokenMS is the first-token latency in milliseconds. It is set on the
+	// FIRST answer chunk of a stream only (0 on every other chunk), so the
+	// session writer can persist it against the assistant message without
+	// tracking timers of its own.
+	FirstTokenMS int
 }
 
 // QcEvent is the quality-inspection hint carried alongside an answer chunk.
@@ -1138,6 +1143,10 @@ func (s *ChatPipelineService) AsyncChat(
 			var fullAnswer string
 			thinkState := &ThinkStreamState{}
 			var answerFilter, reasoningFilter citationStreamFilter
+			// First-token latency: measured from just before the model call to
+			// the first non-empty answer chunk. Reported on that chunk alone.
+			streamStart := time.Now()
+			firstTokenAt := time.Time{}
 			emit := func(result AsyncChatResult) {
 				if !result.Final && result.Answer != "" {
 					result.AudioBinary = s.synthesizeTTS(ctx, ttsModel, result.Answer)
@@ -1145,6 +1154,10 @@ func (s *ChatPipelineService) AsyncChat(
 				out <- result
 			}
 			send := func(result AsyncChatResult) {
+				if firstTokenAt.IsZero() && !result.Final && result.Answer != "" {
+					firstTokenAt = time.Now()
+					result.FirstTokenMS = int(firstTokenAt.Sub(streamStart).Milliseconds())
+				}
 				if !quote {
 					// Flush before a boundary so buffered text stays in its section.
 					if result.StartToThink || result.EndToThink || result.Final {

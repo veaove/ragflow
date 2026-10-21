@@ -102,6 +102,8 @@ export enum Routes {
   AdminRoles = `${Admin}/roles`,
   AdminMonitoring = `${Admin}/monitoring`,
   Qc = '/qc',
+  AnalyticsConsultations = '/analytics/consultations',
+  AnalyticsStats = '/analytics/stats',
 }
 
 const defaultRouteFallback = (
@@ -313,6 +315,14 @@ const routeConfigOptions = [
       {
         path: Routes.Qc,
         Component: () => import('@/pages/qc'),
+      },
+      {
+        path: Routes.AnalyticsConsultations,
+        Component: () => import('@/pages/analytics/consultations'),
+      },
+      {
+        path: Routes.AnalyticsStats,
+        Component: () => import('@/pages/analytics/stats'),
       },
       {
         path: Routes.Skills,

@@ -29,6 +29,11 @@ type ConversationMessageFields struct {
 	Feedback    *string  `gorm:"column:feedback;type:longtext" json:"feedback,omitempty"`
 	CreatedAt   *float64 `gorm:"column:created_at" json:"created_at,omitempty"`
 	Metadata    string   `gorm:"column:metadata;type:longtext" json:"-"`
+	// DurationMS is the first-token latency in milliseconds, recorded on
+	// assistant messages only. 0 means "not recorded" (legacy rows, failed or
+	// empty responses); analytics excludes those from the average instead of
+	// treating them as instant replies.
+	DurationMS int `gorm:"column:duration_ms;not null;default:0" json:"duration_ms"`
 }
 
 // ConversationMessage stores one ordered message for a conversation.

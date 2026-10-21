@@ -1285,8 +1285,14 @@ func (s *ChatSessionService) ChatCompletions(
 	if stream && streamChan != nil {
 		var fullAnswer strings.Builder
 		var finalLegacyAnswer map[string]interface{}
+		// First-token latency reported by the pipeline on the first answer
+		// chunk; persisted against the assistant message below.
+		firstTokenMS := 0
 
 		for result := range resultChan {
+			if result.FirstTokenMS > 0 {
+				firstTokenMS = result.FirstTokenMS
+			}
 			if result.Reference != nil && len(reference) > 0 {
 				reference[len(reference)-1] = result.Reference
 			}
@@ -1299,6 +1305,7 @@ func (s *ChatSessionService) ChatCompletions(
 						content = result.Answer
 					}
 					s.appendAssistantToSession(session, content, messageID)
+					s.setAssistantDurationMS(session, firstTokenMS)
 					if ctx.Err() == nil {
 						s.updateSessionMessages(ctx, session, s.getSessionMessagesAsSlice(session), reference)
 					}
@@ -1944,6 +1951,29 @@ func (s *ChatSessionService) structureAnswer(session *entity.ChatSession, answer
 		"final":        false,
 		"id":           messageID,
 		"session_id":   conversationID,
+	}
+}
+
+// setAssistantDurationMS stamps duration_ms onto the last assistant message in
+// session.Message so the history writer persists it. Called after the assistant
+// turn is appended and before the session is flushed.
+func (s *ChatSessionService) setAssistantDurationMS(session *entity.ChatSession, durationMS int) {
+	if session == nil || durationMS <= 0 || len(session.Message) == 0 {
+		return
+	}
+	var msgs []map[string]interface{}
+	if err := json.Unmarshal(session.Message, &msgs); err != nil || len(msgs) == 0 {
+		return
+	}
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if stringValue(msgs[i]["role"]) != "assistant" {
+			continue
+		}
+		msgs[i]["duration_ms"] = durationMS
+		if b, err := json.Marshal(msgs); err == nil {
+			session.Message = b
+		}
+		return
 	}
 }
 

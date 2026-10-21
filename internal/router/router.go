@@ -75,6 +75,7 @@ type Router struct {
 	// qcHandler serves the quality-inspection routes; lazily built to keep the
 	// already long NewRouter parameter list from growing.
 	qcHandler *handler.QcHandler
+	analyticsHandler *handler.AnalyticsHandler
 	qcOnce    sync.Once
 }
 
@@ -84,6 +85,14 @@ func (r *Router) getQcHandler() *handler.QcHandler {
 		r.qcHandler = handler.NewQcHandler()
 	})
 	return r.qcHandler
+}
+
+// getAnalyticsHandler lazily constructs the consultation analytics handler.
+func (r *Router) getAnalyticsHandler() *handler.AnalyticsHandler {
+	if r.analyticsHandler == nil {
+		r.analyticsHandler = handler.NewAnalyticsHandler()
+	}
+	return r.analyticsHandler
 }
 
 // getChangeSetHandler lazily constructs the staged-edit handler.
@@ -826,6 +835,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 			// Quality-inspection routes
 			r.registerQcRoutes(v1)
+			r.registerAnalyticsRoutes(v1)
 		}
 	}
 
