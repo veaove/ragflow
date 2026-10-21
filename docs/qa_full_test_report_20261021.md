@@ -182,8 +182,10 @@ Tests:       19 failed, 955 passed, 974 total
 
 ### 6.1 【P1】检索测试设置的自动保存实际不生效——前端发的字段被后端白名单拒绝
 
-> **状态：已修复并已上线（后端 `26d32c6db` + 前端 `1e8f202fb`，线上版本 `1e8f202`，
-> 前端 `dist_20261021_1109`）。UI 复验 9/9、接口复验 9/9。**
+> **状态：已修复并已上线。**
+> 后端二进制 `version=30f5dbe`（编译时 HEAD，已包含修复 `26d32c6db`）；
+> 前端 `dist_20261021_1109`（对应修复 `1e8f202fb`）。
+> UI 复验 9/9、接口复验 9/9。
 
 **现象**：知识库「检索测试」页改任何设置，右上角报
 `101 Extra inputs are not permitted: similarity_threshold`，且永远看不到「保存成功」。
@@ -395,7 +397,7 @@ knowledgeBase: '知识库',    // Knowledge Base
 | 迁移 | `--migrate` RC=0，无新表新列（本次只改白名单，无 schema 变更） |
 | 启动 | `admin → ingestor → api`，三个服务 active，9380/9381 OPEN |
 | healthz | db / redis / doc_engine / storage / message_queue **五项全 ok** |
-| 版本 | 线上 `version` 由 `52e2112` → `1e8f202` |
+| 版本 | 线上 `version` 由 `52e2112` → **`30f5dbe`**（`version` 报的是**后端编译时**的 HEAD；该提交已包含后端修复 `26d32c6db`）。前端产物对应 `1e8f202fb` |
 | 前端 | `dist_20261021_1109`（49M），nginx root 已切换、`nginx -t` 通过、`kill -HUP` 重载 |
 | 服务 | 入口 `/entry/js/index-BpDIGPBr.js` 与本地产物一致；`llm-util` chunk 经 nginx 取回 200 + `application/javascript` |
 | 清理 | 旧备份轮转保留 2 份；旧 `dist` 保留 2 个版本；磁盘 71% |
