@@ -31,11 +31,13 @@ package canvas
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"strings"
+	"time"
 
 	"ragflow/internal/agent/runtime"
 
@@ -248,13 +250,44 @@ func realComponentBodyWithOptions(cpnID, componentClass, displayName string, com
 		cctx = runtime.BindComponentFraction(cctx, cpnID)
 
 		var out map[string]any
-		invokeErr := runtime.TrackProgress(cpnID, runtime.ProgressCallbackFromContext(ctx), func() error {
-			var e error
-			out, e = runtime.TrackElapsed(componentClass, func() (map[string]any, error) {
-				return comp.Invoke(runtime.WithComponentExecutionOptions(cctx, opts), dao.DB, in)
-			})
-			return e
-		})
+		invokeErr := func() error {
+			// 通用节点重试（ND-01）。max_retries 是 DSL 里的通用参数，默认 0
+			// = 不重试；LLM / Agent 内部已有自己的重试循环，这里跳过外层重试，
+			// 避免两套重试乘法叠加（详见 component/llm_retry.go 的说明）。
+			attempts := outerRetryAttempts(componentClass, in)
+			var lastErr error
+			for attempt := 0; attempt < attempts; attempt++ {
+				var e error
+				_ = runtime.TrackProgress(cpnID, runtime.ProgressCallbackFromContext(ctx), func() error {
+					out, e = runtime.TrackElapsed(componentClass, func() (map[string]any, error) {
+						return comp.Invoke(runtime.WithComponentExecutionOptions(cctx, opts), dao.DB, in)
+					})
+					return e
+				})
+				if e == nil {
+					return nil
+				}
+				lastErr = e
+				if attempt < attempts-1 {
+					// 指数退避（2s 起步、翻倍、上限 30s），期间尊重取消。
+					backoff := time.Duration(2<<attempt) * time.Second
+					if backoff > 30*time.Second {
+						backoff = 30 * time.Second
+					}
+					common.Info("agent: component invoke will retry",
+						zap.String("component_id", cpnID),
+						zap.String("component_class", componentClass),
+						zap.Int("attempt", attempt+1),
+						zap.Int("max_attempts", attempts))
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-time.After(backoff):
+					}
+				}
+			}
+			return lastErr
+		}()
 		if invokeErr != nil {
 			switch {
 			case errors.Is(invokeErr, context.Canceled):
@@ -287,6 +320,45 @@ func realComponentBodyWithOptions(cpnID, componentClass, displayName string, com
 		out["__cpn_id__"] = cpnID
 		return out, nil
 	}
+}
+
+
+// outerRetryAttempts 返回外层重试的总尝试次数（含首次）。max_retries 默认 0
+// 表示不重试（总尝试 1 次）。LLM / Agent 内部自带重试，外层跳过避免叠加。
+func outerRetryAttempts(componentClass string, in map[string]any) int {
+	switch strings.ToLower(componentClass) {
+	case "llm", "agent":
+		return 1
+	}
+	maxRetries := readIntParam(in, "max_retries")
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
+	return maxRetries + 1
+}
+
+// readIntParam 从组件输入里读一个整数参数。运行时输入值通常是 float64
+// （JSON 解码）或 int；其它类型按 0 处理，缺省即不重试。
+func readIntParam(in map[string]any, key string) int {
+	v, ok := in[key]
+	if !ok || v == nil {
+		return 0
+	}
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	case float32:
+		return int(n)
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return int(i)
+		}
+	}
+	return 0
 }
 
 // placeholderBody is the canvas-only fallback used when no factory
