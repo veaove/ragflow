@@ -82,6 +82,18 @@ export default function StudioCanvas() {
     message?: string;
     data?: { id?: string };
   } | null>(null);
+  const [traceNodes, setTraceNodes] = useState<
+    {
+      node_id: string;
+      node_type: string;
+      status: string;
+      duration_ms: number;
+      retry_count?: number;
+      error_message?: string;
+      inputs?: unknown;
+      outputs?: unknown;
+    }[]
+  >([]);
 
   const handleSave = useCallback(() => {
     saveGraph();
@@ -102,6 +114,15 @@ export default function StudioCanvas() {
         inputs: {},
       });
       setRunResult(data as { code: number; message?: string; data?: { id?: string } });
+      // 跑完后拉节点级执行记录（LOG-03），供 Tracing 时间线展示。
+      const runId = (data as { data?: { id?: string } })?.data?.id;
+      if (runId) {
+        const nodesResp = await request.get(api.getRunNodes(runId));
+        setTraceNodes(
+          ((nodesResp as { data?: unknown[] })?.data ?? []) as typeof traceNodes,
+        );
+        setRunTab('tracing');
+      }
     } catch (e) {
       setRunResult({
         code: -1,
@@ -284,11 +305,63 @@ export default function StudioCanvas() {
               </div>
             )}
 
-            {runTab === 'tracing' && (
-              <div className="text-text-secondary">
-                节点级 Tracing 依赖 run 级执行记录（LOG-03）持久化，待后端就绪。
-              </div>
-            )}
+            {runTab === 'tracing' &&
+              (traceNodes.length === 0 ? (
+                <div className="text-text-secondary">
+                  暂无节点执行记录。点击「试运行」后这里展示每个节点的耗时与输入输出。
+                </div>
+              ) : (
+                <ol className="space-y-1.5">
+                  {traceNodes.map((n, idx) => (
+                    <li
+                      key={n.node_id + idx}
+                      className="flex items-center gap-3 rounded border border-border-default px-3 py-1.5"
+                    >
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded bg-brand-weak text-xs text-brand">
+                        {idx + 1}
+                      </span>
+                      <span className="w-28 shrink-0 truncate font-medium">
+                        {n.node_type}
+                      </span>
+                      <span
+                        className={
+                          'shrink-0 text-xs ' +
+                          (n.status === 'succeeded'
+                            ? 'text-state-success'
+                            : n.status === 'failed'
+                              ? 'text-state-error'
+                              : 'text-text-secondary')
+                        }
+                      >
+                        {n.status}
+                      </span>
+                      <span className="shrink-0 text-xs text-text-secondary">
+                        {n.duration_ms}ms
+                      </span>
+                      {n.retry_count ? (
+                        <span className="shrink-0 text-xs text-text-secondary">
+                          重试 {n.retry_count} 次
+                        </span>
+                      ) : null}
+                      {n.error_message ? (
+                        <span className="min-w-0 truncate text-xs text-state-error">
+                          {n.error_message}
+                        </span>
+                      ) : null}
+                      <details className="ml-auto text-xs text-text-secondary">
+                        <summary className="cursor-pointer">输入/输出</summary>
+                        <pre className="mt-1 whitespace-pre-wrap rounded bg-bg-card p-2 font-mono text-[11px]">
+                          {JSON.stringify(
+                            { inputs: n.inputs, outputs: n.outputs },
+                            null,
+                            2,
+                          )}
+                        </pre>
+                      </details>
+                    </li>
+                  ))}
+                </ol>
+              ))}
           </div>
         </footer>
       )}

@@ -372,6 +372,8 @@ export default {
   getAgent: (id: string) => `${restAPIv1}/agents/${id}`,
   runWorkflow: (canvasId: string) => `${restAPIv1}/workflows/${canvasId}/run`,
   debugRun: (canvasId: string) => `${restAPIv1}/apps/${canvasId}/debug-run`,
+  getRun: (runId: string) => `${restAPIv1}/runs/${runId}`,
+  getRunNodes: (runId: string) => `${restAPIv1}/runs/${runId}/nodes`,
   uploadAgentFile: (id?: string) => `${restAPIv1}/agents/${id}/upload`,
   createAgentSession: (agentId: string) =>
     `${restAPIv1}/agents/${agentId}/sessions`,
