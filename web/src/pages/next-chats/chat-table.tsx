@@ -6,7 +6,12 @@ import {
   formatListTime,
 } from '@/components/list-view/list-data-table';
 import { IDialog } from '@/interfaces/database/chat';
+import {
+  formatKnowledgeBaseCell,
+  getKnowledgeBaseNames,
+} from './chat-labels';
 import { ChatDropdown } from './chat-dropdown';
+import { useModelNameResolver } from './use-model-name-resolver';
 
 /**
  * 知识问答（Chat）表格视图。
@@ -15,7 +20,11 @@ import { ChatDropdown } from './chat-dropdown';
  * 「这个问答用的是哪个模型、挂了哪些知识库、检索参数怎么设的」——
  * 这三项都要点进设置页才能看到，成本太高，所以直接上列表。
  *
- * 列：名称 · 描述 · 模型 · 关联知识库 · TopK/阈值 · 更新时间 · 操作
+ * 列：名称 · 描述 · 模型 · 知识库 · 重排模型 · TopK/阈值 · 更新时间 · 操作
+ *
+ * 模型 / 知识库 / 重排模型三列展示的必须是**名称**：库里存的是 id，
+ * 用户看不懂也没法据此判断「这个问答到底配了什么」，映射规则集中在
+ * `chat-labels.ts`，卡片视图复用同一套。
  */
 export function ChatTable({
   rows,
@@ -27,6 +36,7 @@ export function ChatTable({
   showChatRenameModal: (data: IDialog) => void;
 }) {
   const { t } = useTranslation();
+  const resolveModelName = useModelNameResolver();
 
   const columns: ListColumn<IDialog>[] = [
     {
@@ -44,7 +54,7 @@ export function ChatTable({
     },
     {
       key: 'description',
-      title: t('common.description'),
+      title: '描述',
       className: 'max-w-[240px]',
       render: (row) => (
         <span
@@ -58,21 +68,38 @@ export function ChatTable({
     {
       key: 'llm',
       title: '模型',
-      render: (row) => (
-        <span className="text-text-secondary">{row.llm_id || '-'}</span>
-      ),
+      render: (row) => {
+        const name = resolveModelName(row.llm_id);
+        return (
+          <span className="whitespace-nowrap text-text-secondary" title={name}>
+            {name}
+          </span>
+        );
+      },
     },
     {
       key: 'kb',
-      title: t('common.knowledgeBase'),
+      title: '知识库',
+      className: 'max-w-[240px]',
       render: (row) => {
-        const count = row.kb_names?.length ?? 0;
+        const { text, title } = formatKnowledgeBaseCell(
+          getKnowledgeBaseNames(row),
+        );
         return (
-          <span
-            className="text-text-secondary"
-            title={count > 0 ? row.kb_names.join('、') : undefined}
-          >
-            {count > 0 ? `${count} 个` : '未关联'}
+          <span className="line-clamp-1 text-text-secondary" title={title}>
+            {text}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'rerank',
+      title: '重排模型',
+      render: (row) => {
+        const name = resolveModelName(row.rerank_id);
+        return (
+          <span className="whitespace-nowrap text-text-secondary" title={name}>
+            {name}
           </span>
         );
       },
@@ -84,13 +111,6 @@ export function ChatTable({
         <span className="whitespace-nowrap font-mono text-xs text-text-secondary">
           {row.top_k ?? '-'} / {row.similarity_threshold ?? '-'}
         </span>
-      ),
-    },
-    {
-      key: 'rerank',
-      title: '重排模型',
-      render: (row) => (
-        <span className="text-text-secondary">{row.rerank_id || '-'}</span>
       ),
     },
     {

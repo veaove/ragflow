@@ -36,7 +36,10 @@ func setupChatTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
 
-	if err := db.AutoMigrate(&entity.User{}, &entity.Chat{}); err != nil {
+	// knowledgebase is needed by the keyword search: the list shows knowledge
+	// base names, so `keywords` also matches chats whose bound datasets carry
+	// the term in their name.
+	if err := db.AutoMigrate(&entity.User{}, &entity.Chat{}, &entity.Knowledgebase{}); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
 
@@ -307,5 +310,67 @@ func TestChatDAOListByResourceIDsKeepsJoinedOwnerColumnsWhenPaginated(t *testing
 		if row.Nickname == nil || *row.Nickname != "owner of t1" {
 			t.Fatalf("row %d nickname = %v, want owner of t1: the paged scan dropped the joined owner column", i, row.Nickname)
 		}
+	}
+}
+
+// TestChatDAOListByResourceIDsKeywordMatchesDisplayedNames checks that the
+// keyword search covers every name the list actually renders: the chat name,
+// the model / rerank model stored in llm_id and rerank_id, and the knowledge
+// base names reached through kb_ids. Searching only the chat name would make
+// "搜到的名字点不出来" — the column shows a model name the search cannot find.
+func TestChatDAOListByResourceIDsKeywordMatchesDisplayedNames(t *testing.T) {
+	db := setupChatTestDB(t)
+	pushDB(t, db)
+
+	if err := db.Create(&entity.Knowledgebase{
+		ID:        "kb-1",
+		TenantID:  "t1",
+		Name:      "财报知识库",
+		EmbdID:    "embd-1",
+		CreatedBy: "u-1",
+		Status:    stringPtr("1"),
+	}).Error; err != nil {
+		t.Fatalf("failed to create knowledgebase: %v", err)
+	}
+
+	chats := []entity.Chat{
+		{ID: "c-1", TenantID: "t1", LLMID: "deepseek-chat@default@DeepSeek", RerankID: "", KBIDs: entity.JSONSlice{"kb-1"}, Name: stringPtr("问答一")},
+		{ID: "c-2", TenantID: "t1", LLMID: "qwen-max@default@Alibaba", RerankID: "", KBIDs: entity.JSONSlice{}, Name: stringPtr("问答二")},
+		{ID: "c-3", TenantID: "t1", LLMID: "deepseek-chat@default@DeepSeek", RerankID: "BAAI/bge-reranker-v2-m3", KBIDs: entity.JSONSlice{}, Name: stringPtr("问答三")},
+	}
+	for i := range chats {
+		chats[i].LLMSetting = entity.JSONMap{}
+		chats[i].PromptType = "simple"
+		chats[i].PromptConfig = entity.JSONMap{}
+		chats[i].DoRefer = "1"
+		chats[i].Status = stringPtr("1")
+		chats[i].BaseModel.CreateTime = int64Ptr(int64(100 * (i + 1)))
+		if err := db.Create(&chats[i]).Error; err != nil {
+			t.Fatalf("failed to create chat %s: %v", chats[i].ID, err)
+		}
+	}
+
+	ctx := t.Context()
+	terms := []OrderTerm{{Column: "create_time"}}
+
+	for _, tc := range []struct {
+		label    string
+		keywords string
+		want     []string
+	}{
+		{label: "chat name", keywords: "问答二", want: []string{"c-2"}},
+		{label: "model name", keywords: "qwen", want: []string{"c-2"}},
+		{label: "model name shared by two chats", keywords: "deepseek", want: []string{"c-1", "c-3"}},
+		{label: "knowledge base name", keywords: "财报", want: []string{"c-1"}},
+		{label: "rerank model name", keywords: "bge-reranker", want: []string{"c-3"}},
+		{label: "no match", keywords: "不存在的关键词", want: []string{}},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			rows, total, err := NewChatDAO().ListByResourceIDs(ctx, db, []string{"c-1", "c-2", "c-3"}, nil, 1, 10, terms, tc.keywords, "", "")
+			if err != nil {
+				t.Fatalf("ListByResourceIDs(keywords=%q): %v", tc.keywords, err)
+			}
+			assertChatRows(t, rows, total, tc.want)
+		})
 	}
 }

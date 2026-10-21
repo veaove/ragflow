@@ -2,9 +2,12 @@ import {
   addTenantParams,
   buildModelValue,
   getEmbeddingBaseName,
+  isOpaqueModelId,
   parseModelUuid,
   parseModelValue,
+  resolveModelDisplayName,
 } from '../llm-util';
+import { IAddedModel } from '@/interfaces/database/llm';
 
 // Composite model keys are right-anchored:
 // "model_name@instance_name@provider_name" or "model_name@provider_name".
@@ -202,6 +205,94 @@ describe('addTenantParams — endpoints that store plain model ids', () => {
           url,
         ),
       ).toEqual({ rerank_id: '', tenant_rerank_id: 'stale-tenant-model-id' });
+    },
+  );
+});
+
+// 列表页展示的是模型的中文/可读名称，绝不能把持久化 id 直接渲染出来。
+// 这三种存储形态在库里并存，解析必须全部覆盖，解析不出来时才允许兜底 "-"。
+describe('resolveModelDisplayName — 列表展示用的名称解析', () => {
+  const buildModel = (partial: Partial<IAddedModel>): IAddedModel => ({
+    model_id: '',
+    model_type: ['chat'],
+    name: '',
+    provider_id: 'p-1',
+    provider_name: 'DeepSeek',
+    instance_id: 'i-1',
+    instance_name: 'default',
+    ...partial,
+  });
+
+  const models: IAddedModel[] = [
+    buildModel({
+      model_id: '9b2c4f1e-1a2b-4c3d-8e9f-0a1b2c3d4e5f',
+      name: 'deepseek-chat___DeepSeek',
+    }),
+    buildModel({
+      model_id: 'model-2',
+      name: 'bge-reranker-v2-m3',
+      provider_name: 'BAAI',
+      instance_name: 'default',
+      model_type: ['rerank'],
+    }),
+  ];
+
+  test('uuid 形态按 model_id 映射成模型名（去掉 "___provider" 后缀）', () => {
+    expect(
+      resolveModelDisplayName(
+        '9b2c4f1e-1a2b-4c3d-8e9f-0a1b2c3d4e5f',
+        models,
+      ),
+    ).toBe('deepseek-chat');
+  });
+
+  test('三段复合 id 按 name+instance+provider 命中', () => {
+    expect(
+      resolveModelDisplayName('deepseek-chat@default@DeepSeek', models),
+    ).toBe('deepseek-chat');
+  });
+
+  test('复合 id 里的模型已被删除时，退回复合值自带的模型名而不是整串 id', () => {
+    expect(
+      resolveModelDisplayName('qwen-max@default@Alibaba', models),
+    ).toBe('qwen-max');
+  });
+
+  test('内置重排模型名本身就是可读名称，原样展示', () => {
+    expect(
+      resolveModelDisplayName('BAAI/bge-reranker-v2-m3', models),
+    ).toBe('BAAI/bge-reranker-v2-m3');
+  });
+
+  test('陌生 uuid 解析不出来，返回空串由调用方兜底 "-"', () => {
+    expect(
+      resolveModelDisplayName('7f3e2a10-9c4b-42d8-8f11-6a0b5c9d2e37', models),
+    ).toBe('');
+    expect(resolveModelDisplayName('0123456789abcdef0123456789abcdef', [])).toBe(
+      '',
+    );
+  });
+
+  test('空值不崩', () => {
+    expect(resolveModelDisplayName(undefined, models)).toBe('');
+    expect(resolveModelDisplayName('', models)).toBe('');
+    expect(resolveModelDisplayName('   ', models)).toBe('');
+  });
+});
+
+describe('isOpaqueModelId', () => {
+  test.each([
+    '9b2c4f1e-1a2b-4c3d-8e9f-0a1b2c3d4e5f',
+    '0123456789abcdef0123456789abcdef',
+    '123456',
+  ])('把 %s 判为纯标识符', (value) => {
+    expect(isOpaqueModelId(value)).toBe(true);
+  });
+
+  test.each(['deepseek-chat', 'BAAI/bge-reranker-v2-m3', 'gpt-4o-mini'])(
+    '把 %s 判为可读名称',
+    (value) => {
+      expect(isOpaqueModelId(value)).toBe(false);
     },
   );
 });

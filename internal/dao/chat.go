@@ -56,7 +56,26 @@ func (dao *ChatDAO) ListByResourceIDs(ctx context.Context, db *gorm.DB, resource
 		query = query.Where("dialog.tenant_id IN ?", ownerIDs)
 	}
 	if keywords != "" {
-		query = query.Where("LOWER(dialog.name) LIKE ?", "%"+strings.ToLower(keywords)+"%")
+		// 列表里展示的是模型、重排模型、知识库的**名称**，所以搜索也必须按
+		// 用户看得见的文字命中，不能只搜问答名称：
+		//   - llm_id / rerank_id 落库的就是 "model@instance@provider"（或裸模型名），
+		//     直接 LIKE 即可覆盖「按模型名搜索」；
+		//   - kb_ids 只有 id，得借 knowledgebase 反查名字。这里用 INSTR 而不是
+		//     "||" 拼接：MySQL 默认把 "||" 当逻辑或，SQLite 才是字符串连接，
+		//     INSTR(substr, str) 在两者上语义一致。
+		like := "%" + strings.ToLower(keywords) + "%"
+		query = query.Where(
+			`(LOWER(dialog.name) LIKE ?
+				OR LOWER(dialog.llm_id) LIKE ?
+				OR LOWER(dialog.rerank_id) LIKE ?
+				OR EXISTS (
+					SELECT 1 FROM knowledgebase AS kb
+					WHERE LOWER(kb.name) LIKE ?
+						AND kb.status = ?
+						AND INSTR(dialog.kb_ids, kb.id) > 0
+				))`,
+			like, like, like, like, "1",
+		)
 	}
 	if id != "" {
 		query = query.Where("dialog.id = ?", id)

@@ -169,6 +169,72 @@ export function parseModelUuid(uuid: string): {
   };
 }
 
+/**
+ * 判断一个持久化值是不是「纯标识符」：uuid、32 位 hex、纯数字。
+ *
+ * 这类值对使用者没有任何信息量，列表里一律不允许直接渲染
+ * （能映射就显示名称，映射不到显示 "-"）。模型名本身永远不是这种形状，
+ * 所以它同时也是「这个值是不是可读名称」的判据。
+ */
+export function isOpaqueModelId(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+
+  return (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      trimmed,
+    ) ||
+    /^[0-9a-f]{32}$/i.test(trimmed) ||
+    /^\d+$/.test(trimmed)
+  );
+}
+
+/**
+ * 把持久化的模型值解析成可读名称，供列表/详情直接展示。
+ *
+ * 需要同时吃下三种历史形态：
+ *   1. `modelName@instanceName@providerName`（旧复合 id，目前最常见）
+ *   2. `modelName@providerName`（两段式，instance 为 default）
+ *   3. `model_id`（tenant_model 的 uuid，只能靠 added-models 列表映射）
+ *
+ * 解析顺序决定了「展示什么最接近用户心智」：先按 model_id 精确命中，
+ * 再按复合 id 三段匹配，最后才退回复合值里自带的模型名——即使该模型已从
+ * 提供方删除，`deepseek-chat` 也远比一整串 id 可读。
+ *
+ * 完全解析不出来（例如列表未加载完、值是陌生 uuid）时返回空串，
+ * 由调用方兜底成 "-"，绝不把原始 id 漏到界面上。
+ */
+export function resolveModelDisplayName(
+  value: string | undefined | null,
+  models: IAddedModel[],
+): string {
+  const raw = value?.trim();
+  if (!raw) return '';
+
+  const byModelId = models.find((m) => m.model_id && m.model_id === raw);
+  if (byModelId) {
+    return getRealModelName(byModelId.name);
+  }
+
+  const parsed = parseModelValue(raw);
+  if (parsed) {
+    const matched = models.find(
+      (m) =>
+        modelNameKey(getRealModelName(m.name)) ===
+          modelNameKey(parsed.model_name) &&
+        modelNameKey(m.instance_name) === modelNameKey(parsed.model_instance) &&
+        modelNameKey(m.provider_name) === modelNameKey(parsed.model_provider),
+    );
+    if (matched) {
+      return getRealModelName(matched.name);
+    }
+    return isOpaqueModelId(parsed.model_name) ? '' : parsed.model_name;
+  }
+
+  // 不含 "@" 的普通名称，如内置重排模型 "BAAI/bge-reranker-v2-m3"。
+  return isOpaqueModelId(raw) ? '' : raw;
+}
+
 // Model parameter to tenant parameter mapping
 type ModelParamMap = {
   [key: string]: string;
