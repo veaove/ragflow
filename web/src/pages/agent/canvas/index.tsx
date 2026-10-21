@@ -59,6 +59,7 @@ import { ReadonlyEdge } from './edge/readonly-edge';
 import styles from './index.module.less';
 import { RagNode } from './node';
 import { StudioNode } from './node/studio-node';
+import { NodeContextMenu, INodeContextMenu } from './context-menu';
 import { AgentNode } from './node/agent-node';
 import { BeginNode } from './node/begin-node';
 import { CategorizeNode } from './node/categorize-node';
@@ -143,6 +144,11 @@ interface IProps {
    * 那个 context 才能调 addCanvasNode。
    */
   sidebar?: React.ReactNode;
+  /**
+   * 是否启用节点右键菜单（复制 / 删除）。工作室开启，智能体默认关闭——
+   * 避免给智能体画布引入它没要求的交互。
+   */
+  enableContextMenu?: boolean;
 }
 
 const NoopDrawer = () => {};
@@ -152,6 +158,7 @@ function AgentCanvas({
   hideDrawer = NoopDrawer,
   readOnly = false,
   sidebar,
+  enableContextMenu = false,
 }: IProps) {
   const { t } = useTranslation();
   const {
@@ -169,6 +176,7 @@ function AgentCanvas({
 
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance<any, any>>();
+  const [contextMenu, setContextMenu] = useState<INodeContextMenu | null>(null);
 
   const {
     addEventList,
@@ -308,6 +316,9 @@ function AgentCanvas({
   );
 
   const onPaneClick = useCallback(() => {
+    if (enableContextMenu) {
+      setContextMenu(null);
+    }
     hideFormDrawer();
     if (visible && !shouldPreventClose()) {
       removePlaceholderNode();
@@ -394,6 +405,17 @@ function AgentCanvas({
             onMove={onMove}
             onNodeClick={onNodeClick}
             onPaneClick={onPaneClick}
+            onNodeContextMenu={(event, node) => {
+              if (!enableContextMenu) {
+                return;
+              }
+              event.preventDefault();
+              setContextMenu({
+                id: node.id,
+                top: event.clientY,
+                left: event.clientX,
+              });
+            }}
             onInit={setReactFlowInstance}
             onSelectionChange={onSelectionChange}
             nodeOrigin={[0.5, 0]}
@@ -414,6 +436,9 @@ function AgentCanvas({
             panActivationKeyCode={null}
           >
             {!readOnly && sidebar}
+            {enableContextMenu && contextMenu && (
+              <NodeContextMenu {...contextMenu} />
+            )}
             <AgentBackground></AgentBackground>
             <Spotlight className="z-0" opcity={0.7} coverage={70} />
             <Controls

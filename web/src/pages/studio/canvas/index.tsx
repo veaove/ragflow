@@ -209,6 +209,7 @@ export default function StudioCanvas() {
             <DropdownProvider>
               <AgentCanvas
                 sidebar={loading ? null : <NodePanel operators={operators} />}
+                enableContextMenu
               />
             </DropdownProvider>
           </ReactFlowProvider>
