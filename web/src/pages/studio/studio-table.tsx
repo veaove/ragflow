@@ -66,8 +66,10 @@ export function StudioTable({
     id: string,
     action?: 'run' | 'versions' | 'checklist' | 'publish',
   ) => {
+    // 工作室有自己的画布路由（/studio/:id）。之前跳 /agent/:id 是复用了智能体
+    // 页面，形态只能靠 canvas_category 猜；现在页面独立，跳过去就是工作室画布。
     const query = action ? `?action=${action}` : '';
-    navigate(`${Routes.Agent}/${id}${query}`);
+    navigate(`${Routes.Studio}/${id}${query}`);
   };
 
   if (!loading && apps.length === 0) {

@@ -278,6 +278,12 @@ const routeConfigOptions = [
         Component: () => import('@/pages/studio/runs-page'),
       },
       {
+        // 工作室画布独立于 /agent/:id：形态语义不同，共用页面只能靠
+        // canvas_category 运行时猜，改动容易互相影响。
+        path: Routes.StudioWorkflow,
+        Component: () => import('@/pages/studio/canvas'),
+      },
+      {
         path: Routes.AgentTemplates,
         layout: false,
         Component: () => import('@/pages/agents/agent-templates'),

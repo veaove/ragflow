@@ -214,7 +214,7 @@ export default function Studio() {
         <StudioTable
           apps={apps as any}
           loading={listLoading}
-          onOpen={(id) => navigate(`/agent/${id}`)}
+          onOpen={(id) => navigate(`${Routes.Studio}/${id}`)}
           onCreate={() => setCreateType('chatflow')}
         />
       )}

@@ -469,7 +469,6 @@ export default function Agent() {
             <AgentCanvas
               drawerVisible={chatDrawerVisible}
               hideDrawer={hideChatDrawer}
-              canvasCategory={agentDetail?.canvas_category}
             ></AgentCanvas>
           </DropdownProvider>
         </ReactFlowProvider>
