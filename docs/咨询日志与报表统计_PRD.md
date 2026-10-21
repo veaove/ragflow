@@ -60,7 +60,7 @@
 | **响应速度** | 平均首包延迟：用户消息发出 → 首个回答 delta 返回 | 秒 | 链路 2 用 `agent_run.duration_ms`（MVP 总耗时代理）；链路 1 需补埋点（见 §5.2） |
 | **准确率（代理）** | 双口径：**好评率** = 好评数 ÷ 有评价的回答数；**成功率** = 成功会话 ÷ 总会话 | % | `thumb_up` / `agent_run.status` |
 | **评价分布** | 好评 / 差评 / 未评价 占比 | % | `thumb_up` |
-| **token 消耗** | 周期内 Prompt + Completion token 合计 | 个 | `agent_run` |
+| **差评数** | 周期内被点踩的回答数（rated − good） | 条 | `conversation_message` / `api_4_conversation_message` |
 
 **关键澄清**：
 
@@ -75,6 +75,16 @@
 
 3. **「客户 id」的口径待确认**（见 §8 待确认 Q1）：
    现有 `user_id` 是登录用户 id 还是匿名访客 id，决定「咨询客户数」是否准确。
+
+4. **Token 指标已从本期移除**（2026-10-21 核实）：
+   `agent_run.prompt_tokens/completion_tokens` 与 `api_4_conversation.tokens`
+   在现网全部为 0——运行时从未回填。保留该卡片只会长期显示「—」，故本期改为
+   「差评数」。待 LLM 调用回填 token 后再加回。
+
+5. **响应速度的数据源已修正**（2026-10-21 核实）：
+   `api_4_conversation.duration` 在现网全部为 0（字段存在但从不写入），
+   canvas 链路的耗时改取 `agent_run.duration_ms`（20 条运行中有 19 条非零，
+   平均 338ms）。按应用的耗时也改由 `agent_run.canvas_id` 分组取得。
 
 ---
 

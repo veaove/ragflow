@@ -230,7 +230,7 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-text-accent"
+                    className="text-accent-primary"
                     onClick={() => openDetail(it)}
                   >
                     {t('analytics.detail')}

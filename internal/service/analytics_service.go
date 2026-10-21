@@ -163,7 +163,6 @@ type mergedTotals struct {
 	success       int64
 	runs          int64
 	rounds        float64
-	tokens        int64
 }
 
 func (s *AnalyticsService) totalsFor(ctx context.Context, tenantID string, from, to int64, appID string) (*mergedTotals, error) {
@@ -193,7 +192,6 @@ func (s *AnalyticsService) totalsFor(ctx context.Context, tenantID string, from,
 		rated:         chat.Rated + canvas.Rated,
 		success:       success,
 		runs:          runs,
-		tokens:        canvas.Tokens,
 	}
 	sessionCount := chat.Sessions + canvas.Sessions
 	if sessionCount > 0 {
@@ -259,7 +257,7 @@ func (s *AnalyticsService) Stats(ctx context.Context, tenantID string, from, to 
 			GoodRate:    rateOrNil(cur.good, cur.rated),
 			SuccessRate: ratioOrNil(cur.success, cur.runs),
 			AvgRounds:   round1(cur.rounds),
-			Tokens:      cur.tokens,
+			BadCount:    int(cur.rated - cur.good),
 		},
 	}
 	stats.Deltas.Consultations = deltaOrNil(float64(cur.consultations), float64(prev.consultations))

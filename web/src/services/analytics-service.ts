@@ -76,7 +76,7 @@ export interface IAnalyticsMetrics {
   good_rate: number | null;
   success_rate: number | null;
   avg_rounds: number;
-  tokens: number;
+  bad_count: number;
 }
 
 export interface IAnalyticsStats {

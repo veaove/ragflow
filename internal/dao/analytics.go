@@ -435,16 +435,19 @@ func (d *AnalyticsDAO) TotalsChat(ctx context.Context, db *gorm.DB, tenantID str
 // TotalsCanvas aggregates the canvas chain over the window.
 func (d *AnalyticsDAO) TotalsCanvas(ctx context.Context, db *gorm.DB, tenantID string, from, to int64, appID string) (*AnalyticsTotals, error) {
 	var out AnalyticsTotals
+	// api_4_conversation.duration / tokens are declared on the entity but never
+	// written by the runtime (they are 0 on every row), so latency comes from
+	// agent_run.duration_ms, which the canvas runtime does populate.
 	q := db.WithContext(ctx).Table("api_4_conversation AS a").
 		Select(`
 			COUNT(DISTINCT a.id) AS sessions,
 			COUNT(DISTINCT a.user_id) AS customers,
-			COALESCE(AVG(NULLIF(a.duration, 0)), 0) AS avg_ms,
+			0 AS avg_ms,
 			0 AS good,
 			0 AS rated,
 			0 AS success,
 			COALESCE(AVG(a.round), 0) AS rounds,
-			COALESCE(SUM(a.tokens), 0) AS tokens`).
+			0 AS tokens`).
 		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
@@ -453,6 +456,21 @@ func (d *AnalyticsDAO) TotalsCanvas(ctx context.Context, db *gorm.DB, tenantID s
 	if err := q.Scan(&out).Error; err != nil {
 		return nil, err
 	}
+
+	// Latency is measured per run, not per session: one session may trigger
+	// several runs, and averaging them keeps slow retries visible.
+	var avgMS float64
+	latQ := db.WithContext(ctx).Table("agent_run").
+		Select("COALESCE(AVG(duration_ms), 0)").
+		Where("tenant_id = ? AND create_time >= ? AND create_time <= ? AND duration_ms > 0",
+			tenantID, from, to)
+	if appID != "" {
+		latQ = latQ.Where("canvas_id = ?", appID)
+	}
+	if err := latQ.Scan(&avgMS).Error; err != nil {
+		return nil, err
+	}
+	out.AvgMS = avgMS
 
 	type msgAgg struct {
 		Good  int64 `gorm:"column:good"`
@@ -644,16 +662,23 @@ func (d *AnalyticsDAO) AppsChat(ctx context.Context, db *gorm.DB, tenantID strin
 // AppsCanvas groups the canvas chain by app.
 func (d *AnalyticsDAO) AppsCanvas(ctx context.Context, db *gorm.DB, tenantID string, from, to int64) ([]AppRow, error) {
 	var rows []AppRow
+	// Latency comes from a run-level subquery for the same reason as TotalsCanvas.
 	err := db.WithContext(ctx).Table("api_4_conversation AS a").
 		Select(`
 			COALESCE(a.dialog_id, '') AS app_id,
 			COALESCE(d.name, '') AS app_name,
 			COUNT(DISTINCT a.id) AS sessions,
 			COUNT(DISTINCT a.user_id) AS customers,
-			COALESCE(AVG(NULLIF(a.duration, 0)), 0) AS avg_ms,
+			COALESCE(MAX(lat.avg_ms), 0) AS avg_ms,
 			0 AS good,
 			0 AS rated`).
 		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
+		Joins(`LEFT JOIN (
+			SELECT canvas_id, AVG(duration_ms) AS avg_ms
+			FROM agent_run
+			WHERE duration_ms > 0 AND create_time >= ? AND create_time <= ?
+			GROUP BY canvas_id
+		) AS lat ON lat.canvas_id = a.dialog_id`, from, to).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to).
 		Group("a.dialog_id, d.name").
 		Order("sessions DESC").

@@ -403,13 +403,9 @@ export function AnalyticsStatsPanel({
           hint={t('analytics.metricRoundsHint')}
         />
         <MetricCard
-          label={t('analytics.metricTokens')}
-          value={
-            metrics?.tokens && metrics.tokens > 0
-              ? metrics.tokens.toLocaleString()
-              : '—'
-          }
-          hint={t('analytics.metricTokensHint')}
+          label={t('analytics.metricBadCount')}
+          value={count(metrics?.bad_count)}
+          hint={t('analytics.metricBadCountHint')}
         />
       </div>
 

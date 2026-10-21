@@ -92,7 +92,11 @@ type AnalyticsMetrics struct {
 	GoodRate      *float64                 `json:"good_rate"`
 	SuccessRate   *float64                 `json:"success_rate"`
 	AvgRounds     float64                  `json:"avg_rounds"`
-	Tokens        int64                    `json:"tokens"`
+	// BadCount replaces the token tile: neither agent_run nor
+	// api_4_conversation ever has tokens written by the runtime, so a token
+	// metric would render as a permanent dash. Negative ratings are actionable
+	// and derivable from the same columns as good_rate.
+	BadCount int `json:"bad_count"`
 }
 
 // AnalyticsDeltas is the period-over-period change for each headline metric.
