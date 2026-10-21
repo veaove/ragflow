@@ -815,6 +815,132 @@ func (s *ChunkService) Parse(ctx context.Context, userID, datasetID string, req 
 	return nil, common.CodeSuccess, nil
 }
 
+// chunkQuestionList normalises the questions / question_kwd value into the
+// array the API contract promises.
+//
+// Infinity stores the column as one newline-joined string, and its
+// applyFieldMappings publishes the split list under a second key while leaving
+// the raw string behind — so this function can receive either shape. Returning
+// a bare string here broke the similar-question page, which maps over it.
+func chunkQuestionList(value interface{}) []interface{} {
+	switch v := value.(type) {
+	case nil:
+		return []interface{}{}
+	case string:
+		parts := strings.Split(v, "\n")
+		out := make([]interface{}, 0, len(parts))
+		for _, part := range parts {
+			if trimmed := strings.TrimSpace(part); trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		return out
+	case []interface{}:
+		return v
+	case []string:
+		out := make([]interface{}, len(v))
+		for i, item := range v {
+			out[i] = item
+		}
+		return out
+	default:
+		return []interface{}{}
+	}
+}
+
+// formatChunkForList projects one engine row onto the field names the chunk
+// list / chunk detail endpoints publish.
+//
+// The input map is iterated in Go's randomised order, which matters because the
+// engines publish some columns twice: Infinity keeps the raw `questions` /
+// `important_keywords` strings AND adds the split `question_kwd` /
+// `important_kwd` lists. Each pair therefore has to resolve deterministically —
+// see the guards on those cases.
+func formatChunkForList(chunk map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	// `available`: available_int=0 → false, missing → true; the frontend uses
+	// it to render disabled chunks, incl. parent rows.
+	availableInt := 1
+	if stored, ok := common.GetInt(chunk["available_int"]); ok {
+		availableInt = stored
+	}
+	result["available"] = availableInt != 0
+	skipFields := map[string]bool{
+		"_id": true, "authors": true, "_score": true, "SCORE": true, "available_int": true,
+		"important_kwd_empty_count": true, "kb_id": true, "mom_id": true, "page_num_int": true,
+	}
+	for k, v := range chunk {
+		if skipFields[k] || strings.HasSuffix(k, "_vec") || strings.Contains(k, "_sm_") || strings.HasSuffix(k, "_ltks") || strings.HasSuffix(k, "_tks") {
+			continue
+		}
+		switch k {
+		case "img_id":
+			if strVal, ok := v.(string); ok {
+				result["image_id"] = strVal
+			} else {
+				result["image_id"] = ""
+			}
+		case "position_int":
+			result["positions"] = v
+		case "id":
+			result["chunk_id"] = v
+		case "content_with_weight":
+			result["content_with_weight"] = v
+		case "content":
+			if _, ok := result["content_with_weight"]; !ok {
+				result["content_with_weight"] = v
+			}
+		case "docnm":
+			result["docnm_kwd"] = v
+		case "important_keywords":
+			// Infinity's applyFieldMappings renames this column to
+			// important_kwd but leaves the raw column in the map, so both keys
+			// reach this loop in an unspecified order. Without the guard the
+			// raw string could overwrite the normalised list and the client
+			// would get a string where it expects an array.
+			if _, ok := result["important_kwd"]; !ok {
+				utility.SetFieldArray(result, "important_kwd", v)
+			}
+		case "questions":
+			if _, ok := result["question_kwd"]; !ok {
+				result["question_kwd"] = chunkQuestionList(v)
+			}
+		case "question_kwd":
+			// Same unordered-map problem as "questions": whichever key wins
+			// decides the wire type, which is how the similar-question page
+			// ended up calling .map on a string ("n.map is not a function").
+			result["question_kwd"] = chunkQuestionList(v)
+		case "entities_kwd", "entity_kwd", "entity_type_kwd", "from_entity_kwd",
+			"name_kwd", "raptor_kwd", "removed_kwd",
+			"source_id", "tag_kwd", "to_entity_kwd", "toc_kwd", "doc_type_kwd":
+			if utility.IsEmpty(v) {
+				result[k] = []interface{}{}
+			} else {
+				result[k] = v
+			}
+		default:
+			// Handle _kwd fields that need "###" splitting
+			if strings.HasSuffix(k, "_kwd") && k != "knowledge_graph_kwd" {
+				if strVal, ok := v.(string); ok && strings.Contains(strVal, "###") {
+					parts := strings.Split(strVal, "###")
+					var filtered []interface{}
+					for _, p := range parts {
+						if p != "" {
+							filtered = append(filtered, p)
+						}
+					}
+					result[k] = filtered
+				} else {
+					result[k] = v
+				}
+			} else {
+				result[k] = v
+			}
+		}
+	}
+	return result
+}
+
 // List retrieves chunks for a document
 func (s *ChunkService) List(ctx context.Context, req *service.ListChunksRequest, userID string) (*service.ListChunksResponse, error) {
 	if s.docEngine == nil {
@@ -930,75 +1056,7 @@ func (s *ChunkService) List(ctx context.Context, req *service.ListChunksRequest,
 
 	chunks := make([]map[string]interface{}, 0, len(searchResp.Chunks))
 	for _, chunk := range searchResp.Chunks {
-		// Inline formatChunkForList
-		result := make(map[string]interface{})
-		// `available`: available_int=0 → false, missing → true; the frontend uses
-		// it to render disabled chunks, incl. parent rows.
-		availableInt := 1
-		if stored, ok := common.GetInt(chunk["available_int"]); ok {
-			availableInt = stored
-		}
-		result["available"] = availableInt != 0
-		skipFields := map[string]bool{
-			"_id": true, "authors": true, "_score": true, "SCORE": true, "available_int": true,
-			"important_kwd_empty_count": true, "kb_id": true, "mom_id": true, "page_num_int": true,
-		}
-		for k, v := range chunk {
-			if skipFields[k] || strings.HasSuffix(k, "_vec") || strings.Contains(k, "_sm_") || strings.HasSuffix(k, "_ltks") || strings.HasSuffix(k, "_tks") {
-				continue
-			}
-			switch k {
-			case "img_id":
-				if strVal, ok := v.(string); ok {
-					result["image_id"] = strVal
-				} else {
-					result["image_id"] = ""
-				}
-			case "position_int":
-				result["positions"] = v
-			case "id":
-				result["chunk_id"] = v
-			case "content_with_weight":
-				result["content_with_weight"] = v
-			case "content":
-				if _, ok := result["content_with_weight"]; !ok {
-					result["content_with_weight"] = v
-				}
-			case "docnm":
-				result["docnm_kwd"] = v
-			case "important_keywords":
-				utility.SetFieldArray(result, "important_kwd", v)
-			case "questions":
-				utility.SetFieldArray(result, "question_kwd", v)
-			case "entities_kwd", "entity_kwd", "entity_type_kwd", "from_entity_kwd",
-				"name_kwd", "raptor_kwd", "removed_kwd",
-				"source_id", "tag_kwd", "to_entity_kwd", "toc_kwd", "doc_type_kwd":
-				if utility.IsEmpty(v) {
-					result[k] = []interface{}{}
-				} else {
-					result[k] = v
-				}
-			default:
-				// Handle _kwd fields that need "###" splitting
-				if strings.HasSuffix(k, "_kwd") && k != "knowledge_graph_kwd" {
-					if strVal, ok := v.(string); ok && strings.Contains(strVal, "###") {
-						parts := strings.Split(strVal, "###")
-						var filtered []interface{}
-						for _, p := range parts {
-							if p != "" {
-								filtered = append(filtered, p)
-							}
-						}
-						result[k] = filtered
-					} else {
-						result[k] = v
-					}
-				} else {
-					result[k] = v
-				}
-			}
-		}
-		chunks = append(chunks, result)
+		chunks = append(chunks, formatChunkForList(chunk))
 	}
 
 	ingestionStatus := "UNSTART"
