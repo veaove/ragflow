@@ -6,6 +6,8 @@ export interface IMessageInfo {
   agent_id: string;
   agent_name: string;
   session_id: string;
+  /** 最新一条用户提问（列表接口一次批量带回，供「会话预览」列展示）。 */
+  session_question?: string;
   valid_at: string;
   invalid_at: string;
   forget_at: string;

@@ -24,6 +24,7 @@ import ProcessLogModal, {
   replaceText,
 } from '@/pages/dataset/process-log-modal';
 import { MemoryOptions } from '@/pages/memories/constants';
+import { SessionPreviewCell } from './session-preview-cell';
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -211,6 +212,16 @@ export function MemoryTable({
               {row.getValue('session_id')}
             </div>
           </div>
+        ),
+      },
+      {
+        accessorKey: 'session_question',
+        header: () => <span>{t('memory.messages.sessionPreview')}</span>,
+        cell: ({ row }) => (
+          <SessionPreviewCell
+            sessionID={row.original.session_id}
+            preview={row.original.session_question}
+          />
         ),
       },
       {

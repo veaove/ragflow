@@ -374,6 +374,8 @@ export default {
   debugRun: (canvasId: string) => `${restAPIv1}/apps/${canvasId}/debug-run`,
   getRun: (runId: string) => `${restAPIv1}/runs/${runId}`,
   getRunNodes: (runId: string) => `${restAPIv1}/runs/${runId}/nodes`,
+  getSessionConversation: (memoryId: string, sessionId: string) =>
+    `${restAPIv1}/memories/${memoryId}/sessions/${sessionId}/conversation`,
   uploadAgentFile: (id?: string) => `${restAPIv1}/agents/${id}/upload`,
   createAgentSession: (agentId: string) =>
     `${restAPIv1}/agents/${agentId}/sessions`,
