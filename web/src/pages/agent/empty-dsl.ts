@@ -4,7 +4,6 @@ import {
   BeginId,
   initialAnswerValues,
   initialBeginValues,
-  initialEndValues,
 } from '@/constants/agent';
 
 const FILE_OPERATOR = 'File';
@@ -123,8 +122,15 @@ const studioTerminalNode = (
 
 const studioDsl = (beginMode: AgentDialogueMode, terminal: 'End' | 'Answer') => {
   const terminalId = terminal.toLowerCase();
+  // End 必须声明至少一个输出字段，否则发布校验直接拒绝。种子给一个
+  // result 占位，让「新建 → 试运行 → 发布」开箱可走通。
+  // 注意形状差异：data.form.outputs 是数组（喂表单），
+  // components[].obj.params.outputs 是 map（喂执行期/校验），
+  // 详见 docs/DSL_CANVAS_CONTRACT.md。
   const terminalForm =
-    terminal === 'End' ? initialEndValues : initialAnswerValues;
+    terminal === 'End'
+      ? { outputs: [{ name: 'result', type: 'string', value: '' }] }
+      : initialAnswerValues;
   return {
     graph: {
       nodes: [studioBeginNode(beginMode), studioTerminalNode(terminalId, terminal, terminalForm)],
@@ -145,7 +151,13 @@ const studioDsl = (beginMode: AgentDialogueMode, terminal: 'End' | 'Answer') => 
         upstream: [],
       },
       [terminalId]: {
-        obj: { component_name: terminal, params: {} },
+        obj: {
+          component_name: terminal,
+          params:
+            terminal === 'End'
+              ? { outputs: { result: { type: 'string', value: '' } } }
+              : {},
+        },
         downstream: [],
         upstream: [BeginId],
       },
