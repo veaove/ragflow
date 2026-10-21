@@ -18,6 +18,7 @@ package dao
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"ragflow/internal/entity"
@@ -235,6 +236,31 @@ func (dao *SynonymDAO) DiscardPendingByGroupIDs(ctx context.Context, db *gorm.DB
 		Where("dataset_id = ?", datasetID).
 		Where("id IN ?", ids).
 		Update("status", entity.SynonymStatusDisabled).Error
+}
+
+// FindPendingCopy returns the pending copy already staged for sourceGroupID in
+// this change set, or nil when nothing has been staged for it yet.
+//
+// Repeated edits of one live group must reuse that row: creating a fresh copy
+// per save listed the same group several times in the change centre, and every
+// copy would flip live on publish.
+func (dao *SynonymDAO) FindPendingCopy(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID, sourceGroupID string) (*entity.SynonymGroup, error) {
+	var group entity.SynonymGroup
+	err := db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Where("dataset_id = ?", datasetID).
+		Where("change_set_id = ?", changeSetID).
+		Where("source_group_id = ?", sourceGroupID).
+		Where("status = ?", entity.SynonymStatusPending).
+		Order("create_time DESC").
+		Take(&group).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &group, nil
 }
 
 // CountPendingGroupsByChangeSet counts the pending groups of a change set.

@@ -176,7 +176,7 @@ export default function Vocab() {
       return;
     }
 
-    const payload: ISynonymWord[] = words.map((word, i) => ({
+    const wordRows: ISynonymWord[] = words.map((word, i) => ({
       word,
       is_primary: i === 0,
     }));
@@ -184,29 +184,30 @@ export default function Vocab() {
     try {
       // 编辑进入待生效区，不直接生效；先获取/创建当前用户的变更集。
       const changeSetId = await getOrCreateChangeSet(datasetId);
-      if (state.groupId) {
-        await updateSynonymGroup(state.groupId, {
-          name,
-          domain: state.domain,
-          scope: state.scope,
-          group_type: state.groupType,
-          remark: state.remark.trim(),
-          words: payload,
-          change_set_id: changeSetId,
-        });
-        toast.success('词组已保存为待生效变更，到「变更中心」发布后生效');
-      } else {
-        await createSynonymGroup(datasetId, {
-          name,
-          domain: state.domain,
-          scope: state.scope,
-          group_type: state.groupType,
-          remark: state.remark.trim(),
-          words: payload,
-          change_set_id: changeSetId,
-        });
-        toast.success('词组已保存为待生效变更，到「变更中心」发布后生效');
+      const payload = {
+        name,
+        domain: state.domain,
+        scope: state.scope,
+        group_type: state.groupType,
+        remark: state.remark.trim(),
+        words: wordRows,
+        change_set_id: changeSetId,
+      };
+      const response = state.groupId
+        ? await updateSynonymGroup(state.groupId, payload)
+        : await createSynonymGroup(datasetId, payload);
+
+      // 业务错误同样会 resolve（错误提示由请求拦截器统一弹出），所以不能无条件弹
+      // 「已保存」——否则被拒绝的编辑（例如编辑了已被替换的历史词组）也会显示成功。
+      if (response?.data?.code !== 0) {
+        return;
       }
+      const savedStatus = response?.data?.data?.status;
+      toast.success(
+        savedStatus === 'pending'
+          ? '词组已保存为待生效变更，到「变更中心」发布后生效'
+          : '词组已保存',
+      );
       setEditor(null);
       reload();
     } catch {
@@ -333,6 +334,9 @@ export default function Vocab() {
                 const primary = group.words?.[0]?.word ?? '';
                 const aliases =
                   group.words?.slice(1).map((w) => w.word) ?? [];
+                // disabled = 已被某次发布替换下来的历史版本，不是「待生效」。
+                // 之前统一按「非 live 即待生效」渲染，用户会把它当成正常词组点进去编辑。
+                const status = group.status ?? 'live';
                 return (
                   <TableRow key={group.id}>
                     <TableCell className="font-medium text-text-title">
@@ -360,23 +364,40 @@ export default function Vocab() {
                     <TableCell>
                       <Badge
                         variant={
-                          (group.status ?? 'live') === 'live'
+                          status === 'live'
                             ? 'success'
-                            : 'secondary'
+                            : status === 'pending'
+                              ? 'secondary'
+                              : 'outline'
+                        }
+                        className={
+                          status === 'disabled'
+                            ? 'text-text-sub-title'
+                            : undefined
                         }
                       >
-                        {(group.status ?? 'live') === 'live' ? '已生效' : '待生效'}
+                        {status === 'live'
+                          ? '已生效'
+                          : status === 'pending'
+                            ? '待生效'
+                            : '已替换'}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="link"
-                          onClick={() => openEdit(group)}
-                        >
-                          编辑
-                        </Button>
+                        {status === 'disabled' ? (
+                          <span className="text-xs text-text-sub-title">
+                            已被新版本替换
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="link"
+                            onClick={() => openEdit(group)}
+                          >
+                            编辑
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="link"

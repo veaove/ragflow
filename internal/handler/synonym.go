@@ -190,6 +190,10 @@ func respondSynonymError(c *gin.Context, err error) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, "synonym group not found")
 		return
 	}
+	if errors.Is(err, service.ErrSynonymGroupArchived) {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
 	if respondPermissionErrorIf(c, err, true) {
 		return
 	}

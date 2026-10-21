@@ -35,6 +35,15 @@ import (
 // missing row so a caller cannot probe for another tenant's group ids.
 var ErrSynonymGroupNotFound = errors.New("synonym group not found")
 
+// ErrSynonymGroupArchived is returned when the caller edits a group that an
+// earlier publish replaced (status=disabled). Those rows are history: the
+// effective version is the live group that superseded them.
+//
+// Editing one used to fall through to the direct-write path, which pushed the
+// words live while the UI still said the edit was pending — the change centre
+// then listed zero items.
+var ErrSynonymGroupArchived = errors.New("this group was replaced by a newer version; edit the live group instead")
+
 // maxSynonymWordsPerGroup caps one group so a single import cannot blow up the
 // keyword budget of every query that touches this vocabulary.
 const maxSynonymWordsPerGroup = 200
@@ -200,6 +209,13 @@ func (s *SynonymService) UpdateSynonymGroup(ctx context.Context, userID, groupID
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	// A disabled group is the copy a previous publish replaced. Editing it
+	// cannot be staged — publishing the copy would resurrect a superseded group
+	// beside the live one — so refuse instead of writing it live by accident.
+	if group.Status == entity.SynonymStatusDisabled {
+		return nil, ErrSynonymGroupArchived
 	}
 
 	// Staged edit of a live group: keep the live row untouched and write a
@@ -535,6 +551,42 @@ func (s *SynonymService) stageUpdateSynonymGroup(ctx context.Context, tenantID s
 		}
 	}
 
+	// Re-stage into the copy this change set already holds for the live group,
+	// so saving twice updates one staged item instead of stacking a second copy
+	// that would also go live on publish.
+	existing, err := s.synonymDAO.FindPendingCopy(ctx, dao.DB, tenantID, live.DatasetID, req.ChangeSetID, live.ID)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := s.synonymDAO.UpdateGroup(ctx, tx, tenantID, existing.ID, map[string]any{
+				"name":       name,
+				"domain":     domain,
+				"scope":      scope,
+				"group_type": groupType,
+				"remark":     remark,
+			}); err != nil {
+				return err
+			}
+			if err := s.synonymDAO.DeleteWordsByGroup(ctx, tx, existing.ID); err != nil {
+				return err
+			}
+			return s.synonymDAO.CreateWords(ctx, tx, buildSynonymWordRows(existing.ID, words, entity.SynonymStatusPending))
+		})
+		if err != nil {
+			return nil, err
+		}
+		existing.Name = name
+		existing.Domain = domain
+		existing.Scope = scope
+		existing.GroupType = groupType
+		existing.Remark = remark
+		existing.Words = buildSynonymWordEntities(existing.ID, words)
+		existing.WordCount = len(words)
+		return existing, nil
+	}
+
 	pending := &entity.SynonymGroup{
 		ID:            common.GenerateUUID(),
 		TenantID:      tenantID,
@@ -549,7 +601,7 @@ func (s *SynonymService) stageUpdateSynonymGroup(ctx context.Context, tenantID s
 		Remark:        remark,
 	}
 
-	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := s.synonymDAO.CreateGroup(ctx, tx, pending); err != nil {
 			return err
 		}
