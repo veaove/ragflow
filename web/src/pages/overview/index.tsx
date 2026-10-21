@@ -14,7 +14,15 @@
  *  limitations under the License.
  */
 
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs-underlined';
 import { PageContainer } from '@/layouts/components/page-container';
+import { ConsultationsPanel } from '@/pages/analytics/consultations';
+import { AnalyticsStatsPanel } from '@/pages/analytics/stats';
 import {
   BarChart3,
   Bot,
@@ -39,8 +47,14 @@ import {
 } from './utils';
 import type { IOverviewMetric } from './interface';
 
+// Tab triggers sit outside the `overview` key prefix, so they use the root
+// translator while the sheet body keeps using the prefixed one.
+const TAB_TRIGGER_CLASS =
+  'h-10 flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-4 text-sm font-normal shadow-none data-[state=active]:border-text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none';
+
 export default function Overview() {
   const { t } = useTranslation('translation', { keyPrefix: 'overview' });
+  const { t: tRoot } = useTranslation();
   const [datasetsQ, agentQ, statsQ, suffixQ] = useOverviewQueries(TREND_DAYS);
 
   const datasets = datasetsQ.data ?? [];
@@ -124,7 +138,21 @@ export default function Overview() {
 
   return (
     <PageContainer>
-      <div className="flex flex-col gap-6">
+      <Tabs defaultValue="overview" className="gap-6">
+        <TabsList className="h-10 w-fit gap-1 rounded-none border-b border-border-default bg-transparent p-0">
+          <TabsTrigger value="overview" className={TAB_TRIGGER_CLASS}>
+            {tRoot('header.home')}
+          </TabsTrigger>
+          <TabsTrigger value="stats" className={TAB_TRIGGER_CLASS}>
+            {tRoot('analytics.report')}
+          </TabsTrigger>
+          <TabsTrigger value="consultations" className={TAB_TRIGGER_CLASS}>
+            {tRoot('analytics.consultationLog')}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview">
+          <div className="flex flex-col gap-6">
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold text-text-primary">
             {t('title')}
@@ -208,7 +236,17 @@ export default function Overview() {
             />
           </div>
         </section>
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="stats">
+          <AnalyticsStatsPanel embedded />
+        </TabsContent>
+
+        <TabsContent value="consultations">
+          <ConsultationsPanel embedded />
+        </TabsContent>
+      </Tabs>
     </PageContainer>
   );
 }
