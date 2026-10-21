@@ -273,3 +273,43 @@ func TestQcTestMatchRegex(t *testing.T) {
 		t.Fatalf("hit_count = %d, want 1 (highlighted=%q)", res.HitCount, res.Highlighted)
 	}
 }
+
+// TestQuestionKeywordNeedsBothScope pins down the failure where a rule showed
+// up as 「生效」 in the app settings yet never fired. The keyword was the
+// question a user asks (「基金怎么买」) while the scope sat at its old default
+// `ai_answer`, and an AI answer never repeats the question back to itself, so
+// the rule was unreachable even though the binding, the enabled flag and the
+// session load were all correct. `both` is the scope that matches either side.
+func TestQuestionKeywordNeedsBothScope(t *testing.T) {
+	const (
+		question = "基金怎么买？"
+		answer   = "您可通过以下渠道购买华夏基金产品：华夏基金官网、官方APP、银行及证券公司等代销机构。"
+		keyword  = "基金怎么买"
+	)
+
+	aiOnly, err := CompileRules([]entity.QcRule{
+		rule("q", entity.QcMatchContains, entity.QcScopeAIAnswer, []string{keyword}),
+	})
+	if err != nil {
+		t.Fatalf("compile ai_answer: %v", err)
+	}
+	// The answer does not contain the question, so an ai_answer-only rule finds
+	// nothing here — this is the report's symptom, not a matching bug.
+	if got := aiOnly.Match(answer, entity.QcScopeAIAnswer); len(got) != 0 {
+		t.Fatalf("ai_answer must not match the answer: %+v", got)
+	}
+	// And an ai_answer rule must never inspect what the user typed.
+	if got := aiOnly.Match(question, entity.QcScopeUserInput); len(got) != 0 {
+		t.Fatalf("ai_answer rule must not inspect user input: %+v", got)
+	}
+
+	both, err := CompileRules([]entity.QcRule{
+		rule("q", entity.QcMatchContains, entity.QcScopeBoth, []string{keyword}),
+	})
+	if err != nil {
+		t.Fatalf("compile both: %v", err)
+	}
+	if got := both.Match(question, entity.QcScopeUserInput); len(got) != 1 {
+		t.Fatalf("both scope must match the user's question: %+v", got)
+	}
+}

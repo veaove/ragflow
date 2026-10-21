@@ -117,12 +117,18 @@ interface EditorState {
   testText: string;
 }
 
+// Defaults for a brand-new rule. The scope default is `both` on purpose: most
+// rules are written with the words a user would SAY (「基金怎么买」), while a
+// `ai_answer`-only rule is only ever matched against the AI's reply — which
+// does not contain the question itself, so the rule silently never fires while
+// the app settings still list it as 「生效」. `both` matches either side, so the
+// common case works out of the box; narrow it to `ai_answer` deliberately.
 const emptyEditor = (): EditorState => ({
   id: null,
   name: '',
   keywordsText: '',
   matchMode: 'contains',
-  scope: 'ai_answer',
+  scope: 'both',
   actionIndex: 1,
   promptMessage: '',
   enabled: true,
@@ -578,6 +584,10 @@ function RuleEditor({
                   <option value="user_input">用户输入</option>
                   <option value="both">两者</option>
                 </select>
+                <p className="mt-1 text-xs text-text-sub-title">
+                  选「AI 回答」时只在回复里找关键词，用户说的话不参与
+                  —— 所以问句类关键词（如「基金怎么买」）不会命中。
+                </p>
               </div>
             </div>
 
