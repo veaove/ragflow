@@ -220,9 +220,7 @@ export default {
       discord: 'Discord',
       github: 'GitHub',
       help: '帮助',
-      group: {
-        config: '配置中心',
-      },
+      configCenter: '配置中心',
     },
     skills: {
       title: 'Skills',

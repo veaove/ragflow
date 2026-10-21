@@ -241,9 +241,7 @@ export default {
       discord: 'Discord',
       github: 'GitHub',
       help: 'Help',
-      group: {
-        config: 'Configuration',
-      },
+      configCenter: 'Configuration center',
     },
     skills: {
       title: 'Skills',

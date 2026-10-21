@@ -1,17 +1,13 @@
-import { Fragment, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 
 import { HomeIcon } from '@/components/svg-icon';
 import {
-  Cpu,
-  Database,
-  KeyRound,
+  ChevronDown,
   LucideHouse,
-  MessagesSquare,
-  Plug,
+  Settings,
   ShieldCheck,
-  Users,
   Workflow,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -52,10 +48,11 @@ export const MenuItemsIcon = ({
 export type SidebarMenuItem = {
   path: string;
   name: string;
-  icon: React.ComponentType<{ className?: string; name?: string }>;
+  /** Parents and flat entries carry an icon; sub-items are rendered with an indent instead. */
+  icon?: React.ComponentType<{ className?: string; name?: string }>;
   icon_name?: string;
-  /** Optional group id; a heading is rendered when it changes. */
-  group?: string;
+  /** Present on a first-level entry that owns a collapsible sub-menu. */
+  children?: SidebarMenuItem[];
 };
 
 export const sidebarMenuItems: SidebarMenuItem[] = [
@@ -111,49 +108,44 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     icon: MenuItemsIcon,
     icon_name: 'file',
   },
-  // 配置中心：这 6 项原本藏在「用户设置」的二级菜单里，提到主菜单后
-  // 由主菜单直接进入，页内不再显示设置侧边栏。
+  // 配置中心：一级菜单 + 6 个二级菜单。子项复用原有 /user-setting/* 页面，
+  // 页面组件没有改动，只是入口从「用户设置」的二级导航挪到了这里。
   {
-    path: `${Routes.UserSetting}${Routes.Model}`,
-    name: 'setting.model',
-    icon: Cpu,
-    group: 'config',
-    'data-testid': 'nav-config-model',
-  } as SidebarMenuItem,
-  {
-    path: `${Routes.UserSetting}${Routes.DataSource}`,
-    name: 'setting.dataSources',
-    icon: Database,
-    group: 'config',
-    'data-testid': 'nav-config-datasource',
-  } as SidebarMenuItem,
-  {
-    path: `${Routes.UserSetting}${Routes.ChatChannel}`,
-    name: 'setting.chatChannels',
-    icon: MessagesSquare,
-    group: 'config',
-    'data-testid': 'nav-config-chatchannel',
-  } as SidebarMenuItem,
-  {
-    path: `${Routes.UserSetting}${Routes.Mcp}`,
-    name: 'setting.mcp',
-    icon: Plug,
-    group: 'config',
-    'data-testid': 'nav-config-mcp',
-  } as SidebarMenuItem,
-  {
-    path: `${Routes.UserSetting}${Routes.Api}`,
-    name: 'setting.api',
-    icon: KeyRound,
-    group: 'config',
-    'data-testid': 'nav-config-api',
-  } as SidebarMenuItem,
-  {
-    path: `${Routes.UserSetting}${Routes.Team}`,
-    name: 'setting.team',
-    icon: Users,
-    group: 'config',
-    'data-testid': 'nav-config-team',
+    path: 'config-center',
+    name: 'header.configCenter',
+    icon: Settings,
+    children: [
+      {
+        path: `${Routes.UserSetting}${Routes.Model}`,
+        name: 'setting.model',
+        'data-testid': 'nav-config-model',
+      } as SidebarMenuItem,
+      {
+        path: `${Routes.UserSetting}${Routes.DataSource}`,
+        name: 'setting.dataSources',
+        'data-testid': 'nav-config-datasource',
+      } as SidebarMenuItem,
+      {
+        path: `${Routes.UserSetting}${Routes.ChatChannel}`,
+        name: 'setting.chatChannels',
+        'data-testid': 'nav-config-chatchannel',
+      } as SidebarMenuItem,
+      {
+        path: `${Routes.UserSetting}${Routes.Mcp}`,
+        name: 'setting.mcp',
+        'data-testid': 'nav-config-mcp',
+      } as SidebarMenuItem,
+      {
+        path: `${Routes.UserSetting}${Routes.Api}`,
+        name: 'setting.api',
+        'data-testid': 'nav-config-api',
+      } as SidebarMenuItem,
+      {
+        path: `${Routes.UserSetting}${Routes.Team}`,
+        name: 'setting.team',
+        'data-testid': 'nav-config-team',
+      } as SidebarMenuItem,
+    ],
   } as SidebarMenuItem,
 ];
 
@@ -178,27 +170,90 @@ export function useActivePath() {
 export function SidebarNav({ className }: { className?: string }) {
   const { t } = useTranslation();
   const activePath = useActivePath();
+  // 只记录「被手动折叠」的一级菜单；默认全部展开。当前所在的分组无论
+  // 之前是否折叠过都强制展开，否则用户会看不到自己在哪。
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   return (
     <nav className={cn('py-2', className)}>
       <ul className="space-y-1">
-        {sidebarMenuItems.map((item, index) => {
-          const { path, name, icon: Icon, icon_name, group } = item;
+        {sidebarMenuItems.map((item) => {
+          const { path, name, icon: Icon, icon_name, children } = item;
+
+          if (children?.length) {
+            const childActive = children.some((c) => c.path === activePath);
+            const open = childActive || !collapsed[path];
+
+            return (
+              <li key={path}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCollapsed((prev) => ({ ...prev, [path]: !prev[path] }))
+                  }
+                  aria-expanded={open}
+                  data-testid={`sidebar-group-${path}`}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[15px]',
+                    'transition-colors hover:bg-bg-card hover:text-text-primary',
+                    'focus-visible:bg-bg-card focus-visible:text-text-primary',
+                    childActive
+                      ? 'font-medium text-text-primary'
+                      : 'text-text-secondary',
+                  )}
+                >
+                  <span className="relative flex size-5 shrink-0 items-center justify-center">
+                    {Icon && (
+                      <Icon className="size-5 stroke-[1.5]" name={icon_name} />
+                    )}
+                  </span>
+                  <span className="truncate">{t(name)}</span>
+                  <ChevronDown
+                    className={cn(
+                      'ml-auto size-4 shrink-0 transition-transform',
+                      open ? 'rotate-0' : '-rotate-90',
+                    )}
+                  />
+                </button>
+
+                {open && (
+                  <ul
+                    className="mt-0.5 space-y-0.5"
+                    data-testid={`sidebar-sub-${path}`}
+                  >
+                    {children.map((child) => {
+                      const childIsActive = child.path === activePath;
+
+                      return (
+                        <li key={child.path}>
+                          <Link
+                            to={child.path}
+                            className={cn(
+                              'flex items-center rounded-lg py-2 pr-3 pl-11 text-sm',
+                              'transition-colors hover:bg-bg-card hover:text-text-primary',
+                              'focus-visible:bg-bg-card focus-visible:text-text-primary',
+                              childIsActive
+                                ? 'bg-bg-card font-medium text-text-primary'
+                                : 'text-text-secondary',
+                            )}
+                            aria-current={childIsActive ? 'page' : undefined}
+                            data-testid={`sidebar-nav-${child.path.replace(/^\//, '')}`}
+                          >
+                            <span className="truncate">{t(child.name)}</span>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </li>
+            );
+          }
+
           const isActive = path === activePath;
-          const showGroupHeading =
-            !!group && group !== sidebarMenuItems[index - 1]?.group;
 
           return (
-            <Fragment key={path}>
-              {showGroupHeading && (
-                <li
-                  className="px-3 pt-4 pb-1 text-xs text-text-disabled"
-                  data-testid={`sidebar-group-${group}`}
-                >
-                  {t(`header.group.${group}`)}
-                </li>
-              )}
-              <li>
+            <li key={path}>
               <Link
                 to={path}
                 className={cn(
@@ -222,12 +277,13 @@ export function SidebarNav({ className }: { className?: string }) {
                       isActive ? 'opacity-100' : 'opacity-0',
                     )}
                   />
-                  <Icon className="size-5 stroke-[1.5]" name={icon_name} />
+                  {Icon && (
+                    <Icon className="size-5 stroke-[1.5]" name={icon_name} />
+                  )}
                 </span>
                 <span className="truncate">{t(name)}</span>
               </Link>
-              </li>
-            </Fragment>
+            </li>
           );
         })}
       </ul>
