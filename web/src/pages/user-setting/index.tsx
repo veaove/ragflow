@@ -15,20 +15,19 @@
  */
 
 import { Outlet } from 'react-router';
-import { SideBar } from './sidebar';
 
-import { cn } from '@/lib/utils';
-
+/**
+ * 配置中心与个人中心的容器。
+ *
+ * 原来这里左侧有一列二级导航（模型 / 数据源 / 聊天渠道 / MCP / 团队 / 概要 /
+ * API）。这 7 项现已全部迁出：前 6 项进「配置中心」主菜单分组，概要改成头像
+ * 下拉里的「个人中心」。主菜单已经是唯一定位入口，页内再放一列导航会和它打架，
+ * 所以这里只保留容器布局。
+ */
 function UserSetting() {
   return (
-    <section className="pt-8 size-full grid grid-cols-[4rem_minmax(0,1fr)] md:grid-cols-[303px_minmax(0,1fr)] grid-rows-1 min-w-0">
-      <SideBar />
-
-      <div
-        className={cn(
-          'pr-2 md:pr-6 pb-6 flex flex-1 min-w-0 rounded-lg overflow-hidden',
-        )}
-      >
+    <section className="size-full min-w-0 overflow-hidden pt-8">
+      <div className="flex min-w-0 flex-1 pb-6 pr-2 md:pr-6">
         <Outlet />
       </div>
     </section>

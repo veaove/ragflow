@@ -21,7 +21,7 @@ import { MobileNavbar } from './mobile-nav-drawer';
 import ThemeButton from './theme-button';
 import { LucideLanguages } from 'lucide-react';
 import React, { useMemo } from 'react';
-import { Link } from 'react-router';
+import { useNavigate } from 'react-router';
 
 /**
  * 顶栏。左右两端分别是品牌入口与账号/偏好操作。
@@ -38,6 +38,7 @@ export function Header({
   ...props
 }: React.HTMLAttributes<HTMLElement>) {
   const changeLanguage = useChangeLanguage();
+  const navigate = useNavigate();
 
   const {
     data: { language = 'en', avatar, nickname },
@@ -112,18 +113,66 @@ export function Header({
 
         <ThemeButton className="!size-9" />
 
-        <Link
-          to={Routes.UserSetting}
-          className="relative flex size-9 shrink-0 items-center justify-center ms-1"
-          data-testid="settings-entrypoint"
-        >
-          <RAGFlowAvatar
-            name={nickname}
-            avatar={avatar}
-            isPerson
-            className="size-8"
-          />
-        </Link>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="relative ms-1 flex size-9 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/40"
+              data-testid="avatar-menu-trigger"
+              aria-label="account menu"
+            >
+              <RAGFlowAvatar
+                name={nickname}
+                avatar={avatar}
+                isPerson
+                className="size-8"
+              />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <div className="flex items-center gap-2.5 px-2 py-2">
+              <RAGFlowAvatar
+                name={nickname}
+                avatar={avatar}
+                isPerson
+                className="size-8"
+              />
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-text-primary">
+                  {nickname || '-'}
+                </div>
+              </div>
+            </div>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => navigate(`${Routes.UserSetting}/profile`)}
+              data-testid="menu-profile"
+            >
+              个人中心
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => navigate(`${Routes.UserSetting}/profile`)}
+              data-testid="menu-security"
+            >
+              账号安全
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => navigate(Routes.UserSetting)}
+              data-testid="menu-config"
+            >
+              配置中心
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="cursor-pointer text-state-error"
+              onSelect={() => navigate(Routes.Logout)}
+              data-testid="menu-logout"
+            >
+              退出登录
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

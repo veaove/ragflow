@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>配置中心 + 个人中心 —— 信息架构原型</title>
+<style>
+  :root{
+    --brand:#065BC1; --brand-weak:#F2F7FE; --brand-line:#BBD4F4;
+    --bg:#F5F6F8; --card:#FFFFFF; --line:#E4E9F0; --line-2:#D9DFE8;
+    --t1:#1B2431; --t2:#4A5464; --t3:#7A8494; --t4:#A6AEBC;
+    --ok:#12A150; --ok-weak:#F0FAF4; --err:#D92D20; --warn:#B54708; --warn-weak:#FFFAEB;
+    --radius:6px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--t1);font-size:14px}
+  button{font-family:inherit}
+  .hide{display:none !important}
+
+  .app{display:flex;min-height:100vh}
+
+  /* ---------- 主菜单（新结构） ---------- */
+  .side{width:214px;background:#101725;color:#C6CFDB;flex-shrink:0;display:flex;flex-direction:column}
+  .side .brand{padding:14px;display:flex;gap:9px;align-items:center;border-bottom:1px solid rgba(255,255,255,.08)}
+  .side .brand .m{width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,#065BC1,#3E8BE8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+  .side .brand .n{font-size:12.5px;color:#fff;font-weight:500}
+  .side nav{padding:6px 8px;flex:1;overflow:auto}
+  .side .nav-t{font-size:10px;color:#5E6B80;padding:10px 8px 5px;letter-spacing:.6px}
+  .side .nav-i{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:6px;font-size:12.5px;cursor:pointer;margin-bottom:1px}
+  .side .nav-i:hover{background:rgba(255,255,255,.06);color:#fff}
+  .side .nav-i.on{background:var(--brand);color:#fff}
+  .side .nav-i .dot{width:5px;height:5px;border-radius:50%;background:#4ADE80;margin-left:auto}
+  .side .nav-i .badge{margin-left:auto;font-size:10px;background:rgba(255,255,255,.12);border-radius:8px;padding:0 5px}
+  .side .nav-i.new::after{content:'新';margin-left:auto;font-size:9px;color:#fff;background:#7C5CFC;border-radius:3px;padding:0 4px}
+  .side .grp{padding:0 8px 6px}
+  .side .grp-h{font-size:10px;color:#5E6B80;padding:8px 8px 4px;letter-spacing:.6px;display:flex;align-items:center;cursor:pointer}
+  .side .grp-h .arw{font-size:9px;margin-left:4px;transition:.15s}
+  .side .grp-fold .side-sub{display:none}
+  .side .grp-fold .grp-h .arw{transform:rotate(-90deg)}
+  .side-sub .nav-i{padding-left:26px;font-size:12px}
+  .side .foot{padding:9px 14px;border-top:1px solid rgba(255,255,255,.08);font-size:10.5px;color:#7A8699}
+
+  /* ---------- 顶栏 ---------- */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .top{height:48px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 20px;gap:12px}
+  .top .crumb{font-size:12.5px;color:var(--t3)}
+  .top .crumb b{color:var(--t1);font-weight:500}
+  .top .r{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .top .lang{font-size:12px;color:var(--t3);cursor:pointer}
+  .top .avatar-wrap{position:relative}
+  .top .ava{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#065BC1,#3E8BE8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11.5px;cursor:pointer;border:2px solid transparent}
+  .top .ava:hover{border-color:var(--brand-line)}
+  .body{flex:1;padding:18px 22px;overflow:auto}
+
+  /* ---------- 头像下拉 ---------- */
+  .menu{position:absolute;right:0;top:38px;width:230px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(16,24,40,.14);z-index:60;overflow:hidden}
+  .menu .hd{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
+  .menu .hd .a{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#065BC1,#3E8BE8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .menu .hd .n{font-size:13px;font-weight:500}
+  .menu .hd .e{font-size:11px;color:var(--t3);margin-top:1px}
+  .menu .it{padding:9px 14px;font-size:12.5px;color:var(--t2);cursor:pointer;display:flex;align-items:center;gap:9px}
+  .menu .it:hover{background:var(--bg)}
+  .menu .sep{height:1px;background:var(--line);margin:4px 0}
+  .menu .it.danger{color:var(--err)}
+
+  /* ---------- 通用 ---------- */
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px}
+  .card-h{padding:11px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  .card-h b{font-size:13.5px}
+  .btn{height:32px;padding:0 13px;border-radius:var(--radius);border:1px solid var(--line-2);background:#fff;color:var(--t1);font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .btn:hover{border-color:var(--brand);color:var(--brand)}
+  .btn.pri{background:var(--brand);border-color:var(--brand);color:#fff}
+  .btn.pri:hover{background:#0A69D6;color:#fff}
+  .btn.ghost{border-color:transparent;color:var(--t2)}
+  .btn.sm{height:28px;padding:0 10px;font-size:12.5px}
+  .input{height:32px;border:1px solid var(--line-2);border-radius:var(--radius);padding:0 10px;font-size:13px;font-family:inherit;width:100%}
+  .input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(6,91,193,.1)}
+  label.f{display:block;font-size:12.5px;color:var(--t2);margin-bottom:6px}
+  .field{margin-bottom:16px}
+  .tag{display:inline-flex;align-items:center;gap:4px;border-radius:4px;padding:1px 7px;font-size:11.5px;font-weight:500}
+  .tag.green{background:var(--ok-weak);color:var(--ok)}
+  .tag.gray{background:#F1F4F8;color:var(--t3)}
+  .tag.blue{background:var(--brand-weak);color:var(--brand)}
+
+  /* ---------- 配置中心：左右布局 ---------- */
+  .cfg-body{display:grid;grid-template-columns:270px 1fr;gap:14px;align-items:start}
+  .prov{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .prov-h{padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px}
+  .prov-h .s{margin-left:auto;font-size:11px;color:var(--t3)}
+  .prov-b{padding:10px;max-height:520px;overflow:auto}
+  .prov-i{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:6px;font-size:12.5px;cursor:pointer}
+  .prov-i:hover{background:var(--bg)}
+  .prov-i.on{background:var(--brand-weak);color:var(--brand)}
+  .prov-i .lg{width:18px;height:18px;border-radius:4px;background:#EEF2F7;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--t2)}
+  .prov-i .ok{width:6px;height:6px;border-radius:50%;background:var(--ok);margin-left:auto}
+
+  .kv{display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:center;margin-bottom:14px}
+  .kv .k{font-size:12.5px;color:var(--t3);text-align:right}
+  .sel{height:34px;border:1px solid var(--line-2);border-radius:var(--radius);display:flex;align-items:center;padding:0 11px;font-size:12.5px;background:#fff;gap:8px}
+  .sel .v{flex:1}
+  .sel .x{color:var(--t4);cursor:pointer;font-size:14px}
+  .sel.empty{color:var(--t4);background:#FAFBFC}
+
+  /* ---------- 个人中心 ---------- */
+  .profile{max-width:760px}
+  .pcard{background:#fff;border:1px solid var(--line);border-radius:10px;padding:20px;margin-bottom:14px}
+  .pcard .hd{display:flex;gap:16px;align-items:center;padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .pcard .hd .big{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#065BC1,#3E8BE8);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:600}
+  .pcard .hd .nm{font-size:17px;font-weight:600}
+  .pcard .hd .em{font-size:12.5px;color:var(--t3);margin-top:3px}
+  .pcard .hd .tag{margin-top:6px}
+  .pcard .tt{font-size:13.5px;font-weight:600;margin-bottom:14px}
+  .prow{display:flex;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .prow:last-child{border-bottom:0}
+  .prow .k{width:130px;color:var(--t3);font-size:12.5px}
+  .prow .v{flex:1}
+  .prow .a{font-size:12.5px;color:var(--brand);cursor:pointer}
+  .prow .a:hover{text-decoration:underline}
+
+  /* 场景切换 */
+  .switcher{position:fixed;right:14px;bottom:14px;z-index:200;background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px;box-shadow:0 6px 20px rgba(16,24,40,.1);width:190px}
+  .switcher .t{font-size:11px;color:var(--t3);margin-bottom:6px}
+  .switcher button{display:block;width:100%;text-align:left;margin-bottom:4px;height:27px;padding:0 8px;border:1px solid var(--line-2);background:#fff;border-radius:5px;font-size:11.5px;cursor:pointer;color:var(--t2)}
+  .switcher button:hover{border-color:var(--brand);color:var(--brand)}
+  .switcher button.on{background:var(--brand);border-color:var(--brand);color:#fff}
+  .note{font-size:10.5px;color:var(--t4);line-height:1.5;margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
+
+  .banner{border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.65;display:flex;gap:8px;margin-bottom:14px}
+  .banner.info{background:var(--brand-weak);color:#0B4E9B;border:1px solid var(--brand-line)}
+  .banner .ic{flex-shrink:0}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ==================== 主菜单（新结构） ==================== -->
+  <aside class="side">
+    <div class="brand">
+      <div class="m">华</div>
+      <div><div class="n">和君纵达</div><div style="font-size:10px;color:#7A8699">智能体平台</div></div>
+    </div>
+    <nav>
+      <div class="nav-t">工作台</div>
+      <div class="nav-i">首页</div>
+      <div class="nav-i">知识库</div>
+      <div class="nav-i">知识问答</div>
+      <div class="nav-i">知识搜索</div>
+      <div class="nav-i">智能体</div>
+      <div class="nav-i">工作室</div>
+      <div class="nav-i">记忆</div>
+
+      <div class="nav-t">质检与分析</div>
+      <div class="nav-i">会话质检</div>
+      <div class="nav-i">咨询日志</div>
+      <div class="nav-i">报表统计</div>
+
+      <div class="grp" id="cfgGroup">
+        <div class="grp-h" onclick="toggleGrp()">
+          配置中心 <span class="arw">▾</span>
+        </div>
+        <div class="side-sub">
+          <div class="nav-i on" data-cfg="model" onclick="goCfg('model')">模型配置</div>
+          <div class="nav-i" data-cfg="data" onclick="goCfg('data')">数据源</div>
+          <div class="nav-i" data-cfg="channel" onclick="goCfg('channel')">聊天渠道</div>
+          <div class="nav-i" data-cfg="mcp" onclick="goCfg('mcp')">MCP</div>
+          <div class="nav-i" data-cfg="api" onclick="goCfg('api')">API</div>
+          <div class="nav-i" data-cfg="team" onclick="goCfg('team')">团队</div>
+        </div>
+      </div>
+
+      <div class="nav-t">其他</div>
+      <div class="nav-i">文件管理</div>
+    </nav>
+    <div class="foot">v0.20 · 配置中心已就位</div>
+  </aside>
+
+  <main class="main">
+    <header class="top">
+      <div class="crumb" id="crumb">配置中心 / <b>模型配置</b></div>
+      <div class="r">
+        <span class="lang">🌐 简体中文</span>
+        <span class="lang">◇</span>
+        <div class="avatar-wrap">
+          <div class="ava" id="avaBtn" onclick="toggleMenu()">N</div>
+          <!-- 头像下拉 -->
+          <div class="menu hide" id="avaMenu">
+            <div class="hd">
+              <div class="a">N</div>
+              <div>
+                <div class="n">刘问胜</div>
+                <div class="e">123456789@qq.com</div>
+              </div>
+            </div>
+            <div class="it" onclick="goProfile()">👤 个人中心</div>
+            <div class="it" onclick="toast('账号安全（演示）')">🔒 账号安全</div>
+            <div class="it" onclick="toast('切换语言（演示）')">🌐 语言与主题</div>
+            <div class="sep"></div>
+            <div class="it danger" onclick="toast('退出登录（演示）')">⏻ 退出登录</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="body">
+
+      <!-- ==================== 场景 1/2：配置中心 ==================== -->
+      <section id="scr-cfg">
+        <div class="banner info" style="max-width:none">
+          <span class="ic">ℹ</span>
+          <span>配置中心已提到<b>主菜单</b>，6 个子项平铺可点，点子项名直接高亮蓝底。页内不再重复放二级导航，避免两套菜单打架。</span>
+        </div>
+        <div class="cfg">
+          <!-- 模型配置 -->
+          <div id="panel-model">
+            <div class="cfg-body">
+              <div class="prov">
+                <div class="prov-h">可用模型厂商 <span class="s">12 家 · 2 已接入</span></div>
+                <div class="prov-b">
+                  <div class="prov-i on"><span class="lg">DS</span>DeepSeek<span class="ok"></span></div>
+                  <div class="prov-i"><span class="lg">通</span>通义千问 Tongyi<span class="ok"></span></div>
+                  <div class="prov-i"><span class="lg">O</span>OpenAI</div>
+                  <div class="prov-i"><span class="lg">A</span>Anthropic</div>
+                  <div class="prov-i"><span class="lg">G</span>Gemini</div>
+                  <div class="prov-i"><span class="lg">M</span>Moonshot</div>
+                  <div class="prov-i"><span class="lg">智</span>智谱 ZHIPU-AI</div>
+                  <div class="prov-i"><span class="lg">x</span>xAI</div>
+                  <div class="prov-i"><span class="lg">H</span>HuggingFace</div>
+                  <div class="prov-i"><span class="lg">C</span>Cohere</div>
+                  <div class="prov-i"><span class="lg">R</span>OpenRouter</div>
+                  <div class="prov-i"><span class="lg">M</span>MiniMax</div>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-h"><b>设置默认模型</b><span style="font-size:11.5px;color:var(--t3);margin-left:6px">请先完成这些设置</span></div>
+                <div style="padding:18px 20px">
+                  <div class="kv"><div class="k">* LLM</div><div class="sel"><span class="v">qwen-flash · tongyi</span><span class="x">⌄</span></div></div>
+                  <div class="kv"><div class="k">Embedding</div><div class="sel"><span class="v">text-embedding-v3 · tongyi</span><span class="x">✕</span></div></div>
+                  <div class="kv"><div class="k">VLM</div><div class="sel empty"><span class="v">未配置</span><span class="x">⌄</span></div></div>
+                  <div class="kv"><div class="k">ASR</div><div class="sel empty"><span class="v">未配置</span><span class="x">⌄</span></div></div>
+                  <div class="kv"><div class="k">Rerank</div><div class="sel empty"><span class="v">未配置</span><span class="x">⌄</span></div></div>
+                  <div class="kv"><div class="k">TTS</div><div class="sel empty"><span class="v">未配置</span><span class="x">⌄</span></div></div>
+                  <div style="display:flex;gap:8px;margin-top:18px">
+                    <button class="btn pri">保存</button>
+                    <button class="btn">测试连通性</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 其他子项占位 -->
+          <div id="panel-other" class="hide">
+            <div class="card">
+              <div class="card-h"><b id="otherTitle">数据源</b></div>
+              <div style="padding:40px;text-align:center;color:var(--t3);font-size:12.5px">
+                <div style="font-size:28px;margin-bottom:10px;opacity:.35">▤</div>
+                该子页沿用现有功能，仅位置从「用户设置」迁到「配置中心」<br/>
+                <span style="color:var(--t4);font-size:11.5px">原有能力零改动，只换入口</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ==================== 场景 3：个人中心 ==================== -->
+      <section id="scr-profile" class="hide">
+        <div class="profile">
+          <div class="pcard">
+            <div class="hd">
+              <div class="big">N</div>
+              <div>
+                <div class="nm">刘问胜</div>
+                <div class="em">123456789@qq.com</div>
+                <span class="tag blue">租户管理员</span>
+              </div>
+            </div>
+            <div class="tt">基本信息</div>
+            <div class="prow"><div class="k">昵称</div><div class="v">刘问胜</div><div class="a" onclick="toast('编辑昵称（演示）')">编辑</div></div>
+            <div class="prow"><div class="k">邮箱</div><div class="v">123456789@qq.com</div><div class="a" onclick="toast('修改邮箱（演示）')">修改</div></div>
+            <div class="prow"><div class="k">界面语言</div><div class="v">简体中文</div><div class="a" onclick="toast('切换语言（演示）')">切换</div></div>
+            <div class="prow"><div class="k">主题</div><div class="v">浅色</div><div class="a" onclick="toast('切换主题（演示）')">切换</div></div>
+          </div>
+
+          <div class="pcard">
+            <div class="tt">账号安全</div>
+            <div class="prow"><div class="k">登录密码</div><div class="v" style="color:var(--t3)">已设置</div><div class="a" onclick="toast('修改密码（演示）')">修改</div></div>
+            <div class="prow"><div class="k">双因素认证</div><div class="v" style="color:var(--t3)">未开启</div><div class="a" onclick="toast('开启 2FA（演示）')">开启</div></div>
+            <div class="prow"><div class="k">登录设备</div><div class="v" style="color:var(--t3)">2 台设备在线</div><div class="a" onclick="toast('查看登录设备（演示）')">查看</div></div>
+          </div>
+
+          <div class="pcard">
+            <div class="tt">我的数据</div>
+            <div class="prow"><div class="k">所属租户</div><div class="v">和君纵达 · 华夏基金项目</div></div>
+            <div class="prow"><div class="k">加入时间</div><div class="v">2026-08-14</div></div>
+            <div class="prow"><div class="k">退出登录</div><div class="v" style="color:var(--t3)">退出后需重新登录</div><div class="a" style="color:var(--err)" onclick="toast('退出登录（演示）')">退出</div></div>
+          </div>
+
+          <div class="banner info" style="margin-top:4px">
+            <span class="ic">ℹ</span>
+            <span>原来「用户设置」里的<b>概要</b>页就是这里。现在点头像即可进入，不再需要先进设置页再点二级菜单。</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- 场景切换 -->
+<div class="switcher">
+  <div class="t">切换演示</div>
+  <button class="on" onclick="goScene('cfg','model',this)">配置中心 · 模型配置</button>
+  <button onclick="goScene('cfg','data',this)">配置中心 · 数据源等</button>
+  <button onclick="goScene('profile',null,this)">个人中心（点头像）</button>
+  <button onclick="event.stopPropagation();toggleMenu(true)">头像下拉菜单</button>
+  <div class="note">新结构：配置中心进主菜单；点头像进个人中心。</div>
+</div>
+
+<script>
+const CFG_NAMES = {model:'模型配置', data:'数据源', channel:'聊天渠道', mcp:'MCP', api:'API', team:'团队'};
+
+function goScene(scene, cfgKey, btn){
+  if(scene==='cfg'){
+    document.getElementById('scr-cfg').classList.remove('hide');
+    document.getElementById('scr-profile').classList.add('hide');
+    goCfg(cfgKey||'model');
+  }else{
+    goProfile();
+  }
+  document.querySelectorAll('.switcher button').forEach(b=>b.classList.remove('on'));
+  if(btn) btn.classList.add('on');
+}
+
+function goCfg(key){
+  const name = CFG_NAMES[key] || '模型配置';
+  document.getElementById('crumb').innerHTML = '配置中心 / <b>'+name+'</b>';
+
+  // 主菜单子项高亮
+  document.querySelectorAll('.side-sub .nav-i').forEach(el=>{
+    el.classList.toggle('on', el.dataset.cfg===key);
+  });
+
+  const isModel = key==='model';
+  document.getElementById('panel-model').classList.toggle('hide', !isModel);
+  document.getElementById('panel-other').classList.toggle('hide', isModel);
+  if(!isModel) document.getElementById('otherTitle').textContent = name;
+}
+
+function goProfile(){
+  document.getElementById('avaMenu').classList.add('hide');
+  document.getElementById('scr-cfg').classList.add('hide');
+  document.getElementById('scr-profile').classList.remove('hide');
+  document.getElementById('crumb').innerHTML = '个人中心';
+  document.querySelectorAll('.side-sub .nav-i').forEach(el=>el.classList.remove('on'));
+  document.querySelectorAll('.switcher button').forEach(b=>b.classList.remove('on'));
+}
+
+function toggleMenu(force){
+  const m = document.getElementById('avaMenu');
+  if(force===true){ m.classList.remove('hide'); return; }
+  m.classList.toggle('hide');
+}
+
+function toggleGrp(){
+  document.getElementById('cfgGroup').classList.toggle('grp-fold');
+}
+
+// 点空白关闭下拉
+document.addEventListener('click', function(e){
+  const m = document.getElementById('avaMenu');
+  if(!m) return;
+  if(e.target.closest('.avatar-wrap')) return;
+  m.classList.add('hide');
+});
+
+function toast(t){ alert(t); }
+
+goCfg('model');
+</script>
+</body>
+</html>

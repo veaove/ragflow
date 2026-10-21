@@ -1,9 +1,19 @@
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 
 import { HomeIcon } from '@/components/svg-icon';
-import { LucideHouse, ShieldCheck, Workflow } from 'lucide-react';
+import {
+  Cpu,
+  Database,
+  KeyRound,
+  LucideHouse,
+  MessagesSquare,
+  Plug,
+  ShieldCheck,
+  Users,
+  Workflow,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 
@@ -44,6 +54,8 @@ export type SidebarMenuItem = {
   name: string;
   icon: React.ComponentType<{ className?: string; name?: string }>;
   icon_name?: string;
+  /** Optional group id; a heading is rendered when it changes. */
+  group?: string;
 };
 
 export const sidebarMenuItems: SidebarMenuItem[] = [
@@ -93,6 +105,50 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     icon: ShieldCheck,
     'data-testid': 'nav-qc',
   } as SidebarMenuItem,
+  // 配置中心：这 6 项原本藏在「用户设置」的二级菜单里，提到主菜单后
+  // 由主菜单直接进入，页内不再显示设置侧边栏。
+  {
+    path: `${Routes.UserSetting}${Routes.Model}`,
+    name: 'setting.model',
+    icon: Cpu,
+    group: 'config',
+    'data-testid': 'nav-config-model',
+  } as SidebarMenuItem,
+  {
+    path: `${Routes.UserSetting}${Routes.DataSource}`,
+    name: 'setting.dataSources',
+    icon: Database,
+    group: 'config',
+    'data-testid': 'nav-config-datasource',
+  } as SidebarMenuItem,
+  {
+    path: `${Routes.UserSetting}${Routes.ChatChannel}`,
+    name: 'setting.chatChannels',
+    icon: MessagesSquare,
+    group: 'config',
+    'data-testid': 'nav-config-chatchannel',
+  } as SidebarMenuItem,
+  {
+    path: `${Routes.UserSetting}${Routes.Mcp}`,
+    name: 'setting.mcp',
+    icon: Plug,
+    group: 'config',
+    'data-testid': 'nav-config-mcp',
+  } as SidebarMenuItem,
+  {
+    path: `${Routes.UserSetting}${Routes.Api}`,
+    name: 'setting.api',
+    icon: KeyRound,
+    group: 'config',
+    'data-testid': 'nav-config-api',
+  } as SidebarMenuItem,
+  {
+    path: `${Routes.UserSetting}${Routes.Team}`,
+    name: 'setting.team',
+    icon: Users,
+    group: 'config',
+    'data-testid': 'nav-config-team',
+  } as SidebarMenuItem,
   {
     path: Routes.Files,
     name: 'header.fileManager',
@@ -126,11 +182,23 @@ export function SidebarNav({ className }: { className?: string }) {
   return (
     <nav className={cn('py-2', className)}>
       <ul className="space-y-1">
-        {sidebarMenuItems.map(({ path, name, icon: Icon, icon_name }) => {
+        {sidebarMenuItems.map((item, index) => {
+          const { path, name, icon: Icon, icon_name, group } = item;
           const isActive = path === activePath;
+          const showGroupHeading =
+            !!group && group !== sidebarMenuItems[index - 1]?.group;
 
           return (
-            <li key={path}>
+            <Fragment key={path}>
+              {showGroupHeading && (
+                <li
+                  className="px-3 pt-4 pb-1 text-xs text-text-disabled"
+                  data-testid={`sidebar-group-${group}`}
+                >
+                  {t(`header.group.${group}`)}
+                </li>
+              )}
+              <li>
               <Link
                 to={path}
                 className={cn(
@@ -158,7 +226,8 @@ export function SidebarNav({ className }: { className?: string }) {
                 </span>
                 <span className="truncate">{t(name)}</span>
               </Link>
-            </li>
+              </li>
+            </Fragment>
           );
         })}
       </ul>

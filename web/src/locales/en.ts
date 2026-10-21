@@ -94,6 +94,9 @@ export default {
       slovak: 'Slovak',
       czech: 'Czech',
       language: 'Language',
+      group: {
+        config: 'Configuration',
+      },
       languageMessage: 'Please input your language!',
       languagePlaceholder: 'select your language',
       copy: 'Copy',
@@ -2193,7 +2196,7 @@ Example: Virtual Hosted Style`,
       password: 'Password',
       passwordDescription:
         'Please enter your current password to change your password.',
-      model: 'Model providers',
+      model: 'Model configuration',
       systemModelDescription: 'Please complete these settings before beginning',
       dataSources: 'Data sources',
       team: 'Team',

@@ -81,6 +81,9 @@ export default {
       bulgarian: '保加利亚语',
       arabic: '阿拉伯语',
       language: '语言',
+      group: {
+        config: '配置中心',
+      },
       languageMessage: '请输入语言',
       languagePlaceholder: '请选择语言',
       copy: '复制',
@@ -1837,7 +1840,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       maxTokensMinMessage: '最大令牌数不能小于 0。',
       password: '密码',
       passwordDescription: '请输入您当前的密码以更改您的密码。',
-      model: '模型提供商',
+      model: '模型配置',
       systemModelDescription: '请在开始之前完成这些设置',
       dataSources: '数据源',
       team: '团队',
