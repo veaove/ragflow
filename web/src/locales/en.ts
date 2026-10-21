@@ -3075,6 +3075,13 @@ Best for: Documents with flowing, contextually connected content — such as boo
       rewriteQuestion: 'Rewrite',
       rewrite: 'Rewrite',
       begin: 'Begin',
+      errorStrategy: 'Error handling',
+      errorStrategyTip: 'What to do on failure: none (abort) or default value (emit fallback and continue).',
+      errorStrategyNone: 'None',
+      errorStrategyDefault: 'Default value',
+      errorDefaultValue: 'Default value',
+      errorDefaultValuePh: 'Fallback value on failure',
+
       end: 'End',
       endDescription: 'The terminal node of a workflow. Output fields defined here form the API response body.',
       answerNode: 'Answer',

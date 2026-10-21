@@ -590,6 +590,8 @@ export const initialInvokeValues = {
 }`,
   proxy: '',
   clean_html: false,
+  error_strategy: 'none',
+  error_default_value: '',
   variables: [],
   outputs: {
     result: {

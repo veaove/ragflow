@@ -2680,6 +2680,13 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       relevant: '是否相关',
       rewriteQuestion: '问题优化',
       begin: '开始',
+      errorStrategy: '异常处理',
+      errorStrategyTip: '节点失败时的处理方式：无（中断流程）或默认值（输出兜底值继续跑）。',
+      errorStrategyNone: '无',
+      errorStrategyDefault: '默认值',
+      errorDefaultValue: '默认值',
+      errorDefaultValuePh: '失败时输出的兜底值',
+
       end: '结束',
       endDescription: '工作流的终点：这里定义的输出字段就是 API 的响应体结构。',
       answerNode: '回答',

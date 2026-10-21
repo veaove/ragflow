@@ -59,6 +59,8 @@ export const FormSchema = z.object({
   headers: z.string(),
   proxy: z.string().url(),
   clean_html: z.boolean(),
+  error_strategy: z.string().optional(),
+  error_default_value: z.string().optional(),
   variables: z.array(VariableFormSchema),
 });
 

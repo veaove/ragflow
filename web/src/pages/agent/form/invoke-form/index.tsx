@@ -93,6 +93,7 @@ function InvokeForm({ node }: INextOperatorForm) {
     node,
   });
 
+  const errorStrategy = useWatch({ control: form.control, name: 'error_strategy' });
   const variables = useWatch({ control: form.control, name: 'variables' });
 
   const isDarkTheme = useIsDarkTheme();
@@ -203,6 +204,42 @@ function InvokeForm({ node }: INextOperatorForm) {
             name={'variables'}
             render={() => <div></div>}
           />
+          <FormField
+            control={form.control}
+            name="error_strategy"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel tooltip={t('flow.errorStrategyTip')}>
+                  {t('flow.errorStrategy')}
+                </FormLabel>
+                <FormControl>
+                  <SelectWithSearch
+                    {...field}
+                    options={[
+                      { label: t('flow.errorStrategyNone'), value: 'none' },
+                      { label: t('flow.errorStrategyDefault'), value: 'default_value' },
+                    ]}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {errorStrategy === 'default_value' && (
+            <FormField
+              control={form.control}
+              name="error_default_value"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('flow.errorDefaultValue')}</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder={t('flow.errorDefaultValuePh')} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
         </FormContainer>
         <Collapse
           title={<div>{t('flow.parameter')}</div>}
