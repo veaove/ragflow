@@ -3075,6 +3075,9 @@ Best for: Documents with flowing, contextually connected content — such as boo
       rewriteQuestion: 'Rewrite',
       rewrite: 'Rewrite',
       begin: 'Begin',
+      versionRemark: 'Version remark',
+      versionRemarkPh: 'What changed in this version (optional)',
+
       errorStrategy: 'Error handling',
       errorStrategyTip: 'What to do on failure: none (abort) or default value (emit fallback and continue).',
       errorStrategyNone: 'None',

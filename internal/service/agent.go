@@ -1215,7 +1215,14 @@ func (s *AgentService) UpdateAgent(ctx context.Context, userID, canvasID string,
 		} else if canvasInstance.Title != nil {
 			title = *canvasInstance.Title
 		}
-		opts := s.saveOrReplaceVersionOptions(ctx, userID, canvasID, dsl, title, nil, release)
+		var remark *string
+		if v, ok := patch["remark"]; ok {
+			if str, ok := v.(string); ok && strings.TrimSpace(str) != "" {
+				trimmed := strings.TrimSpace(str)
+				remark = &trimmed
+			}
+		}
+		opts := s.saveOrReplaceVersionOptions(ctx, userID, canvasID, dsl, title, nil, release, remark)
 		versionOpts = &opts
 	}
 
@@ -1307,6 +1314,7 @@ func (s *AgentService) DeleteAgent(ctx context.Context, userID, canvasID string)
 type PublishAgentRequest struct {
 	Title       *string        `json:"title,omitempty"`
 	Description *string        `json:"description,omitempty"`
+	Remark      *string        `json:"remark,omitempty"`
 	DSL         entity.JSONMap `json:"dsl,omitempty"`
 }
 
@@ -1354,7 +1362,11 @@ func (s *AgentService) PublishAgent(ctx context.Context, userID, canvasID string
 	if title != nil {
 		titleStr = *title
 	}
-	opts := s.saveOrReplaceVersionOptions(ctx, userID, canvasID, dsl, titleStr, description, true)
+	var remark *string
+	if req != nil {
+		remark = req.Remark
+	}
+	opts := s.saveOrReplaceVersionOptions(ctx, userID, canvasID, dsl, titleStr, description, true, remark)
 	// Publish always appends an immutable version (D5): version history and
 	// rollback require append-only snapshots.
 	opts.AlwaysCreate = true
@@ -1375,7 +1387,7 @@ func (s *AgentService) PublishAgent(ctx context.Context, userID, canvasID string
 	return row, nil
 }
 
-func (s *AgentService) saveOrReplaceVersionOptions(ctx context.Context, userID, canvasID string, dsl entity.JSONMap, title string, description *string, release bool) dao.SaveOrReplaceLatestVersionOptions {
+func (s *AgentService) saveOrReplaceVersionOptions(ctx context.Context, userID, canvasID string, dsl entity.JSONMap, title string, description *string, release bool, remark *string) dao.SaveOrReplaceLatestVersionOptions {
 	nickname, err := s.userDAO.GetNicknameByID(ctx, dao.DB, userID)
 	if err != nil || strings.TrimSpace(nickname) == "" {
 		nickname = userID
@@ -1388,6 +1400,7 @@ func (s *AgentService) saveOrReplaceVersionOptions(ctx context.Context, userID, 
 		Description:     description,
 		DSL:             dsl,
 		Release:         release,
+		Remark:          remark,
 		KeepUnpublished: 20,
 		SameDSL: func(latestDSL entity.JSONMap) bool {
 			return reflect.DeepEqual(

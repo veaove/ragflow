@@ -701,6 +701,7 @@ func (h *AgentHandler) CancelSessionRun(c *gin.Context) {
 type publishAgentRequest struct {
 	Title       *string        `json:"title,omitempty"`
 	Description *string        `json:"description,omitempty"`
+	Remark      *string        `json:"remark,omitempty"`
 	DSL         entity.JSONMap `json:"dsl,omitempty"`
 }
 
@@ -728,6 +729,7 @@ func (h *AgentHandler) PublishAgent(c *gin.Context) {
 	row, err := h.agentService.PublishAgent(c.Request.Context(), user.ID, canvasID, &service.PublishAgentRequest{
 		Title:       req.Title,
 		Description: req.Description,
+		Remark:      req.Remark,
 		DSL:         req.DSL,
 	})
 	if err != nil {

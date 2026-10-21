@@ -378,7 +378,7 @@ export default function StudioCanvas() {
           autoOpen
           agentDetail={flowDetail}
           loading={saving}
-          onPublish={() => saveGraph(undefined, undefined, true)}
+          onPublish={(remark) => saveGraph(undefined, undefined, true, remark)}
           onBeforeOpen={hasBlockingIssues}
         />
       )}

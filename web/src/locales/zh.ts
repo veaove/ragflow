@@ -2680,6 +2680,9 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       relevant: '是否相关',
       rewriteQuestion: '问题优化',
       begin: '开始',
+      versionRemark: '版本备注',
+      versionRemarkPh: '这个版本改了什么（可选）',
+
       errorStrategy: '异常处理',
       errorStrategyTip: '节点失败时的处理方式：无（中断流程）或默认值（输出兜底值继续跑）。',
       errorStrategyNone: '无',

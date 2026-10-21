@@ -33,6 +33,7 @@ export const useSaveGraph = (
         globalVariables: Record<string, GlobalVariableType>;
       },
       release?: boolean,
+      remark?: string,
     ) => {
       if (!id) {
         return;
@@ -46,6 +47,9 @@ export const useSaveGraph = (
 
       if (release) {
         params.release = 'true';
+      }
+      if (remark) {
+        params.remark = remark;
       }
 
       return setAgent(params);

@@ -1,5 +1,6 @@
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import { Button, ButtonLoading } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +20,7 @@ import { useIsPipeline } from '../hooks/use-is-pipeline';
 interface PublishConfirmDialogProps {
   agentDetail: IFlow;
   loading: boolean;
-  onPublish: () => void;
+  onPublish: (remark?: string) => void;
   // Returning true blocks the dialog from opening (e.g. unresolved canvas
   // checklist issues) — the caller is responsible for the user-facing notice.
   onBeforeOpen?: () => boolean;
@@ -73,6 +74,7 @@ export function PublishConfirmDialog({
 }: PublishConfirmDialogProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [remark, setRemark] = useState('');
 
   // 从工作室列表点「发布」跳进来时，?action=publish 会让 autoOpen 为 true，
   // 这里直接把确认框打开，省掉用户在画布上再找一次按钮。
@@ -96,9 +98,9 @@ export function PublishConfirmDialog({
   }, [agentDetail?.datasets]);
 
   const handleConfirmPublish = useCallback(() => {
-    onPublish();
+    onPublish(remark.trim() || undefined);
     setOpen(false);
-  }, [onPublish]);
+  }, [onPublish, remark]);
 
   // A plain button instead of DialogTrigger: Radix opens the dialog on click
   // regardless of preventDefault, so the guard has to own `setOpen`.
@@ -160,6 +162,17 @@ export function PublishConfirmDialog({
                   <span>{lastPublished}</span>
                 </div>
               )}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm text-text-secondary">
+                  {t('flow.versionRemark')}
+                </span>
+                <Input
+                  value={remark}
+                  onChange={(e) => setRemark(e.target.value)}
+                  placeholder={t('flow.versionRemarkPh')}
+                  maxLength={255}
+                />
+              </div>
             </div>
           </div>
         </DialogDescription>
