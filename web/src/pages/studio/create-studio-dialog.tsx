@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { AgentCategory } from '@/constants/agent';
 import { useSetAgent } from '@/hooks/use-agent-request';
 import { initialStudioDsl } from '@/pages/agent/utils/dsl-bridge';
+import { Routes } from '@/routes';
 
 export type StudioCreateKind = 'chatflow' | 'workflow';
 
@@ -81,7 +82,9 @@ export function CreateStudioDialog({ initialType = 'chatflow', hideModal }: Prop
       hideModal();
       const id = ret.data?.id;
       if (id) {
-        navigate(`/agent/${id}`);
+        // 工作室应用创建后进工作室画布。之前跳 /agent/:id，
+        // 用户刚建的任务流直接落进旧智能体页面（无节点面板、旧工具栏）。
+        navigate(`${Routes.Studio}/${id}`);
       }
     }
   }

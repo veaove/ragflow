@@ -116,7 +116,7 @@ const studioTerminalNode = (
   id,
   type: 'ragNode',
   position: { x: 420, y: 200 },
-  data: { label: componentName, name: id, form },
+  data: { label: componentName, name: componentName, form },
   sourcePosition: 'left',
   targetPosition: 'right',
 });
