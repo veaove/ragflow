@@ -16,11 +16,11 @@
 | 前端类型检查 | ✅ 203 个错误（基线 206，**净减 3**） | 无新增 |
 | 前端 lint | ✅ 0 error / 176 warning | 无新增 |
 | 前端单测 | ⚠️ 124/136 套件通过（12 套件 19 用例红） | 与昨日**完全同一批**，无新增 |
-| E2E · API | ⚠️ 28/28 + 补测 7/9 | 有 **1 个 P1 真实缺陷**（已修复 `26d32c6db`，待部署） |
+| E2E · API | ⚠️ 28/28 + 补测 7/9 | 有 **1 个 P1 真实缺陷**（已修复并上线：`26d32c6db` + `1e8f202fb`） |
 | E2E · UI | ⚠️ 24/29（2 失败 / 3 跳过） | 有 **1 个 P2 可见缺陷** |
 
 **一句话**：后端和类型检查层面这次是干净的；但**检索测试设置的自动保存实际是坏的**（前端发的字段被后端白名单拒绝），
-已在 `26d32c6db` 修好并通过回归测试，**需重新编译部署才生效**；
+已于 `26d32c6db`（后端）+ `1e8f202fb`（前端）修好，**已编译部署并复验通过**；
 另外新加的列表表格把两个未翻译的 i18n key 直接暴露给了用户。
 
 ---
@@ -125,6 +125,9 @@ Tests:       19 failed, 955 passed, 974 total
 根因仍是两类，与本次改动无关：**jsdom 环境缺 `Request` / `Blob.arrayBuffer`**、
 **babel 未剥类型注解 / 夹具过期**。昨日报告已逐条列过，此处不重复。
 
+> 其中 `utils/__tests__/llm-util` 已在修 §6.1 时顺带修好（它的两条用例断言了
+> 早已被移除的 chats 注入行为），该套件现已 22 用例全绿，**剩下 11 个**。
+
 > **后端本次新增了 7 个测试文件**，方向是对的：
 > `dao/qc_rule_binding_test.go`、`service/qc_matcher_test.go`、`service/chunk/compare_test.go`、
 > `service/chunk/compare_scope_test.go`、`service/dataset/references_test.go`、
@@ -179,7 +182,8 @@ Tests:       19 failed, 955 passed, 974 total
 
 ### 6.1 【P1】检索测试设置的自动保存实际不生效——前端发的字段被后端白名单拒绝
 
-> **状态：已修复（提交 `26d32c6db`），待重新编译部署生效。**
+> **状态：已修复并已上线（后端 `26d32c6db` + 前端 `1e8f202fb`，线上版本 `1e8f202`，
+> 前端 `dist_20261021_1109`）。UI 复验 9/9、接口复验 9/9。**
 
 **现象**：知识库「检索测试」页改任何设置，右上角报
 `101 Extra inputs are not permitted: similarity_threshold`，且永远看不到「保存成功」。
@@ -226,9 +230,31 @@ PUT /api/v1/datasets/{id}  {"rerank_id":""}
 
 验证结果：`internal/handler` 与 `internal/service/dataset` 两包全部 PASS，0 失败。
 
-> **注意**：线上二进制仍是 `52e2112`，修复未生效。实测
-> `PUT /api/v1/datasets/{合法UUID} {"similarity_threshold":0.2}` 仍返回
-> `101 Extra inputs are not permitted`。需要一次重新编译 + 重启。
+**第二个根因（后端放开后才暴露，提交 `1e8f202fb`）**：UI 仍报
+`101 Extra inputs are not permitted: tenant_rerank_id`。
+
+请求拦截器 `web/src/utils/llm-util.ts` 的 `addTenantParams` 把 `/api/v1/datasets`
+列进了「需要租户模型 id」的白名单，只要请求体出现 `rerank_id` 就额外塞一个
+`tenant_rerank_id`（清空时塞 `null`）。而知识库存的是普通模型名、检索时自行解析，
+`PUT /datasets/:id` 又是严格字段白名单 —— 多出来的这个键把保存直接打回。
+
+源码里 `/api/v1/chats` 早已因同样原因被移出该白名单（注释写明：chats 由服务端做
+模型名/id 归一，前端不该回填 tenant_*），数据集同理，故一并移出。
+
+顺带修掉一个**陈旧用例**：`llm-util.test.ts` 有两条用例用 chats URL 断言
+"会注入 tenant_rerank_id"，而 chats 早已不在白名单，这个套件因此长期为红
+（就是本报告 §4.3 里 12 个红套件之一）。改为用真正在白名单内的 `/api/v1/memories`
+验证清空逻辑，并新增「chats / datasets 不应被注入」用例锁住行为。修复后该套件
+22 个用例全绿。
+
+**上线后复验**：
+
+| 层 | 结果 |
+|---|---|
+| 接口（临时知识库，跑完删除） | **9/9**：三字段一起 PUT 被接受、threshold 回读一致、关键词权重 `0.65→vector 0.35` 反算正确、rerank 写入/清空、越界仍拒、白名单外字段仍拒 |
+| UI（Playwright，真实点输入框） | **9/9**：出现「保存成功」、不再出现 Extra inputs、刷新后设置保持、接口回读与界面一致 |
+
+截图：`docs/qa_shots/2026-10-21/shot1021_retrieval_saved.png`（绿色「Settings saved」，与故障截图对照）。
 
 > 另注：知识库权重列在库里叫 `vector_similarity_weight`（默认 0.3），接口对外叫
 > `keywords_similarity_weight`，写入时是 `1 - vector`。修的时候别按字面直写。
@@ -310,9 +336,8 @@ knowledgeBase: '知识库',    // Knowledge Base
 
 ## 八、给开发专家的事项（按优先级）
 
-1. **【P1，已修复待部署】检索测试设置保存**（§6.1）。这是本次唯一的 P1，且是"看起来已修好、实际没生效"的类型，
-   验收时最容易被漏掉。修复提交 `26d32c6db`，回归测试已通过；**上线后请用真实 PUT 复验一次**，
-   不要只看前端 toast。
+1. **【P1，已修复已上线】检索测试设置保存**（§6.1）。这是本次唯一的 P1，且是"看起来已修好、实际没生效"的类型，
+   验收时最容易被漏掉。后端 `26d32c6db` + 前端 `1e8f202fb`，已部署并 UI/接口双层复验通过。
 2. **【P2】补 `common.description` / `common.knowledgeBase` 两个词条**（§6.3）——两行改动，
    顺手把 `create-studio-dialog` 与 `avatar-name-description` 的存量暴露点一起清掉。
 3. **【P2】`parser_config` 静默丢弃要么报错要么合并**（§6.2）。
@@ -358,3 +383,31 @@ knowledgeBase: '知识库',    // Knowledge Base
    判断依据：`grep -cE "^(ok|FAIL|\?)"` 的结果行数 < `go list ./internal/... | wc -l`。
 2. **E2E token 有效期短且单会话**：同一账号再登录一次会把浏览器/脚本的旧 token 顶掉，
    表现是中途全部 401。跑 UI E2E 期间不要再刷新 token。
+
+---
+
+## 十一、部署记录（2026-10-21 10:55–11:20）
+
+| 项 | 内容 |
+|---|---|
+| 触发 | 用户确认"现在跑"（此前 P1 修复只提交未发布） |
+| 后端 | `./build.sh --all`，缓存命中增量编译 53s；二进制 10:56:24（比旧包大 984B） |
+| 迁移 | `--migrate` RC=0，无新表新列（本次只改白名单，无 schema 变更） |
+| 启动 | `admin → ingestor → api`，三个服务 active，9380/9381 OPEN |
+| healthz | db / redis / doc_engine / storage / message_queue **五项全 ok** |
+| 版本 | 线上 `version` 由 `52e2112` → `1e8f202` |
+| 前端 | `dist_20261021_1109`（49M），nginx root 已切换、`nginx -t` 通过、`kill -HUP` 重载 |
+| 服务 | 入口 `/entry/js/index-BpDIGPBr.js` 与本地产物一致；`llm-util` chunk 经 nginx 取回 200 + `application/javascript` |
+| 清理 | 旧备份轮转保留 2 份；旧 `dist` 保留 2 个版本；磁盘 71% |
+
+**部署时发现并规避的一个坑**：工作区里存在**另一个会话未提交的改动**
+（`web/src/pages/agent/canvas/index.tsx`、`pages/agent/index.tsx`、新增 `node-panel.tsx`）。
+第一次直接在当前工作区 `vite build`，产物把这些半成品也打了进去；发现后：
+删除该产物 → 提交自己的两个文件 → 用 **干净 worktree（HEAD）** 重新构建 →
+产物中确认不含 `node-panel` 字样后才上传。
+
+> **教训**：多会话共用一个工作区时，前端打包前必须先 `git status` 确认没有别人的未提交改动，
+> 否则会把半成品带上生产。后端编译不受影响（它编的是已提交的源码树），但前端 build 吃的是工作区。
+
+**回滚方式**（本次未用到）：后端 `cp bin/ragflow_server.bak.20261021_105534 bin/ragflow_server`；
+前端把 nginx root 改回 `dist_20261021_093146` 后 `kill -HUP $(pgrep -o nginx)`。
