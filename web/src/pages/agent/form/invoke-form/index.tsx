@@ -39,9 +39,17 @@ enum Method {
   GET = 'GET',
   POST = 'POST',
   PUT = 'PUT',
+  DELETE = 'DELETE',
+  PATCH = 'PATCH',
 }
 
-const MethodOptions = [Method.GET, Method.POST, Method.PUT].map((x) => ({
+const MethodOptions = [
+  Method.GET,
+  Method.POST,
+  Method.PUT,
+  Method.DELETE,
+  Method.PATCH,
+].map((x) => ({
   label: x,
   value: x,
 }));

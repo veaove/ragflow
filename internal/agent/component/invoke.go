@@ -17,7 +17,7 @@
 // Package component — Invoke component (T3).
 //
 // Invoke is the canvas HTTP client node. It supports GET/POST/
-// PUT/DELETE with custom headers, optional proxy, and per-request
+// PUT/DELETE/PATCH with custom headers, optional proxy, and per-request
 // timeout, and wraps the underlying net/http.Transport with
 // go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
 // .NewTransport so outbound calls automatically propagate W3C
@@ -117,9 +117,9 @@ func (i *InvokeComponent) Invoke(ctx context.Context, db *gorm.DB, inputs map[st
 	method, _ := inputs["method"].(string)
 	method = strings.ToUpper(strings.TrimSpace(method))
 	switch method {
-	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete:
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch:
 	default:
-		return nil, fmt.Errorf("Invoke: invalid method %q (want GET/POST/PUT/DELETE)", method)
+		return nil, fmt.Errorf("Invoke: invalid method %q (want GET/POST/PUT/DELETE/PATCH)", method)
 	}
 	rawURL, _ := inputs["url"].(string)
 	if rawURL == "" {
