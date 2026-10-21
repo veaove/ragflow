@@ -71,7 +71,8 @@ export interface IConsultationQuery {
 export interface IAnalyticsMetrics {
   consultations: number;
   customers: number;
-  response_ms: { chat: number; canvas: number };
+  /** null when the window has no measured latency for that chain. */
+  response_ms: { chat: number | null; canvas: number | null };
   good_rate: number | null;
   success_rate: number | null;
   avg_rounds: number;

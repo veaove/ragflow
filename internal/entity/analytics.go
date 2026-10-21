@@ -77,9 +77,11 @@ type ConsultationDetail struct {
 // ResponseMS is split per chain on purpose: the chat pipeline records
 // first-token latency while the canvas runtime records total run duration, so
 // blending the two would produce a number that means nothing.
+// A nil side means "no measurement in this window" (all legacy messages, or a
+// chain with no sessions) and renders as a dash rather than 0s.
 type AnalyticsResponseMetrics struct {
-	Chat   float64 `json:"chat"`
-	Canvas float64 `json:"canvas"`
+	Chat   *float64 `json:"chat"`
+	Canvas *float64 `json:"canvas"`
 }
 
 // AnalyticsMetrics is the metric block returned by the stats endpoint.

@@ -692,3 +692,45 @@ func (d *AnalyticsDAO) CountDistinctCustomers(ctx context.Context, db *gorm.DB, 
 	}
 	return total, nil
 }
+
+// AppRate holds per-app rating counts for one chain.
+type AppRate struct {
+	AppID string `gorm:"column:app_id"`
+	Good  int64  `gorm:"column:good"`
+	Rated int64  `gorm:"column:rated"`
+}
+
+// AppRatesChat returns per-app message-level rating counts for the chat chain.
+//
+// Ratings live in conversation_message, not in conversation, so this cannot be
+// folded into AppsChat's GROUP BY without a correlated subquery per row.
+func (d *AnalyticsDAO) AppRatesChat(ctx context.Context, db *gorm.DB, tenantID string, from, to int64) ([]AppRate, error) {
+	var rows []AppRate
+	err := db.WithContext(ctx).Table("conversation_message AS m").
+		Select(`
+			COALESCE(c.dialog_id, '') AS app_id,
+			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up = 1 THEN 1 ELSE 0 END), 0) AS good,
+			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up IS NOT NULL THEN 1 ELSE 0 END), 0) AS rated`).
+		Joins("JOIN conversation AS c ON c.id = m.conversation_id").
+		Joins("JOIN dialog AS d ON d.id = c.dialog_id AND d.tenant_id = ?", tenantID).
+		Where("c.create_time >= ? AND c.create_time <= ?", from, to).
+		Group("c.dialog_id").
+		Scan(&rows).Error
+	return rows, err
+}
+
+// AppRatesCanvas returns per-app message-level rating counts for the canvas chain.
+func (d *AnalyticsDAO) AppRatesCanvas(ctx context.Context, db *gorm.DB, tenantID string, from, to int64) ([]AppRate, error) {
+	var rows []AppRate
+	err := db.WithContext(ctx).Table("api_4_conversation_message AS m").
+		Select(`
+			COALESCE(a.dialog_id, '') AS app_id,
+			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up = 1 THEN 1 ELSE 0 END), 0) AS good,
+			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up IS NOT NULL THEN 1 ELSE 0 END), 0) AS rated`).
+		Joins("JOIN api_4_conversation AS a ON a.id = m.conversation_id").
+		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
+		Where("a.create_time >= ? AND a.create_time <= ?", from, to).
+		Group("a.dialog_id").
+		Scan(&rows).Error
+	return rows, err
+}

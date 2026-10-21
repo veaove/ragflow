@@ -253,8 +253,8 @@ func (s *AnalyticsService) Stats(ctx context.Context, tenantID string, from, to 
 			Consultations: cur.consultations,
 			Customers:     cur.customers,
 			ResponseMS: entity.AnalyticsResponseMetrics{
-				Chat:   round1(cur.chatMS),
-				Canvas: round1(cur.canvasMS),
+				Chat:   positiveOrNil(cur.chatMS),
+				Canvas: positiveOrNil(cur.canvasMS),
 			},
 			GoodRate:    rateOrNil(cur.good, cur.rated),
 			SuccessRate: ratioOrNil(cur.success, cur.runs),
@@ -276,6 +276,16 @@ func (s *AnalyticsService) Stats(ctx context.Context, tenantID string, from, to 
 		stats.Deltas.SuccessRate = &v
 	}
 	return stats, nil
+}
+
+// positiveOrNil returns nil for a zero measurement so the UI can render a dash
+// instead of an authoritative-looking "0s".
+func positiveOrNil(v float64) *float64 {
+	if v <= 0 {
+		return nil
+	}
+	r := round1(v)
+	return &r
 }
 
 func round1(v float64) float64 {
@@ -354,6 +364,16 @@ func (s *AnalyticsService) Apps(ctx context.Context, tenantID string, from, to i
 	if err != nil {
 		return nil, err
 	}
+	// Ratings live in the message tables, so they need their own per-app pass;
+	// the session-level queries above cannot produce them.
+	chatRates, err := s.dao.AppRatesChat(ctx, dao.DB, tenantID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	canvasRates, err := s.dao.AppRatesCanvas(ctx, dao.DB, tenantID, from, to)
+	if err != nil {
+		return nil, err
+	}
 
 	type acc struct {
 		name      string
@@ -382,6 +402,11 @@ func (s *AnalyticsService) Apps(ctx context.Context, tenantID string, from, to i
 		a.sessions += r.Sessions
 		a.customers += r.Customers
 	}
+	for _, r := range chatRates {
+		a := get(r.AppID, "", entity.AnalyticsChainChat)
+		a.good += r.Good
+		a.rated += r.Rated
+	}
 	for _, r := range canvasRows {
 		a := get(r.AppID, r.AppName, entity.AnalyticsChainCanvas)
 		a.sessions += r.Sessions
@@ -390,6 +415,11 @@ func (s *AnalyticsService) Apps(ctx context.Context, tenantID string, from, to i
 			a.msSum += r.AvgMS * float64(r.Sessions)
 			a.msCount += r.Sessions
 		}
+		a.good += r.Good
+		a.rated += r.Rated
+	}
+	for _, r := range canvasRates {
+		a := get(r.AppID, "", entity.AnalyticsChainCanvas)
 		a.good += r.Good
 		a.rated += r.Rated
 	}
