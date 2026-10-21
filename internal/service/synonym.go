@@ -114,6 +114,11 @@ func (s *SynonymService) ListSynonymGroups(ctx context.Context, userID, datasetI
 			if g.Words == nil {
 				g.Words = []*entity.SynonymWord{}
 			}
+			// WordCount is `gorm:"-"`, so the DAO's COUNT subquery never lands in
+			// it and the list always rendered 词条数 0. The words are already
+			// loaded here, so derive the count instead of adding a projection the
+			// entity deliberately cannot scan.
+			g.WordCount = len(g.Words)
 		}
 	}
 	return groups, nil
