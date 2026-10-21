@@ -17,6 +17,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { PageContainer } from '@/layouts/components/page-container';
+
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -82,7 +84,12 @@ function RatingTag({ rating }: { rating: string }) {
   );
 }
 
-export default function ConsultationsPage() {
+/**
+ * ConsultationsPanel is the embeddable body of the consultation log. It carries
+ * no page-level padding or title so it can sit inside the home page tab strip
+ * as well as inside its own standalone route.
+ */
+export function ConsultationsPanel({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
 
   const [from, setFrom] = useState(todayMinus(6));
@@ -138,12 +145,16 @@ export default function ConsultationsPage() {
   }, [query]);
 
   return (
-    <div className="flex h-full flex-col p-5">
+    <div className={embedded ? 'flex h-full flex-col' : 'flex h-full flex-col p-5'}>
       <div className="mb-4 flex items-center gap-3">
-        <h1 className="text-xl font-medium">{t('analytics.consultationLog')}</h1>
-        <span className="text-sm text-text-disabled">
-          {t('analytics.consultationLogHint')}
-        </span>
+        {!embedded && (
+          <>
+            <h1 className="text-xl font-medium">{t('analytics.consultationLog')}</h1>
+            <span className="text-sm text-text-disabled">
+              {t('analytics.consultationLogHint')}
+            </span>
+          </>
+        )}
         <span className="flex-1" />
         <Button variant="outline" onClick={onExport}>
           {t('analytics.export')}
@@ -291,5 +302,13 @@ export default function ConsultationsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function ConsultationsPage() {
+  return (
+    <PageContainer>
+      <ConsultationsPanel />
+    </PageContainer>
   );
 }

@@ -17,6 +17,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { PageContainer } from '@/layouts/components/page-container';
+
 import {
   Table,
   TableBody,
@@ -95,7 +97,12 @@ function MetricCard({
   );
 }
 
-export default function AnalyticsStatsPage() {
+/**
+ * AnalyticsStatsPanel is the embeddable body of the report page. Like the
+ * consultation panel it avoids page-level padding so the home page can host it
+ * inside a tab without double spacing.
+ */
+export function AnalyticsStatsPanel({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
   const [rangeKey, setRangeKey] = useState<RangeKey>('7d');
   const [stats, setStats] = useState<IAnalyticsStats | null>(null);
@@ -125,9 +132,9 @@ export default function AnalyticsStatsPage() {
   const maxConsultations = Math.max(1, ...trend.map((p) => p.consultations));
 
   return (
-    <div className="flex h-full flex-col p-5">
+    <div className={embedded ? 'flex h-full flex-col' : 'flex h-full flex-col p-5'}>
       <div className="mb-4 flex items-center gap-3">
-        <h1 className="text-xl font-medium">{t('analytics.report')}</h1>
+        {!embedded && <h1 className="text-xl font-medium">{t('analytics.report')}</h1>}
         <span className="flex-1" />
         <div className="inline-flex overflow-hidden rounded-md border border-border-default">
           {RANGES.map((r) => (
@@ -266,5 +273,13 @@ export default function AnalyticsStatsPage() {
         <div>· {t('analytics.caliberSuccessRate')}</div>
       </div>
     </div>
+  );
+}
+
+export default function AnalyticsStatsPage() {
+  return (
+    <PageContainer>
+      <AnalyticsStatsPanel />
+    </PageContainer>
   );
 }
