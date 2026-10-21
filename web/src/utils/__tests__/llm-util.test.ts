@@ -170,7 +170,7 @@ describe('addTenantParams — clearing model selections', () => {
           rerank_id: '',
           tenant_rerank_id: 'stale-tenant-model-id',
         },
-        '/api/v1/chats/chat-id',
+        '/api/v1/memories',
       ),
     ).toEqual({
       rerank_id: '',
@@ -182,8 +182,26 @@ describe('addTenantParams — clearing model selections', () => {
     expect(
       addTenantParams(
         { tenant_rerank_id: 'existing-tenant-model-id' },
-        '/api/v1/chats/chat-id',
+        '/api/v1/memories',
       ),
     ).toEqual({ tenant_rerank_id: 'existing-tenant-model-id' });
   });
+});
+
+describe('addTenantParams — endpoints that store plain model ids', () => {
+  // Chats and datasets persist the plain model id and resolve it server-side.
+  // Injecting a tenant_* id here is not just useless: PUT /datasets/:id runs a
+  // strict field whitelist, so the injected key made the retrieval-test panel's
+  // save fail with "extra inputs are not permitted: tenant_rerank_id".
+  test.each(['/api/v1/chats/chat-id', '/api/v1/datasets/dataset-id'])(
+    'leaves the payload untouched for %s',
+    (url) => {
+      expect(
+        addTenantParams(
+          { rerank_id: '', tenant_rerank_id: 'stale-tenant-model-id' },
+          url,
+        ),
+      ).toEqual({ rerank_id: '', tenant_rerank_id: 'stale-tenant-model-id' });
+    },
+  );
 });

@@ -187,13 +187,16 @@ const modelParamMap: ModelParamMap = {
 // Note: /api/v1/chats is intentionally absent — the chats API normalizes the
 // model name/id pair server-side, so the frontend submits only llm_id /
 // rerank_id and must not have a stale tenant_* id injected back in here.
+// /api/v1/datasets is absent for the same reason: a knowledge base stores the
+// plain rerank_id and resolves it when retrieving, and PUT /datasets/:id runs a
+// strict field whitelist ("extra inputs are not permitted"), so an injected
+// tenant_rerank_id rejected the retrieval-test panel's save outright.
 const API_WHITELIST = [
   '/api/v1/users/me/models',
   '/v1/canvas/set',
   '/v1/canvas/setting',
   '/api/v1/searches/',
   '/api/v1/memories',
-  '/api/v1/datasets',
   '/v1/dataflow/set',
 ];
 
