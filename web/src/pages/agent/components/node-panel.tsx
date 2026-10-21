@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils';
  * 节点集由调用方按应用形态传入（Workflow 用 End、Chatflow 用 Answer），
  * 面板只负责展示和过滤，不自己判断形态。
  */
+// 分组与命名严格对齐原型 docs/prototypes/Dify_Chatflow_Workflow_原型.html
+// 的 `.node-panel`：入口/出口 · 模型 · 知识 · 逻辑 · 数据 · 集成 · 人机协同。
 const GROUP_DEFS: { title: string; ops: Operator[] }[] = [
   { title: '入口 / 出口', ops: [Operator.Begin, Operator.End, Operator.Answer] },
   {
@@ -51,7 +53,26 @@ const GROUP_DEFS: { title: string; ops: Operator[] }[] = [
       Operator.DataOperations,
     ],
   },
+  { title: '集成', ops: [Operator.Tool] },
+  { title: '人机协同', ops: [Operator.UserFillUp] },
 ];
+
+/**
+ * 工作室的节点叫法（对齐原型）。
+ *
+ * 这几条在智能体那边是另一套文案（大语言模型 / 条件 / 代码 / 变量赋值器），
+ * 直接改 i18n 会连着改掉智能体，所以在这里局部覆盖 —— 只影响工作室面板。
+ */
+const STUDIO_LABELS: Partial<Record<Operator, string>> = {
+  [Operator.LLM]: '大模型',
+  [Operator.Switch]: '条件分支',
+  [Operator.Code]: '代码执行',
+  [Operator.VariableAssigner]: '变量赋值',
+  [Operator.End]: '结束',
+  [Operator.Answer]: '回答',
+  [Operator.TemplateTransform]: '模板转换',
+  [Operator.ParameterExtractor]: '参数提取',
+};
 
 export function NodePanel({ operators }: { operators: Operator[] }) {
   const { t } = useTranslation();
@@ -76,7 +97,10 @@ export function NodePanel({ operators }: { operators: Operator[] }) {
   }, [operators]);
 
   const keyword = query.trim().toLowerCase();
-  const label = (op: Operator) => t(`flow.${op.charAt(0).toLowerCase()}${op.slice(1)}`);
+  // 搜索必须匹配「用户看到的名字」（大模型 / 条件分支），不是枚举值，
+  // 否则搜「大模型」找不到 LLM。
+  const label = (op: Operator) =>
+    STUDIO_LABELS[op] ?? t(`flow.${op.charAt(0).toLowerCase()}${op.slice(1)}`);
 
   const visibleGroups = useMemo(() => {
     if (!keyword) {
@@ -144,7 +168,11 @@ export function NodePanel({ operators }: { operators: Operator[] }) {
                 {group.title}
               </div>
               <ul className={cn('space-y-0.5')}>
-                <OperatorItemList operators={group.ops} isCustomDropdown />
+                <OperatorItemList
+                  operators={group.ops}
+                  isCustomDropdown
+                  labelMap={STUDIO_LABELS}
+                />
               </ul>
             </div>
           ))

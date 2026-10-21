@@ -17,6 +17,14 @@ export type OperatorItemProps = {
   operators: Operator[];
   isCustomDropdown?: boolean;
   mousePosition?: { x: number; y: number };
+  /**
+   * 覆盖个别节点的显示名（仅展示，不动共享 i18n）。
+   *
+   * 工作室要跟原型对齐叫法（大模型 / 条件分支 / 代码执行 / 变量赋值），
+   * 而这几条文案在智能体里是另一套（大语言模型 / 条件 / 代码 / 变量赋值器）。
+   * 直接改 i18n 会连着改掉智能体，所以用映射局部覆盖。
+   */
+  labelMap?: Partial<Record<Operator, string>>;
 };
 
 export const HideModalContext = createContext<IModalProps<any>['showModal']>(
@@ -45,6 +53,7 @@ export function OperatorItemList({
   operators,
   isCustomDropdown = false,
   mousePosition,
+  labelMap,
 }: OperatorItemProps) {
   const { addCanvasNode } = useContext(AgentInstanceContext);
   const handleContext = useContext(HandleContext);
@@ -79,11 +88,14 @@ export function OperatorItemList({
       hideModal?.();
     };
 
+  const displayName = (operator: Operator) =>
+    labelMap?.[operator] ?? t(`flow.${nodeI18nKey(operator)}`);
+
   const renderOperatorItem = (operator: Operator) => {
     const commonContent = (
       <div className="hover:bg-background-card py-1 px-3 cursor-pointer rounded-sm flex gap-2 items-center justify-start">
         <OperatorIcon name={operator} />
-        {t(`flow.${nodeI18nKey(operator)}`)}
+        {displayName(operator)}
       </div>
     );
 
@@ -100,7 +112,7 @@ export function OperatorItemList({
               onSelect={() => hideModal?.()}
             >
               <OperatorIcon name={operator} />
-              {t(`flow.${nodeI18nKey(operator)}`)}
+              {displayName(operator)}
             </DropdownMenuItem>
           )}
         </TooltipTrigger>
