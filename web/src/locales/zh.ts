@@ -448,7 +448,7 @@ export default {
       description: '今天我们要使用哪个知识库？',
       createKnowledgeBase: '创建知识库',
       builtInTemplate: '内置模板',
-      ingestionPipeline: 'Ingestion pipeline',
+      ingestionPipeline: '知识提取',
       name: '名称',
       namePlaceholder: '请输入名称',
       doc: '文档',
@@ -551,7 +551,7 @@ export default {
         '从该知识库构建分层 Skills 树，并存储生成的 Skills 页面以供搜索和复用。',
       processingType: '处理类型',
       dataPipeline: '选择或切换解析方式',
-      dataPipelineTitle: '数据管道',
+      dataPipelineTitle: '知识提取',
       operations: '操作',
       taskId: '任务ID',
       duration: '耗时',
@@ -808,7 +808,7 @@ export default {
       setDefaultTip: '',
       setDefault: '设置默认',
       editLinkDataPipeline: '编辑 pipeline',
-      linkPipelineSetTip: '管理与此知识库的数据管道链接',
+      linkPipelineSetTip: '管理与此知识库的知识提取链接',
       default: '默认',
       dataPipeline: '选择或切换解析方式',
       linkDataPipeline: '关联 pipeline',
@@ -2476,7 +2476,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       versionN: 'v{{n}}',
       typeImmutable:
         '类型决定可用节点、是否有会话、以及发布契约，创建后不可更改。',
-      belongHint: '需要多轮对话或子智能体请到「智能体」；文档解析入库请到「智能体 → 数据管道」。',
+      belongHint: '需要多轮对话或子智能体请到「智能体」；文档解析入库请到「智能体 → 知识提取」。',
     },
     flow: {
       exportCurrentPage: '导出当页',
@@ -3346,13 +3346,14 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       duplicate: '复制',
       copyOfAgentName: '{{name}} (副本)',
       chooseAgentType: '选择智能体类型',
-      createPipeline: '数据管道',
-      createIngestionPipeline: '创建数据管道',
+      ingestionPipeline: '知识提取',
+      createPipeline: '知识提取',
+      createIngestionPipeline: '创建知识提取',
       createWorkflow: '创建工作流',
       chatflow: '对话流（Chatflow）',
       taskFlow: '任务流（Workflow）',
       tabList: {
-        ingestionPipeline: '数据管道',
+        ingestionPipeline: '知识提取',
         compilationOperator: '编译算子',
         agentCanvas: '智能体流程',
       },
@@ -3708,7 +3709,7 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       changeStepModalCancelText: '取消',
       unlinkPipelineModalTitle: '解绑 pipeline',
       unlinkPipelineModalContent: `
-      <p>一旦取消链接，该知识库将不再连接到当前数据管道。</p>
+      <p>一旦取消链接，该知识库将不再连接到当前知识提取。</p>
       <p>正在解析的文件将继续解析，直到完成。</p>
       <p>尚未解析的文件将不再被处理。</p> <br/>
       <p>你确定要继续吗?</p> `,
