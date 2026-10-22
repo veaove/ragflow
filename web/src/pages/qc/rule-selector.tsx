@@ -114,6 +114,9 @@ export function QcRuleSelector({
 
   const toggle = async (rule: IQcRuleSelection) => {
     if (saving) return;
+    // 停用的规则即使绑定也不参与质检，让它可勾选只会让人以为已经生效。
+    // 已经勾上的仍允许取消，方便清理规则停用前留下的绑定。
+    if (!rule.enabled && !rule.selected) return;
 
     const next = rules.map((x) =>
       x.id === rule.id ? { ...x, selected: !x.selected } : x,
@@ -189,16 +192,18 @@ export function QcRuleSelector({
                   rule.selected
                     ? 'border-accent-primary/40 bg-accent-primary/5'
                     : 'border-border-base',
-                  saving
-                    ? 'cursor-default opacity-70'
-                    : 'cursor-pointer hover:border-accent-primary/40',
+                  !rule.enabled && !rule.selected
+                    ? 'cursor-not-allowed opacity-60'
+                    : saving
+                      ? 'cursor-default opacity-70'
+                      : 'cursor-pointer hover:border-accent-primary/40',
                 )}
               >
                 <input
                   type="checkbox"
                   className="mt-0.5 size-4 shrink-0 accent-current"
                   checked={rule.selected}
-                  disabled={saving}
+                  disabled={saving || (!rule.enabled && !rule.selected)}
                   onChange={() => toggle(rule)}
                 />
                 <div className="min-w-0 flex-1">
