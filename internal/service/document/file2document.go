@@ -297,9 +297,18 @@ func (s *File2DocumentService) getAllInnermostFileIDs(ctx context.Context, folde
 				return nil, err
 			}
 			ids = append(ids, sub...)
-		} else {
-			ids = append(ids, child.ID)
+			continue
 		}
+		// "virtual" files are the zero-byte placeholders that
+		// UploadEmptyDocument creates for an empty dataset document; they are
+		// already linked to the dataset they were created in. Expanding a
+		// folder that happens to contain one would link that placeholder into
+		// another dataset as a second, contentless document that cannot be
+		// parsed and reads as a stray entry.
+		if child.Type == "virtual" {
+			continue
+		}
+		ids = append(ids, child.ID)
 	}
 	return ids, nil
 }
