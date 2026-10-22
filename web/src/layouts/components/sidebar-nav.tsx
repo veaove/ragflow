@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 
@@ -170,9 +170,28 @@ export function useActivePath() {
 export function SidebarNav({ className }: { className?: string }) {
   const { t } = useTranslation();
   const activePath = useActivePath();
-  // 只记录「被手动折叠」的一级菜单；默认全部展开。当前所在的分组无论
-  // 之前是否折叠过都强制展开，否则用户会看不到自己在哪。
+  // 只记录「被手动折叠」的一级菜单；默认全部展开。
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  /**
+   * 进入某个分组下的页面时，自动展开该分组一次；之后完全交给用户手动控制。
+   *
+   * 这里的「先展开、再尊重手动操作」必须用副作用实现，不能在渲染期直接写
+   * `open = childActive || !collapsed[path]`——那样只要停留在分组内的页面上，
+   * childActive 就恒为 true，点折叠箭头会被下一次渲染立刻覆盖回去，
+   * 表现为「点击没反应、配置中心收不回去」。
+   */
+  useEffect(() => {
+    const parent = sidebarMenuItems.find((item) =>
+      item.children?.some((child) => matchesPath(activePath, child.path)),
+    );
+
+    if (parent) {
+      setCollapsed((prev) =>
+        prev[parent.path] ? { ...prev, [parent.path]: false } : prev,
+      );
+    }
+  }, [activePath]);
 
   return (
     <nav className={cn('py-2', className)}>
@@ -181,8 +200,10 @@ export function SidebarNav({ className }: { className?: string }) {
           const { path, name, icon: Icon, icon_name, children } = item;
 
           if (children?.length) {
-            const childActive = children.some((c) => c.path === activePath);
-            const open = childActive || !collapsed[path];
+            const childActive = children.some((c) =>
+              matchesPath(activePath, c.path),
+            );
+            const open = !collapsed[path];
 
             return (
               <li key={path}>
@@ -222,7 +243,10 @@ export function SidebarNav({ className }: { className?: string }) {
                     data-testid={`sidebar-sub-${path}`}
                   >
                     {children.map((child) => {
-                      const childIsActive = child.path === activePath;
+                      // 前缀匹配：数据源详情页 /user-setting/data-source/...
+                      // 也要把「数据源」这一项标成选中，否则进入详情后导航里
+                      // 看不出自己在哪。
+                      const childIsActive = matchesPath(activePath, child.path);
 
                       return (
                         <li key={child.path}>
