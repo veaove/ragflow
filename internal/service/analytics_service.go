@@ -399,6 +399,10 @@ func (s *AnalyticsService) Apps(ctx context.Context, tenantID string, from, to i
 		a := get(r.AppID, r.AppName, entity.AnalyticsChainChat)
 		a.sessions += r.Sessions
 		a.customers += r.Customers
+		if r.AvgMS > 0 {
+			a.msSum += r.AvgMS * float64(r.Sessions)
+			a.msCount += r.Sessions
+		}
 	}
 	for _, r := range chatRates {
 		a := get(r.AppID, "", entity.AnalyticsChainChat)

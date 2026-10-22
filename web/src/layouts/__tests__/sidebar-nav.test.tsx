@@ -104,12 +104,10 @@ describe('SidebarNav 分组折叠', () => {
     ).toBe('page');
   });
 
-  it('分组外的页面不误判选中', () => {
+  it('分组外的页面上，分组默认折叠', () => {
     renderAt('/datasets');
-    expect(
-      screen
-        .getByTestId('sidebar-nav-user-setting/data-source')
-        .getAttribute('aria-current'),
-    ).toBeNull();
+    // 配置中心不在当前路由分组内，默认应折叠。
+    expect(subMenu()).toBeNull();
+    expect(groupButton().getAttribute('aria-expanded')).toBe('false');
   });
 });

@@ -170,8 +170,19 @@ export function useActivePath() {
 export function SidebarNav({ className }: { className?: string }) {
   const { t } = useTranslation();
   const activePath = useActivePath();
-  // 只记录「被手动折叠」的一级菜单；默认全部展开。
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // 默认只展开「包含当前路由子项」的分组，其余分组折叠。
+  // 进入分组内页面时 useEffect 会把它展开，折叠/展开之后完全由用户手动控制。
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    for (const item of sidebarMenuItems) {
+      if (!item.children?.length) continue;
+      const inThisGroup = item.children.some((c) =>
+        matchesPath(activePath, c.path),
+      );
+      if (!inThisGroup) init[item.path] = true;
+    }
+    return init;
+  });
 
   /**
    * 进入某个分组下的页面时，自动展开该分组一次；之后完全交给用户手动控制。
