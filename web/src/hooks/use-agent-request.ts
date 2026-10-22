@@ -139,9 +139,14 @@ export const useFetchAgentTemplates = () => {
     queryKey: [...AgentKeys.templates(), templateLang],
     initialData: [],
     queryFn: async () => {
-      const { data } = await agentService.listAgentTemplate({
-        params: { lang: templateLang },
-      });
+      // agentService is built by registerNextServer, which wraps the first
+      // argument as `{ data }` unless the second argument (useAxiosNativeConfig)
+      // is true. A GET only reads `config.params`, so without `true` the query
+      // string is dropped and the backend falls back to the default language.
+      const { data } = await agentService.listAgentTemplate(
+        { params: { lang: templateLang } },
+        true,
+      );
 
       return data.data;
     },
