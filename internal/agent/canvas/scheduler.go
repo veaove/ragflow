@@ -121,7 +121,15 @@ func isKnownPrimitive(name string) bool {
 	case "begin", "message", "llm", "categorize", "switch",
 		"agent", "invoke", "dataoperations", "listoperations",
 		"stringtransform", "variableaggregator", "variableassigner",
-		"loop", "parallel": // macros in BuildWorkflow; the pre-pass absorbs them.
+		"loop", "parallel", // macros in BuildWorkflow; the pre-pass absorbs them.
+		// WorkBuddy 移植 Studio 补的新节点：
+		"answer", "end", "retrieval", "userfillup", "fillup",
+		"parameterextractor", "templatetransform", "tool",
+		"exesql", "codeexec", "code", "browser",
+		"docsgenerator", "docgenerator", "excelprocessor",
+		"searchmydataset", "parallel",
+		// legacy child nodes folded by NormalizeForRun:
+		"loopitem", "iteration", "iterationitem":
 		return true
 	case "generalchunker":
 		return true
