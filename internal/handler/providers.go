@@ -116,6 +116,10 @@ func (h *ProviderHandler) ListProviders(c *gin.Context) {
 
 type AddProviderRequest struct {
 	ProviderName string `json:"provider_name" binding:"required"`
+	// Driver is the protocol template for tenant-created providers
+	// (vllm / ollama / xinference / localai / lm-studio /
+	// openai-api-compatible). Leave empty for catalog providers.
+	Driver string `json:"driver"`
 }
 
 func (h *ProviderHandler) AddProvider(c *gin.Context) {
@@ -129,7 +133,7 @@ func (h *ProviderHandler) AddProvider(c *gin.Context) {
 	userID := c.GetString("user_id")
 	ctx := c.Request.Context()
 
-	errorCode, err := h.modelProviderService.AddModelProvider(ctx, req.ProviderName, userID)
+	errorCode, err := h.modelProviderService.AddModelProvider(ctx, req.ProviderName, req.Driver, userID)
 	if err != nil {
 		common.ErrorWithCode(c, errorCode, err.Error())
 		return

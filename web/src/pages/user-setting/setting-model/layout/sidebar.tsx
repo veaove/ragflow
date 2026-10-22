@@ -17,13 +17,18 @@
 import { LlmIcon } from '@/components/svg-icon';
 import { SearchInput } from '@/components/ui/input';
 import {
+  LlmKeys,
   useFetchAddedProviders,
   useFetchAvailableProviders,
 } from '@/hooks/use-llm-request';
 import { cn } from '@/lib/utils';
-import { ChevronRight } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { restAPIv1 } from '@/utils/api';
+import request from '@/utils/request';
+import { useQueryClient } from '@tanstack/react-query';
+import { ChevronRight, Plus } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import AddCustomProviderModal from '../add-custom-provider-modal';
 
 /**
  * Sidebar selection type for the right pane.
@@ -55,6 +60,8 @@ export function Sidebar({ selection, onSelect }: SidebarProps) {
   const { data: providers } = useFetchAvailableProviders();
   const { data: addedProviders } = useFetchAddedProviders();
   const [search, setSearch] = useState('');
+  const [addCustomVisible, setAddCustomVisible] = useState(false);
+  const queryClient = useQueryClient();
 
   // Any provider present in `addedProviders` is treated as "added" and
   // sorted first in the list. We deliberately do NOT fetch each added
@@ -76,6 +83,50 @@ export function Sidebar({ selection, onSelect }: SidebarProps) {
     const others = list.filter((p) => !addedSet.has(p.name));
     return [...added, ...others];
   }, [providers, search, addedSet]);
+
+  /**
+   * Creates the provider first, then its first instance carrying the endpoint
+   * and model list. Two calls because the backend models them as separate
+   * resources: a provider may own several instances later.
+   */
+  const handleCreateCustomProvider = useCallback(
+    async ({
+      providerName,
+      driver,
+      baseUrl,
+      apiKey,
+      models,
+    }: {
+      providerName: string;
+      driver: string;
+      baseUrl: string;
+      apiKey: string;
+      models: { name: string; type: string }[];
+    }) => {
+      await request.put(`${restAPIv1}/providers`, {
+        provider_name: providerName,
+        driver,
+      });
+      await request.post(
+        `${restAPIv1}/providers/${encodeURIComponent(providerName)}/instances`,
+        {
+          instance_name: providerName,
+          api_key: apiKey,
+          base_url: baseUrl,
+          model_info: models.map((m) => ({
+            model_name: m.name,
+            model_type: [m.type],
+          })),
+        },
+      );
+      await queryClient.invalidateQueries({
+        queryKey: LlmKeys.availableProviders(),
+      });
+      await queryClient.invalidateQueries({ queryKey: LlmKeys.addedProviders() });
+      onSelect(providerName);
+    },
+    [queryClient, onSelect],
+  );
 
   return (
     <div className="flex flex-col gap-3 py-4 text-text-primary h-full min-h-0">
@@ -146,6 +197,26 @@ export function Sidebar({ selection, onSelect }: SidebarProps) {
           </div>
         )}
       </div>
+
+      <div className="shrink-0 border-t border-border-button pt-2">
+        <button
+          type="button"
+          onClick={() => setAddCustomVisible(true)}
+          data-testid="add-custom-provider-btn"
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-input hover:text-text-primary"
+        >
+          <Plus className="size-4" />
+          <span className="truncate">{t('setting.addCustomProvider')}</span>
+        </button>
+      </div>
+
+      {addCustomVisible && (
+        <AddCustomProviderModal
+          visible
+          hideModal={() => setAddCustomVisible(false)}
+          onSubmit={handleCreateCustomProvider}
+        />
+      )}
     </div>
   );
 }

@@ -22,6 +22,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
@@ -97,8 +99,30 @@ type CheckConnectionRequest struct {
 	ModelInfo  []CheckConnectionModelInfo `json:"model_info"`
 }
 
-func (m *ModelProviderService) AddModelProvider(ctx context.Context, providerName, userID string) (common.ErrorCode, error) {
+// customProviderDrivers lists the protocol templates a tenant may pick when
+// creating a custom model provider. Deliberately a closed set: the driver name
+// decides which ModelDriver is constructed, so accepting arbitrary values would
+// let a caller reach unimplemented branches.
+var customProviderDrivers = map[string]bool{
+	"vllm":                  true,
+	"ollama":                true,
+	"xinference":            true,
+	"localai":               true,
+	"lm-studio":             true,
+	"openai-api-compatible": true,
+}
+
+// AddModelProvider registers a provider for the tenant.
+//
+// driver is empty for catalog providers (their name already is a driver key)
+// and must be one of customProviderDrivers for tenant-created ones, whose
+// display name is arbitrary and cannot be resolved by CreateModelDriver.
+func (m *ModelProviderService) AddModelProvider(ctx context.Context, providerName, driver, userID string) (common.ErrorCode, error) {
 	providerName = strings.TrimSpace(providerName)
+	driver = strings.ToLower(strings.TrimSpace(driver))
+	if driver != "" && !customProviderDrivers[driver] {
+		return common.CodeArgumentError, fmt.Errorf("unsupported provider driver %q", driver)
+	}
 	tenantID, err := requireOwnedTenantID(ctx, userID)
 	if err != nil {
 		code, normalizedErr := normalizeModelPermissionError(err)
@@ -119,6 +143,8 @@ func (m *ModelProviderService) AddModelProvider(ctx context.Context, providerNam
 		ID:           providerID,
 		ProviderName: providerName,
 		TenantID:     tenantID,
+		Driver:       driver,
+		IsCustom:     driver != "",
 	}
 	err = m.modelProviderDAO.Create(ctx, dao.DB, tenantModelProvider)
 	if err != nil {
@@ -414,11 +440,62 @@ func (m *ModelProviderService) findProviderByIDOrNameInTenant(ctx context.Contex
 	return nil, gorm.ErrRecordNotFound
 }
 
+// assertInstanceBaseURL guards the endpoint a model instance points at.
+//
+// Private networks and loopback are allowed on purpose: self-hosted inference
+// services (vLLM / Ollama / Xinference) live there and blocking them would
+// defeat the feature. What must stay blocked is the cloud metadata endpoint
+// 169.254.169.254 — reaching it from the server would expose the host's
+// temporary credentials to any tenant owner who can create an instance.
+func assertInstanceBaseURL(rawURL string) error {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return nil
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid endpoint url")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return fmt.Errorf("endpoint must use http or https")
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return fmt.Errorf("endpoint is missing a host")
+	}
+
+	isBlockedIP := func(ip net.IP) bool {
+		return ip != nil && (ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast())
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if isBlockedIP(ip) {
+			return fmt.Errorf("link-local endpoint %s is not allowed", host)
+		}
+		return nil
+	}
+
+	// A hostname can still resolve into the link-local range; check the first
+	// answer only, which is what the HTTP client will use in practice.
+	if addrs, lookupErr := net.LookupIP(host); lookupErr == nil {
+		for _, addr := range addrs {
+			if isBlockedIP(addr) {
+				return fmt.Errorf("endpoint %s resolves to a link-local address, which is not allowed", host)
+			}
+		}
+	}
+	return nil
+}
+
 func (m *ModelProviderService) CreateProviderInstance(ctx context.Context, providerIDOrName, instanceName, apiKey, baseURL, region, userID string, modelInfo []CreateInstanceModelInfo) (common.ErrorCode, error) {
 	providerIDOrName = strings.TrimSpace(providerIDOrName)
 	apiKey = strings.TrimSpace(apiKey)
 	baseURL = strings.TrimSpace(baseURL)
 	region = strings.TrimSpace(region)
+
+	if err := assertInstanceBaseURL(baseURL); err != nil {
+		return common.CodeArgumentError, err
+	}
 
 	provider, err := m.getProviderByIDOrName(ctx, userID, providerIDOrName, permission.OperationCreate)
 	if err != nil {

@@ -891,6 +891,17 @@ func (s *ModelFactory) resolveProviderInstanceModel(ctx context.Context, access 
 
 	catalogName := modelModule.CatalogProviderName(providerName)
 	providerInfo := dao.GetModelProviderManager().FindProvider(catalogName)
+	// A tenant-created provider carries an arbitrary display name that is not in
+	// the catalog, so FindProvider above returns nil. Fall back to the protocol
+	// template recorded on the provider row (provider.Driver): the driver and
+	// URL suffixes are reused from that template, while model metadata comes
+	// from tenant_model via modelInfoWithTenantExtra.
+	if providerInfo == nil && provider.Driver != "" {
+		if base := dao.GetModelProviderManager().FindProvider(provider.Driver); base != nil {
+			providerInfo = base
+			catalogName = base.Name
+		}
+	}
 	if availableTypes != 0 {
 		if access.UserID != "" {
 			if err = checkModelPermission(ctx, access.UserID, permission.ResourceKindModel, modelEntity.ID, permission.OperationUse); err != nil {

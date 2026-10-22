@@ -21,6 +21,16 @@ type TenantModelProvider struct {
 	ID           string `gorm:"column:id;primaryKey;size:32" json:"id"`
 	ProviderName string `gorm:"column:provider_name;size:128;not null;index:idx_tenant_provider_unique,unique" json:"provider_name"`
 	TenantID     string `gorm:"column:tenant_id;size:32;not null;index;index:idx_tenant_provider_unique,unique" json:"tenant_id"`
+	// Driver is the protocol template that decides which ModelDriver serves this
+	// provider (vllm / ollama / xinference / localai / lm-studio /
+	// openai-api-compatible). Preset providers leave it empty and fall back to
+	// ProviderName, which is already a driver key. Custom providers use an
+	// arbitrary display name, so the driver has to be stored separately —
+	// otherwise CreateModelDriver cannot resolve them.
+	Driver string `gorm:"column:driver;size:64;not null;default:''" json:"driver"`
+	// IsCustom marks tenant-created providers; the UI uses it to show a
+	// 「自定义」tag and to allow editing/deleting.
+	IsCustom bool `gorm:"column:is_custom;not null;default:false" json:"is_custom"`
 	BaseModel
 }
 

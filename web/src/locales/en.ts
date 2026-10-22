@@ -2449,6 +2449,26 @@ Example: Virtual Hosted Style`,
       agree: 'Accept',
       refuse: 'Decline',
       teamMembers: 'Team members',
+      addCustomProvider: 'Add custom model service',
+      addCustomProviderHint:
+        'Connect a self-hosted model service (vLLM / Ollama / Xinference etc.). The display name is free-form; the protocol decides how requests are sent.',
+      providerDisplayName: 'Display name',
+      providerDisplayNamePlaceholder: 'e.g. Finance-only model',
+      providerDisplayNameHint: 'UI only; does not affect the protocol',
+      providerDriver: 'Protocol',
+      providerDriverHint:
+        'Selects the protocol used to talk to the service; must match its actual API',
+      providerBaseUrl: 'Endpoint',
+      providerBaseUrlHint:
+        'Private and loopback addresses are allowed. Include the version path, e.g. http://10.0.1.20:8000/v1',
+      providerApiKey: 'API Key',
+      providerApiKeyPlaceholder: 'Leave empty if the service has no auth',
+      providerModels: 'Models',
+      providerModelsHint:
+        'Enter the model names deployed on the service; the type must match their real capability',
+      providerAddModel: 'Add model',
+      providerModelNamePlaceholder: 'Model name, e.g. qwen2.5-72b-instruct',
+
       addExistingMember: 'Add member',
       addExistingMemberHint:
         'Look up a registered user by full email. Users already on the team are flagged.',
