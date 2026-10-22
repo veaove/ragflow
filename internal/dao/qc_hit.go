@@ -100,6 +100,7 @@ func (dao *QcHitDAO) List(ctx context.Context, db *gorm.DB, filter QcHitListFilt
 	if err := query.Order("create_time DESC").Offset(offset).Limit(limit).Find(&hits).Error; err != nil {
 		return nil, 0, err
 	}
+	dao.fillAppNames(ctx, db, hits)
 	return hits, total, nil
 }
 
@@ -138,6 +139,7 @@ func (dao *QcHitDAO) ListAll(ctx context.Context, db *gorm.DB, filter QcHitListF
 	if err := query.Order("create_time DESC").Find(&hits).Error; err != nil {
 		return nil, err
 	}
+	dao.fillAppNames(ctx, db, hits)
 	return hits, nil
 }
 
@@ -156,4 +158,67 @@ func (dao *QcHitDAO) DeleteBefore(ctx context.Context, db *gorm.DB, tenantID str
 // retentionThreshold returns the unix-millis boundary for the retention window.
 func retentionThreshold(days int) int64 {
 	return time.Now().AddDate(0, 0, -days).UnixMilli()
+}
+
+// fillAppNames resolves the display name of the app that produced each hit.
+//
+// The hit log stores only app_type + app_id, and the two chains resolve names
+// from different tables (chat -> dialog, canvas -> user_canvas). Without this
+// the hit list cannot tell an operator which app a record belongs to, which
+// makes cross-app debugging guesswork.
+func (dao *QcHitDAO) fillAppNames(ctx context.Context, db *gorm.DB, hits []entity.QcHit) {
+	if len(hits) == 0 {
+		return
+	}
+	chatIDs := make([]string, 0, len(hits))
+	canvasIDs := make([]string, 0, len(hits))
+	seenChat := map[string]bool{}
+	seenCanvas := map[string]bool{}
+	for _, h := range hits {
+		if h.AppID == "" {
+			continue
+		}
+		if h.AppType == "canvas" {
+			if !seenCanvas[h.AppID] {
+				seenCanvas[h.AppID] = true
+				canvasIDs = append(canvasIDs, h.AppID)
+			}
+			continue
+		}
+		if !seenChat[h.AppID] {
+			seenChat[h.AppID] = true
+			chatIDs = append(chatIDs, h.AppID)
+		}
+	}
+
+	type nameRow struct {
+		ID   string
+		Name string
+	}
+	names := map[string]string{}
+
+	if len(chatIDs) > 0 {
+		var rows []nameRow
+		if err := db.WithContext(ctx).Table("dialog").
+			Select("id, COALESCE(name, '') AS name").
+			Where("id IN ?", chatIDs).Scan(&rows).Error; err == nil {
+			for _, r := range rows {
+				names[r.ID] = r.Name
+			}
+		}
+	}
+	if len(canvasIDs) > 0 {
+		var rows []nameRow
+		if err := db.WithContext(ctx).Table("user_canvas").
+			Select("id, COALESCE(title, '') AS name").
+			Where("id IN ?", canvasIDs).Scan(&rows).Error; err == nil {
+			for _, r := range rows {
+				names[r.ID] = r.Name
+			}
+		}
+	}
+
+	for i := range hits {
+		hits[i].AppName = names[hits[i].AppID]
+	}
 }

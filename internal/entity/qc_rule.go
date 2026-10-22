@@ -133,14 +133,18 @@ func (QcRuleBinding) TableName() string {
 
 // QcHit is a single quality-inspection match record (compliance evidence).
 type QcHit struct {
-	ID            string `gorm:"column:id;primaryKey;size:32" json:"id"`
-	TenantID      string `gorm:"column:tenant_id;size:64;not null;index" json:"tenant_id"`
-	RuleID        string `gorm:"column:rule_id;size:32;not null;index" json:"rule_id"`
-	RuleName      string `gorm:"column:rule_name;size:50;not null" json:"rule_name"`
-	SessionID     string `gorm:"column:session_id;size:64;not null;index" json:"session_id"`
-	ChatID        string `gorm:"column:chat_id;size:32;not null" json:"chat_id"`
-	AppType       string `gorm:"column:app_type;size:16;not null;index" json:"app_type"`
-	AppID         string `gorm:"column:app_id;size:64;not null;index" json:"app_id"`
+	ID        string `gorm:"column:id;primaryKey;size:32" json:"id"`
+	TenantID  string `gorm:"column:tenant_id;size:64;not null;index" json:"tenant_id"`
+	RuleID    string `gorm:"column:rule_id;size:32;not null;index" json:"rule_id"`
+	RuleName  string `gorm:"column:rule_name;size:50;not null" json:"rule_name"`
+	SessionID string `gorm:"column:session_id;size:64;not null;index" json:"session_id"`
+	ChatID    string `gorm:"column:chat_id;size:32;not null" json:"chat_id"`
+	AppType   string `gorm:"column:app_type;size:16;not null;index" json:"app_type"`
+	AppID     string `gorm:"column:app_id;size:64;not null;index" json:"app_id"`
+	// AppName is resolved at read time (dialog.name for chat, user_canvas.title
+	// for canvas) and never persisted: app names are mutable and must not be
+	// frozen into the hit log.
+	AppName       string `gorm:"-" json:"app_name,omitempty"`
 	Scope         string `gorm:"column:scope;size:16;not null" json:"scope"`
 	Severity      string `gorm:"column:severity;size:16;not null" json:"severity"`
 	MatchedText   string `gorm:"column:matched_text;size:200;not null" json:"matched_text"`

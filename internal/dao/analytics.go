@@ -28,7 +28,12 @@ import (
 // The chat pipeline stores sessions in conversation/conversation_message while
 // the agent canvas runtime stores them in api_4_conversation/
 // api_4_conversation_message. Neither table carries tenant_id, so every query
-// joins dialog to scope by tenant. Time filtering uses create_time (Unix ms,
+// has to join its owner table to scope by tenant.
+//
+// The two chains do NOT share an owner table: chat sessions point at `dialog`,
+// canvas sessions point at `user_canvas` (agent canvases have no dialog row).
+// Joining dialog for canvas sessions returns zero rows, which is how the canvas
+// half of every report silently disappeared. Time filtering uses create_time (Unix ms,
 // always populated by the BaseModel hook) rather than create_date, which is
 // NULL on rows written before that column existed.
 type AnalyticsDAO struct{}
@@ -101,7 +106,7 @@ func (d *AnalyticsDAO) CountChatSessions(ctx context.Context, db *gorm.DB, tenan
 func (d *AnalyticsDAO) CountCanvasSessions(ctx context.Context, db *gorm.DB, tenantID string, from, to int64, appID string) (int64, error) {
 	var total int64
 	q := db.WithContext(ctx).Table("api_4_conversation AS a").
-		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		q = q.Where("a.dialog_id = ?", appID)
@@ -191,7 +196,7 @@ func (d *AnalyticsDAO) ListCanvasSessions(ctx context.Context, db *gorm.DB, tena
 			a.id AS session_id,
 			COALESCE(a.user_id, '') AS customer_id,
 			COALESCE(a.dialog_id, '') AS app_id,
-			COALESCE(d.name, '') AS app_name,
+			COALESCE(u.title, '') AS app_name,
 			a.create_time AS start_time,
 			COALESCE(a.round, 0) AS rounds,
 			COALESCE(a.duration, 0) AS duration_ms,
@@ -205,7 +210,7 @@ func (d *AnalyticsDAO) ListCanvasSessions(ctx context.Context, db *gorm.DB, tena
 				WHERE m.conversation_id = a.id AND m.role = 'assistant'
 					AND m.feedback IS NOT NULL AND m.feedback <> ''
 				ORDER BY m.position DESC LIMIT 1) AS feedback`).
-		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		q = q.Where("a.dialog_id = ?", appID)
@@ -317,11 +322,11 @@ func (d *AnalyticsDAO) GetCanvasDetail(ctx context.Context, db *gorm.DB, tenantI
 			a.id AS session_id,
 			COALESCE(a.user_id, '') AS customer_id,
 			COALESCE(a.dialog_id, '') AS app_id,
-			COALESCE(d.name, '') AS app_name,
+			COALESCE(u.title, '') AS app_name,
 			a.create_time AS start_time,
 			COALESCE(a.round, 0) AS rounds,
 			COALESCE(a.duration, 0) AS duration_ms`).
-		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
 		Where("a.id = ?", sessionID).
 		Take(&head).Error
 	if err != nil {
@@ -448,7 +453,7 @@ func (d *AnalyticsDAO) TotalsCanvas(ctx context.Context, db *gorm.DB, tenantID s
 			0 AS success,
 			COALESCE(AVG(a.round), 0) AS rounds,
 			0 AS tokens`).
-		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		q = q.Where("a.dialog_id = ?", appID)
@@ -482,7 +487,7 @@ func (d *AnalyticsDAO) TotalsCanvas(ctx context.Context, db *gorm.DB, tenantID s
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up = 1 THEN 1 ELSE 0 END), 0) AS good,
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up IS NOT NULL THEN 1 ELSE 0 END), 0) AS rated`).
 		Joins("JOIN api_4_conversation AS a ON a.id = m.conversation_id").
-		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		aggQ = aggQ.Where("a.dialog_id = ?", appID)
@@ -587,7 +592,7 @@ func (d *AnalyticsDAO) TrendCanvas(ctx context.Context, db *gorm.DB, tenantID st
 			COUNT(DISTINCT a.user_id) AS customers,
 			0 AS good,
 			0 AS rated`).
-		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		q = q.Where("a.dialog_id = ?", appID)
@@ -608,7 +613,7 @@ func (d *AnalyticsDAO) TrendCanvas(ctx context.Context, db *gorm.DB, tenantID st
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up = 1 THEN 1 ELSE 0 END), 0) AS good,
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up IS NOT NULL THEN 1 ELSE 0 END), 0) AS rated`).
 		Joins("JOIN api_4_conversation AS a ON a.id = m.conversation_id").
-		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		rateQ = rateQ.Where("a.dialog_id = ?", appID)
@@ -666,13 +671,13 @@ func (d *AnalyticsDAO) AppsCanvas(ctx context.Context, db *gorm.DB, tenantID str
 	err := db.WithContext(ctx).Table("api_4_conversation AS a").
 		Select(`
 			COALESCE(a.dialog_id, '') AS app_id,
-			COALESCE(d.name, '') AS app_name,
+			COALESCE(u.title, '') AS app_name,
 			COUNT(DISTINCT a.id) AS sessions,
 			COUNT(DISTINCT a.user_id) AS customers,
 			COALESCE(MAX(lat.avg_ms), 0) AS avg_ms,
 			0 AS good,
 			0 AS rated`).
-		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
 		Joins(`LEFT JOIN (
 			SELECT canvas_id, AVG(duration_ms) AS avg_ms
 			FROM agent_run
@@ -680,7 +685,7 @@ func (d *AnalyticsDAO) AppsCanvas(ctx context.Context, db *gorm.DB, tenantID str
 			GROUP BY canvas_id
 		) AS lat ON lat.canvas_id = a.dialog_id`, from, to).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to).
-		Group("a.dialog_id, d.name").
+		Group("a.dialog_id, u.title").
 		Order("sessions DESC").
 		Scan(&rows).Error
 	return rows, err
@@ -698,10 +703,12 @@ func (d *AnalyticsDAO) CountDistinctCustomers(ctx context.Context, db *gorm.DB, 
 		FROM conversation AS c
 		JOIN dialog AS d ON d.id = c.dialog_id AND d.tenant_id = ?
 		WHERE c.create_time >= ? AND c.create_time <= ? AND COALESCE(c.user_id, '') <> ''`
+	// Canvas apps live in user_canvas, not dialog: agent canvases have no dialog
+	// row at all, so the old JOIN dialog silently dropped every canvas session.
 	canvasQ := `
 		SELECT a.user_id AS uid
 		FROM api_4_conversation AS a
-		JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?
+		JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?
 		WHERE a.create_time >= ? AND a.create_time <= ? AND COALESCE(a.user_id, '') <> ''`
 	args := []any{tenantID, from, to, tenantID, from, to}
 	if appID != "" {
@@ -753,7 +760,7 @@ func (d *AnalyticsDAO) AppRatesCanvas(ctx context.Context, db *gorm.DB, tenantID
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up = 1 THEN 1 ELSE 0 END), 0) AS good,
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up IS NOT NULL THEN 1 ELSE 0 END), 0) AS rated`).
 		Joins("JOIN api_4_conversation AS a ON a.id = m.conversation_id").
-		Joins("JOIN dialog AS d ON d.id = a.dialog_id AND d.tenant_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to).
 		Group("a.dialog_id").
 		Scan(&rows).Error

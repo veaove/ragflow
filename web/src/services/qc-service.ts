@@ -82,6 +82,8 @@ export interface IQcHit {
   chat_id: string;
   app_type: QcAppType;
   app_id: string;
+  /** Resolved server-side: dialog.name for chat, user_canvas.title for canvas. */
+  app_name?: string;
   scope: QcScope;
   severity: QcSeverity;
   matched_text: string;

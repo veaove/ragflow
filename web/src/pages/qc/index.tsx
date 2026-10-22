@@ -406,6 +406,7 @@ function HitsPanel() {
             <TableHeader className="bg-background-second">
               <TableRow>
                 <TableHead className="h-10 text-text-title">时间</TableHead>
+                <TableHead className="h-10 text-text-title">应用</TableHead>
                 <TableHead className="h-10 text-text-title">会话</TableHead>
                 <TableHead className="h-10 text-text-title">规则</TableHead>
                 <TableHead className="h-10 text-text-title">命中文本</TableHead>
@@ -422,6 +423,13 @@ function HitsPanel() {
                 <TableRow key={hit.id}>
                   <TableCell className="whitespace-nowrap text-text-secondary">
                     {formatTime(hit.create_time)}
+                  </TableCell>
+                  <TableCell className="max-w-[160px] truncate text-text-title">
+                    {hit.app_name || (
+                      <span className="font-mono text-xs text-text-secondary">
+                        {hit.app_id}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="max-w-[180px] truncate font-mono text-xs text-text-secondary">
                     {hit.session_id}
