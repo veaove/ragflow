@@ -17,6 +17,7 @@
 import { useIsDarkTheme } from '@/components/theme-provider';
 import { Button } from '@/components/ui/button';
 import { useSetModalState, useTranslate } from '@/hooks/common-hooks';
+import { useTranslation } from 'react-i18next';
 import { LangfuseCard } from '@/pages/user-setting/setting-model/langfuse';
 import apiDoc from '@parent/docs/references/http_api_reference.md?raw';
 import { Loader2 } from 'lucide-react';
@@ -62,8 +63,31 @@ const ApiContent = ({ id, idKey }: { id?: string; idKey: string }) => {
   } = useSetModalState();
 
   const isDarkTheme = useIsDarkTheme();
+  const { i18n } = useTranslation();
 
-  const cleanDoc = useMemo(() => removeFrontmatter(apiDoc), []);
+  // The Chinese reference is a separate file loaded on demand: it roughly
+  // doubles the markdown payload, so English users should not download it.
+  // Falls back to the English original if the chunk fails to load.
+  const [rawDoc, setRawDoc] = useState<string>(apiDoc);
+  useEffect(() => {
+    if (!(i18n.language || '').toLowerCase().startsWith('zh')) {
+      setRawDoc(apiDoc);
+      return;
+    }
+    let cancelled = false;
+    import('@parent/docs/references/http_api_reference.zh.md?raw')
+      .then((m) => {
+        if (!cancelled) setRawDoc(m.default);
+      })
+      .catch(() => {
+        // Keep the English doc rather than showing an empty page.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [i18n.language]);
+
+  const cleanDoc = useMemo(() => removeFrontmatter(rawDoc), [rawDoc]);
 
   // Defer the heavy 230KB markdown rendering so the page paints immediately.
   const [docReady, setDocReady] = useState(false);
