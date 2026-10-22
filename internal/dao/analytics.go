@@ -414,12 +414,16 @@ func (d *AnalyticsDAO) TotalsChat(ctx context.Context, db *gorm.DB, tenantID str
 		Rounds float64 `gorm:"column:rounds"`
 	}
 	var agg msgAgg
+	// rounds counts user turns, not raw messages: one reply can be split across
+	// several assistant rows (thinking, segments), and the canvas chain reads a
+	// real round counter from api_4_conversation.round. Counting every message
+	// here inflated the merged average roughly twofold.
 	aggQ := db.WithContext(ctx).Table("conversation_message AS m").
 		Select(`
 			COALESCE(AVG(CASE WHEN m.role = 'assistant' AND m.duration_ms > 0 THEN m.duration_ms END), 0) AS avg_ms,
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up = 1 THEN 1 ELSE 0 END), 0) AS good,
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up IS NOT NULL THEN 1 ELSE 0 END), 0) AS rated,
-			COALESCE(COUNT(*) / NULLIF(COUNT(DISTINCT m.conversation_id), 0), 0) AS rounds`).
+			COALESCE(SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) / NULLIF(COUNT(DISTINCT m.conversation_id), 0), 0) AS rounds`).
 		Joins("JOIN conversation AS c ON c.id = m.conversation_id").
 		Joins("JOIN dialog AS d ON d.id = c.dialog_id AND d.tenant_id = ?", tenantID).
 		Where("c.create_time >= ? AND c.create_time <= ?", from, to)
@@ -645,6 +649,10 @@ type AppRow struct {
 }
 
 // AppsChat groups the chat chain by app.
+//
+// Response latency lives in conversation_message.duration_ms (per assistant
+// message), so it is pulled via a LEFT JOIN subquery — the session-level GROUP
+// BY cannot produce it on its own, matching TotalsChat's two-pass approach.
 func (d *AnalyticsDAO) AppsChat(ctx context.Context, db *gorm.DB, tenantID string, from, to int64) ([]AppRow, error) {
 	var rows []AppRow
 	err := db.WithContext(ctx).Table("conversation AS c").
@@ -653,10 +661,18 @@ func (d *AnalyticsDAO) AppsChat(ctx context.Context, db *gorm.DB, tenantID strin
 			COALESCE(d.name, '') AS app_name,
 			COUNT(DISTINCT c.id) AS sessions,
 			COUNT(DISTINCT c.user_id) AS customers,
-			0 AS avg_ms,
+			COALESCE(MAX(lat.avg_ms), 0) AS avg_ms,
 			0 AS good,
 			0 AS rated`).
 		Joins("JOIN dialog AS d ON d.id = c.dialog_id AND d.tenant_id = ?", tenantID).
+		Joins(`LEFT JOIN (
+			SELECT c2.dialog_id, AVG(m.duration_ms) AS avg_ms
+			FROM conversation_message AS m
+			JOIN conversation AS c2 ON c2.id = m.conversation_id
+			WHERE m.role = 'assistant' AND m.duration_ms > 0
+			  AND c2.create_time >= ? AND c2.create_time <= ?
+			GROUP BY c2.dialog_id
+		) AS lat ON lat.dialog_id = c.dialog_id`, from, to).
 		Where("c.create_time >= ? AND c.create_time <= ?", from, to).
 		Group("c.dialog_id, d.name").
 		Order("sessions DESC").

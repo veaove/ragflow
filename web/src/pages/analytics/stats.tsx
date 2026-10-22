@@ -297,6 +297,7 @@ export function AnalyticsStatsPanel({
   const [stats, setStats] = useState<IAnalyticsStats | null>(null);
   const [trend, setTrend] = useState<IAnalyticsTrendPoint[]>([]);
   const [apps, setApps] = useState<IAnalyticsAppRow[]>([]);
+  const appsTop6 = useMemo(() => apps.slice(0, 6), [apps]);
   const [loading, setLoading] = useState(false);
 
   const range = useMemo(() => {
@@ -332,9 +333,7 @@ export function AnalyticsStatsPanel({
 
   return (
     <div
-      className={
-        embedded ? 'flex flex-col gap-4' : 'flex flex-col gap-4 p-5'
-      }
+      className={embedded ? 'flex flex-col gap-4' : 'flex flex-col gap-4 p-5'}
     >
       <div className="flex items-center gap-3">
         {!embedded && (
@@ -458,7 +457,7 @@ export function AnalyticsStatsPanel({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {apps.map((a) => (
+              {appsTop6.map((a) => (
                 <TableRow key={a.app_id}>
                   <TableCell className="max-w-0 truncate pl-4 text-text-primary">
                     {a.app_name || a.app_id}
