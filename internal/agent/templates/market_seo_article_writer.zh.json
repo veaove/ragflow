@@ -50,7 +50,7 @@
             "presence_penalty": 0.2,
             "prompts": [
               {
-                "content": "The parse and keyword agent output is {Agent:ClearRabbitsScream@content}",
+                "content": "解析与关键词 Agent 的输出：{Agent:ClearRabbitsScream@content}",
                 "role": "user"
               }
             ],
@@ -131,7 +131,7 @@
             "presence_penalty": 0.5,
             "prompts": [
               {
-                "content": "The user query is {sys.query}",
+                "content": "用户的问题是：{sys.query}",
                 "role": "user"
               }
             ],
@@ -182,7 +182,7 @@
             "presence_penalty": 0.5,
             "prompts": [
               {
-                "content": "The parse and keyword agent output is {Agent:ClearRabbitsScream@content}\n\n\n\nThe Outline agent output is {Agent:BetterSitesSend@content}",
+                "content": "解析与关键词 Agent 的输出：{Agent:ClearRabbitsScream@content}\n\n\n\n大纲 Agent 的输出：{Agent:BetterSitesSend@content}",
                 "role": "user"
               }
             ],
@@ -263,7 +263,7 @@
             "presence_penalty": 0.5,
             "prompts": [
               {
-                "content": "The parse and keyword agent output is {Agent:ClearRabbitsScream@content}\n\nThe Outline agent output is {Agent:BetterSitesSend@content}\n\nThe Body agent output is {Agent:EagerNailsRemain@content}",
+                "content": "解析与关键词 Agent 的输出：{Agent:ClearRabbitsScream@content}\n\n大纲 Agent 的输出：{Agent:BetterSitesSend@content}\n\n正文 Agent 的输出：{Agent:EagerNailsRemain@content}",
                 "role": "user"
               }
             ],
