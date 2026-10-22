@@ -371,20 +371,14 @@ func tenantSMTPConfig() (common.SMTPConfig, bool) {
 	return smtpCfg, true
 }
 
-func sendTenantInviteEmail(smtpCfg common.SMTPConfig, toEmail, recipientEmail, tenantID, inviter string) error {
+// sendTenantMail assembles and delivers one plain-text message over SMTP.
+// Shared by the invitation and the direct-add notification.
+func sendTenantMail(smtpCfg common.SMTPConfig, toEmail, subject, body string) error {
 	from := mail.Address{
 		Name:    smtpCfg.MailFromName,
 		Address: smtpCfg.MailFromAddress,
 	}
 	to := mail.Address{Address: toEmail}
-	subject := "RAGFlow Invitation"
-	body := fmt.Sprintf(
-		"Hi %s,\n%s has invited you to join their team (ID: %s).\nClick the link below to complete your registration:\n%s\nIf you did not request this, please ignore this email.\n",
-		recipientEmail,
-		inviter,
-		tenantID,
-		smtpCfg.MailFrontendURL,
-	)
 	message := strings.Join([]string{
 		fmt.Sprintf("From: %s", from.String()),
 		fmt.Sprintf("To: %s", to.String()),
@@ -442,6 +436,31 @@ func sendTenantInviteEmail(smtpCfg common.SMTPConfig, toEmail, recipientEmail, t
 	return client.Quit()
 }
 
+func sendTenantInviteEmail(smtpCfg common.SMTPConfig, toEmail, recipientEmail, tenantID, inviter string) error {
+	body := fmt.Sprintf(
+		"Hi %s,\n%s has invited you to join their team (ID: %s).\nClick the link below to complete your registration://n%s//nIf you did not request this, please ignore this email.\n",
+		recipientEmail,
+		inviter,
+		tenantID,
+		smtpCfg.MailFrontendURL,
+	)
+	return sendTenantMail(smtpCfg, toEmail, "RAGFlow Invitation", body)
+}
+
+// sendTenantAddedEmail tells a user they were added to a team without having
+// accepted an invitation. A silent direct add gives the recipient no chance to
+// notice or object.
+func sendTenantAddedEmail(smtpCfg common.SMTPConfig, toEmail, recipientEmail, tenantID, inviter string) error {
+	body := fmt.Sprintf(
+		"Hi %s,\n%s has added you to their team (ID: %s).\nYou can sign in at %s.\nIf you believe this was a mistake, contact your team administrator to be removed.\n",
+		recipientEmail,
+		inviter,
+		tenantID,
+		smtpCfg.MailFrontendURL,
+	)
+	return sendTenantMail(smtpCfg, toEmail, "You have been added to a team", body)
+}
+
 func sendMailWithTLS(addr, host string, auth smtp.Auth, from string, to []string, msg []byte) error {
 	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host})
 	if err != nil {
@@ -480,6 +499,77 @@ func sendMailWithTLS(addr, host string, auth smtp.Auth, from string, to []string
 		return err
 	}
 	return client.Quit()
+}
+
+// FindCandidateUser handles GET /tenants/:tenant_id/candidate-user?email=
+//
+// Exact-email lookup only. It deliberately offers no fuzzy or list mode: a
+// tenant owner must not be able to enumerate the platform's users.
+func (h *TenantHandler) FindCandidateUser(c *gin.Context) {
+	user, errorCode, errorMessage := GetUser(c)
+	if errorCode != common.CodeSuccess {
+		common.ErrorWithCode(c, errorCode, errorMessage)
+		return
+	}
+	tenantID := c.Param("tenant_id")
+	if tenantID == "" {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "tenant_id is required")
+		return
+	}
+
+	resp, code, err := h.tenantService.FindCandidateUser(c.Request.Context(), user.ID, tenantID, c.Query("email"))
+	if err != nil {
+		common.ResponseWithCodeData(c, code, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, resp, "success")
+}
+
+// AddMemberDirect handles POST /tenants/:tenant_id/members.
+//
+// Adds an already-registered user immediately, without an invitation to accept.
+// The membership is recorded with join_type=direct so audit can separate it
+// from invitation-based joins.
+func (h *TenantHandler) AddMemberDirect(c *gin.Context) {
+	user, errorCode, errorMessage := GetUser(c)
+	if errorCode != common.CodeSuccess {
+		common.ErrorWithCode(c, errorCode, errorMessage)
+		return
+	}
+	tenantID := c.Param("tenant_id")
+	if tenantID == "" {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "tenant_id is required")
+		return
+	}
+
+	var req service.AddMemberDirectRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "invalid request body: "+err.Error())
+		return
+	}
+
+	resp, code, err := h.tenantService.AddMemberDirect(c.Request.Context(), user.ID, tenantID, &req)
+	if err != nil {
+		common.ResponseWithCodeData(c, code, nil, err.Error())
+		return
+	}
+
+	inviter := user.Nickname
+	if inviter == "" {
+		inviter = user.Email
+	}
+	// The member is already in the tenant at this point; a broken SMTP setup
+	// must not turn a successful add into an error response.
+	if smtpCfg, ok := tenantSMTPConfig(); ok {
+		if err = sendTenantAddedEmail(smtpCfg, req.Email, req.Email, tenantID, inviter); err != nil {
+			common.Warn("failed to send direct-add notification email",
+				zap.String("tenant_id", tenantID),
+				zap.String("email", req.Email),
+				zap.Error(err))
+		}
+	}
+
+	common.SuccessWithData(c, resp, "success")
 }
 
 // AddTenantMember invites a user (by email) to the tenant.

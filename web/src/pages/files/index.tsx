@@ -118,7 +118,9 @@ export default function Files() {
       {breadcrumbItems.length > 0 ? (
         <FileBreadcrumb></FileBreadcrumb>
       ) : (
-        t('fileManager.files')
+        // 页面标题用 fileManager.title（文件管理），不要复用 fileManager.files
+        // ——后者是"文件"这个资源名词，文件上传器也在用。
+        t('fileManager.title')
       )}
     </div>
   );

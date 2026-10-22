@@ -104,6 +104,28 @@ export const listTenantUser = (tenantId: string) =>
 export const addTenantUser = (tenantId: string, email: string) =>
   post(api.addTenantUser(tenantId), { email });
 
+export interface ICandidateUser {
+  status: 'addable' | 'member' | 'invited' | 'owner' | 'not_found';
+  user_id?: string;
+  nickname_masked?: string;
+  email_masked?: string;
+}
+
+/**
+ * Exact-email lookup for the "add existing member" dialog.
+ *
+ * The backend offers no fuzzy or list variant on purpose: a tenant owner must
+ * not be able to enumerate the platform's users.
+ */
+export const findCandidateUser = (tenantId: string, email: string) =>
+  request.get(api.candidateTenantUser(tenantId), { params: { email } });
+
+export const addMemberDirect = (
+  tenantId: string,
+  email: string,
+  role: 'normal' | 'admin',
+) => post(api.addTenantMemberDirect(tenantId), { email, role });
+
 export const deleteTenantUser = ({
   tenantId,
   userId,

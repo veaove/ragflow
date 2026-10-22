@@ -24,6 +24,11 @@ type UserTenant struct {
 	Role      string  `gorm:"column:role;size:32;not null;index" json:"role"`
 	InvitedBy string  `gorm:"column:invited_by;size:32;not null;index" json:"invited_by"`
 	Status    *string `gorm:"column:status;size:1;index;default:'1'" json:"status,omitempty"`
+	// JoinType distinguishes how the member entered: "invite" (accepted an
+	// invitation) or "direct" (an owner added them without confirmation).
+	// Row role alone cannot tell these apart, and audit needs to.
+	// Existing rows are all invitation-based, hence the default.
+	JoinType string `gorm:"column:join_type;size:16;not null;default:'invite';index" json:"join_type"`
 	BaseModel
 }
 

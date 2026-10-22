@@ -94,6 +94,12 @@ export function QcManagement() {
 
   return (
     <div className="flex h-full flex-col">
+      <div className="px-4 pt-4">
+        <h1 className="text-2xl font-medium text-text-primary">会话质检</h1>
+        <p className="mt-1 text-sm text-text-secondary">
+          配置质检规则、查看实时命中与历史记录
+        </p>
+      </div>
       <div className="flex items-center gap-2 border-b border-border-base px-4 pt-3">
         {TABS.map((t) => (
           <Button

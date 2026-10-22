@@ -19,14 +19,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   useFetchUserInfo,
   useListTenantUser,
+  UserSettingApiAction,
 } from '@/hooks/use-user-setting-request';
 import { useTranslation } from 'react-i18next';
 
 import Spotlight from '@/components/spotlight';
 import { SearchInput } from '@/components/ui/input';
-import { UserPlus } from 'lucide-react';
+import { UserPlus, UserRoundPlus } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ProfileSettingWrapperCard } from '../components/user-setting-header';
+import AddExistingMemberModal from './add-existing-member-modal';
 import AddingUserModal from './add-user-modal';
 import { useAddUser } from './hooks';
 import TenantTable from './tenant-table';
@@ -37,6 +40,10 @@ const UserSettingTeam = () => {
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [searchUser, setSearchUser] = useState('');
+  // "Add existing member" dialog: picks from already-registered users instead
+  // of sending an invitation.
+  const [addExistingVisible, setAddExistingVisible] = useState(false);
+  const queryClient = useQueryClient();
   useListTenantUser();
   const {
     addingTenantModalVisible,
@@ -54,9 +61,14 @@ const UserSettingTeam = () => {
     <ProfileSettingWrapperCard
       header={
         <header>
+          {/* 页面标题与左侧菜单项一致（setting.team = 团队管理）；
+              昵称与工作空间是页面内容，下沉为副标题，不再充当标题。 */}
           <h2 className="text-2xl font-medium text-text-primary">
-            {userInfo?.nickname + ' ' + t('setting.workspace')}
+            {t('setting.team')}
           </h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            {userInfo?.nickname} · {t('setting.workspace')}
+          </p>
         </header>
       }
     >
@@ -77,6 +89,14 @@ const UserSettingTeam = () => {
                 value={searchUser}
                 onChange={(e) => setSearchUser(e.target.value)}
               />
+              <Button
+                variant="outline"
+                onClick={() => setAddExistingVisible(true)}
+                data-testid="add-existing-member-btn"
+              >
+                <UserRoundPlus className="h-4 w-4" />
+                {t('setting.addExistingMember')}
+              </Button>
               <Button onClick={showAddingTenantModal}>
                 <UserPlus className=" h-4 w-4" />
                 {t('setting.invite')}
@@ -107,6 +127,18 @@ const UserSettingTeam = () => {
           </CardContent>
         </Card>
       </div>
+
+      {addExistingVisible && (
+        <AddExistingMemberModal
+          visible
+          hideModal={() => setAddExistingVisible(false)}
+          onAdded={() => {
+            queryClient.invalidateQueries({
+              queryKey: [UserSettingApiAction.ListTenantUser],
+            });
+          }}
+        />
+      )}
 
       {addingTenantModalVisible && (
         <AddingUserModal

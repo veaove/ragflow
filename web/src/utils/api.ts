@@ -32,6 +32,11 @@ export default {
 
   // team
   addTenantUser: (tenantId: string) => `${restAPIv1}/tenants/${tenantId}/users`,
+  // Direct add (no invitation) and its exact-email candidate lookup.
+  candidateTenantUser: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/candidate-user`,
+  addTenantMemberDirect: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/members`,
   listTenantUser: (tenantId: string) =>
     `${restAPIv1}/tenants/${tenantId}/users`,
   deleteTenantUser: (tenantId: string) =>

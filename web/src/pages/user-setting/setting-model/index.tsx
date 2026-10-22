@@ -289,8 +289,16 @@ const SettingModelV2: FC = () => {
   );
 
   return (
-    <div className="flex w-full h-full border-[0.5px] border-border-button rounded-lg relative overflow-hidden">
+    <div className="flex w-full h-full flex-col border-[0.5px] border-border-button rounded-lg relative overflow-hidden">
       <Spotlight />
+      {/* 页面标题与左侧菜单项一致（setting.model = 模型配置）。
+          下方两栏放在独立的 flex 容器里，避免标题挤压原有滚动区域。 */}
+      <header className="shrink-0 border-b-[0.5px] border-border-button px-5 pt-4 pb-3">
+        <h1 className="text-2xl font-medium text-text-primary">
+          {tSetting('model')}
+        </h1>
+      </header>
+      <div className="flex flex-1 min-h-0">
       <section className="flex flex-col gap-4 w-[320px] shrink-0 px-5 border-r-[0.5px] border-border-button overflow-auto scrollbar-auto">
         <Sidebar selection={selection} onSelect={setSelection} />
       </section>
@@ -353,6 +361,7 @@ const SettingModelV2: FC = () => {
           </>
         )}
       </section>
+      </div>
     </div>
   );
 };

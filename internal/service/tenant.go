@@ -895,3 +895,185 @@ func (s *TenantService) AcceptInvite(ctx context.Context, userID, tenantID strin
 	}
 	return common.CodeSuccess, nil
 }
+
+// Candidate user statuses returned by FindCandidateUser.
+const (
+	CandidateStatusAddable  = "addable"
+	CandidateStatusMember   = "member"
+	CandidateStatusInvited  = "invited"
+	CandidateStatusOwner    = "owner"
+	CandidateStatusNotFound = "not_found"
+)
+
+// Join type values written to user_tenant.join_type.
+const (
+	JoinTypeInvite = "invite"
+	JoinTypeDirect = "direct"
+)
+
+// CandidateUserResponse describes whether an email can be added to a tenant.
+//
+// Only masked identity data is returned. Callers must not be able to turn this
+// endpoint into a platform user directory, so it answers for one exact email at
+// a time and never exposes full nicknames before the add is confirmed.
+type CandidateUserResponse struct {
+	Status         string `json:"status"`
+	UserID         string `json:"user_id,omitempty"`
+	NicknameMasked string `json:"nickname_masked,omitempty"`
+	EmailMasked    string `json:"email_masked,omitempty"`
+}
+
+// maskNickname keeps the first and last rune: 张三丰 -> 张*丰.
+func maskNickname(nickname string) string {
+	runes := []rune(nickname)
+	switch len(runes) {
+	case 0:
+		return ""
+	case 1:
+		return string(runes[0]) + "*"
+	case 2:
+		return string(runes[0]) + "*"
+	default:
+		return string(runes[0]) + "**" + string(runes[len(runes)-1])
+	}
+}
+
+// maskEmail keeps the first two local-part characters and the domain:
+// zhangsan@example.com -> zh******@example.com
+func maskEmail(email string) string {
+	at := strings.Index(email, "@")
+	if at <= 0 {
+		return "***"
+	}
+	local, domain := email[:at], email[at+1:]
+	if len(local) <= 2 {
+		return "***@" + domain
+	}
+	return local[:2] + strings.Repeat("*", max(1, len(local)-2)) + "@" + domain
+}
+
+// FindCandidateUser resolves a single email against a tenant and reports whether
+// it can be added. Exact-match only by design (see CandidateUserResponse).
+func (s *TenantService) FindCandidateUser(ctx context.Context, operatorID, tenantID, email string) (*CandidateUserResponse, common.ErrorCode, error) {
+	if err := permission.NewDatabaseChecker(dao.DB).CheckTenant(ctx, permission.Subject{UserID: operatorID}, tenantID, permission.TenantOwner); err != nil {
+		code, permissionErr := permissionresponse.Normalize(err)
+		return nil, code, permissionErr
+	}
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil, common.CodeArgumentError, fmt.Errorf("email is required")
+	}
+
+	invitee, err := s.userDAO.GetByEmail(ctx, dao.DB, email)
+	if err != nil {
+		if dao.IsNotFoundErr(err) {
+			return &CandidateUserResponse{Status: CandidateStatusNotFound}, common.CodeSuccess, nil
+		}
+		return nil, common.CodeServerError, err
+	}
+
+	resp := &CandidateUserResponse{
+		UserID:         invitee.ID,
+		NicknameMasked: maskNickname(invitee.Nickname),
+		EmailMasked:    maskEmail(invitee.Email),
+	}
+
+	relation, err := s.userTenantDAO.FilterByUserIDAndTenantID(ctx, dao.DB, invitee.ID, tenantID)
+	if err != nil && !dao.IsNotFoundErr(err) {
+		return nil, common.CodeServerError, err
+	}
+	if relation != nil {
+		switch relation.Role {
+		case TenantRoleOwner:
+			resp.Status = CandidateStatusOwner
+		case TenantRoleInvite:
+			resp.Status = CandidateStatusInvited
+		default:
+			resp.Status = CandidateStatusMember
+		}
+		return resp, common.CodeSuccess, nil
+	}
+
+	resp.Status = CandidateStatusAddable
+	return resp, common.CodeSuccess, nil
+}
+
+// AddMemberDirectRequest adds an already-registered user without an invitation.
+//
+// The user is addressed by email rather than by user id so a caller cannot
+// probe for arbitrary ids; the address is re-resolved server-side.
+type AddMemberDirectRequest struct {
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
+// AddMemberDirect adds a registered user to the tenant immediately (no
+// acceptance step), recording join_type=direct for audit.
+func (s *TenantService) AddMemberDirect(ctx context.Context, operatorID, tenantID string, req *AddMemberDirectRequest) (*AddMemberResponse, common.ErrorCode, error) {
+	if err := permission.NewDatabaseChecker(dao.DB).CheckTenant(ctx, permission.Subject{UserID: operatorID}, tenantID, permission.TenantOwner); err != nil {
+		code, permissionErr := permissionresponse.Normalize(err)
+		return nil, code, permissionErr
+	}
+	email := strings.TrimSpace(req.Email)
+	if email == "" {
+		return nil, common.CodeArgumentError, fmt.Errorf("email is required")
+	}
+	role := req.Role
+	if role == "" {
+		role = TenantRoleNormal
+	}
+	// Owner is deliberately not assignable through this path.
+	if role != TenantRoleNormal && role != TenantRoleAdmin {
+		return nil, common.CodeArgumentError, fmt.Errorf("role must be normal or admin")
+	}
+
+	member, err := s.userDAO.GetByEmail(ctx, dao.DB, email)
+	if err != nil {
+		if dao.IsNotFoundErr(err) {
+			return nil, common.CodeDataError, fmt.Errorf("user not found")
+		}
+		return nil, common.CodeDataError, err
+	}
+
+	// Re-check right before writing: another admin may have added the same user
+	// between the candidate lookup and this call.
+	relation, err := s.userTenantDAO.FilterByUserIDAndTenantID(ctx, dao.DB, member.ID, tenantID)
+	if err != nil && !dao.IsNotFoundErr(err) {
+		return nil, common.CodeServerError, err
+	}
+	if relation != nil {
+		switch relation.Role {
+		case TenantRoleOwner:
+			return nil, common.CodeDataError, fmt.Errorf("user is already the tenant owner")
+		case TenantRoleInvite:
+			return nil, common.CodeDataError, fmt.Errorf("user already has a pending invitation")
+		default:
+			return nil, common.CodeDataError, fmt.Errorf("user is already a member")
+		}
+	}
+
+	status := string(entity.StatusValid)
+	ut := &entity.UserTenant{
+		ID:        common.GenerateUUID(),
+		UserID:    member.ID,
+		TenantID:  tenantID,
+		Role:      role,
+		InvitedBy: operatorID,
+		Status:    &status,
+		JoinType:  JoinTypeDirect,
+	}
+	if err = s.userTenantDAO.Create(ctx, dao.DB, ut); err != nil {
+		return nil, common.CodeServerError, fmt.Errorf("failed to add member: %w", err)
+	}
+
+	avatar := ""
+	if member.Avatar != nil {
+		avatar = *member.Avatar
+	}
+	return &AddMemberResponse{
+		ID:       member.ID,
+		Avatar:   avatar,
+		Email:    member.Email,
+		Nickname: member.Nickname,
+	}, common.CodeSuccess, nil
+}

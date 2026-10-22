@@ -65,7 +65,7 @@ type Router struct {
 	// already long NewRouter parameter list does not grow for one more route
 	// group. synonymOnce keeps concurrent first requests from racing.
 	synonymHandler *handler.SynonymHandler
-	synonymOnce   sync.Once
+	synonymOnce    sync.Once
 
 	// changeSetHandler serves the staged-edit workflow; lazily built for the
 	// same reason as synonymHandler.
@@ -74,9 +74,9 @@ type Router struct {
 
 	// qcHandler serves the quality-inspection routes; lazily built to keep the
 	// already long NewRouter parameter list from growing.
-	qcHandler *handler.QcHandler
+	qcHandler        *handler.QcHandler
 	analyticsHandler *handler.AnalyticsHandler
-	qcOnce    sync.Once
+	qcOnce           sync.Once
 }
 
 // getQcHandler lazily constructs the quality-inspection handler.
@@ -343,6 +343,11 @@ func (r *Router) Setup(engine *gin.Engine) {
 				tenants.PATCH("/:tenant_id", r.tenantHandler.AcceptTenantInvite)
 				tenants.GET("/:tenant_id/users", r.tenantHandler.ListTenantMembers)
 				tenants.POST("/:tenant_id/users", r.tenantHandler.AddTenantMember)
+				// Direct add (no invitation to accept) and its candidate lookup.
+				// Kept separate from /users so "invite" and "add" never share a
+				// handler with two behaviours.
+				tenants.GET("/:tenant_id/candidate-user", r.tenantHandler.FindCandidateUser)
+				tenants.POST("/:tenant_id/members", r.tenantHandler.AddMemberDirect)
 				tenants.DELETE("/:tenant_id/users", r.tenantHandler.RemoveTenantMember)
 			}
 
