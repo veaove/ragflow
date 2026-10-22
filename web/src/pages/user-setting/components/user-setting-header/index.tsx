@@ -33,13 +33,18 @@ export function ProfileSettingWrapperCard({
   return (
     <Card
       as="article"
-      className="relative w-full border-border-button bg-transparent border-0.5 flex flex-col"
+      // h-full + min-h-0：卡片要吃掉容器传下来的确定高度，内部 `flex-1 h-0` 的
+      // CardContent 才能真正限高并滚动。缺了它，数据源/MCP/团队的列表会一路
+      // 撑高再被外层 overflow-hidden 裁掉——看起来就是「滚不动」。
+      className="relative w-full h-full min-h-0 border-border-button bg-transparent border-0.5 flex flex-col"
     >
       <CardHeader className="flex-0 border-b-0.5 border-border-button p-5">
         {header}
       </CardHeader>
 
-      <CardContent className="flex-1 h-0 p-0">{children}</CardContent>
+      <CardContent className="flex-1 h-0 min-h-0 p-0 overflow-y-auto scrollbar-auto">
+        {children}
+      </CardContent>
 
       <Spotlight />
     </Card>

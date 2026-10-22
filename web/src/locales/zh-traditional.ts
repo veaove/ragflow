@@ -46,11 +46,6 @@ export default {
       running: '執行中...',
     },
     overview: {
-      title: '系統總覽',
-      subtitle: {
-        department: '客服中心',
-        console: '知識庫運營數據看板',
-      },
       metric: {
         datasets: '知識庫總數',
         documents: '文檔總數',
@@ -102,7 +97,7 @@ export default {
       chat: '知識問答',
       register: '註冊',
       signin: '登入',
-      home: '首頁',
+      home: '總覽',
       setting: '用戶設置',
       logout: '登出',
       fileManager: '文件管理',

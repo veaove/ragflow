@@ -112,7 +112,10 @@ export default function ListFilterBar({
         className,
       )}
     >
-      <h1 className="flex min-w-0 shrink-0 items-center gap-2.5 text-2xl font-semibold">
+      {/* 全站统一的页面主标题口径：24px / 500 / text-text-primary。
+          各列表页共用这一行，改这里就等于改所有菜单页的表头，
+          不要再在页面里另写 font-semibold / font-bold。 */}
+      <h1 className="flex min-w-0 shrink-0 items-center gap-2.5 text-2xl font-medium text-text-primary">
         {typeof icon === 'string' ? (
           <HomeIcon
             name={`${icon}`}

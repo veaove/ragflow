@@ -101,7 +101,9 @@ export default function Studio() {
     <section className="p-5">
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">{t('header.studio')}</h1>
+          <h1 className="text-2xl font-medium text-text-primary">
+            {t('header.studio')}
+          </h1>
           <p className="mt-1 text-sm text-text-secondary">
             {t('studio.subtitle')}
           </p>

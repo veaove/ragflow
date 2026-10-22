@@ -143,11 +143,6 @@ export default {
       running: 'Running...',
     },
     overview: {
-      title: 'System Overview',
-      subtitle: {
-        department: 'Customer Service',
-        console: 'Knowledge base operations dashboard',
-      },
       metric: {
         datasets: 'Datasets',
         documents: 'Documents',
@@ -225,7 +220,7 @@ export default {
       chat: 'Chat',
       register: 'Register',
       signin: 'Sign in',
-      home: 'Home',
+      home: 'Overview',
       setting: 'User settings',
       logout: 'Log out',
       fileManager: 'File',

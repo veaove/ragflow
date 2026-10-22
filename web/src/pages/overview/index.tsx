@@ -129,13 +129,6 @@ export default function Overview() {
   const cardsLoading = datasetsQ.isPending || agentQ.isPending;
   const statsLoading = statsQ.isPending;
 
-  /** 顶部副标题里的环境信息。 */
-  const subtitle = (
-    <span className="text-sm text-text-secondary">
-      {t('subtitle.department')} · {t('subtitle.console')}
-    </span>
-  );
-
   return (
     <PageContainer>
       <Tabs defaultValue="overview" className="gap-6">
@@ -153,12 +146,9 @@ export default function Overview() {
 
         <TabsContent value="overview">
           <div className="flex flex-col gap-6">
-        <header className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold text-text-primary">
-            {t('title')}
-          </h1>
-          {subtitle}
-        </header>
+        {/* 页头不再重复「系统总览 / 客服中心 · 知识库运营数据看板」：
+            左侧菜单已经标出当前位置，副标题也不含任何可操作信息，
+            占掉首屏一块高度却只重复一句品牌话术。 */}
 
         {/* 指标卡片 */}
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

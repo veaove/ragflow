@@ -78,7 +78,7 @@ export function Sidebar({ selection, onSelect }: SidebarProps) {
   }, [providers, search, addedSet]);
 
   return (
-    <div className="flex flex-col gap-3 py-4 text-text-primary">
+    <div className="flex flex-col gap-3 py-4 text-text-primary h-full min-h-0">
       <button
         type="button"
         className={cn(
@@ -106,7 +106,7 @@ export function Sidebar({ selection, onSelect }: SidebarProps) {
         className="w-full border-none"
       />
 
-      <div className="flex flex-col gap-1 overflow-auto scrollbar-auto">
+      <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto scrollbar-auto">
         {filteredProviders.map((provider) => {
           const isActive = selection === provider.name;
           const isAdded = addedSet.has(provider.name);

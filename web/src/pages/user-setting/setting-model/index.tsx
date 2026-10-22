@@ -299,7 +299,10 @@ const SettingModelV2: FC = () => {
         </h1>
       </header>
       <div className="flex flex-1 min-h-0">
-      <section className="flex flex-col gap-4 w-[320px] shrink-0 px-5 border-r-[0.5px] border-border-button overflow-auto scrollbar-auto">
+      {/* 左栏自身不滚动：滚动交给 Sidebar 里的 provider 列表，
+          这样「设置默认模型 / 可选模型 / 搜索框」始终可见，符合
+          「按名字筛选一长串厂商」的实际用法。 */}
+      <section className="flex flex-col w-[320px] shrink-0 min-h-0 px-5 border-r-[0.5px] border-border-button overflow-hidden">
         <Sidebar selection={selection} onSelect={setSelection} />
       </section>
       <section className="flex-1 flex flex-col overflow-hidden">

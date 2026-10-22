@@ -234,11 +234,13 @@ const SourceDetailPage = () => {
   }, [defaultValues, fields]);
 
   return (
-    <div className="px-10 py-5">
+    // 详情页同样直接挂在 overflow-hidden 的 main 下，不给滚动容器就会把
+    // 表单下半部分裁掉（与数据源列表同一个成因）。
+    <div className="h-full overflow-y-auto scrollbar-auto px-10 py-5">
       {/* <BackButton /> */}
       <Card className="bg-transparent border border-border-button px-5 pt-[10px] pb-5 rounded-md mt-5">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 p-0 pb-3">
-          <CardTitle className="text-2xl text-text-primary flex gap-1 items-center font-normal pb-3">
+          <CardTitle className="text-2xl text-text-primary flex gap-1 items-center font-medium pb-3">
             <BackButton className="border-none">
               <></>
             </BackButton>

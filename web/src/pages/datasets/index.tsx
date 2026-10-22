@@ -154,7 +154,7 @@ export default function Datasets() {
         >
           <header className="mb-4 min-w-0 px-5 pt-8">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <h1 className="flex shrink-0 items-center gap-2.5 text-2xl font-semibold">
+              <h1 className="flex shrink-0 items-center gap-2.5 text-2xl font-medium text-text-primary">
                 {t('header.dataset')}
               </h1>
 

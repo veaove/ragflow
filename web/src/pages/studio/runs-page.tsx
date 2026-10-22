@@ -103,7 +103,9 @@ export default function StudioRunsPage() {
     <section className="p-5">
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">{t('studio.runLog')}</h1>
+          <h1 className="text-2xl font-medium text-text-primary">
+            {t('studio.runLog')}
+          </h1>
           <p className="mt-1 text-sm text-text-secondary">
             {t('studio.runLogSubtitle')}
           </p>

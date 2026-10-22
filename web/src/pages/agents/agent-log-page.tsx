@@ -271,7 +271,9 @@ const AgentLogPage: React.FC = () => {
       </PageHeader>
       <div className="p-4">
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold mb-4">{t('flow.log')}</h1>
+          <h1 className="text-2xl font-medium text-text-primary mb-4">
+            {t('flow.log')}
+          </h1>
 
           <div className="flex justify-end space-x-2 mb-4 text-foreground">
             <div className="flex items-center space-x-2">

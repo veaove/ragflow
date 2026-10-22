@@ -124,11 +124,6 @@ export default {
       running: '运行中...',
     },
     overview: {
-      title: '系统总览',
-      subtitle: {
-        department: '客服中心',
-        console: '知识库运营数据看板',
-      },
       metric: {
         datasets: '知识库总数',
         documents: '文档总数',
@@ -204,7 +199,7 @@ export default {
       chat: '知识问答',
       register: '注册',
       signin: '登录',
-      home: '首页',
+      home: '总览',
       setting: '用户设置',
       logout: '登出',
       fileManager: '文件管理',
