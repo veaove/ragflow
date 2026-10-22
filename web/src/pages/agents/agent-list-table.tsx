@@ -1,5 +1,4 @@
 import { useTranslation } from 'react-i18next';
-import { MoreButton } from '@/components/more-button';
 import {
   ListDataTable,
   ListColumn,
@@ -7,7 +6,7 @@ import {
 } from '@/components/list-view/list-data-table';
 import { AgentListItemType, IFlow } from '@/interfaces/database/agent';
 import { CanvasCategoryToFlowType, FlowType } from './constant';
-import { AgentDropdown } from './agent-dropdown';
+import { AgentRowActions } from './agent-row-actions';
 
 /**
  * 列表数据是两种实体的联合：普通智能体（IFlow，标题字段叫 title）
@@ -67,7 +66,7 @@ export function AgentListTable({
       render: (row) => (
         <button
           type="button"
-          className="text-left font-medium text-text-primary hover:text-accent-primary"
+          className="text-left font-medium text-text-primary hover:text-accent-primary hover:underline"
           onClick={() => onOpen(row.id)}
         >
           {row.title || row.name || '-'}
@@ -195,11 +194,10 @@ export function AgentListTable({
           return <span className="text-xs text-text-secondary">只读</span>;
         }
         return (
-          <div className="flex justify-end">
-            <AgentDropdown agent={row} showAgentRenameModal={showAgentRenameModal}>
-              <MoreButton />
-            </AgentDropdown>
-          </div>
+          <AgentRowActions
+            agent={row}
+            showAgentRenameModal={showAgentRenameModal}
+          />
         );
       },
     },
