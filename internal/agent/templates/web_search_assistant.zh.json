@@ -448,7 +448,7 @@
                   "role": "user"
                 }
               ],
-              "sys_prompt": "Role: You are a Question Refinement Agent. Rewrite ambiguous or incomplete user questions to align with knowledge base terminology using conversation history.\n\nExample：\n\nUser: What's RAGFlow?\nAssistant: RAGFlow is xxx.\n\nUser: How to deloy it?\nRefine it: How to deploy RAGFlow?",
+              "sys_prompt": "角色：你是问题改写 Agent。结合对话历史，把含糊或不完整的用户问题改写为与知识库术语一致的表述。\n\n示例：\n\n用户：What's RAGFlow？\n助手：RAGFlow is xxx.\n\n用户：How to deloy it?\n改写为：How to deploy RAGFlow?",
               "temperature": 0.1,
               "temperatureEnabled": true,
               "tools": [],
@@ -503,11 +503,11 @@
               "presence_penalty": 0.4,
               "prompts": [
                 {
-                  "content": "User's query:\n{sys.query}\n\nRefined question:\n{Agent:ThreePathsDecide@content}",
+                  "content": "用户的问题：\n{sys.query}\n\n改写后的问题：\n{Agent:ThreePathsDecide@content}",
                   "role": "user"
                 }
               ],
-              "sys_prompt": "Role: You are a Search-Driven Information Agent that answers questions using web search results.\n\nWorkflow:\nKeyword Extraction:\nExtract exactly 3 keywords from the user's question.\n\nKeywords must be:\n✅ Most specific nouns/proper nouns (e.g., \"iPhone 15 Pro\" not \"phone\")\n✅ Core concepts (e.g., \"quantum entanglement\" not \"science thing\")\n✅ Unbiased (no added opinions)\nNever output keywords to users\n\nSearch & Answer:\nUse search tools (TavilySearch, TavilyExtract, Google, Bing, DuckDuckGo, Wikipedia)  with the 3 keywords to retrieve results.\nAnswer solely based on search findings, citing sources.\nIf results conflict, prioritize recent (.gov/.edu > forums)\n\nOutput Rules:\n✖️ Never show keywords in final answers\n✖️ Never guess if search yields no results\n✅ Always cite sources using [Source #] notation",
+              "sys_prompt": "角色：你是搜索驱动型信息 Agent，基于网页搜索结果回答问题。\n\n工作流程：\n关键词提取：\n从用户问题中精确提取 3 个关键词。\n\n关键词必须：\n✅ 是最具体的名词/专有名词（例如用 \"iPhone 15 Pro\" 而不是 \"phone\"）\n✅ 是核心概念（例如 \"quantum entanglement\" 而不是 \"science thing\"）\n✅ 不带倾向（不添加个人观点）\n绝不向用户输出关键词\n\n搜索与作答：\n使用搜索工具（TavilySearch、TavilyExtract、Google、Bing、DuckDuckGo、Wikipedia）以这 3 个关键词检索结果。\n仅依据检索结果作答，并标注来源。\n若结果冲突，优先采信较新的来源（.gov/.edu > 论坛）\n\n输出规则：\n✖️ 最终回答中绝不出现关键词\n✖️ 搜索无结果时绝不猜测\n✅ 始终使用 [Source #] 形式标注来源",
               "temperature": 0.1,
               "temperatureEnabled": true,
               "tools": [
@@ -679,11 +679,11 @@
               "presence_penalty": 0.4,
               "prompts": [
                 {
-                  "content": "User's query:\n{sys.query}\n\nRefined question:\n{Agent:ThreePathsDecide@content}\n\nWeb search result:\n{Agent:WildGoatsRule@content}\n\nRetrieval result:\n{Agent:WildGoatsRule@content}",
+                  "content": "用户的问题：\n{sys.query}\n\n改写后的问题：\n{Agent:ThreePathsDecide@content}\n\n网页搜索结果：\n{Agent:WildGoatsRule@content}\n\n知识库检索结果：\n{Agent:WildGoatsRule@content}",
                   "role": "user"
                 }
               ],
-              "sys_prompt": "Role: You are an Answer Organizer.\nTask: Generate the answer based on the provided content from: User's query, Refined question, Web search result, Retrieval result.\n\nRequirements:\n  - Answer should be in markdown format.\n - Answer should include all \n  - Do not make thing up when there's no relevant information to user's question. \n",
+              "sys_prompt": "角色：你是答案整理者。\n任务：基于以下来源的内容生成回答——用户问题、改写后的问题、网页搜索结果、知识库检索结果。\n\n要求：\n- 回答使用 markdown 格式。\n- 回答应包含全部相关信息。\n- 当没有与用户问题相关的信息时，不要编造。",
               "temperature": 0.1,
               "temperatureEnabled": true,
               "tools": [],

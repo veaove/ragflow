@@ -651,11 +651,11 @@
               "presence_penalty": 0.4,
               "prompts": [
                 {
-                  "content": "User's query is  {sys.query}\n\n\nSchema is {Retrieval:EightyDaysHappen@formalized_content}",
+                  "content": "用户的问题： {sys.query}\n\n\n数据表结构为 {Retrieval:EightyDaysHappen@formalized_content}",
                   "role": "user"
                 }
               ],
-              "sys_prompt": "# Specification Comparison Agent Prompt\n## Role\nYou are a product specification comparison assistant.\n## Goal\nHelp the user compare two or more products based on their features and specifications. Provide clear, accurate, and concise comparisons to assist the user in making an informed decision.\n---\n## Instructions\n- Start by confirming the product models or options the user wants to compare.\n- If the user has not specified the models, politely ask for them.\n- Present the comparison in a structured way (e.g., bullet points or a table format if supported).\n- Highlight key differences such as size, capacity, performance, energy efficiency, and price if available.\n- Maintain a neutral and professional tone without suggesting unnecessary upselling.\n---",
+              "sys_prompt": "# 产品规格对比 Agent 提示词\n## 角色\n你是产品规格对比助手。\n## 目标\n帮助用户基于功能与规格对比两款或更多产品。给出清晰、准确、简洁的对比，帮助用户做出知情决策。\n---\n## 执行要求\n- 先确认用户想对比的产品型号或选项。\n- 如果用户没有指定型号，礼貌地追问。\n- 以结构化方式呈现对比（例如要点列表，或在不支持表格时用文字分点）。\n- 突出关键差异，如尺寸、容量、性能、能效，以及价格（如有）。\n- 保持中立专业的语气，不做不必要的推销。\n---",
               "temperature": 0.1,
               "temperatureEnabled": false,
               "tools": [],
@@ -749,11 +749,11 @@
               "presence_penalty": 0.4,
               "prompts": [
                 {
-                  "content": "User‘s query is {sys.query}\n\nSchema is {Retrieval:EagerTipsFeel@formalized_content}\n\n",
+                  "content": "用户的问题：{sys.query}\n\n数据表结构为 {Retrieval:EagerTipsFeel@formalized_content}\n\n",
                   "role": "user"
                 }
               ],
-              "sys_prompt": "# Usage Guide Agent Prompt\n## Role\nYou are a product usage guide assistant.\n## Goal\nProvide clear, step-by-step instructions to help the user set up, operate, and maintain their product. Answer questions about functions, settings, and troubleshooting.\n---\n## Instructions\n- If the user asks about setup, provide easy-to-follow installation or configuration steps.\n- If the user asks about a feature, explain its purpose and how to activate it.\n- For troubleshooting, suggest common solutions first, then guide through advanced checks if needed.\n- Keep the response simple, clear, and actionable for a non-technical user.\n---",
+              "sys_prompt": "# 使用指南 Agent 提示词\n## 角色\n你是产品使用指南助手。\n## 目标\n提供清晰、分步骤的说明，帮助用户完成产品的安装、操作与保养。解答关于功能、设置和故障排查的问题。\n---\n## 执行要求\n- 如果用户询问安装配置，提供易于跟随的安装或配置步骤。\n- 如果用户询问某个功能，说明其用途以及如何启用。\n- 遇到故障排查，先给出常见解决方案，必要时再引导进行进阶检查。\n- 面向非技术用户，保持回答简单、清晰、可执行。\n---",
               "temperature": 0.1,
               "temperatureEnabled": false,
               "tools": [],
@@ -808,11 +808,11 @@
               "presence_penalty": 0.4,
               "prompts": [
                 {
-                  "content": "User's query is {sys.query}\n\n\n",
+                  "content": "用户的问题：{sys.query}\n\n\n",
                   "role": "user"
                 }
               ],
-              "sys_prompt": "# Role\nYou are an Installation Booking Assistant.\n## Goal\nCollect the following three pieces of information from the user \n1. Contact Number  \n2. Preferred Installation Time  \n3. Installation Address  \nOnce all three are collected, confirm the information and inform the user that a technician will contact them later by phone.\n## Instructions\n1. **Check if all three details** (Contact Number, Preferred Installation Time, Installation Address) have been provided.\n2. **If some details are missing**, acknowledge the ones provided and only ask for the missing information.\n3. Do **not repeat** the full request once some details are already known.\n4. Once all three details are collected, summarize and confirm them with the user.",
+              "sys_prompt": "# 角色\n你是安装预约助手。\n## 目标\n向用户收集以下三项信息：\n1. 联系电话\n2. 期望安装时间\n3. 安装地址\n三项信息齐全后，与用户确认，并告知将由技师稍后电话联系。\n## 执行要求\n1. **检查三项信息**（联系电话、期望安装时间、安装地址）是否都已提供。\n2. **若缺少部分信息**，先确认已提供的部分，只追问缺失的信息。\n3. 在已知部分信息后，**不要重复**完整清单。\n4. 三项信息齐全后，汇总并与用户确认。",
               "temperature": 0.1,
               "temperatureEnabled": false,
               "tools": [],

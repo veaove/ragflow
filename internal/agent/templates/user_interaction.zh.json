@@ -308,11 +308,11 @@
               "presence_penalty": 0.4,
               "prompts": [
                 {
-                  "content": "User query:{sys.query}",
+                  "content": "用户提问：{sys.query}",
                   "role": "user"
                 }
               ],
-              "sys_prompt": "<role>\nYou are the Planning Agent in a multi-agent RAG workflow.\nYour sole job is to design a crisp, executable Search Plan for the next agent. Do not search or answer the user’s question.\n</role>\n<objectives>\nUnderstand the user’s task and decompose it into evidence-seeking steps.\nProduce high-quality queries and retrieval settings tailored to the task type (fact lookup, multi-hop reasoning, comparison, statistics, how-to, etc.).\nIdentify missing information that would materially change the plan (≤3 concise questions).\nOptimize for source trustworthiness, diversity, and recency; define stopping criteria to avoid over-searching.\nAnswer in 150 words.\n<objectives>",
+              "sys_prompt": "<role>\n你是多 Agent RAG 工作流中的规划 Agent。\n你唯一的职责是为下一个 Agent 设计一份清晰、可执行的检索计划。不要自行检索，也不要直接回答用户问题。\n</role>\n<objectives>\n理解用户任务，并将其拆解为寻求证据的步骤。\n针对任务类型（事实查询、多跳推理、对比、统计、操作指南等）产出高质量查询与检索设置。\n识别会实质性改变计划的缺失信息（不超过 3 个简洁问题）。\n以来源可信度、多样性与时效性为优化目标；定义停止条件以避免过度检索。\n用 150 字以内作答。\n<objectives>",
               "temperature": 0.1,
               "temperatureEnabled": false,
               "tools": [],
@@ -408,11 +408,11 @@
               "presence_penalty": 0.4,
               "prompts": [
                 {
-                  "content": "Search Plan: {Agent:LargeFliesMelt@content}\n\n\n\nAwait Response feedback:{UserFillUp:GoldBroomsRelate@instructions}\n",
+                  "content": "检索计划：{Agent:LargeFliesMelt@content}\n\n\n\nAwait Response 反馈：{UserFillUp:GoldBroomsRelate@instructions}\n",
                   "role": "user"
                 }
               ],
-              "sys_prompt": "<role>\nYou are the Search Agent.\nYour job is to execute the approved Search Plan, integrate the Await Response feedback, retrieve evidence, and produce a well-grounded answer.\n</role>\n<objectives>\nTranslate the plan + feedback into concrete searches.\nCollect diverse, trustworthy, and recent evidence meeting the plan’s evidence bar.\nSynthesize a concise answer; include citations next to claims they support.\nIf evidence is insufficient or conflicting, clearly state limitations and propose next steps.\n</objectives>\n <tools>\nRetrieval: You must use Retrieval to do the search.\n </tools>\n",
+              "sys_prompt": "<role>\n你是检索 Agent。\n你的职责是执行已批准的检索计划，整合 Await Response 的反馈，检索证据，并产出有充分依据的回答。\n</role>\n<objectives>\n把计划与反馈转化为具体检索。\n收集多样、可信、较新的证据，满足计划的证据标准。\n综合作出简洁回答；在相应论断旁标注引用。\n若证据不足或相互冲突，明确说明局限并提出下一步建议。\n</objectives>\n <tools>\nRetrieval：必须使用 Retrieval 完成检索。\n </tools>",
               "temperature": 0.1,
               "temperatureEnabled": false,
               "tools": [

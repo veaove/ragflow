@@ -345,11 +345,11 @@
               "presence_penalty": 0.4,
               "prompts": [
                 {
-                  "content": "User's query:\n{sys.query}",
+                  "content": "用户的问题：\n{sys.query}",
                   "role": "user"
                 }
               ],
-              "sys_prompt": "Role: Professional tour guide: Create detailed travel plans per user needs.​\nFirst, specify departure location, destination, and travel duration (for subsequent agents to retrieve).​\nDevelop the plan using tools to get real-time weather, holidays, attraction hours, traffic, etc. Adjust itinerary accordingly (e.g., reschedule outdoor activities on rainy days) to ensure practicality, efficiency, and alignment with user preferences.​\nFor real-time info retrieval, only output tool-returned content and pass it to subsequent agents; never rely on your own knowledge base.​\n",
+              "sys_prompt": "角色：专业导游：根据用户需求制定详细的旅行计划。\n首先明确出发地、目的地和行程天数（供后续 Agent 使用）。\n借助工具获取实时天气、节假日、景点开放时间、交通等信息来制定计划。据此调整行程（例如雨天改约户外活动），确保方案可行、高效并符合用户偏好。\n获取实时信息时，只输出工具返回的内容并传递给后续 Agent，绝不依赖自身知识库。",
               "temperature": 0.1,
               "temperatureEnabled": true,
               "tools": [],
@@ -404,11 +404,11 @@
               "presence_penalty": 0.4,
               "prompts": [
                 {
-                  "content": "User's query:\n{sys.query}\n\nFirst step result:\n{Agent:OddGuestsPump@content}",
+                  "content": "用户的问题：\n{sys.query}\n\n第一步结果：\n{Agent:OddGuestsPump@content}",
                   "role": "user"
                 }
               ],
-              "sys_prompt": "You are a Transit & Stay Agent, collaborating with upstream planners.\n\n Use tools to retrieve real-time info for transportation (flights, trains, rentals, etc.) and accommodation (hotels, rentals, etc.) based on the itinerary. Recommend options matching dates, destinations, budgets, and preferences, adjusting for availability or conflicts to align with the overall plan.",
+              "sys_prompt": "你是交通与住宿 Agent，与上游规划者协作。\n\n基于行程，使用工具获取交通（航班、火车、租车等）与住宿（酒店、民宿等）的实时信息。推荐符合日期、目的地、预算和偏好的选项，并根据可订情况或冲突做出调整，以契合整体计划。",
               "temperature": 0.1,
               "temperatureEnabled": true,
               "tools": [
@@ -500,11 +500,11 @@
               "presence_penalty": 0.4,
               "prompts": [
                 {
-                  "content": "User's query:\n{sys.query}\n\nTravel plan:\n{Agent:OddGuestsPump@content}\n\nTransit & Stay plan:\n{Agent:RichTermsCamp@content}",
+                  "content": "用户的问题：\n{sys.query}\n\n旅行计划：\n{Agent:OddGuestsPump@content}\n\n交通与住宿计划：\n{Agent:RichTermsCamp@content}",
                   "role": "user"
                 }
               ],
-              "sys_prompt": "You are a Result Generator. \nYour task is to produce accurate and reliable travel plans based on integrated information from upstream agents and tool-retrieved data. Ensure the final plan is logically structured, time-efficient, and consistent with all verified details—including clear timelines, confirmed transportation/accommodation arrangements, and practical activity adjustments . Prioritize clarity and feasibility to help users execute the plan smoothly.",
+              "sys_prompt": "你是结果生成者。\n你的任务是基于上游 Agent 的整合信息与工具检索到的数据，产出准确可靠的旅行计划。确保最终计划结构清晰、时间高效，并与所有已核实的信息一致——包括明确的时间线、已确认的交通/住宿安排，以及可行的活动调整。优先保证清晰性与可执行性，帮助用户顺利执行计划。",
               "temperature": 0.1,
               "temperatureEnabled": true,
               "tools": [],
