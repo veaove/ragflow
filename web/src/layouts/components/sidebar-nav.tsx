@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'react-router';
 
@@ -191,17 +191,42 @@ export function SidebarNav({ className }: { className?: string }) {
    * `open = childActive || !collapsed[path]`——那样只要停留在分组内的页面上，
    * childActive 就恒为 true，点折叠箭头会被下一次渲染立刻覆盖回去，
    * 表现为「点击没反应、配置中心收不回去」。
+   *
+   * 另外必须记住「上一次由路由命中的分组」：路由从分组内页面切到分组外页面
+   * （比如从「模型配置」点「总览」）时，上面的逻辑只会展开新命中的分组，
+   * 不会把刚离开的分组收回去，于是配置中心会一直挂着展开状态。
+   * 离开时把上一个分组收起来，才符合「导航跟随当前页面」的直觉。
    */
+  const activeGroupRef = useRef<string | null>(null);
+
   useEffect(() => {
     const parent = sidebarMenuItems.find((item) =>
       item.children?.some((child) => matchesPath(activePath, child.path)),
     );
 
-    if (parent) {
-      setCollapsed((prev) =>
-        prev[parent.path] ? { ...prev, [parent.path]: false } : prev,
-      );
-    }
+    const nextGroup = parent?.path ?? null;
+    const prevGroup = activeGroupRef.current;
+    activeGroupRef.current = nextGroup;
+
+    setCollapsed((prev) => {
+      const next = { ...prev };
+      let changed = false;
+
+      // 离开了上一个分组 → 收回去。只在它当前是展开态时改；
+      // 用户手动收起过的分组保持收起，不再打扰。
+      if (prevGroup && prevGroup !== nextGroup && next[prevGroup] === false) {
+        next[prevGroup] = true;
+        changed = true;
+      }
+
+      // 进入新分组 → 展开。
+      if (nextGroup && next[nextGroup] !== false) {
+        next[nextGroup] = false;
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
   }, [activePath]);
 
   return (

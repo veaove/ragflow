@@ -50,12 +50,30 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-const renderAt = (path: string) =>
-  render(
+/**
+ * 用可变变量接管 useLocation，这样测试才能在同一个挂载实例上「切换路由」。
+ * 只 mock useLocation，Link 仍走真实实现（MemoryRouter 提供 context）。
+ */
+let mockPathname = '/';
+jest.mock('react-router', () => ({
+  ...jest.requireActual('react-router'),
+  useLocation: () => ({
+    pathname: mockPathname,
+    search: '',
+    hash: '',
+    state: null,
+    key: 'test',
+  }),
+}));
+
+const renderAt = (path: string) => {
+  mockPathname = path;
+  return render(
     <MemoryRouter initialEntries={[path]}>
       <SidebarNav />
     </MemoryRouter>,
   );
+};
 
 const groupButton = () => screen.getByTestId('sidebar-group-config-center');
 const subMenu = () => screen.queryByTestId('sidebar-sub-config-center');
@@ -109,5 +127,50 @@ describe('SidebarNav 分组折叠', () => {
     // 配置中心不在当前路由分组内，默认应折叠。
     expect(subMenu()).toBeNull();
     expect(groupButton().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('从分组内页面切到分组外页面，分组自动收起', () => {
+    // 复现「点总览，配置中心却还开着」：useEffect 之前只展开命中的分组，
+    // 从不收起刚离开的分组，于是配置中心会一直挂着展开状态。
+    const { rerender } = renderAt('/user-setting/data-source');
+    expect(subMenu()).not.toBeNull();
+    expect(groupButton().getAttribute('aria-expanded')).toBe('true');
+
+    // 路由切到分组外（总览）
+    mockPathname = '/';
+    rerender(
+      <MemoryRouter initialEntries={['/user-setting/data-source']}>
+        <SidebarNav />
+      </MemoryRouter>,
+    );
+
+    expect(subMenu()).toBeNull();
+    expect(groupButton().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('用户手动收起后切换路由，不会被「弹回」展开', () => {
+    const { rerender } = renderAt('/user-setting/data-source');
+
+    // 用户主动收起
+    fireEvent.click(groupButton());
+    expect(subMenu()).toBeNull();
+
+    // 切到分组外 → 保持收起（本来就是收起态，不做任何改动）
+    mockPathname = '/';
+    rerender(
+      <MemoryRouter initialEntries={['/user-setting/data-source']}>
+        <SidebarNav />
+      </MemoryRouter>,
+    );
+    expect(subMenu()).toBeNull();
+
+    // 再切回分组内 → 自动展开，方便继续操作
+    mockPathname = '/user-setting/model';
+    rerender(
+      <MemoryRouter initialEntries={['/user-setting/data-source']}>
+        <SidebarNav />
+      </MemoryRouter>,
+    );
+    expect(subMenu()).not.toBeNull();
   });
 });
