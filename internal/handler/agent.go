@@ -448,7 +448,7 @@ func (h *AgentHandler) ListTemplates(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	templates, err := h.agentService.ListTemplates(ctx)
+	templates, err := h.agentService.ListTemplates(ctx, c.Query("lang"))
 	if err != nil {
 		jsonInternalError(c, err)
 		return
@@ -881,7 +881,9 @@ func (h *AgentHandler) ListAgentTemplates(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	rows, err := h.agentService.ListTemplates(ctx)
+	// The UI passes its current language; templates without a translation fall
+	// back to English inside the DAO.
+	rows, err := h.agentService.ListTemplates(ctx, c.Query("lang"))
 	if err != nil {
 		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
 		return

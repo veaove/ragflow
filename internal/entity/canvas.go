@@ -23,10 +23,10 @@ import "time"
 // chatflow / workflow are the two new first-class form factors, and
 // dataflow_canvas is the ingestion pipeline (out of scope here).
 const (
-	CanvasCategoryAgent     = "agent_canvas"
-	CanvasCategoryChatflow  = "chatflow_canvas"
-	CanvasCategoryWorkflow  = "workflow_canvas"
-	CanvasCategoryDataflow  = "dataflow_canvas"
+	CanvasCategoryAgent    = "agent_canvas"
+	CanvasCategoryChatflow = "chatflow_canvas"
+	CanvasCategoryWorkflow = "workflow_canvas"
+	CanvasCategoryDataflow = "dataflow_canvas"
 )
 
 // DSL schema version for forward/backward migration (FR-06-08 / VER-08).
@@ -73,6 +73,15 @@ type CanvasTemplate struct {
 	CanvasTypes    JSONSlice `gorm:"column:canvas_types;type:longtext" json:"canvas_types,omitempty"`
 	CanvasCategory string    `gorm:"column:canvas_category;size:32;not null;default:agent_canvas;index" json:"canvas_category"`
 	DSL            JSONMap   `gorm:"column:dsl;type:longtext" json:"dsl,omitempty"`
+	// Lang is the template's language ("en" default). title/description are
+	// already multilingual JSONMaps, but the DSL (which carries every prompt)
+	// is a single-language blob, so a translation needs its own row.
+	Lang string `gorm:"column:lang;size:8;not null;default:'en';index" json:"lang"`
+	// BaseID groups translations of the same template. It equals ID for the
+	// English original and points at it for translations, so the list endpoint
+	// can serve "requested language, fall back to English" without the caller
+	// knowing which templates have been translated.
+	BaseID string `gorm:"column:base_id;size:32;not null;default:'';index" json:"base_id"`
 	BaseModel
 }
 

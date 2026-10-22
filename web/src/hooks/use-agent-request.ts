@@ -131,11 +131,17 @@ export const AgentKeys = {
 };
 
 export const useFetchAgentTemplates = () => {
+  // Templates without a translation fall back to English server-side, so this
+  // only has to pick the language bucket to request.
+  const language = (i18n.language || 'en').toLowerCase();
+  const templateLang = language.startsWith('zh') ? 'zh' : 'en';
   const { data } = useQuery<IFlowTemplate[]>({
-    queryKey: AgentKeys.templates(),
+    queryKey: [...AgentKeys.templates(), templateLang],
     initialData: [],
     queryFn: async () => {
-      const { data } = await agentService.listAgentTemplate();
+      const { data } = await agentService.listAgentTemplate({
+        params: { lang: templateLang },
+      });
 
       return data.data;
     },

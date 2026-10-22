@@ -69,6 +69,7 @@ func SeedCanvasTemplates(ctx context.Context, db *gorm.DB) error {
 				Columns: []clause.Column{{Name: "id"}},
 				DoUpdates: clause.AssignmentColumns([]string{
 					"avatar", "title", "description", "canvas_type", "canvas_types", "canvas_category", "dsl",
+					"lang", "base_id",
 				}),
 			}).Create(tmpl).Error; err != nil {
 				return fmt.Errorf("failed to save agent template %s: %w", tmpl.ID, err)
@@ -192,6 +193,7 @@ func parseCanvasTemplateFile(raw []byte) (*entity.CanvasTemplate, error) {
 
 	tmpl := &entity.CanvasTemplate{
 		CanvasCategory: "agent_canvas",
+		Lang:           "en",
 	}
 
 	if v, ok := data["id"]; ok {
@@ -218,8 +220,19 @@ func parseCanvasTemplateFile(raw []byte) (*entity.CanvasTemplate, error) {
 		}
 	}
 
+	if v, ok := data["lang"].(string); ok && v != "" {
+		tmpl.Lang = strings.ToLower(v)
+	}
+
 	if v, ok := data["dsl"].(map[string]any); ok {
 		tmpl.DSL = v
+	}
+
+	// base_id defaults to the row's own id, which is what makes the English
+	// original the fallback for every other language.
+	tmpl.BaseID = tmpl.ID
+	if v, ok := data["base_id"].(string); ok && v != "" {
+		tmpl.BaseID = v
 	}
 
 	return tmpl, nil

@@ -430,8 +430,8 @@ func NewAgentServiceWithOptions(
 // ListTemplates returns every canvas template. Mirrors Python
 // agent_api.list_agent_template, which iterates CanvasTemplateService.get_all()
 // and serialises each row.
-func (s *AgentService) ListTemplates(ctx context.Context) ([]*entity.CanvasTemplate, error) {
-	return s.canvasTemplateDAO.GetAll(ctx, dao.DB)
+func (s *AgentService) ListTemplates(ctx context.Context, lang string) ([]*entity.CanvasTemplate, error) {
+	return s.canvasTemplateDAO.GetAll(ctx, dao.DB, lang)
 }
 
 // AgentItem is one entry in the list response.
@@ -589,23 +589,23 @@ func toAgentItem(c *dao.UserCanvasListItem) *AgentItem {
 		nickname = c.TenantID
 	}
 	return &AgentItem{
-		ID:             c.ID,
-		Avatar:         c.Avatar,
-		Title:          c.Title,
-		Description:    c.Description,
-		Permission:     c.Permission,
-		UserID:         c.UserID,
-		TenantID:       c.TenantID,
-		Nickname:       nickname,
-		TenantAvatar:   c.TenantAvatar,
-		CanvasType:     c.CanvasType,
-		CanvasCategory: c.CanvasCategory,
-		Tags:           c.Tags,
-		CreateTime:     c.CreateTime,
-		UpdateTime:     c.UpdateTime,
-		Release:        c.Release,
+		ID:               c.ID,
+		Avatar:           c.Avatar,
+		Title:            c.Title,
+		Description:      c.Description,
+		Permission:       c.Permission,
+		UserID:           c.UserID,
+		TenantID:         c.TenantID,
+		Nickname:         nickname,
+		TenantAvatar:     c.TenantAvatar,
+		CanvasType:       c.CanvasType,
+		CanvasCategory:   c.CanvasCategory,
+		Tags:             c.Tags,
+		CreateTime:       c.CreateTime,
+		UpdateTime:       c.UpdateTime,
+		Release:          c.Release,
 		LatestVersionSeq: c.LatestVersionSeq,
-		LastRunTime:    c.LastRunTime,
+		LastRunTime:      c.LastRunTime,
 	}
 }
 
