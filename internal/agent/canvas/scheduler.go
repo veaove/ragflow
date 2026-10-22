@@ -127,7 +127,7 @@ func isKnownPrimitive(name string) bool {
 		"parameterextractor", "templatetransform", "tool",
 		"exesql", "codeexec", "code", "browser",
 		"docsgenerator", "docgenerator", "excelprocessor",
-		"searchmydataset", "parallel",
+		"searchmydataset",
 		// legacy child nodes folded by NormalizeForRun:
 		"loopitem", "iteration", "iterationitem":
 		return true
