@@ -182,9 +182,14 @@ func (s *QcSession) InspectAnswer(delta string) []QcHitResult {
 	return hits
 }
 
-// InspectUserInput inspects a user message once. User input is only recorded
-// and alerted, never blocked (intercepting the user's own words is out of
-// scope and harms the experience).
+// InspectUserInput inspects a user message once.
+//
+// severity=block 的规则命中时会把 session 标记为 blocked，调用方（AsyncChat）
+// 据此直接返回 prompt_message 并跳过模型调用 —— 否则用户问了违规问题，
+// 规则明明命中了，模型照样回答，最终回答里再命中一次，用户看到的是
+// 「模型的回答 + 规则提示词」拼在一起，而不是规则里配的那句话。
+//
+// severity=warn 的规则仍然只记录 + 告警，不影响对话。
 func (s *QcSession) InspectUserInput(input string) {
 	if s == nil || !s.enabled || s.compiled == nil || input == "" {
 		return
@@ -195,10 +200,22 @@ func (s *QcSession) InspectUserInput(input string) {
 			continue
 		}
 		s.userFired[m.Rule.ID] = true
+		// noBlock 的 session（workflow / debug）保持只记录。
+		blocked := !s.noBlock && m.Rule.Severity == entity.QcSeverityBlock
+		if blocked && s.answerMatcher != nil {
+			s.answerMatcher.Blocked = true
+			if s.answerMatcher.Replacement == "" {
+				s.answerMatcher.Replacement = m.Rule.PromptMessage
+			}
+			if s.answerMatcher.BlockedRule == nil {
+				s.answerMatcher.BlockedRule = m.Rule
+			}
+		}
 		s.record(QcHitResult{
 			Rule:        m.Rule,
 			MatchedText: m.MatchedText,
 			Scope:       entity.QcScopeUserInput,
+			Blocked:     blocked,
 		}, input)
 	}
 }
