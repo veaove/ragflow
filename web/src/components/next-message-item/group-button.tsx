@@ -29,6 +29,7 @@ import { removeThinkSection } from '@/utils/chat';
 import { downloadFileFromBlob } from '@/utils/file-util';
 import {
   DeleteOutlined,
+  DislikeFilled,
   DislikeOutlined,
   LikeFilled,
   LikeOutlined,
@@ -53,6 +54,10 @@ interface IProps {
   thumbup?: boolean;
   /** 点赞状态变化的本地回调，用于乐观更新 / 失败回滚。 */
   onThumbupChange?: (next: boolean) => void;
+  /** 是否已差评（thumb_up=false 且 feedback 非空）。 */
+  thumbdown?: boolean;
+  /** 差评状态变化的本地回调。 */
+  onThumbdownChange?: (next: boolean) => void;
   audioBinary?: string;
   showLoudspeaker?: boolean;
   showLog?: boolean;
@@ -72,6 +77,8 @@ export const AssistantGroupButton = ({
   showLikeButton,
   thumbup = false,
   onThumbupChange,
+  thumbdown = false,
+  onThumbdownChange,
   showLoudspeaker = true,
   showLog = true,
   attachment,
@@ -92,11 +99,35 @@ export const AssistantGroupButton = ({
   const handleLike = useCallback(async () => {
     const next = !thumbup;
     onThumbupChange?.(next);
+    // 点赞会清掉差评（后端 thumbup:true 时 delete feedback），本地同步。
+    if (next) {
+      onThumbdownChange?.(false);
+    }
     const ret = await onFeedbackOk({ thumbup: next });
     if (ret !== 0) {
       onThumbupChange?.(!next);
+      if (next) {
+        onThumbdownChange?.(thumbdown);
+      }
     }
-  }, [thumbup, onFeedbackOk, onThumbupChange]);
+  }, [thumbup, thumbdown, onFeedbackOk, onThumbupChange, onThumbdownChange]);
+
+  // 点赞与差评互斥：差评提交时传 thumbup=false，后端会覆盖点赞状态；
+  // 成功后把点赞图标置灰（handleFeedbackOk 统一处理），因此无需先手动取消。
+  const handleDislike = showModal;
+
+  // 差评提交成功后：必定未点赞 + 差评高亮。
+  const handleFeedbackOk = useCallback(
+    async (params: Parameters<typeof onFeedbackOk>[0]) => {
+      const ret = await onFeedbackOk(params);
+      if (ret === 0) {
+        onThumbupChange?.(false);
+        onThumbdownChange?.(true);
+      }
+      return ret;
+    },
+    [onFeedbackOk, onThumbupChange, onThumbdownChange],
+  );
 
   const { showLogSheet } = useContext(AgentChatContext);
 
@@ -145,8 +176,14 @@ export const AssistantGroupButton = ({
             >
               {thumbup ? <LikeFilled /> : <LikeOutlined />}
             </ToggleGroupItem>
-            <ToggleGroupItem value="d" onClick={showModal}>
-              <DislikeOutlined />
+            <ToggleGroupItem
+              value="d"
+              onClick={handleDislike}
+              className={
+                thumbdown ? 'text-text-primary hover:text-text-primary' : undefined
+              }
+            >
+              {thumbdown ? <DislikeFilled /> : <DislikeOutlined />}
             </ToggleGroupItem>
           </>
         )}
@@ -193,7 +230,7 @@ export const AssistantGroupButton = ({
         <FeedbackDialog
           visible={visible}
           hideModal={hideModal}
-          onOk={onFeedbackOk}
+          onOk={handleFeedbackOk}
           loading={loading}
         ></FeedbackDialog>
       )}

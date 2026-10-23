@@ -109,6 +109,13 @@ function MessageItem({
   useEffect(() => {
     setThumbup(!!item.thumbup);
   }, [item.thumbup]);
+  // 差评状态：thumb_up=false 且 feedback 非空。
+  const [thumbdown, setThumbdown] = useState<boolean>(
+    !!item.feedback && !item.thumbup,
+  );
+  useEffect(() => {
+    setThumbdown(!!item.feedback && !item.thumbup);
+  }, [item.feedback, item.thumbup]);
   const { setLastSendLoadingFunc } = useContext(AgentChatContext);
   // The backend already swapped the answer for the replacement message, so this
   // banner only explains WHY the answer looks like that. Live streams only —
@@ -259,6 +266,8 @@ function MessageItem({
                         showLikeButton={showLikeButton}
                         thumbup={thumbup}
                         onThumbupChange={setThumbup}
+                        thumbdown={thumbdown}
+                        onThumbdownChange={setThumbdown}
                         audioBinary={item.audio_binary}
                         showLoudspeaker={showLoudspeaker}
                         showLog={showLog}
@@ -274,6 +283,8 @@ function MessageItem({
                         showLikeButton={showLikeButton}
                         thumbup={thumbup}
                         onThumbupChange={setThumbup}
+                        thumbdown={thumbdown}
+                        onThumbdownChange={setThumbdown}
                         audioBinary={item.audio_binary}
                         showLoudspeaker={showLoudspeaker}
                         showLog={showLog}

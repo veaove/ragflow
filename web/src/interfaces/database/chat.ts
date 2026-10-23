@@ -225,6 +225,8 @@ export interface IMessage extends Message {
    * 重新进入会话时必须用它回显高亮，否则会「点完看不到、下次还能再点」。
    */
   thumbup?: boolean;
+  /** 差评原因。非空且 thumbup=false 表示这条回答被差评。 */
+  feedback?: string;
   awaitingServerId?: boolean;
   reference?: IReference; // the latest news has reference
   conversationId?: string; // To distinguish which conversation the message belongs to

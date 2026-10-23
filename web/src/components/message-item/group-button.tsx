@@ -49,6 +49,10 @@ interface IProps {
   thumbup?: boolean;
   /** 点赞状态变化的本地回调，用于乐观更新 / 失败回滚。 */
   onThumbupChange?: (next: boolean) => void;
+  /** 是否已差评（thumb_up=false 且 feedback 非空）。 */
+  thumbdown?: boolean;
+  /** 差评状态变化的本地回调。 */
+  onThumbdownChange?: (next: boolean) => void;
   audioBinary?: string;
   showLoudspeaker?: boolean;
 }
@@ -61,6 +65,8 @@ export const AssistantGroupButton = ({
   showLikeButton,
   thumbup = false,
   onThumbupChange,
+  thumbdown = false,
+  onThumbdownChange,
   showLoudspeaker = true,
 }: IProps) => {
   const { visible, hideModal, showModal, onFeedbackOk, loading } =
@@ -79,11 +85,33 @@ export const AssistantGroupButton = ({
   const handleLike = useCallback(async () => {
     const next = !thumbup;
     onThumbupChange?.(next);
+    if (next) {
+      onThumbdownChange?.(false);
+    }
     const ret = await onFeedbackOk({ thumbup: next });
     if (ret !== 0) {
       onThumbupChange?.(!next);
+      if (next) {
+        onThumbdownChange?.(thumbdown);
+      }
     }
-  }, [thumbup, onFeedbackOk, onThumbupChange]);
+  }, [thumbup, thumbdown, onFeedbackOk, onThumbupChange, onThumbdownChange]);
+
+  // 点赞与差评互斥：差评提交时传 thumbup=false，后端会覆盖点赞状态；
+  // 成功后把点赞图标置灰（handleFeedbackOk 统一处理），因此无需先手动取消。
+  const handleDislike = showModal;
+
+  const handleFeedbackOk = useCallback(
+    async (params: Parameters<typeof onFeedbackOk>[0]) => {
+      const ret = await onFeedbackOk(params);
+      if (ret === 0) {
+        onThumbupChange?.(false);
+        onThumbdownChange?.(true);
+      }
+      return ret;
+    },
+    [onFeedbackOk, onThumbupChange, onThumbdownChange],
+  );
 
   return (
     <>
@@ -140,9 +168,11 @@ export const AssistantGroupButton = ({
               variant="transparent"
               size="icon-xs"
               className="border-0"
-              onClick={showModal}
+              onClick={handleDislike}
             >
-              <LucideThumbsDown />
+              <LucideThumbsDown
+                className={thumbdown ? 'fill-current' : undefined}
+              />
             </Button>
           </>
         )}
@@ -161,7 +191,7 @@ export const AssistantGroupButton = ({
         <FeedbackDialog
           visible={visible}
           hideModal={hideModal}
-          onOk={onFeedbackOk}
+          onOk={handleFeedbackOk}
           loading={loading}
         ></FeedbackDialog>
       )}

@@ -1078,6 +1078,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       delete: '删除',
     },
     chat: {
+      cancelLikeFirst: '请先取消点赞，再进行差评',
       chatSupport: '聊天支持',
       replyInstantly: '我们通常会即时回复',
       typeYourMessage: '输入消息...',

@@ -78,6 +78,13 @@ const MessageItem = ({
   useEffect(() => {
     setThumbup(!!item.thumbup);
   }, [item.thumbup]);
+  // 差评状态：thumb_up=false 且 feedback 非空。
+  const [thumbdown, setThumbdown] = useState<boolean>(
+    !!item.feedback && !item.thumbup,
+  );
+  useEffect(() => {
+    setThumbdown(!!item.feedback && !item.thumbup);
+  }, [item.feedback, item.thumbup]);
   const { theme } = useTheme();
   const { t } = useTranslate('chat');
   const isAssistant = item.role === MessageType.Assistant;
@@ -152,6 +159,8 @@ const MessageItem = ({
                   showLikeButton={showLikeButton}
                   thumbup={thumbup}
                   onThumbupChange={setThumbup}
+                  thumbdown={thumbdown}
+                  onThumbdownChange={setThumbdown}
                   audioBinary={item.audio_binary}
                   showLoudspeaker={showLoudspeaker}
                 ></AssistantGroupButton>
