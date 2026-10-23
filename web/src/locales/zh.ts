@@ -163,7 +163,8 @@ export default {
         times: '次',
         token: 'tokens',
       },
-      satisfactionHint: '点赞数 / 调用数',
+      satisfactionHint: '点赞数 / 点踩数',
+      tokensHint: '近7日累计',
       chart: {
         sourceTitle: '知识来源分布',
         sourceTotal: '文档总数',

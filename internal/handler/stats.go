@@ -38,6 +38,25 @@ func NewStatsHandler(statsService *service.StatsService) *StatsHandler {
 }
 
 // GetStats returns API conversation statistics for the current user's tenant.
+// GetFeedbackStats GET /api/v1/system/feedback-stats
+// @Summary 网页对话的点赞 / 点踩计数
+// @Description 总览看板「交互满意度」卡片的数据源。只统计网页端对话
+//
+//	(conversation_message)，与 API 调用的统计分开。
+func (h *StatsHandler) GetFeedbackStats(c *gin.Context) {
+	user, errorCode, errorMessage := GetUser(c)
+	if errorCode != common.CodeSuccess {
+		common.ErrorWithCode(c, errorCode, errorMessage)
+		return
+	}
+	stats, err := h.statsService.GetFeedbackStats(c.Request.Context(), user.ID)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, stats, "success")
+}
+
 func (h *StatsHandler) GetStats(c *gin.Context) {
 	user, errorCode, errorMessage := GetUser(c)
 	if errorCode != common.CodeSuccess {

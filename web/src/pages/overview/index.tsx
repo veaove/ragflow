@@ -21,6 +21,8 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs-underlined';
 import { PageContainer } from '@/layouts/components/page-container';
+import { useQuery } from '@tanstack/react-query';
+import request from '@/utils/request';
 import { ConsultationsPanel } from '@/pages/analytics/consultations';
 import { AnalyticsStatsPanel } from '@/pages/analytics/stats';
 import {
@@ -62,18 +64,22 @@ export default function Overview() {
   const stats = statsQ.data;
 
   const pvRecent = useMemo(() => splitRecentAndPrevious(stats?.pv), [stats?.pv]);
-  const tokensRecent = useMemo(
-    () => splitRecentAndPrevious(stats?.tokens),
-    [stats?.tokens],
-  );
 
-  /** 点赞率作为「满意度」替代指标：系统未记录检索评测打分，只有交互反馈可用。 */
-  const satisfaction = useMemo(() => {
-    const likes = seriesSum(stats?.thumb_up);
-    const calls = seriesSum(stats?.pv);
-    if (calls <= 0) return null;
-    return (likes / calls) * 100;
-  }, [stats?.thumb_up, stats?.pv]);
+  /**
+   * 交互满意度改为展示「点赞数 / 点踩数」。
+   *
+   * 之前是 thumb_up / pv（API 调用），而网页端聊天不计入 pv，
+   * 所以只要用户在用网页对话，这个卡片就永远是「—」。
+   * 现在直接统计网页对话消息上的真实反馈。
+   */
+  const feedbackQ = useQuery({
+    queryKey: ['feedbackStats'],
+    queryFn: async () => {
+      const { data } = await request.get('/api/v1/system/feedback-stats');
+      return data?.data as { up: number; down: number } | undefined;
+    },
+  });
+  const satisfaction = feedbackQ.data ?? null;
 
   const metrics: IOverviewMetric[] = useMemo(() => {
     const build = (
@@ -170,12 +176,9 @@ export default function Overview() {
                 {t('metric.satisfaction')}
               </p>
               <p className="mt-1.5 flex items-baseline gap-1 text-2xl font-semibold text-text-primary">
-                {satisfaction === null ? '—' : satisfaction.toFixed(1)}
-                {satisfaction !== null && (
-                  <span className="text-sm font-normal text-text-secondary">
-                    %
-                  </span>
-                )}
+                {!satisfaction || (satisfaction.up === 0 && satisfaction.down === 0)
+                  ? '—'
+                  : `${satisfaction.up} / ${satisfaction.down}`}
               </p>
             </div>
             <span className="text-xs text-text-disabled">
@@ -196,9 +199,7 @@ export default function Overview() {
               </p>
             </div>
             <span className="text-xs text-text-disabled">
-              {calcDelta(tokensRecent.recent, tokensRecent.previous) === null
-                ? t('satisfactionHint')
-                : `${t('metric.agentCount')} ${agentQ.data ?? 0}`}
+              {t('tokensHint')}
             </span>
           </div>
         </section>

@@ -775,6 +775,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 			{
 				system.GET("/status", r.systemHandler.GetStatus)
 				system.GET("/stats", r.statsHandler.GetStats) // TODO: need to reconsider this endpoint and function
+				system.GET("/feedback-stats", r.statsHandler.GetFeedbackStats)
 
 				config := system.Group("/config")
 				{

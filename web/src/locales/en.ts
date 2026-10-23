@@ -182,7 +182,8 @@ export default {
         times: '',
         token: 'tokens',
       },
-      satisfactionHint: 'thumbs-up / calls',
+      satisfactionHint: 'thumbs-up / thumbs-down',
+      tokensHint: 'last 7 days',
       chart: {
         sourceTitle: 'Knowledge source distribution',
         sourceTotal: 'Total documents',

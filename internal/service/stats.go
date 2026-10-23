@@ -82,3 +82,44 @@ func (s *StatsService) GetStats(ctx context.Context, userID, fromDate, toDate st
 
 	return response, nil
 }
+
+// FeedbackStats 是网页端对话的点赞/点踩计数。
+//
+// 数据来自 conversation_message（网页聊天），不是 api_4_conversation（API 调用）。
+// 口径：
+//   Up   = thumb_up = 1
+//   Down = thumb_up = 0 且 feedback 非空（前端「差评」要求填写反馈文案）
+type FeedbackStats struct {
+	Up   int64 `json:"up"`
+	Down int64 `json:"down"`
+}
+
+// GetFeedbackStats counts thumb-up / thumb-down on assistant messages for a tenant.
+func (s *StatsService) GetFeedbackStats(ctx context.Context, userID string) (*FeedbackStats, error) {
+	tenants, err := s.userTenantDAO.GetByUserID(ctx, dao.DB, userID)
+	if err != nil || len(tenants) == 0 {
+		return nil, ErrTenantNotFound
+	}
+	tenantID := tenants[0].TenantID
+
+	// conversation / conversation_message 都没有 tenant_id，必须经由
+	// conversation -> dialog 关联到租户（见项目既有约定）。
+	var row struct {
+		Up   int64
+		Down int64
+	}
+	err = dao.DB.WithContext(ctx).Raw(`
+		SELECT
+			COALESCE(SUM(CASE WHEN m.thumb_up = 1 THEN 1 ELSE 0 END), 0) AS up,
+			COALESCE(SUM(CASE WHEN m.thumb_up = 0
+				AND m.feedback IS NOT NULL AND m.feedback <> '' THEN 1 ELSE 0 END), 0) AS down
+		FROM conversation_message m
+		JOIN conversation c ON c.id = m.conversation_id
+		JOIN dialog d ON d.id = c.dialog_id
+		WHERE d.tenant_id = ? AND m.role = 'assistant'
+	`, tenantID).Scan(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	return &FeedbackStats{Up: row.Up, Down: row.Down}, nil
+}
