@@ -14,17 +14,33 @@
  *  limitations under the License.
  */
 
-import Spotlight from '@/components/spotlight';
 import message from '@/components/ui/message';
-import { useAutoResizeTextarea } from '@/hooks/use-auto-resize-textarea';
 import { IUserInfo } from '@/interfaces/database/user-setting';
-import { cn } from '@/lib/utils';
 import { isEmpty, trim } from 'lodash';
-import { Search } from 'lucide-react';
-import { Dispatch, SetStateAction, useCallback, useRef } from 'react';
+import { Search, Sparkles } from 'lucide-react';
+import { Dispatch, SetStateAction, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import './index.less';
 import { RAGFlowLogo } from './ragflow-logo';
+
+/** 热门问题：点击后填入搜索框，由用户确认后触发检索。 */
+const HOT_QUESTIONS = ['基金净值查询', '开户流程', '赎回规则', '风险评级'];
+
+/**
+ * 相似问题的占位条目。
+ *
+ * 未发起检索时没有真实候选，这里用示例维持原型的信息结构；
+ * 检索发起后由 SearchingPage 渲染真实结果。
+ */
+const SIMILAR_QUESTIONS = [
+  {
+    question: '嘉实沪深300ETF的最新净值是多少？',
+    score: 96.5,
+    tag: '产品净值',
+  },
+  { question: '如何查询嘉实基金的产品净值？', score: 88.2, tag: '操作指引' },
+  { question: '嘉实300ETF联接基金净值查询', score: 82.7, tag: '产品净值' },
+];
 
 export default function SearchHome({
   isSearching,
@@ -43,11 +59,7 @@ export default function SearchHome({
   canSearch?: boolean;
   showEmbedLogo?: boolean;
 }) {
-  // const { data: userInfo } = useFetchUserInfo();
   const { t } = useTranslation();
-  const searchInputRef = useRef<HTMLTextAreaElement>(null);
-
-  const isMultiLine = useAutoResizeTextarea(searchInputRef, searchText);
 
   const handleStartSearch = useCallback(() => {
     if (canSearch === false) {
@@ -62,64 +74,131 @@ export default function SearchHome({
     setIsSearching(!isSearching);
   }, [canSearch, isSearching, searchText, setIsSearching, t]);
 
-  return (
-    <section className="relative w-full flex transition-all justify-center items-center mt-[15vh]">
-      <div className="relative z-10 px-8 pt-8 flex  text-transparent flex-col justify-center items-center w-full max-w-[780px]">
-        <RAGFlowLogo showEmbedIcon={showEmbedLogo}></RAGFlowLogo>
-        <div className="rounded-lg  text-primary text-xl sticky flex justify-center w-full transform scale-100 mt-8 p-6 min-h-[240px] border">
-          {!isSearching && <Spotlight className="z-0" />}
-          <div className="flex flex-col justify-center items-center  w-2/3">
-            {!isSearching && (
-              <>
-                <p className="mb-4 transition-opacity">👋 Hi there</p>
-                <p className="mb-10 transition-opacity">
-                  {userInfo && (
-                    <>
-                      {t('search.welcomeBack')}, {userInfo.nickname}
-                    </>
-                  )}
-                </p>
-              </>
-            )}
+  const fillQuestion = (question: string) => {
+    setSearchText(question);
+  };
 
-            <div className="relative w-full ">
-              <textarea
-                ref={searchInputRef}
-                rows={1}
-                placeholder={t('search.searchGreeting')}
-                className={cn(
-                  'w-full py-4 px-4 pr-14 text-text-primary text-lg bg-bg-base border border-border-button resize-none scrollbar-thin outline-none focus-visible:ring-1 focus-visible:ring-text-primary/50',
-                  isMultiLine ? 'rounded-3xl' : 'rounded-full',
-                )}
-                value={searchText}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === 'Enter' &&
-                    !e.shiftKey &&
-                    !e.nativeEvent.isComposing
-                  ) {
-                    e.preventDefault();
-                    handleStartSearch();
-                  }
-                }}
-                onChange={(e) => {
-                  if (canSearch === false) {
-                    message.warning(t('search.chooseDataset'));
-                    return;
-                  }
-                  setSearchText(e.target.value || '');
-                }}
-              />
+  return (
+    <section className="h-full overflow-y-auto px-6 py-8">
+      <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-5">
+        {/* 品牌：和君纵达 */}
+        <div className="flex flex-col items-center gap-1">
+          <RAGFlowLogo showEmbedIcon={showEmbedLogo} />
+          {userInfo?.nickname && (
+            <p className="text-sm text-text-secondary">
+              {t('search.welcomeBack')}，{userInfo.nickname}
+            </p>
+          )}
+        </div>
+
+        {/* 搜索卡片 */}
+        <div className="rounded-xl border border-border-default bg-bg-base p-5">
+          <div className="flex items-center gap-3 rounded-lg bg-bg-card px-4 py-2.5">
+            <Search size={20} className="shrink-0 text-text-secondary" />
+            <input
+              type="text"
+              placeholder="请输入您的问题，例如：嘉实沪深300ETF的最新净值是多少？"
+              className="min-w-0 flex-1 bg-transparent text-base text-text-primary outline-none placeholder:text-text-disabled"
+              value={searchText}
+              onKeyDown={(e) => {
+                if (
+                  e.key === 'Enter' &&
+                  !e.shiftKey &&
+                  !e.nativeEvent.isComposing
+                ) {
+                  e.preventDefault();
+                  handleStartSearch();
+                }
+              }}
+              onChange={(e) => {
+                if (canSearch === false) {
+                  message.warning(t('search.chooseDataset'));
+                  return;
+                }
+                setSearchText(e.target.value || '');
+              }}
+            />
+            <button
+              type="button"
+              onClick={handleStartSearch}
+              className="flex shrink-0 items-center gap-1.5 rounded-md bg-[#4F46E5] px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            >
+              <Sparkles size={15} />
+              智能问答
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-sm text-text-secondary">热门问题：</span>
+            {HOT_QUESTIONS.map((question) => (
               <button
+                key={question}
                 type="button"
-                className={cn(
-                  'absolute right-3 flex size-9 items-center justify-center rounded-full bg-text-primary text-bg-base shadow transition-opacity hover:opacity-90',
-                  isMultiLine ? 'bottom-3' : 'top-1/2 -translate-y-1/2',
-                )}
-                onClick={handleStartSearch}
+                onClick={() => fillQuestion(question)}
+                className="rounded-full border border-border-default px-3 py-1 text-sm text-text-primary transition-colors hover:border-text-secondary"
               >
-                <Search size={18} />
+                {question}
               </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 主体：左 AI 回答 / 右 相似问题 */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+          {/* AI 回答（空状态） */}
+          <div className="flex min-h-[430px] flex-col rounded-xl border border-border-default bg-bg-base p-6">
+            <h2 className="text-base font-semibold text-text-primary">
+              AI 回答
+            </h2>
+            <p className="mt-1 text-sm text-text-secondary">
+              基于知识库内容智能生成
+            </p>
+
+            <div className="flex flex-1 flex-col items-center justify-center gap-3">
+              <div className="flex size-16 items-center justify-center rounded-full bg-[#EEF2FF]">
+                <Sparkles size={28} className="text-[#4F46E5]" />
+              </div>
+              <p className="text-lg font-medium text-text-primary">
+                开始智能问答
+              </p>
+              <p className="max-w-[360px] text-center text-sm text-text-secondary">
+                输入您的问题，AI 将基于知识库内容为您提供准确、全面的答案
+              </p>
+            </div>
+          </div>
+
+          {/* 相似问题 */}
+          <div className="rounded-xl border border-border-default bg-bg-base p-5">
+            <h2 className="text-base font-semibold text-text-primary">
+              相似问题
+            </h2>
+            <p className="mt-1 text-sm text-text-secondary">相关度由高到低</p>
+
+            <div className="mt-4 flex flex-col gap-3">
+              {SIMILAR_QUESTIONS.map(({ question, score, tag }) => (
+                <button
+                  key={question}
+                  type="button"
+                  onClick={() => fillQuestion(question)}
+                  className="rounded-lg border border-border-default p-3 text-left transition-colors hover:border-text-secondary"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-sm font-medium leading-snug text-text-primary">
+                      {question}
+                    </span>
+                    <span className="shrink-0 rounded bg-bg-card px-1.5 py-0.5 text-xs font-semibold text-text-primary">
+                      {score}%
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-text-secondary">{tag}</p>
+                  <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-border-default">
+                    <div
+                      className="h-full rounded-full bg-[#2563EB]"
+                      style={{ width: `${score}%` }}
+                    />
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
         </div>
