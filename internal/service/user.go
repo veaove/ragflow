@@ -78,6 +78,9 @@ type LoginRequest struct {
 type EmailLoginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required"`
+	// 图形验证码：captcha_id 由 GET /auth/captcha 下发，captcha 是用户输入。
+	CaptchaID string `json:"captcha_id"`
+	Captcha   string `json:"captcha"`
 }
 
 // UpdateSettingsRequest update user settings request
@@ -302,6 +305,12 @@ func (s *UserService) Login(ctx context.Context, req *LoginRequest) (*entity.Use
 // - CodeServerError (500): Password decryption failure
 // - CodeForbidden (403): Account disabled
 func (s *UserService) LoginByEmail(ctx context.Context, req *EmailLoginRequest) (*entity.User, common.ErrorCode, error) {
+	// 图形验证码校验。注意 /auth/login 路由指向的是这个方法（不是 Login），
+	// 前端登录页走的也是这里，所以校验必须加在这儿。
+	if err := s.verifyLoginCaptcha(ctx, req.CaptchaID, req.Captcha); err != nil {
+		return nil, common.CodeAuthenticationError, err
+	}
+
 	user, err := s.userDAO.GetByEmail(ctx, dao.DB, req.Email)
 	if err != nil {
 		common.Error("user not found by email", err)
