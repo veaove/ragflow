@@ -62,7 +62,8 @@ export default {
         times: '次',
         token: 'tokens',
       },
-      satisfactionHint: '點讚數 / 調用數',
+      satisfactionHint: '點讚數 / 點踩數',
+      tokensHint: '近7日累計',
       chart: {
         sourceTitle: '知識來源分佈',
         sourceTotal: '文檔總數',
