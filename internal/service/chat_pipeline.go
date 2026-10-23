@@ -243,11 +243,32 @@ func (s *ChatPipelineService) AsyncChat(
 		return nil, fmt.Errorf("the last content of this conversation is not from user")
 	}
 
-	// Quality inspection of the user input: record + alert only, never block.
-	// Runs once at entry, before any dispatch, so all three chat paths get it.
+	// 用户输入质检：命中「阻断」级规则时直接短路，不进 LLM。
+	//
+	// 之前这里只记录 + 告警、从不阻断（注释原文 "never block"），后果是：
+	// 用户问了违规问题 → 规则命中并写了 qc_hit → 但 LLM 照常回答 →
+	// 回答里又命中一次 → 最终用户看到的是「LLM 的回答 + 规则提示词」拼在一起，
+	// 而不是规则里配置的那句话。
+	//
+	// 现在：severity=block 的规则一旦命中用户输入，立刻返回 prompt_message，
+	// 完全不调用模型（同时也省掉一次 token）。
+	// severity=warn 的规则行为不变，仍然只记录 + 告警。
 	if qcUser := NewQcSession(ctx, chat.TenantID, entity.QcAppTypeChat, chat.ID, common.SessionIDFromContext(ctx), chat.ID, false, false); qcUser.Enabled() {
 		if last := lastUserMessage(messages); last != "" {
 			qcUser.InspectUserInput(last)
+			if qcUser.Blocked() {
+				common.Info("QC blocked user input; short-circuiting before LLM",
+					zap.String("chat_id", chat.ID))
+				blocked := make(chan AsyncChatResult, 1)
+				blocked <- AsyncChatResult{
+					Answer:    qcUser.Replacement(),
+					CreatedAt: float64(time.Now().Unix()),
+					Final:     true,
+					QcEvent:   blockQcEvent(qcUser),
+				}
+				close(blocked)
+				return blocked, nil
+			}
 		}
 	}
 
