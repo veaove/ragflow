@@ -87,7 +87,10 @@ const ApiContent = ({ id, idKey }: { id?: string; idKey: string }) => {
     };
   }, [i18n.language]);
 
-  const cleanDoc = useMemo(() => removeFrontmatter(rawDoc), [rawDoc]);
+  const cleanDoc = useMemo(
+    () => applyProductBrand(removeFrontmatter(rawDoc)),
+    [rawDoc],
+  );
 
   // Defer the heavy 230KB markdown rendering so the page paints immediately.
   const [docReady, setDocReady] = useState(false);
@@ -153,3 +156,26 @@ const ApiContent = ({ id, idKey }: { id?: string; idKey: string }) => {
 };
 
 export default ApiContent;
+
+/**
+ * 把文档正文里的上游产品名换成当前产品的名称。
+ *
+ * 只改正文、**不碰代码块**：代码块里出现的是 URL、字段值、示例变量，
+ * 改掉会让示例直接失效（比如 ragflow.io、ragflow_api_key）。
+ * 小写域名不会被匹配，因为这里只替换首字母大写的品牌名。
+ */
+function applyProductBrand(markdown: string): string {
+  const PRODUCT_NAME = '和君知识库';
+  const segments = markdown.split(/(```[\s\S]*?```)/g);
+  return segments
+    .map((segment, index) => {
+      // 奇数下标是代码块，原样保留。
+      if (index % 2 === 1) {
+        return segment;
+      }
+      return segment
+        .replace(/RAGFlow/g, PRODUCT_NAME)
+        .replace(/RagFlow/g, PRODUCT_NAME);
+    })
+    .join('');
+}
