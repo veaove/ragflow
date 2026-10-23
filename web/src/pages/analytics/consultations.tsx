@@ -42,6 +42,8 @@ import {
   IConsultationLogItem,
 } from '@/services/analytics-service';
 
+import { appTypeLabelKey } from './app-type';
+
 const RATING_OPTIONS = [
   { value: '', label: '全部评价' },
   { value: 'good', label: '好评' },
@@ -200,6 +202,7 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
             <TableRow>
               <TableHead className="w-40">{t('analytics.customerId')}</TableHead>
               <TableHead className="w-36">{t('analytics.app')}</TableHead>
+              <TableHead className="w-24">{t('analytics.appType')}</TableHead>
               <TableHead className="w-44">{t('analytics.time')}</TableHead>
               <TableHead className="w-20">{t('analytics.rounds')}</TableHead>
               <TableHead className="w-24">{t('analytics.rating')}</TableHead>
@@ -213,6 +216,9 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
               <TableRow key={`${it.chain}-${it.session_id}`}>
                 <TableCell className="font-mono text-xs">{it.customer_id || '-'}</TableCell>
                 <TableCell>{it.app_name || '-'}</TableCell>
+                <TableCell className="text-text-secondary">
+                  {it.app_type ? t(appTypeLabelKey(it.app_type)) : '-'}
+                </TableCell>
                 <TableCell className="text-text-secondary">
                   {formatTime(it.start_time)}
                 </TableCell>
@@ -240,7 +246,7 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
             ))}
             {!loading && items.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="py-10 text-center text-text-disabled">
+                <TableCell colSpan={9} className="py-10 text-center text-text-disabled">
                   {t('analytics.empty')}
                 </TableCell>
               </TableRow>

@@ -27,6 +27,12 @@ export interface IConsultationLogItem {
   customer_id: string;
   app_id: string;
   app_name: string;
+  /**
+   * Shape of the application: "chat" for a dialog-backed chat app, or the
+   * studio canvas category (agent_canvas / workflow_canvas /
+   * chatflow_canvas / dataflow_canvas).
+   */
+  app_type: string;
   start_time: number;
   rounds: number;
   rating: AnalyticsRating;

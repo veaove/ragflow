@@ -40,6 +40,7 @@ type ConsultationLogItem struct {
 	CustomerID    string `json:"customer_id"`
 	AppID         string `json:"app_id"`
 	AppName       string `json:"app_name"`
+	AppType       string `json:"app_type"`   // app shape: chat | agent_canvas | workflow_canvas | chatflow_canvas | dataflow_canvas
 	StartTime     int64  `json:"start_time"` // UnixMilli
 	Rounds        int    `json:"rounds"`
 	Rating        string `json:"rating"`

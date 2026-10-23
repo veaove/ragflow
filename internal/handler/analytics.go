@@ -163,7 +163,7 @@ func (h *AnalyticsHandler) ExportConsultations(c *gin.Context) {
 	// A UTF-8 BOM keeps Excel from mangling the Chinese headers.
 	_, _ = c.Writer.Write([]byte("\xEF\xBB\xBF"))
 	w := csv.NewWriter(c.Writer)
-	_ = w.Write([]string{"客户ID", "应用", "咨询时间", "轮次", "评价", "响应耗时(ms)", "首问"})
+	_ = w.Write([]string{"客户ID", "应用", "应用类型", "咨询时间", "轮次", "评价", "响应耗时(ms)", "首问"})
 	for _, it := range items {
 		rating := "未评价"
 		switch it.Rating {
@@ -175,6 +175,7 @@ func (h *AnalyticsHandler) ExportConsultations(c *gin.Context) {
 		_ = w.Write([]string{
 			it.CustomerID,
 			it.AppName,
+			appTypeLabel(it.AppType),
 			time.UnixMilli(it.StartTime).Format("2006-01-02 15:04:05"),
 			strconv.Itoa(it.Rounds),
 			rating,
@@ -183,4 +184,24 @@ func (h *AnalyticsHandler) ExportConsultations(c *gin.Context) {
 		})
 	}
 	w.Flush()
+}
+
+// appTypeLabel renders the application shape for the CSV export. The web UI
+// localizes the same values; the CSV carries plain Chinese because Excel gets
+// a static file, not a locale.
+func appTypeLabel(appType string) string {
+	switch appType {
+	case "chat":
+		return "对话应用"
+	case "agent_canvas":
+		return "智能体"
+	case "chatflow_canvas":
+		return "对话流"
+	case "workflow_canvas":
+		return "工作流"
+	case "dataflow_canvas":
+		return "数据管道"
+	default:
+		return ""
+	}
 }

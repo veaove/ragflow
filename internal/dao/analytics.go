@@ -49,6 +49,7 @@ type chatListRow struct {
 	CustomerID    string  `gorm:"column:customer_id"`
 	AppID         string  `gorm:"column:app_id"`
 	AppName       string  `gorm:"column:app_name"`
+	AppType       string  `gorm:"column:app_type"`
 	StartTime     int64   `gorm:"column:start_time"`
 	Rounds        int     `gorm:"column:rounds"`
 	FirstQuestion string  `gorm:"column:first_question"`
@@ -63,6 +64,7 @@ type canvasListRow struct {
 	CustomerID    string  `gorm:"column:customer_id"`
 	AppID         string  `gorm:"column:app_id"`
 	AppName       string  `gorm:"column:app_name"`
+	AppType       string  `gorm:"column:app_type"`
 	StartTime     int64   `gorm:"column:start_time"`
 	Rounds        int     `gorm:"column:rounds"`
 	DurationMS    int     `gorm:"column:duration_ms"`
@@ -124,6 +126,7 @@ func (d *AnalyticsDAO) ListChatSessions(ctx context.Context, db *gorm.DB, tenant
 			COALESCE(c.user_id, '') AS customer_id,
 			COALESCE(c.dialog_id, '') AS app_id,
 			COALESCE(d.name, '') AS app_name,
+			'chat' AS app_type,
 			c.create_time AS start_time,
 			(SELECT COUNT(*) FROM conversation_message m WHERE m.conversation_id = c.id) AS rounds,
 			COALESCE((SELECT m.content FROM conversation_message m
@@ -177,6 +180,7 @@ func (d *AnalyticsDAO) ListChatSessions(ctx context.Context, db *gorm.DB, tenant
 			CustomerID:    r.CustomerID,
 			AppID:         r.AppID,
 			AppName:       r.AppName,
+			AppType:       r.AppType,
 			StartTime:     r.StartTime,
 			Rounds:        r.Rounds,
 			Rating:        ratingOf(r.ThumbUp),
@@ -197,6 +201,7 @@ func (d *AnalyticsDAO) ListCanvasSessions(ctx context.Context, db *gorm.DB, tena
 			COALESCE(a.user_id, '') AS customer_id,
 			COALESCE(a.dialog_id, '') AS app_id,
 			COALESCE(u.title, '') AS app_name,
+			COALESCE(u.canvas_category, '') AS app_type,
 			a.create_time AS start_time,
 			COALESCE(a.round, 0) AS rounds,
 			COALESCE(a.duration, 0) AS duration_ms,
@@ -248,6 +253,7 @@ func (d *AnalyticsDAO) ListCanvasSessions(ctx context.Context, db *gorm.DB, tena
 			CustomerID:    r.CustomerID,
 			AppID:         r.AppID,
 			AppName:       r.AppName,
+			AppType:       r.AppType,
 			StartTime:     r.StartTime,
 			Rounds:        r.Rounds,
 			Rating:        ratingOf(r.ThumbUp),
