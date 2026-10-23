@@ -132,7 +132,7 @@ export function LoginCard({
                     data-testid="auth-email"
                     placeholder={copy.emailPlaceholder}
                     autoComplete="email"
-                    className="h-[42px] rounded-lg border-[#D6DEE9] text-[15px]"
+                    className="h-[42px] rounded-lg border-[#D6DEE9] bg-white text-[15px] text-[#1F2937] placeholder:text-[#9CA3AF]"
                     {...field}
                   />
                 </FormControl>
@@ -152,7 +152,7 @@ export function LoginCard({
                     type="password"
                     placeholder={copy.passwordPlaceholder}
                     autoComplete="current-password"
-                    className="h-[42px] rounded-lg border-[#D6DEE9] text-[15px]"
+                    className="h-[42px] rounded-lg border-[#D6DEE9] bg-white text-[15px] text-[#1F2937] placeholder:text-[#9CA3AF]"
                     {...field}
                   />
                 </FormControl>
@@ -172,7 +172,7 @@ export function LoginCard({
                       data-testid="auth-captcha"
                       placeholder={copy.captchaLabel}
                       autoComplete="off"
-                      className="h-[42px] flex-1 rounded-lg border-[#D6DEE9] text-[15px]"
+                      className="h-[42px] flex-1 rounded-lg border-[#D6DEE9] bg-white text-[15px] text-[#1F2937] placeholder:text-[#9CA3AF]"
                       {...field}
                     />
                     <CaptchaImage image={captchaImage} onRefresh={onRefreshCaptcha} />
