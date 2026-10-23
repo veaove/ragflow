@@ -147,6 +147,11 @@ const routeConfigOptions = [
     layout: false,
   },
   {
+    path: Routes.Logout,
+    Component: () => import('@/pages/logout'),
+    layout: false,
+  },
+  {
     path: Routes.ChatShare,
     Component: () => import('@/pages/next-chats/share'),
     layout: false,
