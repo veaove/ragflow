@@ -31,38 +31,7 @@ import { useTranslation } from 'react-i18next';
 import './index.less';
 import { RAGFlowLogo } from './ragflow-logo';
 
-/**
- * 兜底热门问题：接口没返回数据时才用（新部署、无历史提问）。
- * 正常走 /api/v1/system/hot-questions，取真实聊天记录里的高频提问。
- */
-const FALLBACK_HOT_QUESTIONS = [
-  '基金净值查询',
-  '开户流程',
-  '赎回规则',
-  '风险评级',
-];
 
-/**
- * 相似问题的占位条目。
- *
- * 未发起检索时没有真实候选，这里用示例维持原型的信息结构；
- * 检索发起后由 SearchingPage 渲染真实结果。
- */
-const FALLBACK_SIMILAR_QUESTIONS: SimilarQuestion[] = [
-  {
-    question: '嘉实沪深300ETF的最新净值是多少？',
-    score: 96.5,
-    tag: '产品净值',
-  },
-  { question: '如何查询嘉实基金的产品净值？', score: 88.2, tag: '操作指引' },
-  { question: '嘉实300ETF联接基金净值查询', score: 82.7, tag: '产品净值' },
-];
-
-interface SimilarQuestion {
-  question: string;
-  score: number;
-  tag: string;
-}
 
 /** 从 chunk 正文里抽出一句问题用于展示。 */
 function extractQuestion(content: string): string {
@@ -161,12 +130,8 @@ export default function SearchHome({
     },
   });
 
-  const hotList = hotQuestions?.length
-    ? hotQuestions
-    : FALLBACK_HOT_QUESTIONS;
-  const similarList = similarQuestions?.length
-    ? similarQuestions
-    : FALLBACK_SIMILAR_QUESTIONS;
+  const hotList = hotQuestions ?? [];
+  const similarList = similarQuestions ?? [];
 
   return (
     <section className="h-full overflow-y-auto px-6 py-8">
@@ -218,9 +183,10 @@ export default function SearchHome({
             </button>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="text-sm text-text-secondary">热门问题：</span>
-            {hotList.map((question) => (
+          {hotList.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-sm text-text-secondary">热门问题：</span>
+              {hotList.map((question) => (
               <button
                 key={question}
                 type="button"
@@ -228,9 +194,10 @@ export default function SearchHome({
                 className="rounded-full border border-border-default px-3 py-1 text-sm text-text-primary transition-colors hover:border-text-secondary"
               >
                 {question}
-              </button>
-            ))}
-          </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* 主体：左 AI 回答 / 右 相似问题 */}
@@ -265,6 +232,13 @@ export default function SearchHome({
             <p className="mt-1 text-sm text-text-secondary">相关度由高到低</p>
 
             <div className="mt-4 flex flex-col gap-3">
+              {similarList.length === 0 && (
+                <p className="rounded-lg border border-dashed border-border-default p-4 text-center text-sm text-text-secondary">
+                  {debouncedQuestion.length >= 2
+                    ? '未找到相关问题，换个说法试试'
+                    : '输入问题后，这里会显示知识库中相关的内容'}
+                </p>
+              )}
               {similarList.map(({ question, score, tag }) => (
                 <button
                   key={question}
