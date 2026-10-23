@@ -43,6 +43,7 @@ type Router struct {
 	searchHandler        *handler.SearchHandler
 	fileHandler          *handler.FileHandler
 	memoryHandler        *handler.MemoryHandler
+	overviewHandler      *handler.OverviewHandler
 	mcpHandler           *handler.MCPHandler
 	mcpServerHandler     *handler.MCPServerHandler
 	skillSearchHandler   *handler.SkillSearchHandler
@@ -165,6 +166,7 @@ func NewRouter(
 		searchHandler:        searchHandler,
 		fileHandler:          fileHandler,
 		memoryHandler:        memoryHandler,
+		overviewHandler:      handler.NewOverviewHandler(),
 		mcpHandler:           mcpHandler,
 		mcpServerHandler:     mcpServerHandler,
 		skillSearchHandler:   skillSearchHandler,
@@ -506,6 +508,12 @@ func (r *Router) Setup(engine *gin.Engine) {
 				synonymGroups.GET("/:group_id", r.getSynonymHandler().GetSynonymGroup)
 				synonymGroups.PUT("/:group_id", r.getSynonymHandler().UpdateSynonymGroup)
 				synonymGroups.DELETE("/:group_id", r.getSynonymHandler().DeleteSynonymGroup)
+			}
+
+			// 总览页的跨模块聚合（最近动态：文档/知识库/应用/质检拦截）。
+			overview := v1.Group("/overview")
+			{
+				overview.GET("/activities", r.overviewHandler.GetRecentActivities)
 			}
 
 			// Search routes

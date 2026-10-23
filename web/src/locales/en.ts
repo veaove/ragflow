@@ -143,6 +143,19 @@ export default {
       running: 'Running...',
     },
     overview: {
+      activity: {
+        title: 'Recent activity',
+        count: '{{count}} items',
+        loading: 'Loading...',
+        empty: 'No activity yet',
+        source: 'Source',
+        action: 'Activity',
+        time: 'Time',
+        document: 'Uploaded "{{title}}"',
+        knowledgebase: 'Created knowledge base "{{title}}"',
+        canvas: 'Updated "{{title}}"',
+        qcBlock: 'Blocked violation "{{title}}"',
+      },
       metric: {
         datasets: 'Datasets',
         documents: 'Documents',

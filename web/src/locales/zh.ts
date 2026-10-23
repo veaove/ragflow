@@ -124,6 +124,19 @@ export default {
       running: '运行中...',
     },
     overview: {
+      activity: {
+        title: '最近动态',
+        count: '共 {{count}} 条',
+        loading: '加载中…',
+        empty: '暂无动态',
+        source: '来源',
+        action: '动态',
+        time: '时间',
+        document: '上传《{{title}}》',
+        knowledgebase: '创建知识库「{{title}}」',
+        canvas: '更新「{{title}}」',
+        qcBlock: '拦截违规「{{title}}」',
+      },
       metric: {
         datasets: '知识库总数',
         documents: '文档总数',

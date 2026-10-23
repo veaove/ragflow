@@ -34,6 +34,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MetricCard } from './metric-card';
 import { SourceDonutChart } from './source-donut-chart';
+import { RecentActivities } from './recent-activities';
 import { TrendAreaChart } from './trend-area-chart';
 import { TREND_DAYS } from './constants';
 import { useOverviewQueries } from './hook';
@@ -203,7 +204,7 @@ export default function Overview() {
         </section>
 
         {/* 图表区 */}
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,300px)_minmax(0,1fr)_minmax(0,420px)]">
           <div className="rounded-xl border border-border-default bg-bg-base p-5">
             <h2 className="mb-4 text-base font-medium text-text-primary">
               {t('chart.sourceTitle')}
@@ -225,6 +226,8 @@ export default function Overview() {
               emptyHint={t('chart.trendEmptyHint')}
             />
           </div>
+
+          <RecentActivities />
         </section>
           </div>
         </TabsContent>
