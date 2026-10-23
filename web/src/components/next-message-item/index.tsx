@@ -103,6 +103,12 @@ function MessageItem({
   const isAssistant = item.role === MessageType.Assistant;
   const isUser = item.role === MessageType.User;
   const [showThinking, setShowThinking] = useState(false);
+  // 点赞状态：以消息自带 thumbup 为准（重新进入会话时回显），
+  // 点击时先本地翻转再发请求，失败由子组件回滚。
+  const [thumbup, setThumbup] = useState<boolean>(!!item.thumbup);
+  useEffect(() => {
+    setThumbup(!!item.thumbup);
+  }, [item.thumbup]);
   const { setLastSendLoadingFunc } = useContext(AgentChatContext);
   // The backend already swapped the answer for the replacement message, so this
   // banner only explains WHY the answer looks like that. Live streams only —
@@ -251,6 +257,8 @@ function MessageItem({
                         content={messageContent}
                         prompt={item.prompt}
                         showLikeButton={showLikeButton}
+                        thumbup={thumbup}
+                        onThumbupChange={setThumbup}
                         audioBinary={item.audio_binary}
                         showLoudspeaker={showLoudspeaker}
                         showLog={showLog}
@@ -264,6 +272,8 @@ function MessageItem({
                         content={messageContent}
                         prompt={item.prompt}
                         showLikeButton={showLikeButton}
+                        thumbup={thumbup}
+                        onThumbupChange={setThumbup}
                         audioBinary={item.audio_binary}
                         showLoudspeaker={showLoudspeaker}
                         showLog={showLog}

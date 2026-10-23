@@ -30,6 +30,7 @@ import { downloadFileFromBlob } from '@/utils/file-util';
 import {
   DeleteOutlined,
   DislikeOutlined,
+  LikeFilled,
   LikeOutlined,
   PauseCircleOutlined,
   SoundOutlined,
@@ -48,6 +49,10 @@ interface IProps {
   content: string;
   prompt?: string;
   showLikeButton: boolean;
+  /** 当前回答的点赞状态（来自 conversation_message.thumb_up）。 */
+  thumbup?: boolean;
+  /** 点赞状态变化的本地回调，用于乐观更新 / 失败回滚。 */
+  onThumbupChange?: (next: boolean) => void;
   audioBinary?: string;
   showLoudspeaker?: boolean;
   showLog?: boolean;
@@ -65,6 +70,8 @@ export const AssistantGroupButton = ({
   prompt,
   audioBinary,
   showLikeButton,
+  thumbup = false,
+  onThumbupChange,
   showLoudspeaker = true,
   showLog = true,
   attachment,
@@ -80,9 +87,16 @@ export const AssistantGroupButton = ({
   const { t } = useTranslation();
   const { handleRead, ref, isPlaying } = useSpeech(content, audioBinary);
 
-  const handleLike = useCallback(() => {
-    onFeedbackOk({ thumbup: true });
-  }, [onFeedbackOk]);
+  // 抖音式点赞：点一次点赞，再点一次取消。
+  // 先本地翻转（立刻看到高亮），请求失败再翻回去。
+  const handleLike = useCallback(async () => {
+    const next = !thumbup;
+    onThumbupChange?.(next);
+    const ret = await onFeedbackOk({ thumbup: next });
+    if (ret !== 0) {
+      onThumbupChange?.(!next);
+    }
+  }, [thumbup, onFeedbackOk, onThumbupChange]);
 
   const { showLogSheet } = useContext(AgentChatContext);
 
@@ -122,8 +136,14 @@ export const AssistantGroupButton = ({
         )}
         {showLikeButton && (
           <>
-            <ToggleGroupItem value="c" onClick={handleLike}>
-              <LikeOutlined />
+            <ToggleGroupItem
+              value="c"
+              onClick={handleLike}
+              className={
+                thumbup ? 'text-red-500 hover:text-red-500' : undefined
+              }
+            >
+              {thumbup ? <LikeFilled /> : <LikeOutlined />}
             </ToggleGroupItem>
             <ToggleGroupItem value="d" onClick={showModal}>
               <DislikeOutlined />

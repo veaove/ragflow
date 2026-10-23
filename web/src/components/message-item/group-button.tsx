@@ -45,6 +45,10 @@ interface IProps {
   content: string;
   prompt?: string;
   showLikeButton: boolean;
+  /** 当前回答的点赞状态（来自 conversation_message.thumb_up）。 */
+  thumbup?: boolean;
+  /** 点赞状态变化的本地回调，用于乐观更新 / 失败回滚。 */
+  onThumbupChange?: (next: boolean) => void;
   audioBinary?: string;
   showLoudspeaker?: boolean;
 }
@@ -55,6 +59,8 @@ export const AssistantGroupButton = ({
   prompt,
   audioBinary,
   showLikeButton,
+  thumbup = false,
+  onThumbupChange,
   showLoudspeaker = true,
 }: IProps) => {
   const { visible, hideModal, showModal, onFeedbackOk, loading } =
@@ -69,9 +75,15 @@ export const AssistantGroupButton = ({
 
   const copyText = useMemo(() => removeThinkSection(content), [content]);
 
-  const handleLike = useCallback(() => {
-    onFeedbackOk({ thumbup: true });
-  }, [onFeedbackOk]);
+  // 抖音式点赞：点一次点赞，再点一次取消；先本地翻转，失败回滚。
+  const handleLike = useCallback(async () => {
+    const next = !thumbup;
+    onThumbupChange?.(next);
+    const ret = await onFeedbackOk({ thumbup: next });
+    if (ret !== 0) {
+      onThumbupChange?.(!next);
+    }
+  }, [thumbup, onFeedbackOk, onThumbupChange]);
 
   return (
     <>
@@ -112,10 +124,16 @@ export const AssistantGroupButton = ({
             <Button
               variant="transparent"
               size="icon-xs"
-              className="border-0"
+              className={
+                thumbup
+                  ? 'border-0 text-red-500 hover:text-red-500'
+                  : 'border-0'
+              }
               onClick={handleLike}
             >
-              <LucideThumbsUp />
+              <LucideThumbsUp
+                className={thumbup ? 'fill-current' : undefined}
+              />
             </Button>
 
             <Button

@@ -26,7 +26,7 @@ import {
 import { cn } from '@/lib/utils';
 import classNames from 'classnames';
 import { isEmpty } from 'lodash';
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { DocumentDownloadButton } from '../document-download-button';
 import { LoadingDots } from '../loading-dots';
 import MarkdownContent from '../markdown-content';
@@ -73,6 +73,11 @@ const MessageItem = ({
   nickname,
   isLast = false,
 }: IProps) => {
+  // 点赞状态：以消息自带 thumbup 为准（重进会话时回显），点击时先本地翻转。
+  const [thumbup, setThumbup] = useState<boolean>(!!item.thumbup);
+  useEffect(() => {
+    setThumbup(!!item.thumbup);
+  }, [item.thumbup]);
   const { theme } = useTheme();
   const { t } = useTranslate('chat');
   const isAssistant = item.role === MessageType.Assistant;
@@ -145,6 +150,8 @@ const MessageItem = ({
                   content={messageContent}
                   prompt={item.prompt}
                   showLikeButton={showLikeButton}
+                  thumbup={thumbup}
+                  onThumbupChange={setThumbup}
                   audioBinary={item.audio_binary}
                   showLoudspeaker={showLoudspeaker}
                 ></AssistantGroupButton>

@@ -37,6 +37,8 @@ export const useSendFeedback = (messageId: string) => {
       if (ret === 0) {
         hideModal();
       }
+      // 返回结果码：调用方（点赞按钮）需要据此决定是否回滚乐观更新。
+      return ret;
     },
     [feedback, hideModal, messageId],
   );

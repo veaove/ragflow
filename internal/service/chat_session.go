@@ -213,6 +213,10 @@ func (s *ChatSessionService) CreateSession(ctx context.Context, userID, chatID s
 			"role":       "assistant",
 			"content":    prologue,
 			"created_at": float64(time.Now().Unix()),
+			// 开场白也必须带 id：会话详情里它同样渲染点赞/点踩按钮，
+			// 没有 id 时 feedback 接口按 msg["id"] 匹配永远落空，
+			// 用户点了没有任何反馈（也不会报错）。
+			"id": common.GenerateUUID(),
 		},
 	})
 

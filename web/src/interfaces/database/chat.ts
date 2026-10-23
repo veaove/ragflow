@@ -220,6 +220,11 @@ export interface IExternalChatInfo {
 
 export interface IMessage extends Message {
   id: string;
+  /**
+   * 该条回答的点赞状态。后端 conversation_message.thumb_up 持久化，
+   * 重新进入会话时必须用它回显高亮，否则会「点完看不到、下次还能再点」。
+   */
+  thumbup?: boolean;
   awaitingServerId?: boolean;
   reference?: IReference; // the latest news has reference
   conversationId?: string; // To distinguish which conversation the message belongs to
