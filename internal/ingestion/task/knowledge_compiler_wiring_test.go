@@ -18,7 +18,9 @@ package task
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"testing"
 
 	"ragflow/internal/agent/runtime"
@@ -26,6 +28,7 @@ import (
 	"ragflow/internal/engine/types"
 	"ragflow/internal/entity"
 	kc "ragflow/internal/ingestion/component/knowledge_compiler/common"
+	"ragflow/internal/utility"
 )
 
 // TestKnowledgeCompilerRegisteredByWiring locks the composition-root contract:
@@ -177,5 +180,67 @@ func TestDatasetEmbeddingIDBindsTheDatasetModel(t *testing.T) {
 				t.Fatalf("datasetEmbeddingID() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// infinityMappingFile is the schema every Infinity knowledge-base table is
+// created from. A SELECT of a column that is not in it fails at bind time.
+const infinityMappingFile = "infinity_mapping.json"
+
+func loadInfinitySchemaColumns(t *testing.T) map[string]struct{} {
+	t.Helper()
+
+	path, err := utility.FindConfFileInProject(infinityMappingFile)
+	if err != nil {
+		t.Fatalf("cannot locate %s: %v", infinityMappingFile, err)
+	}
+	raw, err := os.ReadFile(*path)
+	if err != nil {
+		t.Fatalf("cannot read %s: %v", *path, err)
+	}
+	var schema map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatalf("cannot parse %s: %v", *path, err)
+	}
+	cols := make(map[string]struct{}, len(schema))
+	for name := range schema {
+		cols[name] = struct{}{}
+	}
+	return cols
+}
+
+// TestWikiDirtySelectFieldsExistInSchema locks the wiki dirty worker's SELECT
+// list to the real Infinity table schema.
+//
+// The worker used to select a column named "parent_id", while the wiki writer
+// stores the section→page link in "parent_kwd" and the table schema has no
+// "parent_id" column at all. Infinity's binder rejected the whole query with
+// "Fail to bind the expression: parent_id" (3013), so every wiki compile
+// failed and the dirty worker retried forever, roughly every 21 seconds.
+//
+// A typo in a SELECT list is invisible until it reaches the engine, so the
+// check belongs next to the code that builds the request.
+func TestWikiDirtySelectFieldsExistInSchema(t *testing.T) {
+	schema := loadInfinitySchemaColumns(t)
+
+	for _, field := range wikiDirtySelectFields {
+		if _, ok := schema[field]; !ok {
+			t.Errorf("wikiDirtySelectFields references unknown column %q; "+
+				"the Infinity table schema does not define it", field)
+		}
+	}
+}
+
+// TestWikiDirtySelectFieldsUseParentKwd pins the parent-link column name.
+//
+// The wiki writer stores the section→page link in "parent_kwd"
+// (knowledge_compiler/component.go). Selecting "parent_id" instead binds
+// against a column that does not exist and breaks the whole query.
+func TestWikiDirtySelectFieldsUseParentKwd(t *testing.T) {
+	for _, field := range wikiDirtySelectFields {
+		if field == "parent_id" {
+			t.Fatalf("wikiDirtySelectFields must not select \"parent_id\": " +
+				"the column does not exist; the wiki writer uses \"parent_kwd\"")
+		}
 	}
 }

@@ -268,6 +268,18 @@ func wikiCompiledRows(output map[string]any) []map[string]any {
 	return rows
 }
 
+// wikiDirtySelectFields are the columns replaceDirtyWikiProducts reads back
+// when it looks up the wiki rows a document already owns.
+//
+// Every name here must exist in the Infinity knowledge-base table schema
+// (conf/infinity_mapping.json) — the engine's SQL binder rejects a SELECT of
+// an unknown column with "Fail to bind the expression" (3013), which used to
+// break the wiki dirty worker in a permanent retry loop.
+//
+// The parent link column is `parent_kwd` (that is what the wiki writer stores,
+// see knowledge_compiler/component.go); there is no `parent_id` column.
+var wikiDirtySelectFields = []string{"id", "compile_kwd", "slug_kwd", "parent_kwd"}
+
 func replaceDirtyWikiProducts(ctx context.Context, request knowledge_compile.WikiDirtyRequest, rows []map[string]any, affectedSlugs, removedSlugs []string, activeStates []kc.WikiMapActiveState, fullReplace bool) error {
 	var dirty entity.WikiDocumentDirty
 	if err := dao.DB.WithContext(ctx).Where("document_id = ?", request.DocumentID).First(&dirty).Error; err != nil {
@@ -288,7 +300,7 @@ func replaceDirtyWikiProducts(ctx context.Context, request knowledge_compile.Wik
 		IndexNames:   []string{indexName},
 		KbIDs:        []string{request.DatasetID},
 		Limit:        10000,
-		SelectFields: []string{"id", "compile_kwd", "slug_kwd", "parent_id"},
+		SelectFields: wikiDirtySelectFields,
 		Filter: map[string]any{
 			"doc_id":        []string{request.DocumentID},
 			"type_kwd":      []string{"wiki_page", "wiki_section"},
