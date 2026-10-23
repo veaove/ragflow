@@ -650,7 +650,18 @@ func ApplyMetaDataFilter(
 		filteredIDs := runMetadataFilter(filters.Conditions, filters.Logic)
 		docIDs := constrainDocIDs(baseDocIDs, filteredIDs)
 		if len(docIDs) == 0 {
-			return nil, true // Return nil to indicate auto filter returned empty
+			// auto 模式的过滤条件是 LLM 从问题里临场猜出来的，不是用户配置的
+			// 约束。猜错（例如把「有哪些线下网点」猜成某个元数据等于某值）就会
+			// 把所有文档过滤掉，检索直接清零，最终表现为「知识库明明有答案却
+			// 回答未找到」。元数据过滤的语义是"精确收窄"，不该让召回彻底失效，
+			// 所以这里回退到不过滤。
+			//
+			// manual 模式不走这条：那里的条件由用户手写，匹配为空是用户的明确
+			// 意图，必须保持严格。
+			common.Warn("auto meta filter matched no documents; falling back to unfiltered retrieval",
+				zap.Int("conditions", len(filters.Conditions)),
+				zap.Int("baseDocIDs", len(baseDocIDs)))
+			return baseDocIDs, false
 		}
 		return docIDs, false
 
