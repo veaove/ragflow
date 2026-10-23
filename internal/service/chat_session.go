@@ -1308,7 +1308,7 @@ func (s *ChatSessionService) ChatCompletions(
 					if content == "" || result.AnswerIsAuthoritative {
 						content = result.Answer
 					}
-					s.appendAssistantToSession(session, content, messageID)
+					s.appendAssistantToSession(session, content, messageID, result.Prompt)
 					s.setAssistantDurationMS(session, firstTokenMS)
 					if ctx.Err() == nil {
 						s.updateSessionMessages(ctx, session, s.getSessionMessagesAsSlice(session), reference)
@@ -1352,7 +1352,7 @@ func (s *ChatSessionService) ChatCompletions(
 					fullAnswer.WriteString(result.Answer)
 				}
 				if session != nil {
-					s.appendAssistantToSession(session, fullAnswer.String(), messageID)
+					s.appendAssistantToSession(session, fullAnswer.String(), messageID, result.Prompt)
 				}
 				ans := s.structureAnswer(session, fullAnswer.String(), messageID, sessionID, reference)
 				ans["start_to_think"] = nil
@@ -1425,7 +1425,7 @@ func (s *ChatSessionService) ChatCompletions(
 					deltaAnswer += result.Answer
 				}
 				if session != nil {
-					s.appendAssistantToSession(session, fullAnswer.String(), messageID)
+					s.appendAssistantToSession(session, fullAnswer.String(), messageID, result.Prompt)
 				}
 				ans := s.structureAnswer(session, deltaAnswer, messageID, sessionID, reference)
 				// Citations ship ONLY on the final event: the intermediate
@@ -1686,20 +1686,31 @@ func (s *ChatSessionService) filterSystemAndLeadingAssistant(session *entity.Cha
 }
 
 // appendAssistantToSession appends or updates the assistant message in session.Message.
-func (s *ChatSessionService) appendAssistantToSession(session *entity.ChatSession, content string, messageID string) {
+func (s *ChatSessionService) appendAssistantToSession(session *entity.ChatSession, content string, messageID string, prompt string) {
 	messages := parseMessages(session.Message)
 	if len(messages) == 0 || s.getLastRole(messages) != "assistant" {
-		messages = append(messages, map[string]interface{}{
+		msg := map[string]interface{}{
 			"role":       "assistant",
 			"content":    content,
 			"created_at": float64(time.Now().UnixNano()) / 1e9,
 			"id":         messageID,
-		})
+		}
+		// 提示词必须落库：会话详情里的「查看提示词」按钮靠 message.prompt
+		// 决定是否渲染，不存的话退出再进来看就消失了（用户实测反馈）。
+		if prompt != "" {
+			msg["prompt"] = prompt
+		}
+		messages = append(messages, msg)
 	} else {
 		lastIdx := len(messages) - 1
 		messages[lastIdx]["content"] = content
 		messages[lastIdx]["created_at"] = float64(time.Now().UnixNano()) / 1e9
 		messages[lastIdx]["id"] = messageID
+		// prompt 只在非空时覆盖：流式过程中只有个别帧带 prompt，
+		// 空值不能把已经写进去的清掉。
+		if prompt != "" {
+			messages[lastIdx]["prompt"] = prompt
+		}
 	}
 	session.Message, _ = json.Marshal(messages)
 }
@@ -1712,7 +1723,8 @@ func (s *ChatSessionService) compactSessionAssistant(session *entity.ChatSession
 	if session == nil || strings.TrimSpace(final) == "" {
 		return
 	}
-	s.appendAssistantToSession(session, final, messageID)
+	// 这里只补最终答案，prompt 传空表示「不动已存的 prompt」。
+	s.appendAssistantToSession(session, final, messageID, "")
 }
 
 // getSessionMessagesAsSlice returns the session's messages as a slice of maps.
