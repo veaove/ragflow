@@ -165,6 +165,12 @@ func (c *QAChunkerComponent) invoke(_ context.Context, inputs map[string]any) (m
 		if len(pair.Keywords) > 0 {
 			chunk.ImportantKwd = pair.Keywords
 		}
+		// 问题本身也要进 question_kwd：FAQ 场景里用户输入的就是这一列，
+		// 引擎按 question_tks^20 加权匹配。为空时关键词路得分恒为 0，
+		// 只剩向量路撑分，融合分被拉到阈值以下就表现为「知识库中未找到答案」。
+		if q := strings.TrimSpace(rmQAPrefix(pair.Question)); q != "" {
+			chunk.QuestionKwd = []string{q}
+		}
 		chunks = append(chunks, chunk)
 	}
 

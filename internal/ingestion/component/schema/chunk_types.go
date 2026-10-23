@@ -125,6 +125,11 @@ type ChunkDoc struct {
 	// Source: parsed from the source table's keyword column (see QA chunker),
 	// otherwise filled later by the LLM auto-keyword extractor.
 	ImportantKwd []string `json:"important_kwd,omitempty"`
+	// QuestionKwd feeds the engine's question_tks^20 boost. For FAQ chunks the
+	// question IS the query users type, so leaving it empty drops the keyword
+	// half of the hybrid score to ~0 while the vector half still matches —
+	// the chunk gets retrieved but ranks below threshold ("知识库中未找到答案").
+	QuestionKwd []string `json:"question_kwd,omitempty"`
 	Summary       string          `json:"summary,omitempty"`
 	ChunkOrderInt *int            `json:"chunk_order_int,omitempty"`
 	TitleTks      string          `json:"title_tks,omitempty"`
