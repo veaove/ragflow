@@ -135,13 +135,17 @@ export default function SearchHome({
     queryKey: ['similarQuestions', debouncedQuestion, kbIds.join(',')],
     enabled: debouncedQuestion.length >= 2 && kbIds.length > 0,
     queryFn: async () => {
+      // umi-request 的第二个参数是 options，body 必须放在 data 里；
+      // 直接平铺会被当成 options，body 为空 → 后端 ShouldBindJSON 报 EOF（101）。
       const { data } = await request.post('/api/v1/retrieval', {
-        question: debouncedQuestion,
-        dataset_ids: kbIds,
-        page: 1,
-        page_size: 3,
-        similarity_threshold: 0.2,
-        vector_similarity_weight: 0.3,
+        data: {
+          question: debouncedQuestion,
+          dataset_ids: kbIds,
+          page: 1,
+          page_size: 3,
+          similarity_threshold: 0.2,
+          vector_similarity_weight: 0.3,
+        },
       });
       const chunks = (data?.data?.chunks ?? []) as Array<{
         content?: string;
@@ -183,7 +187,7 @@ export default function SearchHome({
             <Search size={20} className="shrink-0 text-text-secondary" />
             <input
               type="text"
-              placeholder="请输入您的问题，例如：嘉实沪深300ETF的最新净值是多少？"
+              placeholder="请输入您的问题"
               className="min-w-0 flex-1 bg-transparent text-base text-text-primary outline-none placeholder:text-text-disabled"
               value={searchText}
               onKeyDown={(e) => {
