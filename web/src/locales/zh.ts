@@ -9,7 +9,7 @@ export default {
       customerId: '客户 ID',
       app: '应用',
       appType: '应用类型',
-      appTypeChat: '对话应用',
+      appTypeChat: '知识问答',
       appTypeAgent: '智能体',
       appTypeChatflow: '对话流',
       appTypeWorkflow: '工作流',

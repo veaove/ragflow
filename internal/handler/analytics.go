@@ -189,10 +189,12 @@ func (h *AnalyticsHandler) ExportConsultations(c *gin.Context) {
 // appTypeLabel renders the application shape for the CSV export. The web UI
 // localizes the same values; the CSV carries plain Chinese because Excel gets
 // a static file, not a locale.
+//
+// "chat" is labelled 知识问答 to match the product navigation, not 对话应用.
 func appTypeLabel(appType string) string {
 	switch appType {
 	case "chat":
-		return "对话应用"
+		return "知识问答"
 	case "agent_canvas":
 		return "智能体"
 	case "chatflow_canvas":

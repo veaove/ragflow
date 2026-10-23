@@ -30,7 +30,7 @@ func TestAppTypeLabel(t *testing.T) {
 		appType string
 		want    string
 	}{
-		{appType: "chat", want: "对话应用"},
+		{appType: "chat", want: "知识问答"},
 		{appType: "agent_canvas", want: "智能体"},
 		{appType: "chatflow_canvas", want: "对话流"},
 		{appType: "workflow_canvas", want: "工作流"},

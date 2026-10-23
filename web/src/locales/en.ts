@@ -9,7 +9,7 @@ export default {
       customerId: 'Customer ID',
       app: 'App',
       appType: 'App type',
-      appTypeChat: 'Chat app',
+      appTypeChat: 'Chat',
       appTypeAgent: 'Agent',
       appTypeChatflow: 'Chatflow',
       appTypeWorkflow: 'Workflow',
