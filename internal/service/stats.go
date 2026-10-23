@@ -123,3 +123,48 @@ func (s *StatsService) GetFeedbackStats(ctx context.Context, userID string) (*Fe
 	}
 	return &FeedbackStats{Up: row.Up, Down: row.Down}, nil
 }
+
+// HotQuestions 返回知识搜索首页的「热门问题」。
+//
+// 数据源是真实聊天记录里的用户提问（conversation_message.role='user'），
+// 按出现次数排序。过滤掉寒暄与过短的句子，否则「你好」会常年霸榜。
+func (s *StatsService) HotQuestions(ctx context.Context, userID string, limit int) ([]string, error) {
+	tenants, err := s.userTenantDAO.GetByUserID(ctx, dao.DB, userID)
+	if err != nil || len(tenants) == 0 {
+		return nil, ErrTenantNotFound
+	}
+	tenantID := tenants[0].TenantID
+	if limit <= 0 || limit > 20 {
+		limit = 4
+	}
+
+	type row struct {
+		Q string
+		C int64
+	}
+	var rows []row
+	err = dao.DB.WithContext(ctx).Raw(`
+		SELECT TRIM(m.content) AS q, COUNT(*) AS c
+		FROM conversation_message m
+		JOIN conversation c ON c.id = m.conversation_id
+		JOIN dialog d ON d.id = c.dialog_id
+		WHERE d.tenant_id = ?
+		  AND m.role = 'user'
+		  AND CHAR_LENGTH(TRIM(m.content)) BETWEEN 5 AND 40
+		  AND TRIM(m.content) NOT IN ('你好', '您好', 'hi', 'hello', '在吗', '谢谢', '测试')
+		GROUP BY TRIM(m.content)
+		ORDER BY c DESC, MAX(m.created_at) DESC
+		LIMIT ?
+	`, tenantID, limit).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	questions := make([]string, 0, len(rows))
+	for _, r := range rows {
+		if r.Q != "" {
+			questions = append(questions, r.Q)
+		}
+	}
+	return questions, nil
+}

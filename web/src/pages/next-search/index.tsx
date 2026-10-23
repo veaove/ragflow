@@ -64,6 +64,10 @@ export default function SearchPage() {
                 setSearchText={setSearchText}
                 userInfo={userInfo}
                 canSearch={!checkOpenSetting}
+                kbIds={
+                  (SearchData as ISearchAppDetailProps)?.search_config
+                    ?.kb_ids ?? []
+                }
               />
             </div>
           )}

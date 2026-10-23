@@ -65,13 +65,20 @@ export function RAGFlowLogo({
 }) {
   return (
     <div className="flex gap-4 items-center">
+      {/*
+        品牌字：逐字配色（和君=蓝、纵=灰、达=金）+ 900 字重 + 轻微投影。
+        原来用 bg-gradient-to-l + bg-clip-text 但漏了 text-transparent，
+        渐变被文字色盖住，实际渲染成纯黑。这里改成逐字上色，和设计稿一致。
+      */}
       <h1
         onClick={onClick}
         className={cn(
-          'text-4xl font-bold bg-gradient-to-l from-[#F7A12F] to-[#065BC1] bg-clip-text',
+          'text-4xl font-black tracking-tight drop-shadow-sm select-none',
         )}
       >
-        和君纵达
+        <span className="text-[#0B5FBF]">和君</span>
+        <span className="text-[#7A8794]">纵</span>
+        <span className="text-[#D9A24A]">达</span>
       </h1>
       {showEmbedIcon && <EmbedIcon></EmbedIcon>}
     </div>

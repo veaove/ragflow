@@ -18,6 +18,7 @@ package handler
 
 import (
 	"errors"
+	"strconv"
 	"time"
 
 	"ragflow/internal/common"
@@ -55,6 +56,29 @@ func (h *StatsHandler) GetFeedbackStats(c *gin.Context) {
 		return
 	}
 	common.SuccessWithData(c, stats, "success")
+}
+
+// GetHotQuestions GET /api/v1/system/hot-questions
+// @Summary 知识搜索首页的热门问题
+// @Description 取真实聊天记录里出现次数最多的用户提问，过滤寒暄短句。
+func (h *StatsHandler) GetHotQuestions(c *gin.Context) {
+	user, errorCode, errorMessage := GetUser(c)
+	if errorCode != common.CodeSuccess {
+		common.ErrorWithCode(c, errorCode, errorMessage)
+		return
+	}
+	limit := 4
+	if v := c.Query("size"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			limit = n
+		}
+	}
+	questions, err := h.statsService.HotQuestions(c.Request.Context(), user.ID, limit)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, questions, "success")
 }
 
 func (h *StatsHandler) GetStats(c *gin.Context) {
