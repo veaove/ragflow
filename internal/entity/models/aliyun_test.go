@@ -1209,3 +1209,144 @@ func TestAliyunTranscribeAudioWithSenderSendsSingleChunk(t *testing.T) {
 		t.Fatalf("chunks = %v, want [transcribed]", chunks)
 	}
 }
+
+func TestAliyunTranscribeAudioSendsFormatParameter(t *testing.T) {
+	withSSRFBypass(t)
+	requestBody := make(chan map[string]interface{}, 1)
+	server := newAliyunASRTestServer(t, "ok", requestBody, nil)
+	model := NewAliyunModel(
+		map[string]string{"default": server.URL},
+		URLSuffix{ASR: aliyunASRTestSuffix},
+	)
+	apiKey := "test-key"
+	modelName := "qwen-audio-3.0-asr-flash"
+	file := writeAliyunASRTestFile(t, "clip.mp3", []byte("ID3...."))
+
+	if _, err := model.TranscribeAudio(t.Context(), &modelName, &file, &APIConfig{ApiKey: &apiKey}, nil, nil); err != nil {
+		t.Fatalf("TranscribeAudio: %v", err)
+	}
+	params, ok := (<-requestBody)["parameters"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("parameters is not a JSON object")
+	}
+	// DashScope cannot sniff the container from the data URL; without this the
+	// request fails with UNSUPPORTED_FORMAT "format is empty".
+	if params["format"] != "mp3" {
+		t.Errorf("format = %v, want mp3", params["format"])
+	}
+}
+
+func TestAliyunTranscribeAudioParsesOutputTextShape(t *testing.T) {
+	withSSRFBypass(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Qwen ASR answers with output.text; older multimodal chat models use
+		// output.choices[0].message.content[].text.
+		_, _ = w.Write([]byte(`{"output":{"text":"text field","sentence":{"text":"sentence field"}},"request_id":"req-1"}`))
+	}))
+	defer server.Close()
+
+	model := NewAliyunModel(
+		map[string]string{"default": server.URL},
+		URLSuffix{ASR: aliyunASRTestSuffix},
+	)
+	apiKey := "test-key"
+	modelName := "qwen-audio-3.0-asr-flash"
+	file := writeAliyunASRTestFile(t, "clip.wav", []byte("data"))
+
+	response, err := model.TranscribeAudio(t.Context(), &modelName, &file, &APIConfig{ApiKey: &apiKey}, nil, nil)
+	if err != nil {
+		t.Fatalf("TranscribeAudio: %v", err)
+	}
+	if response.Text != "text field" {
+		t.Errorf("text = %q, want %q", response.Text, "text field")
+	}
+}
+
+func TestAliyunTranscribeAudioSplitsLongWAV(t *testing.T) {
+	withSSRFBypass(t)
+	var bodies []map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		bodies = append(bodies, body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"output":{"text":"part-%d"}}`, len(bodies))
+	}))
+	defer server.Close()
+
+	model := NewAliyunModel(
+		map[string]string{"default": server.URL},
+		URLSuffix{ASR: aliyunASRTestSuffix},
+	)
+	apiKey := "test-key"
+	modelName := "qwen-audio-3.0-asr-flash"
+	// 600 seconds at the provider's 300s cap: two requests would still be over
+	// the limit per segment, so the splitter must cut at 120s (5 segments).
+	file := writeAliyunASRTestFile(t, "long.wav", buildTestWAV(1, 1, 600))
+
+	response, err := model.TranscribeAudio(t.Context(), &modelName, &file, &APIConfig{ApiKey: &apiKey}, nil, nil)
+	if err != nil {
+		t.Fatalf("TranscribeAudio: %v", err)
+	}
+	if response.Text != "part-1\npart-2\npart-3\npart-4\npart-5" {
+		t.Errorf("text = %q, want five concatenated parts", response.Text)
+	}
+	if len(bodies) != 5 {
+		t.Fatalf("requests = %d, want 5", len(bodies))
+	}
+	for i, body := range bodies {
+		params, _ := body["parameters"].(map[string]interface{})
+		if params["format"] != "wav" {
+			t.Errorf("request %d format = %v, want wav", i, params["format"])
+		}
+		messages := aliyunASRMessages(t, body)
+		dataURL := aliyunASRContentString(t, messages[1], "audio")
+		payload, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(dataURL, "data:audio/wav;base64,"))
+		if err != nil {
+			t.Fatalf("request %d payload is not base64: %v", i, err)
+		}
+		parsed, ok := parseAliyunWAV(payload)
+		if !ok {
+			t.Fatalf("request %d payload is not a playable wav", i)
+		}
+		if d := parsed.durationSeconds(); d > aliyunASRMaxDurationSeconds {
+			t.Errorf("request %d duration = %.0fs, over the %ds cap", i, d, aliyunASRMaxDurationSeconds)
+		}
+	}
+}
+
+func TestAliyunTranscribeAudioExplainsDurationLimit(t *testing.T) {
+	withSSRFBypass(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"request_id":"req-1","code":"AUDIO_DURATION_TOO_LONG","message":"audio duration (311760.0ms) over service process (300s)"}`))
+	}))
+	defer server.Close()
+
+	model := NewAliyunModel(
+		map[string]string{"default": server.URL},
+		URLSuffix{ASR: aliyunASRTestSuffix},
+	)
+	apiKey := "test-key"
+	modelName := "qwen-audio-3.0-asr-flash"
+	// A compressed container cannot be split safely, so the caller gets a
+	// message that says what to do instead of the raw provider status.
+	file := writeAliyunASRTestFile(t, "long.mp3", []byte("ID3...."))
+
+	_, err := model.TranscribeAudio(t.Context(), &modelName, &file, &APIConfig{ApiKey: &apiKey}, nil, nil)
+	if err == nil {
+		t.Fatal("TranscribeAudio returned nil error for an over-long clip")
+	}
+	if !strings.Contains(err.Error(), "300s") || !strings.Contains(err.Error(), "WAV") {
+		t.Fatalf("error = %v, want the 300s limit and the WAV workaround", err)
+	}
+	var statusErr *APIStatusError
+	if errors.As(err, &statusErr) {
+		t.Fatalf("error = %v, want an actionable error rather than a bare status", err)
+	}
+}

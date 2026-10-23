@@ -578,15 +578,24 @@ type aliyunASRContentPart struct {
 }
 
 type aliyunASRParameters struct {
-	ResultFormat string                 `json:"result_format,omitempty"`
-	ASROptions   map[string]interface{} `json:"asr_options,omitempty"`
+	ResultFormat string `json:"result_format,omitempty"`
+	// Format names the audio container (mp3/wav/...). DashScope does not sniff
+	// it from the data URL: omitting it fails with UNSUPPORTED_FORMAT
+	// "format is empty".
+	Format     string                 `json:"format,omitempty"`
+	ASROptions map[string]interface{} `json:"asr_options,omitempty"`
 }
 
 // aliyunASRResponse is the non-streaming DashScope multimodal-generation
-// response. The transcription lives in
-// output.choices[0].message.content[*].text.
+// response. Qwen ASR models answer with the transcript in output.text (mirrored
+// in output.sentence.text), while multimodal chat models use
+// output.choices[0].message.content[*].text; both shapes are read.
 type aliyunASRResponse struct {
 	Output struct {
+		Text     string `json:"text"`
+		Sentence *struct {
+			Text string `json:"text"`
+		} `json:"sentence"`
 		Choices []struct {
 			FinishReason string `json:"finish_reason"`
 			Message      struct {
@@ -601,10 +610,35 @@ type aliyunASRResponse struct {
 	RequestID string `json:"request_id"`
 }
 
+// transcript returns the recognised text, or an error when the response carries
+// neither shape.
+func (r *aliyunASRResponse) transcript() (string, error) {
+	var text strings.Builder
+	if len(r.Output.Choices) > 0 {
+		for _, part := range r.Output.Choices[0].Message.Content {
+			text.WriteString(part.Text)
+		}
+	}
+	if strings.TrimSpace(text.String()) != "" {
+		return text.String(), nil
+	}
+	if strings.TrimSpace(r.Output.Text) != "" {
+		return r.Output.Text, nil
+	}
+	if r.Output.Sentence != nil && strings.TrimSpace(r.Output.Sentence.Text) != "" {
+		return r.Output.Sentence.Text, nil
+	}
+	return "", fmt.Errorf("aliyun ASR response carries no transcription")
+}
+
 // TranscribeAudio transcribes an audio file with a DashScope ASR model
-// (qwen-asr-flash / qwen-audio-asr). It calls the same synchronized
-// multimodal-generation endpoint used for TTS, passing the audio as a base64
-// data URL, matching the legacy dashscope.MultiModalConversation path.
+// (qwen-audio-3.0-asr-flash and its fun-asr-flash siblings). It calls the
+// synchronized multimodal-generation endpoint used for TTS, passing the audio as
+// a base64 data URL, matching the legacy dashscope.MultiModalConversation path.
+//
+// Recordings longer than the provider's 300s per-request cap are split into WAV
+// segments first and the transcripts are concatenated: call-centre audio is
+// routinely 5-10 minutes, and the provider rejects the whole file otherwise.
 func (a *AliyunModel) TranscribeAudio(ctx context.Context, modelName *string, file *string, apiConfig *APIConfig, asrConfig *ASRConfig, modelUsage *common.ModelUsage) (*ASRResponse, error) {
 	if err := a.baseModel.APIConfigCheck(apiConfig); err != nil {
 		return nil, err
@@ -629,19 +663,7 @@ func (a *AliyunModel) TranscribeAudio(ctx context.Context, modelName *string, fi
 	}
 
 	contextText, options := aliyunASROptions(asrConfig)
-	reqBody := aliyunASRRequest{
-		Model: strings.TrimSpace(*modelName),
-		Input: aliyunASRInput{Messages: []aliyunASRMessage{
-			{Role: "system", Content: []aliyunASRContentPart{{Text: contextText}}},
-			{Role: "user", Content: []aliyunASRContentPart{{Audio: aliyunAudioDataURL(*file, audio)}}},
-		}},
-		Parameters: &aliyunASRParameters{ResultFormat: "message", ASROptions: options},
-	}
-
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
+	format := aliyunAudioFormat(*file)
 
 	url, err := a.baseModel.EndpointURL(apiConfig, a.baseModel.URLSuffix.ASR)
 	if err != nil {
@@ -651,9 +673,38 @@ func (a *AliyunModel) TranscribeAudio(ctx context.Context, modelName *string, fi
 	ctx, cancel := context.WithTimeout(ctx, longOpCallTimeout)
 	defer cancel()
 
+	transcripts := make([]string, 0, 1)
+	for _, segment := range aliyunASRSegments(audio, format) {
+		text, err := a.transcribeSegment(ctx, url, *modelName, *file, format, segment, contextText, options, apiConfig)
+		if err != nil {
+			return nil, err
+		}
+		if trimmed := strings.TrimSpace(text); trimmed != "" {
+			transcripts = append(transcripts, trimmed)
+		}
+	}
+	return &ASRResponse{Text: strings.Join(transcripts, "\n")}, nil
+}
+
+// transcribeSegment posts one audio payload and returns its transcript.
+func (a *AliyunModel) transcribeSegment(ctx context.Context, url, modelName, filename, format string, audio []byte, contextText string, options map[string]interface{}, apiConfig *APIConfig) (string, error) {
+	reqBody := aliyunASRRequest{
+		Model: strings.TrimSpace(modelName),
+		Input: aliyunASRInput{Messages: []aliyunASRMessage{
+			{Role: "system", Content: []aliyunASRContentPart{{Text: contextText}}},
+			{Role: "user", Content: []aliyunASRContentPart{{Audio: aliyunAudioDataURL(filename, audio)}}},
+		}},
+		Parameters: &aliyunASRParameters{ResultFormat: "message", Format: format, ASROptions: options},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", *apiConfig.ApiKey))
@@ -661,39 +712,49 @@ func (a *AliyunModel) TranscribeAudio(ctx context.Context, modelName *string, fi
 
 	resp, err := a.baseModel.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return "", fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, err := readModelErrorBody(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("API request failed with status %d; failed to read error response: %w", resp.StatusCode, err)
+			return "", fmt.Errorf("API request failed with status %d; failed to read error response: %w", resp.StatusCode, err)
 		}
-		return nil, &APIStatusError{Status: resp.StatusCode, Body: string(body)}
+		return "", aliyunASRError(resp.StatusCode, body)
 	}
 
 	body, err := readModelResponseBody(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var parsed aliyunASRResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse aliyun ASR response: %w, body: %s", err, string(body))
+		return "", fmt.Errorf("failed to parse aliyun ASR response: %w, body: %s", err, string(body))
 	}
 	if parsed.Code != "" {
-		return nil, fmt.Errorf("aliyun ASR API error: %s: %s", parsed.Code, parsed.Message)
+		return "", fmt.Errorf("aliyun ASR API error: %s: %s", parsed.Code, parsed.Message)
 	}
-	if len(parsed.Output.Choices) == 0 {
-		return nil, fmt.Errorf("aliyun ASR response has no choices, body: %s", string(body))
+	text, err := parsed.transcript()
+	if err != nil {
+		return "", fmt.Errorf("%w, body: %s", err, string(body))
 	}
+	return text, nil
+}
 
-	var text strings.Builder
-	for _, part := range parsed.Output.Choices[0].Message.Content {
-		text.WriteString(part.Text)
+// aliyunASRError turns a non-200 body into an actionable error. A WAV over the
+// cap never reaches this path (it is split), so the duration error means a
+// compressed container was too long for the provider.
+func aliyunASRError(status int, body []byte) error {
+	var parsed struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
 	}
-	return &ASRResponse{Text: text.String()}, nil
+	if err := json.Unmarshal(body, &parsed); err == nil && parsed.Code == "AUDIO_DURATION_TOO_LONG" {
+		return fmt.Errorf("aliyun ASR: audio exceeds the provider's %ds per-request limit (%s); convert it to WAV so it can be split, or split it before upload", aliyunASRMaxDurationSeconds, parsed.Message)
+	}
+	return &APIStatusError{Status: status, Body: string(body)}
 }
 
 func (a *AliyunModel) TranscribeAudioWithSender(ctx context.Context, modelName *string, file *string, apiConfig *APIConfig, asrConfig *ASRConfig, modelUsage *common.ModelUsage, sender func(*string, *string) error) error {

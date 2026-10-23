@@ -47,13 +47,13 @@
       }
     },
     {
-      "name": "qwen-asr-flash",
+      "name": "qwen-audio-3.0-asr-flash",
       "model_types": [
         "asr"
       ]
     },
     {
-      "name": "fun-asr",
+      "name": "fun-asr-flash-2026-06-15",
       "model_types": [
         "asr"
       ]
