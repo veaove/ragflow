@@ -59,6 +59,12 @@
       ]
     },
     {
+      "name": "qwen3-tts-flash",
+      "model_types": [
+        "tts"
+      ]
+    },
+    {
       "name": "text-embedding-v3",
       "max_tokens": 8192,
       "model_types": [
