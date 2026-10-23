@@ -95,30 +95,31 @@ func (s *FileService) UploadFile(ctx context.Context, tenantID, parentID string,
 
 		fileObjNames := s.parseFilePath(fullPath)
 
+		// 目录链 = 路径去掉最后一段（文件名）。单文件上传时为空，
+		// 直接落到 parentID，与本函数原有行为一致。
+		dirNames := fileObjNames[:len(fileObjNames)-1]
+
+		// 从**第一级**开始找已存在的目录（count=0）。
+		// 旧实现传 count=1，等于永远跳过第一级：上传 "a/b/c.pdf" 会把 b 建在
+		// 根目录、a 被丢掉。GetIDListByID 遇到不存在的层级就返回已匹配部分，
+		// 所以 idList 形如 [parentID, a, ...]，长度决定从哪一级开始补建。
 		var idList []string
-		idList, err = s.fileDAO.GetIDListByID(ctx, dao.DB, parentID, fileObjNames, 1, []string{parentID})
+		idList, err = s.fileDAO.GetIDListByID(ctx, dao.DB, parentID, dirNames, 0, []string{parentID})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get file ID list: %w", err)
 		}
 
 		var lastFolder *entity.File
-		if len(fileObjNames) != len(idList)-1 {
-			lastID := idList[len(idList)-1]
-			lastFolder, err = s.fileDAO.GetByID(ctx, dao.DB, lastID)
-			if err != nil {
-				return nil, fmt.Errorf("folder not found")
-			}
-			var createdFolder *entity.File
-			createdFolder, err = s.createFolderRecursive(ctx, lastFolder, fileObjNames, len(idList), tenantID)
+		lastFolder, err = s.fileDAO.GetByID(ctx, dao.DB, idList[len(idList)-1])
+		if err != nil {
+			return nil, fmt.Errorf("folder not found")
+		}
+
+		// idList[0] 恒为 parentID，因此缺失的目录从 dirNames[len(idList)-1] 开始。
+		if missingFrom := len(idList) - 1; missingFrom < len(dirNames) {
+			lastFolder, err = s.ensureFolderChain(ctx, lastFolder, dirNames, missingFrom, tenantID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create folder: %w", err)
-			}
-			lastFolder = createdFolder
-		} else {
-			lastID := idList[len(idList)-2]
-			lastFolder, err = s.fileDAO.GetByID(ctx, dao.DB, lastID)
-			if err != nil {
-				return nil, fmt.Errorf("folder not found")
 			}
 		}
 

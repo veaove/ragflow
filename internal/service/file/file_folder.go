@@ -361,17 +361,36 @@ func (s *FileService) GetDocCount(ctx context.Context, tenantID string) (int64, 
 	return documentDAO.CountByTenantID(ctx, dao.DB, tenantID)
 }
 
-func (s *FileService) createFolderRecursive(ctx context.Context, parentFolder *entity.File, names []string, count int, tenantID string) (*entity.File, error) {
-	if count > len(names)-2 {
-		return parentFolder, nil
-	}
+// ensureFolderChain 从 names[start] 开始逐级创建目录，返回最深一级。
+//
+// 与旧的 createFolderRecursive 的区别：这里 names 只含**目录段**（不含文件名），
+// 所以必须建到最后一个；旧实现按「names 含文件名」写了 `count > len(names)-2`
+// 的终止条件，配合调用方的 count 偏移，结果是第一级目录被整体跳过。
+func (s *FileService) ensureFolderChain(ctx context.Context, parent *entity.File, names []string, start int, tenantID string) (*entity.File, error) {
+	current := parent
+	for i := start; i < len(names); i++ {
+		name := strings.TrimSpace(names[i])
+		if name == "" {
+			continue
+		}
 
-	newFolder, err := s.fileDAO.CreateFolder(ctx, dao.DB, parentFolder.ID, tenantID, names[count], FileTypeFolder)
-	if err != nil {
-		return nil, err
-	}
+		// 同名目录已存在则复用，避免并发上传同一文件夹时创建重复层级。
+		ids, err := s.fileDAO.GetIDListByID(ctx, dao.DB, current.ID, []string{name}, 0, []string{current.ID})
+		if err == nil && len(ids) > 1 {
+			existing, getErr := s.fileDAO.GetByID(ctx, dao.DB, ids[1])
+			if getErr == nil && existing != nil && existing.Type == FileTypeFolder {
+				current = existing
+				continue
+			}
+		}
 
-	return s.createFolderRecursive(ctx, newFolder, names, count+1, tenantID)
+		created, err := s.fileDAO.CreateFolder(ctx, dao.DB, current.ID, tenantID, name, FileTypeFolder)
+		if err != nil {
+			return nil, err
+		}
+		current = created
+	}
+	return current, nil
 }
 
 // getUniqueFilename returns a non-colliding file name within the folder,
