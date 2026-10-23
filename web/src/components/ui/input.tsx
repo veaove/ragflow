@@ -1,7 +1,7 @@
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
-import { Eye, EyeOff, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -32,7 +32,6 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const isControlled = value !== undefined;
     const { defaultValue, ...restProps } = props;
     const inputValue = isControlled ? value : defaultValue;
-    const [showPassword, setShowPassword] = useState(false);
     const [prefixWidth, setPrefixWidth] = useState(0);
     const [suffixWidth, setSuffixWidth] = useState(0);
 
@@ -62,13 +61,11 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       }
     };
 
-    const isPasswordInput = type === 'password';
-
     const inputEl = useMemo(
       () => (
         <input
           ref={ref}
-          type={isPasswordInput && showPassword ? 'text' : type}
+          type={type}
           className={cn(
             'peer/input',
             'flex h-8 w-full rounded-md border-0.5 border-border-button bg-bg-input px-3 py-2 outline-none text-sm text-text-primary',
@@ -82,11 +79,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           style={{
             paddingInlineStart:
               !!prefix && prefixWidth ? `${prefixWidth}px` : '',
-            paddingInlineEnd: isPasswordInput
-              ? '40px'
-              : suffix
-                ? `${suffixWidth}px`
-                : '',
+            paddingInlineEnd: suffix ? `${suffixWidth}px` : '',
           }}
           value={inputValue ?? ''}
           onChange={handleChange}
@@ -96,7 +89,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       [
         prefixWidth,
         suffixWidth,
-        isPasswordInput,
+        type,
         inputValue,
         className,
         handleChange,
@@ -104,7 +97,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       ],
     );
 
-    if (prefix || suffix || isPasswordInput) {
+    if (prefix || suffix) {
       return (
         <div className={cn('relative', rootClassName)}>
           {prefix && (
@@ -119,31 +112,10 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           {suffix && (
             <span
               ref={suffixRef}
-              className={cn('absolute end-0 top-[50%] translate-y-[-50%]', {
-                'end-14': isPasswordInput,
-              })}
+              className="absolute end-0 top-[50%] translate-y-[-50%]"
             >
               {suffix}
             </span>
-          )}
-          {isPasswordInput && (
-            <button
-              type="button"
-              className="
-                p-2 text-text-secondary
-                absolute border-0 end-1 top-[50%] translate-y-[-50%]
-                dark:peer-autofill/input:text-text-secondary-inverse
-                dark:peer-autofill/input:hover:text-text-primary-inverse
-                dark:peer-autofill/input:focus-visible:text-text-primary-inverse
-              "
-              onClick={() => setShowPassword(!showPassword)}
-            >
-              {showPassword ? (
-                <EyeOff className="size-[1em]" />
-              ) : (
-                <Eye className="size-[1em]" />
-              )}
-            </button>
           )}
         </div>
       );
