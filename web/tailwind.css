@@ -260,7 +260,29 @@
   * {
     /* Make this default */
     scrollbar-width: thin;
-    scrollbar-color: var(--border-default) var(--bg-card);
+    /* 总览页「最近动态」的自动滚动：复制一份列表做无缝循环，
+     鼠标悬停时暂停，避免用户想细看时内容还在动。 */
+  @keyframes activity-scroll {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(-50%);
+    }
+  }
+
+  .activity-scroll {
+    animation-name: activity-scroll;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    will-change: transform;
+  }
+
+  .activity-scroll:hover {
+    animation-play-state: paused;
+  }
+
+  scrollbar-color: var(--border-default) var(--bg-card);
   }
 }
 

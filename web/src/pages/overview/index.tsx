@@ -204,9 +204,11 @@ export default function Overview() {
         </section>
 
         {/* 图表区 */}
-        <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,300px)_minmax(0,1fr)_minmax(0,420px)]">
-          <div className="rounded-xl border border-border-default bg-bg-base p-5">
-            <h2 className="mb-4 text-base font-medium text-text-primary">
+        {/* 图表区定高：三列共用一个行高，最近动态在内部滚动播放，
+            否则动态条数一多就把整页撑长，其他内容要滚半天才看得到。 */}
+        <section className="grid grid-cols-1 gap-4 xl:h-[360px] xl:grid-cols-[minmax(0,300px)_minmax(0,1fr)_minmax(0,420px)]">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border-default bg-bg-base p-5">
+            <h2 className="mb-4 shrink-0 text-base font-medium text-text-primary">
               {t('chart.sourceTitle')}
             </h2>
             <SourceDonutChart
@@ -216,8 +218,8 @@ export default function Overview() {
             />
           </div>
 
-          <div className="rounded-xl border border-border-default bg-bg-base p-5">
-            <h2 className="mb-4 text-base font-medium text-text-primary">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border-default bg-bg-base p-5">
+            <h2 className="mb-4 shrink-0 text-base font-medium text-text-primary">
               {t('chart.trendTitle', { days: TREND_DAYS })}
             </h2>
             <TrendAreaChart
