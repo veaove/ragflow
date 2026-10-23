@@ -119,6 +119,12 @@ type ChunkDoc struct {
 	ContextBelow  string          `json:"context_below,omitempty"`
 	Questions     string          `json:"questions,omitempty"`
 	Keywords      string          `json:"keywords,omitempty"`
+	// ImportantKwd is the engine's keyword field (important_kwd^30 in the
+	// retrieval boosts). It must keep this exact JSON name: the index schema
+	// and the search weights both key on "important_kwd", not "keywords".
+	// Source: parsed from the source table's keyword column (see QA chunker),
+	// otherwise filled later by the LLM auto-keyword extractor.
+	ImportantKwd []string `json:"important_kwd,omitempty"`
 	Summary       string          `json:"summary,omitempty"`
 	ChunkOrderInt *int            `json:"chunk_order_int,omitempty"`
 	TitleTks      string          `json:"title_tks,omitempty"`

@@ -162,6 +162,9 @@ func (c *QAChunkerComponent) invoke(_ context.Context, inputs map[string]any) (m
 		if len(pair.Positions) > 0 {
 			chunk.Positions = pair.Positions
 		}
+		if len(pair.Keywords) > 0 {
+			chunk.ImportantKwd = pair.Keywords
+		}
 		chunks = append(chunks, chunk)
 	}
 
@@ -177,6 +180,10 @@ func renderMarkdown(s string) string {
 type qaPair struct {
 	Question string
 	Answer   string
+	// Keywords comes from the source table's keyword column (the third
+	// non-empty cell of a row). Empty means the table has no such column and
+	// the extractor's auto_keywords step owns it.
+	Keywords []string
 	// RowNum is the 0-based source line/record index, mapped to Python's
 	// top_int (qa.py beAdoc(..., row_num=i)). -1 means unset.
 	RowNum int
@@ -517,6 +524,13 @@ func qaPairsFromRows(rows [][]string, strictPairs bool, positions json.RawMessag
 			continue
 		}
 		pair := qaPair{Question: texts[0], Answer: texts[1], RowNum: len(pairs)}
+		// 第 3 个非空单元格视为「关键词」列。
+		// 背景：FAQ 表格常见三列（问题/答案/关键词），此前只取前两列，
+		// 关键词被整列丢弃；而 chunk 为空时又指望 LLM 自动提取（auto_keywords），
+		// 没有可用模型的环境下就永远是空数组。
+		if len(texts) >= 3 {
+			pair.Keywords = splitChunkKeywords(texts[2])
+		}
 		if rowAligned {
 			pair.RowNum = int(matrix[i][1]) - 1
 			if encoded, err := json.Marshal([][]float64{matrix[i]}); err == nil {
@@ -526,6 +540,34 @@ func qaPairsFromRows(rows [][]string, strictPairs bool, positions json.RawMessag
 		pairs = append(pairs, pair)
 	}
 	return pairs
+}
+
+// splitChunkKeywords splits a keyword cell into individual keywords.
+// The cell is usually "关键词1,关键词2,关键词3"; Chinese full-width separators
+// and 、 are accepted because that is how these tables are authored in practice.
+// Duplicates are dropped so a repeated keyword does not skew the boost.
+func splitChunkKeywords(raw string) []string {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case ',', '，', ';', '；', '、', '|', '\n':
+			return true
+		}
+		return false
+	})
+	out := make([]string, 0, len(fields))
+	seen := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		kw := strings.TrimSpace(field)
+		if kw == "" {
+			continue
+		}
+		if _, dup := seen[kw]; dup {
+			continue
+		}
+		seen[kw] = struct{}{}
+		out = append(out, kw)
+	}
+	return out
 }
 
 func init() {
