@@ -529,6 +529,9 @@ func qaPairsFromRows(rows [][]string, strictPairs bool, positions json.RawMessag
 		if len(texts) < 2 {
 			continue
 		}
+		if isQAHeaderRow(texts) {
+			continue
+		}
 		pair := qaPair{Question: texts[0], Answer: texts[1], RowNum: len(pairs)}
 		// 第 3 个非空单元格视为「关键词」列。
 		// 背景：FAQ 表格常见三列（问题/答案/关键词），此前只取前两列，
@@ -546,6 +549,40 @@ func qaPairsFromRows(rows [][]string, strictPairs bool, positions json.RawMessag
 		pairs = append(pairs, pair)
 	}
 	return pairs
+}
+
+// qaHeaderTerms holds the column captions that appear in FAQ sheets.
+// A row is treated as a header only when EVERY non-empty cell is one of these,
+// so a real question that happens to contain the word "问题" is still kept.
+var qaHeaderTerms = map[string]struct{}{
+	"问题": {}, "标准问题": {}, "提问": {}, "question": {}, "questions": {}, "q": {},
+	"答案": {}, "标准答案": {}, "回答": {}, "answer": {}, "answers": {}, "a": {},
+	"关键词": {}, "关键字": {}, "关键词汇": {}, "keywords": {}, "keyword": {}, "kw": {},
+	"标签": {}, "tag": {}, "tags": {},
+	"相似问": {}, "相似问题": {}, "同义问": {},
+}
+
+// isQAHeaderRow reports whether the row is a table header rather than a Q&A pair.
+//
+// Why this is needed: buildSheetItems already drops records[0], but a workbook
+// with several sheets (or a sheet that renders as multiple HTML tables) repeats
+// the header per table, and those copies reach the chunker as data rows. They
+// used to become a junk chunk ("问题：标准问题　回答：标准答案") that also
+// polluted question_kwd / important_kwd.
+func isQAHeaderRow(texts []string) bool {
+	if len(texts) == 0 {
+		return false
+	}
+	for _, text := range texts {
+		key := strings.ToLower(strings.TrimSpace(text))
+		if key == "" {
+			continue
+		}
+		if _, ok := qaHeaderTerms[key]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // splitChunkKeywords splits a keyword cell into individual keywords.
