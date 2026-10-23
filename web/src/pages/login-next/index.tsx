@@ -137,10 +137,7 @@ const Login = () => {
             {t('brandName')}
           </span>
         </div>
-        <TopBarMeta
-          productionLabel={t('productionEnv')}
-          helpLabel={t('helpCenter')}
-        />
+        <TopBarMeta envLabel={t('envLabel')} helpLabel={t('helpCenter')} />
       </header>
 
       {/* 主体：左侧品牌区 + 右侧登录卡片 */}

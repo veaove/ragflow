@@ -12,6 +12,16 @@ import translation_en from './en';
 // When a user logs in from a different machine, the login page language is the language configured by VITE_DEFAULT_LANGUAGE_CODE.
 
 /**
+ * Fallback language for a first visit (no persisted choice in localStorage).
+ *
+ * Defaults to Simplified Chinese: the product ships to Chinese customers, and
+ * an English login page as the opening screen reads as "wrong product" to them.
+ * A deployment that wants English by default sets VITE_DEFAULT_LANGUAGE_CODE.
+ */
+export const DEFAULT_LANGUAGE_CODE =
+  import.meta.env.VITE_DEFAULT_LANGUAGE_CODE || LanguageAbbreviation.Zh;
+
+/**
  * 本产品仅面向中文用户维护，故只保留中文（简/繁）与英文。
  *
  * 用户本地存储里若残留已删除的语言（如 'ja'），`supportedLngs` 会让 i18next
@@ -52,9 +62,6 @@ const headerLanguageCodes: string[] = [
 export const headerLanguages = supportedLanguages.filter((lang) =>
   headerLanguageCodes.includes(lang.code),
 );
-
-export const DEFAULT_LANGUAGE_CODE =
-  import.meta.env.VITE_DEFAULT_LANGUAGE_CODE || LanguageAbbreviation.En;
 
 const resources = {
   [LanguageAbbreviation.En]: translation_en,

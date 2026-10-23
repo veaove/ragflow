@@ -14,8 +14,11 @@
  *  limitations under the License.
  */
 
+import { LanguageAbbreviation } from '@/constants/common';
+import { changeLanguageAsync } from '@/locales/config';
 import { cn } from '@/lib/utils';
-import { Headphones, Languages, type LucideIcon } from 'lucide-react';
+import { Globe, Headphones, Languages, type LucideIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 /** 左侧品牌区的三张能力卡片，对应设计稿中的图标 + 文案。 */
 export type BrandHighlight = {
@@ -94,24 +97,41 @@ export function BrandShowcase({
   );
 }
 
-/** 顶栏右侧的「生产环境」「帮助中心」入口。 */
+/** 顶栏右侧的「开发环境」「中英文切换」「帮助中心」入口。 */
 export function TopBarMeta({
-  productionLabel,
+  envLabel,
   helpLabel,
   helpHref,
   className,
 }: {
-  productionLabel: string;
+  envLabel: string;
   helpLabel: string;
   helpHref?: string;
   className?: string;
 }) {
+  // useTranslation 会让组件在语言切换后重新渲染，isZh 随之更新。
+  const { i18n } = useTranslation();
+  const isZh = i18n.language?.startsWith('zh');
+  // 切换目标 = 当前语言的另一种；中文页面显示 English，英文页面显示中文。
+  const otherLabel = isZh ? 'English' : '中文';
+  const otherLanguage = isZh ? LanguageAbbreviation.En : LanguageAbbreviation.Zh;
+
   return (
     <div className={cn('flex shrink-0 items-center gap-4 sm:gap-6', className)}>
       <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-[#EEF4FD] px-3.5 py-1.5 text-[13px] font-medium text-[#1B6DD6]">
         <Languages className="size-3.5 shrink-0" strokeWidth={2} />
-        {productionLabel}
+        {envLabel}
       </span>
+      <button
+        type="button"
+        onClick={() => void changeLanguageAsync(otherLanguage)}
+        // aria-label 用中文表述，读屏用户在英文页面也能听懂这个按钮做什么
+        aria-label={`切换为${otherLabel}`}
+        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[13px] font-medium text-[#5A6474] transition-colors hover:text-[#1B6DD6]"
+      >
+        <Globe className="size-3.5 shrink-0" strokeWidth={2} />
+        {otherLabel}
+      </button>
       <a
         href={helpHref}
         onClick={(event) => {

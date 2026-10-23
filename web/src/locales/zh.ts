@@ -195,10 +195,10 @@ export default {
       description:
         '免费注册以探索顶级 RAG 技术。 创建知识库和人工智能来增强业务',
       review: '来自 500 多条评论',
-      productName: '和君智能知识库V3.2.2',
+      productName: '和君智能知识库',
       productTagline: '统一知识底座 · 智能检索 · 高效协同',
       brandName: '和君纵达',
-      productionEnv: '生产环境',
+      envLabel: '开发环境',
       helpCenter: '帮助中心',
       accountLogin: '账号登录',
       loginSubtitle: '登录后进入知识库管理后台',
