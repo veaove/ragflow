@@ -32,6 +32,9 @@ import { useSaveSetting } from './use-user-setting-request';
 export interface ILoginRequestBody {
   email: string;
   password: string;
+  /** 图形验证码：captcha_id 由 /auth/captcha 下发，captcha 是用户输入。 */
+  captcha_id?: string;
+  captcha?: string;
 }
 
 export interface IRegisterRequestBody extends ILoginRequestBody {
@@ -76,7 +79,12 @@ export const useLogin = () => {
     mutateAsync,
   } = useMutation({
     mutationKey: ['login'],
-    mutationFn: async (params: { email: string; password: string }) => {
+    mutationFn: async (params: {
+      email: string;
+      password: string;
+      captcha_id?: string;
+      captcha?: string;
+    }) => {
       const { data: res = {}, response } = await userService.login(params);
       if (res.code === 0) {
         // The language is based on the .lng stored in the client's local storage.

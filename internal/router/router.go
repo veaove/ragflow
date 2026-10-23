@@ -249,6 +249,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 		// a user who has forgotten their password is, by definition,
 		// unauthenticated.
 		apiNoAuth.POST("/auth/password/forgot/captcha", r.userHandler.ForgotCaptcha)
+		apiNoAuth.GET("/auth/captcha", r.userHandler.LoginCaptcha)
 		apiNoAuth.POST("/auth/password/forgot/otp", r.userHandler.ForgotSendOTP)
 		apiNoAuth.POST("/auth/password/forgot/otp/verify", r.userHandler.ForgotVerifyOTP)
 		apiNoAuth.POST("/auth/password/reset", r.userHandler.ForgotResetPassword)

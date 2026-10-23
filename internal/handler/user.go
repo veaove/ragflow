@@ -607,6 +607,24 @@ type forgotCaptchaRequest struct {
 // @Param email query string false "user email (also accepted in JSON body)"
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/auth/password/forgot/captcha [post]
+// LoginCaptcha GET /api/v1/auth/captcha
+// @Summary Issue a图形验证码 for the login page
+// @Description Returns a captcha_id plus a base64 PNG. The id must be sent
+//
+//	back with the login request together with the characters the user typed.
+//	One-shot, 60s TTL.
+func (h *UserHandler) LoginCaptcha(c *gin.Context) {
+	captchaID, image, errCode, err := h.userService.IssueLoginCaptcha(c.Request.Context())
+	if err != nil {
+		common.ResponseWithCodeData(c, errCode, false, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{
+		"captcha_id":    captchaID,
+		"captcha_image": image,
+	}, "captcha issued")
+}
+
 func (h *UserHandler) ForgotCaptcha(c *gin.Context) {
 	var req forgotCaptchaRequest
 	// Python reads from request.args (query string), accept both for parity.

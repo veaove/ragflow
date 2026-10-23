@@ -68,6 +68,10 @@ type RegisterRequest struct {
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
+	// 图形验证码：captcha_id 由 GET /auth/captcha 下发，captcha 是用户输入的字符。
+	// 不标 binding:"required"，交给 Login 里判断，便于返回更准确的错误码。
+	CaptchaID string `json:"captcha_id"`
+	Captcha   string `json:"captcha"`
 }
 
 // EmailLoginRequest email login request
@@ -253,6 +257,12 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*enti
 
 // Login user login
 func (s *UserService) Login(ctx context.Context, req *LoginRequest) (*entity.User, common.ErrorCode, error) {
+	// 图形验证码校验（防机器人刷登录）。一次性：校验通过即删除，
+	// 同一个 captcha_id 不能重复使用；60 秒后 Redis TTL 自动过期。
+	if err := s.verifyLoginCaptcha(ctx, req.CaptchaID, req.Captcha); err != nil {
+		return nil, common.CodeAuthenticationError, err
+	}
+
 	// Get user by email (using username field as email)
 	user, err := s.userDAO.GetByEmail(ctx, dao.DB, req.Username)
 	if err != nil {
@@ -954,6 +964,46 @@ func (s *UserService) GetUserByBetaAPIToken(ctx context.Context, authorization s
 // code itself is never sent to the client outside the rendered image.
 //
 // Refuses unknown emails to avoid leaking the user list — matches Python.
+// IssueLoginCaptcha mints a图形验证码 for the login page.
+//
+// 与 ForgotIssueCaptcha 的区别：不需要 email（登录页还没到"知道你是谁"那一步），
+// 直接签发一张 60 秒有效的验证码并返回 base64 PNG。
+func (s *UserService) IssueLoginCaptcha(ctx context.Context) (captchaID, imageDataURL string, code common.ErrorCode, err error) {
+	text, err := utility.GenerateCaptchaCode()
+	if err != nil {
+		return "", "", common.CodeServerError, err
+	}
+	captchaID = common.GenerateToken()
+	if ok := kvrocks.Get().Set(ctx, utility.CaptchaIDRedisKey(captchaID), text, 60*time.Second); !ok {
+		return "", "", common.CodeServerError, fmt.Errorf("failed to store captcha")
+	}
+	return captchaID, utility.RenderCaptchaPNGDataURL(text), common.CodeSuccess, nil
+}
+
+// verifyLoginCaptcha checks a login captcha and consumes it.
+//
+// 校验失败分两种错误码：过期/不存在 -> CodeNotEffective，内容不符 -> CodeAuthenticationError，
+// 前端据此提示"验证码已过期，请刷新"或"验证码错误"。
+func (s *UserService) verifyLoginCaptcha(ctx context.Context, captchaID, captcha string) error {
+	captchaID = strings.TrimSpace(captchaID)
+	captcha = strings.TrimSpace(captcha)
+	if captchaID == "" || captcha == "" {
+		return fmt.Errorf("captcha is required")
+	}
+	rc := kvrocks.Get()
+	key := utility.CaptchaIDRedisKey(captchaID)
+	stored, _ := rc.Get(ctx, key)
+	if stored == "" {
+		return fmt.Errorf("captcha expired, please refresh")
+	}
+	if !strings.EqualFold(strings.TrimSpace(stored), captcha) {
+		return fmt.Errorf("incorrect captcha")
+	}
+	// 一次性消费，防止同一个 captcha_id 被重放。
+	rc.Delete(ctx, key)
+	return nil
+}
+
 func (s *UserService) ForgotIssueCaptcha(ctx context.Context, email string) (captchaID, imageDataURL string, code common.ErrorCode, err error) {
 	if email == "" {
 		return "", "", common.CodeArgumentError, fmt.Errorf("email is required")

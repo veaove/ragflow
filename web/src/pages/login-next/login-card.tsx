@@ -28,42 +28,32 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { UseFormReturn } from 'react-hook-form';
 
-/** 验证码占位图：后端尚未提供图形验证码接口，先渲染静态占位。 */
-function CaptchaPlaceholder({ className }: { className?: string }) {
+/** 图形验证码：显示后端下发的 base64 图片，点击刷新。 */
+function CaptchaImage({
+  image,
+  onRefresh,
+  className,
+}: {
+  image?: string;
+  onRefresh?: () => void;
+  className?: string;
+}) {
   return (
-    <div
-      aria-hidden
+    <button
+      type="button"
+      onClick={onRefresh}
+      title="点击刷新验证码"
       className={cn(
         'flex h-[38px] w-[104px] shrink-0 items-center justify-center overflow-hidden rounded-md border border-[#D6DEE9] bg-[#EEF2F7]',
         className,
       )}
     >
-      <svg width="88" height="34" viewBox="0 0 88 34" fill="none">
-        <path
-          d="M2 26C14 6 24 30 36 12s22 16 34-2"
-          stroke="#8FA3BC"
-          strokeWidth="1.5"
-          strokeDasharray="4 3"
-        />
-        <path
-          d="M6 8l12 24M30 4l-8 26M56 6l-10 22M74 10l-12 18"
-          stroke="#C3CEDD"
-          strokeWidth="1"
-        />
-        <text
-          x="44"
-          y="24"
-          textAnchor="middle"
-          fontFamily="monospace"
-          fontSize="17"
-          fontWeight="700"
-          fill="#7E8CA0"
-          letterSpacing="3"
-        >
-          8K3M
-        </text>
-      </svg>
-    </div>
+      {image ? (
+        <img src={image} alt="captcha" className="h-full w-full object-cover" />
+      ) : (
+        <span className="text-xs text-[#8FA3BC]">加载中</span>
+      )}
+    </button>
   );
 }
 
@@ -85,8 +75,12 @@ type LoginCardProps = {
   loading: boolean;
   onSubmit: (params: any) => void;
   copy: LoginCardCopy;
-  /** 验证码输入框的名称；后端接入前仅参与前端校验，不参与登录请求。 */
+  /** 验证码输入框的名称。 */
   captchaFieldName?: string;
+  /** 后端下发的 base64 图形验证码图片。 */
+  captchaImage?: string;
+  /** 点击验证码图片刷新。 */
+  onRefreshCaptcha?: () => void;
   onForgotPassword?: () => void;
   className?: string;
 };
@@ -94,8 +88,8 @@ type LoginCardProps = {
 /**
  * 登录卡片。布局与设计稿一致：标题 + 副标题、输入项、记住登录/忘记密码、提交按钮、协议说明。
  *
- * 注意：`captcha` 目前只做前端占位，提交时会被表单校验拦下但不会传给后端；
- * 后端登录接口接入图形验证码后，这里补上字段映射即可。
+ * 图形验证码已接入后端：图片来自 GET /auth/captcha 下发的 base64，
+ * 提交时连同 captcha_id 一起发送，后端做一次性校验。
  */
 export function LoginCard({
   form,
@@ -103,6 +97,8 @@ export function LoginCard({
   onSubmit,
   copy,
   captchaFieldName = 'captcha',
+  captchaImage,
+  onRefreshCaptcha,
   onForgotPassword,
   className,
 }: LoginCardProps) {
@@ -179,7 +175,7 @@ export function LoginCard({
                       className="h-[42px] flex-1 rounded-lg border-[#D6DEE9] text-[15px]"
                       {...field}
                     />
-                    <CaptchaPlaceholder />
+                    <CaptchaImage image={captchaImage} onRefresh={onRefreshCaptcha} />
                   </div>
                 </FormControl>
                 <FormMessage />

@@ -2,11 +2,12 @@ import { useAuth } from '@/hooks/auth-hooks';
 import { useLogin } from '@/hooks/use-login-request';
 import { useSystemConfig } from '@/hooks/use-system-request';
 import { rsaPsw } from '@/utils';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 
 import { cn } from '@/lib/utils';
+import request from '@/utils/request';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FileImage, FileStack, ShieldCheck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
@@ -21,6 +22,26 @@ const Login = () => {
   const { t } = useTranslation('translation', { keyPrefix: 'login' });
   const { isLogin } = useAuth();
 
+  // 图形验证码：进页面拉一张，登录失败后再换一张。
+  const [captcha, setCaptcha] = useState<{ id: string; image: string } | null>(
+    null,
+  );
+  const refreshCaptcha = useCallback(async () => {
+    try {
+      const { data } = await request.get('/api/v1/auth/captcha');
+      const payload = data?.data;
+      if (payload?.captcha_id) {
+        setCaptcha({ id: payload.captcha_id, image: payload.captcha_image });
+      }
+    } catch {
+      setCaptcha(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshCaptcha();
+  }, [refreshCaptcha]);
+
   useEffect(() => {
     if (isLogin) {
       navigate('/');
@@ -33,7 +54,7 @@ const Login = () => {
       .email()
       .min(1, { message: t('emailPlaceholder') }),
     password: z.string().min(1, { message: t('passwordPlaceholder') }),
-    captcha: z.string().optional(),
+    captcha: z.string().min(1, { message: '请输入验证码' }),
     remember: z.boolean().optional(),
   });
   type FormValues = z.infer<typeof FormSchema>;
@@ -45,13 +66,17 @@ const Login = () => {
 
   const onCheck = async (params: FormValues) => {
     try {
-      // captcha 目前仅前端占位，等后端提供图形验证码接口后再并入登录请求。
       const code = await login({
         email: `${params.email}`.trim(),
         password: rsaPsw(params.password) as string,
+        captcha_id: captcha?.id,
+        captcha: params.captcha,
       });
       if (code === 0) {
         navigate('/');
+      } else {
+        // 验证码已被消费（一次性），失败后必须换一张。
+        refreshCaptcha();
       }
     } catch (errorInfo) {
       console.log('Failed:', errorInfo);
@@ -142,6 +167,8 @@ const Login = () => {
             loading={loading}
             onSubmit={onCheck}
             copy={copy}
+            captchaImage={captcha?.image}
+            onRefreshCaptcha={refreshCaptcha}
           />
         </div>
       </main>
