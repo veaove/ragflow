@@ -112,8 +112,9 @@ export interface IQcList<T> {
 // 因此 service 方法 resolve 出的是 Response，调用方读 response.data.data / response.data.total。
 
 export const listQcRules = (params: {
-  app_type: QcAppType;
-  app_id: string;
+  /** 可选：传了按应用过滤（应用设置页用），不传返回本租户全部规则。 */
+  app_type?: QcAppType;
+  app_id?: string;
   page?: number;
   size?: number;
   keyword?: string;
@@ -124,6 +125,19 @@ export const listQcRules = (params: {
 
 export const getQcRule = (id: string) =>
   request.get(`${restAPIv1}/qc/rules/${id}`);
+
+/** 规则被哪些应用引用（应用名/类型/引用时间）。 */
+export interface IQcRuleReference {
+  app_type: QcAppType;
+  app_id: string;
+  app_name: string;
+  /** 应用已在别处删除，但绑定行还在。 */
+  missing: boolean;
+  create_time: number;
+}
+
+export const getQcRuleReferences = (id: string) =>
+  request.get(`${restAPIv1}/qc/rules/${id}/references`);
 
 export const createQcRule = (data: IQcRulePayload) =>
   request.post(`${restAPIv1}/qc/rules`, { data });

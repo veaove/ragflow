@@ -123,8 +123,9 @@ export function QcManagement() {
 }
 
 /**
- * 质检菜单里的规则配置：先选择要「引用」的应用（聊天应用 / 对话流），
- * 再进入该应用的规则面板。规则仍绑定到所选应用，只对其生效。
+ * 质检菜单里的规则配置：规则列表是**本租户全量**（配了几条展示几条），
+ * 不再按应用过滤。上方下拉只决定「新建规则时的归属应用」；
+ * 规则实际对哪些应用生效，看每条规则的「查看引用」。
  */
 function RulesTab() {
   const [appType, setAppType] = React.useState<QcAppType>('chat');
@@ -159,7 +160,7 @@ function RulesTab() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-3 border-b border-border-base px-4 py-3">
-        <span className="text-sm text-text-secondary">配置应用：</span>
+        <span className="text-sm text-text-secondary">新建归属应用：</span>
         <select
           className="h-9 rounded-md border border-border-base bg-background-content px-3 text-sm"
           value={appType}

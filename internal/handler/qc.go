@@ -203,28 +203,36 @@ func (h *QcHandler) ListRules(c *gin.Context) {
 	}
 	appType := c.Query("app_type")
 	appID := c.Query("app_id")
-	if appType == "" || appID == "" {
-		common.ErrorWithCode(c, common.CodeArgumentError, "app_type and app_id are required")
-		return
-	}
-	// Reject an unknown app_type as a bad argument rather than letting
-	// resolveAppOwner's generic error surface as a 500.
-	if appType != entity.QcAppTypeChat && appType != entity.QcAppTypeCanvas {
-		common.ErrorWithCode(c, common.CodeArgumentError, "invalid app_type")
-		return
-	}
-	owner, err := resolveAppOwner(c, appType, appID)
-	if err != nil {
-		if errors.Is(err, errQcAppNotFound) {
-			common.ErrorWithCode(c, common.CodeNotFound, "app not found")
+
+	// app_type / app_id 是**可选**的：
+	//   传 → 按应用过滤（应用设置页的「选用规则」列表用）
+	//   不传 → 返回本租户的全部规则（质检规则页统一管理用）
+	// 统一列表的权限是「同租户」而不是「应用 owner」：规则是租户级配置资产，
+	// 应用只是引用方，是否生效仍只看 qc_rule_binding。
+	if appType != "" || appID != "" {
+		if appType == "" || appID == "" {
+			common.ErrorWithCode(c, common.CodeArgumentError, "app_type and app_id must be provided together")
 			return
 		}
-		common.ErrorWithCode(c, common.CodeServerError, err.Error())
-		return
-	}
-	if owner != user.ID {
-		common.ErrorWithCode(c, common.CodeForbidden, "no permission to manage this app's QC rules")
-		return
+		// Reject an unknown app_type as a bad argument rather than letting
+		// resolveAppOwner's generic error surface as a 500.
+		if appType != entity.QcAppTypeChat && appType != entity.QcAppTypeCanvas {
+			common.ErrorWithCode(c, common.CodeArgumentError, "invalid app_type")
+			return
+		}
+		owner, err := resolveAppOwner(c, appType, appID)
+		if err != nil {
+			if errors.Is(err, errQcAppNotFound) {
+				common.ErrorWithCode(c, common.CodeNotFound, "app not found")
+				return
+			}
+			common.ErrorWithCode(c, common.CodeServerError, err.Error())
+			return
+		}
+		if owner != user.ID {
+			common.ErrorWithCode(c, common.CodeForbidden, "no permission to manage this app's QC rules")
+			return
+		}
 	}
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -242,6 +250,8 @@ func (h *QcHandler) ListRules(c *gin.Context) {
 		enabled = &b
 	}
 	filter := dao.QcRuleListFilter{
+		// 未指定应用时按租户兜底（RAGFlow 是单用户单租户，tenant_id == user.ID）。
+		TenantID: user.ID,
 		AppType:  appType,
 		AppID:    appID,
 		Keyword:  c.Query("keyword"),
@@ -255,6 +265,84 @@ func (h *QcHandler) ListRules(c *gin.Context) {
 		return
 	}
 	common.SuccessWithDataAndTotal(c, rules, total, "success")
+}
+
+// GetRuleReferences handles GET /qc/rules/:id/references.
+//
+// Returns every app that has a qc_rule_binding row for this rule, with the
+// app's display name, type and the moment it was referenced. The name is
+// resolved from the owning table (dialog for chat, user_canvas for agents);
+// an app that has been deleted afterwards surfaces as missing=true instead of
+// being dropped, so the rule owner can clean the dangling reference.
+func (h *QcHandler) GetRuleReferences(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	ruleID := strings.TrimSpace(c.Param("id"))
+	if ruleID == "" {
+		common.ErrorWithCode(c, common.CodeArgumentError, "rule id is required")
+		return
+	}
+
+	rule, err := dao.NewQcRuleDAO().GetByID(c.Request.Context(), dao.DB, ruleID)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	// 规则是租户级资产：只有同租户能看引用关系。
+	if rule == nil || rule.TenantID != user.ID {
+		common.ErrorWithCode(c, common.CodeNotFound, "rule not found")
+		return
+	}
+
+	bindings, err := dao.NewQcRuleDAO().ListBindingsByRule(c.Request.Context(), dao.DB, ruleID)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+
+	refs := make([]map[string]interface{}, 0, len(bindings))
+	for _, b := range bindings {
+		name, found := resolveAppDisplayName(c.Request.Context(), b.AppType, b.AppID)
+		refs = append(refs, map[string]interface{}{
+			"app_type":    b.AppType,
+			"app_id":      b.AppID,
+			"app_name":    name,
+			"missing":     !found,
+			"create_time": b.CreateTime,
+		})
+	}
+	common.SuccessWithData(c, map[string]interface{}{
+		"rule_id":     ruleID,
+		"references":  refs,
+		"total":       len(refs),
+	}, "success")
+}
+
+// resolveAppDisplayName looks up an app's display name by type.
+// Returns ("", false) when the app no longer exists.
+func resolveAppDisplayName(ctx context.Context, appType, appID string) (string, bool) {
+	switch appType {
+	case entity.QcAppTypeChat:
+		var name string
+		err := dao.DB.WithContext(ctx).
+			Table("dialog").Select("name").Where("id = ?", appID).Scan(&name).Error
+		if err != nil || strings.TrimSpace(name) == "" {
+			return "", false
+		}
+		return name, true
+	case entity.QcAppTypeCanvas:
+		var title string
+		err := dao.DB.WithContext(ctx).
+			Table("user_canvas").Select("title").Where("id = ?", appID).Scan(&title).Error
+		if err != nil || strings.TrimSpace(title) == "" {
+			return "", false
+		}
+		return title, true
+	}
+	return "", false
 }
 
 // CreateRule handles POST /qc/rules.

@@ -51,6 +51,7 @@ import {
 } from '@/services/qc-service';
 import * as React from 'react';
 import { toast } from 'sonner';
+import { RuleReferencesDialog } from './rule-references-dialog';
 
 const PAGE_SIZE = 10;
 
@@ -181,6 +182,7 @@ export function QcRulePanel({
   const [page, setPage] = React.useState(1);
   const [loading, setLoading] = React.useState(false);
   const [editor, setEditor] = React.useState<EditorState | null>(null);
+  const [refsRule, setRefsRule] = React.useState<IQcRule | null>(null);
 
   // Switching apps invalidates the page offset: keeping page 3 after selecting
   // an app with one page of rules would render an empty list with no way back.
@@ -188,13 +190,12 @@ export function QcRulePanel({
     setPage(1);
   }, [appType, appId]);
 
+  // 统一规则列表：不按应用过滤，本租户配了几条就展示几条。
+  // appType/appId 只作为「新建规则的归属应用」默认值，不再影响列表内容。
   const reload = React.useCallback(async () => {
-    if (!appId) return;
     setLoading(true);
     try {
       const response = await listQcRules({
-        app_type: appType,
-        app_id: appId,
         page,
         size: PAGE_SIZE,
       });
@@ -205,7 +206,7 @@ export function QcRulePanel({
     } finally {
       setLoading(false);
     }
-  }, [appType, appId, page]);
+  }, [page]);
 
   React.useEffect(() => {
     reload();
@@ -383,6 +384,13 @@ export function QcRulePanel({
                         <Button
                           size="sm"
                           variant="link"
+                          onClick={() => setRefsRule(rule)}
+                        >
+                          查看引用
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="link"
                           onClick={() => openEdit(rule)}
                         >
                           编辑
@@ -424,6 +432,11 @@ export function QcRulePanel({
         state={editor}
         onClose={() => setEditor(null)}
         onSave={save}
+      />
+
+      <RuleReferencesDialog
+        rule={refsRule}
+        onClose={() => setRefsRule(null)}
       />
     </div>
   );

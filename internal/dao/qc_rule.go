@@ -41,12 +41,30 @@ func NewQcRuleDAO() *QcRuleDAO {
 
 // QcRuleListFilter holds the list query filters for QC rules.
 type QcRuleListFilter struct {
+	// TenantID 限定规则所属租户。统一规则列表（不按应用过滤）时用它兜底，
+	// 避免把其他租户的规则列出来。
+	TenantID string
 	AppType  string
 	AppID    string
 	Keyword  string
 	Scope    string
 	Severity string
 	Enabled  *bool
+}
+
+// ListBindingsByRule returns every app that references the rule, oldest first.
+// This is the "引用" relation: a row here means the rule actually runs for that
+// app, independent of which app the rule was created in.
+func (dao *QcRuleDAO) ListBindingsByRule(ctx context.Context, db *gorm.DB, ruleID string) ([]entity.QcRuleBinding, error) {
+	var bindings []entity.QcRuleBinding
+	err := db.WithContext(ctx).
+		Where("rule_id = ?", ruleID).
+		Order("create_time ASC").
+		Find(&bindings).Error
+	if err != nil {
+		return nil, err
+	}
+	return bindings, nil
 }
 
 // Create inserts a QC rule.
@@ -102,6 +120,9 @@ func (dao *QcRuleDAO) DeleteByID(ctx context.Context, db *gorm.DB, id string) er
 // List lists QC rules with filters and pagination.
 func (dao *QcRuleDAO) List(ctx context.Context, db *gorm.DB, filter QcRuleListFilter, offset, limit int) ([]entity.QcRule, int64, error) {
 	query := db.WithContext(ctx).Model(&entity.QcRule{})
+	if filter.TenantID != "" {
+		query = query.Where("tenant_id = ?", filter.TenantID)
+	}
 	if filter.AppType != "" {
 		query = query.Where("app_type = ?", filter.AppType)
 	}

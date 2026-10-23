@@ -33,6 +33,8 @@ func (r *Router) registerQcRoutes(v1 *gin.RouterGroup) {
 		// Must precede /rules/:id so "selection" is never read as an id.
 		qc.GET("/rules/selection", r.getQcHandler().GetRuleSelection)
 		qc.PUT("/rules/selection", r.getQcHandler().UpdateRuleSelection)
+		// 引用关系：必须在 /rules/:id 之前注册，避免 "references" 被当成 id。
+		qc.GET("/rules/:id/references", r.getQcHandler().GetRuleReferences)
 		qc.GET("/rules/:id", r.getQcHandler().GetRule)
 		qc.PUT("/rules/:id", r.getQcHandler().UpdateRule)
 		qc.DELETE("/rules/:id", r.getQcHandler().DeleteRule)
