@@ -152,13 +152,6 @@ export function Header({
             </DropdownMenuItem>
             <DropdownMenuItem
               className="cursor-pointer"
-              onSelect={() => navigate(`${Routes.UserSetting}/profile`)}
-              data-testid="menu-security"
-            >
-              账号安全
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="cursor-pointer"
               onSelect={() => navigate(Routes.UserSetting)}
               data-testid="menu-config"
             >
