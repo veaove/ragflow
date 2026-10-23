@@ -284,8 +284,13 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 			}
 		}
 
+		// 浏览器上传文件夹时，每个文件会额外带一个 path 字段（相对路径，
+		// 例如 "产品手册/v2/手册.pdf"），用于在后端重建目录结构。
+		// 顺序与 form.File["file"] 一致（前端每次 append file 后紧跟 path）。
+		paths := form.Value["path"]
+
 		ctx := c.Request.Context()
-		result, err := h.fileService.UploadFile(ctx, userID, parentID, files, uploadLimit)
+		result, err := h.fileService.UploadFile(ctx, userID, parentID, files, paths, uploadLimit)
 		if err != nil {
 			if respondPermissionErrorIf(c, err, true) {
 				return

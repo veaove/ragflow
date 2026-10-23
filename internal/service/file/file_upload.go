@@ -32,7 +32,7 @@ func DeploymentUploadMaxBytes() int64 {
 }
 
 // UploadFile uploads files to a folder
-func (s *FileService) UploadFile(ctx context.Context, tenantID, parentID string, files []*multipart.FileHeader, maxBytes int64) ([]map[string]interface{}, error) {
+func (s *FileService) UploadFile(ctx context.Context, tenantID, parentID string, files []*multipart.FileHeader, paths []string, maxBytes int64) ([]map[string]interface{}, error) {
 	if parentID == "" {
 		rootFolder, err := s.fileDAO.GetRootFolder(ctx, dao.DB, tenantID)
 		if err != nil {
@@ -71,10 +71,20 @@ func (s *FileService) UploadFile(ctx context.Context, tenantID, parentID string,
 
 	var result []map[string]interface{}
 
-	for _, fileHeader := range files {
+	for index, fileHeader := range files {
 		filename := fileHeader.Filename
 		if filename == "" {
 			return nil, fmt.Errorf("no file selected")
+		}
+
+		// 目录结构来源：浏览器上传文件夹时会把相对路径放在 path 字段
+		// （"产品手册/v2/手册.pdf"）。不能用 filename —— Go 的 multipart 已经
+		// 用 filepath.Base 把路径剥掉了，只剩 "手册.pdf"。
+		// 单文件/拖拽上传时 path 等于 basename，parseFilePath 得到单元素，
+		// 走原有「直接放到 parentID」分支，行为不变。
+		fullPath := filename
+		if index < len(paths) && strings.TrimSpace(paths[index]) != "" {
+			fullPath = paths[index]
 		}
 
 		if maxBytes > 0 && fileHeader.Size > maxBytes {
@@ -83,7 +93,7 @@ func (s *FileService) UploadFile(ctx context.Context, tenantID, parentID string,
 
 		fileType := utility.FilenameType(filename)
 
-		fileObjNames := s.parseFilePath(filename)
+		fileObjNames := s.parseFilePath(fullPath)
 
 		var idList []string
 		idList, err = s.fileDAO.GetIDListByID(ctx, dao.DB, parentID, fileObjNames, 1, []string{parentID})

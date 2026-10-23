@@ -79,17 +79,17 @@ export const useUploadFile = () => {
     mutationKey: [FileApiAction.UploadFile],
     mutationFn: async (params: { fileList: File[]; parentId: string }) => {
       const fileList = params.fileList;
-      const pathList = params.fileList.map(
-        (file) => (file as any).webkitRelativePath,
-      );
       const formData = new FormData();
       formData.append('parent_id', params.parentId);
-      fileList.forEach((file: any, index: number) => {
-        // Explicitly set filename to file.name (base name) to prevent the
-        // browser from using webkitRelativePath (e.g. "folder/file.txt")
-        // which would cause the backend to create an extra folder.
+      fileList.forEach((file: any) => {
+        // filename 只传 basename：Go 的 multipart 会用 filepath.Base 剥掉路径，
+        // 试图靠 "a/b/c.pdf" 让后端建目录是行不通的（实测落库 location 只剩 c.pdf）。
+        // 目录信息单独走 path 字段，由后端按它递归建目录。
         formData.append('file', file, file.name);
-        formData.append('path', pathList[index]);
+        formData.append(
+          'path',
+          (file.webkitRelativePath as string) || file.name,
+        );
       });
       try {
         const ret = await fileManagerService.uploadFile(formData);
