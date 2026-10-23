@@ -57,7 +57,49 @@ type PersistedTestingSettings = {
   similarity_threshold: number;
   keywords_similarity_weight: number;
   rerank_id: string;
+  /**
+   * 下面 4 项是**检索引擎请求参数**，知识库表里没有对应列，因此存浏览器本地：
+   * 跨语言搜索、元数据过滤、重排候选数、Top N。
+   * 之前只持久化了上面 3 个 KB 字段，改这几项一刷新就回到默认值。
+   */
+  cross_languages?: string[];
+  metadata?: Record<string, unknown>;
+  rerank_candidates_count?: number;
+  page_size?: number;
 };
+
+const LOCAL_SETTINGS_PREFIX = 'kb-testing-settings';
+
+function loadLocalTestingSettings(
+  kbId: string | undefined,
+): Partial<PersistedTestingSettings> {
+  if (!kbId) {
+    return {};
+  }
+  try {
+    const raw = localStorage.getItem(`${LOCAL_SETTINGS_PREFIX}:${kbId}`);
+    return raw ? (JSON.parse(raw) as Partial<PersistedTestingSettings>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalTestingSettings(
+  kbId: string | undefined,
+  settings: Partial<PersistedTestingSettings>,
+) {
+  if (!kbId) {
+    return;
+  }
+  try {
+    localStorage.setItem(
+      `${LOCAL_SETTINGS_PREFIX}:${kbId}`,
+      JSON.stringify(settings),
+    );
+  } catch {
+    // 隐私模式/配额满时静默失败：不能因为存不进去让用户改配置报错。
+  }
+}
 
 // Sliders move in 0.01 steps, so rounding to two decimals is lossless and
 // keeps a backend round trip (vector weight -> keyword weight -> vector
@@ -104,6 +146,10 @@ function buildSnapshot(values: Partial<PersistedTestingSettings>) {
     similarity_threshold: values.similarity_threshold,
     keywords_similarity_weight: values.keywords_similarity_weight,
     rerank_id: values.rerank_id ?? '',
+    cross_languages: values.cross_languages ?? [],
+    metadata: values.metadata ?? {},
+    rerank_candidates_count: values.rerank_candidates_count,
+    page_size: values.page_size,
   });
 }
 
@@ -173,9 +219,13 @@ export default function TestingForm({
     initializedRef.current = true;
 
     const restored = defaultsFromConfiguration(configuration);
+    // local 覆盖后端默认：本地存的是用户上次的点选（跨语言/元数据/TopN 等
+    // 后端没有列、无法随 KB 返回的项）。
+    const local = loadLocalTestingSettings(knowledgeBaseId);
     const nextValues = {
       ...form.getValues(),
       ...restored,
+      ...local,
     };
     form.reset(nextValues);
     lastSavedSnapshotRef.current = buildSnapshot(nextValues);
@@ -203,6 +253,8 @@ export default function TestingForm({
 
     saveTimerRef.current = setTimeout(async () => {
       const settings = JSON.parse(pendingSnapshot) as PersistedTestingSettings;
+      // 先落本地：跨语言/元数据/重排候选/TopN 后端没有列，只能存这里。
+      saveLocalTestingSettings(knowledgeBaseId, settings);
       try {
         const { data } = await updateKb(knowledgeBaseId, {
           similarity_threshold: settings.similarity_threshold,
