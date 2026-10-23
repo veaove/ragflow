@@ -241,6 +241,19 @@ export const initialParserValues = {
   ],
 };
 
+// The Audio chunker keeps the whole transcript in one chunk by default
+// (chunk_token_size: 0), which is the historical behaviour. Raising the budget
+// splits it on sentence boundaries into retrieval-sized chunks — an ASR
+// transcript of a few minutes otherwise lands in one oversized chunk and a
+// question can only match the entire recording.
+export const initialAudioChunkerValues = {
+  outputs: {
+    chunks: { type: 'Array<Object>', value: [] },
+  },
+  chunk_token_size: 0,
+  overlapped_percent: 0,
+};
+
 export const initialTokenChunkerValues = {
   outputs: {
     chunks: { type: 'Array<Object>', value: [] },

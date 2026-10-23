@@ -16,6 +16,7 @@
 
 import { Operator } from '@/constants/agent';
 import { RAGFlowNodeType } from '@/interfaces/database/agent';
+import AudioChunkerForm from '@/pages/agent/form/audio-chunker-form';
 import CompilationForm from '@/pages/agent/form/compilation-form';
 import ExtractorForm from '@/pages/agent/form/extractor-form';
 import ParserForm from '@/pages/agent/form/parser-form';
@@ -40,6 +41,17 @@ type PipelineOperatorFormProps = {
 // "Table Chunker" -> "Table".
 function getBuiltinParserName(node: RAGFlowNodeType): string {
   return String(node.data?.name ?? '').replace(/\s*Chunker$/, '');
+}
+
+// The Audio pipeline builds its chunker from OneChunker and names the node
+// "Audio Chunker". Only that variant exposes a token budget worth editing: an
+// ASR transcript easily exceeds one chunk, while the Picture/One variants rely
+// on the one-chunk-per-file mapping (splitting would detach the image).
+function isAudioChunker(node: RAGFlowNodeType): boolean {
+  const parserName = getBuiltinParserName(node);
+  return (
+    parserName.toLowerCase().includes('audio') || parserName.includes('音频')
+  );
 }
 
 const PipelineOperatorForm = ({
@@ -141,10 +153,30 @@ const PipelineOperatorForm = ({
       );
     case Operator.TableChunker:
     case Operator.QAChunker:
-    case Operator.OneChunker:
     case Operator.PageChunker:
       // These chunkers have no configurable parameters — the built-in parser
       // handles chunking internally.
+      return (
+        <div className="p-4 text-sm text-text-secondary">
+          {t('knowledgeConfiguration.noConfigChunkerHint', {
+            name: getBuiltinParserName(node),
+          })}
+        </div>
+      );
+    case Operator.OneChunker:
+      // OneChunker serves the Audio, Picture and One pipelines. Only Audio
+      // gets a form: its transcript is long enough to need a token budget,
+      // while the other two keep the one-chunk-per-file behaviour.
+      if (isAudioChunker(node)) {
+        return (
+          <AudioChunkerForm
+            node={node}
+            onValuesChange={handleValuesChange}
+            hideOutputs
+            externalErrors={externalErrors}
+          />
+        );
+      }
       return (
         <div className="p-4 text-sm text-text-secondary">
           {t('knowledgeConfiguration.noConfigChunkerHint', {

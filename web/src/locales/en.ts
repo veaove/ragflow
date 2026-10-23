@@ -891,6 +891,12 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       builtIn: 'Built-in parsing template',
       noConfigChunkerHint:
         'The built-in {{name}} parser handles chunking automatically, so no additional configuration is required.',
+      audioChunkerTip:
+        'The transcript is one chunk by default. Set a chunk size to split it on sentence boundaries, so a question can match the relevant passage instead of the whole recording. Re-parse the document for a change to take effect.',
+      audioChunkTokenSizeTip:
+        'Token budget per chunk. 0 keeps the whole transcript in a single chunk.',
+      audioOverlappedPercentTip:
+        'Overlap between adjacent chunks, so an answer that straddles a chunk boundary is not cut in half.',
       titleDescription:
         'Update your dataset configuration here, particularly the LLM and prompts.',
       name: 'Dataset name',

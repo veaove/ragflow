@@ -353,6 +353,59 @@ func (p *TokenChunkerParam) Validate() error {
 }
 
 // ---------------------------------------------------------------------------
+// OneChunkerParam
+// ---------------------------------------------------------------------------
+//
+// OneChunker is the "one chunk per file" chunker behind the Audio, Picture and
+// One pipelines (see internal/ingestion/component/chunker/one.go). Every
+// parameter here is OPT-IN and defaults to the historical behaviour:
+// ChunkTokenSize == 0 keeps the whole document in a single chunk, so existing
+// canvases, templates and dataset configs behave exactly as before.
+//
+// A positive ChunkTokenSize splits the body with the TokenChunker merge core
+// (sentence-boundary aware, hard-capped at the budget, optional overlap). That
+// is what the Audio pipeline needs: an ASR transcript of a few minutes easily
+// exceeds 2k tokens, and one oversized chunk retrieves poorly — the question
+// either matches the whole recording or nothing.
+type OneChunkerParam struct {
+	// ChunkTokenSize is the target chunk size in tokens. 0 (the default)
+	// disables splitting and keeps one chunk per file.
+	ChunkTokenSize int `json:"chunk_token_size"`
+
+	// OverlappedPercent is the overlap percentage in [0, 90]. A [0,1)
+	// fraction is also accepted and normalized to that scale, mirroring
+	// TokenChunker (see NormalizeOverlappedPercent).
+	OverlappedPercent float64 `json:"overlapped_percent"`
+
+	// Delimiters is the primary split list. The default "\n" mirrors
+	// TokenChunker: with ASR text there is usually no newline, so the split
+	// falls back to sentence boundaries inside the merge core.
+	Delimiters []string `json:"delimiters"`
+}
+
+// Defaults returns the single-chunk baseline: no token budget, no overlap, a
+// newline delimiter.
+func (OneChunkerParam) Defaults() OneChunkerParam {
+	return OneChunkerParam{
+		ChunkTokenSize:    0,
+		OverlappedPercent: 0,
+		Delimiters:        []string{"\n"},
+	}
+}
+
+// Validate rejects a negative budget and an out-of-range overlap. 0 is valid
+// for both: it means "do not split" / "no overlap".
+func (p *OneChunkerParam) Validate() error {
+	if p.ChunkTokenSize < 0 {
+		return errInvalidValue{Field: "chunk_token_size", Value: fmt.Sprintf("%d", p.ChunkTokenSize)}
+	}
+	if p.OverlappedPercent < 0 || p.OverlappedPercent > 90 {
+		return errInvalidValue{Field: "overlapped_percent", Value: fmt.Sprintf("%v", p.OverlappedPercent)}
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
 // TitleChunkerParam
 // ---------------------------------------------------------------------------
 //

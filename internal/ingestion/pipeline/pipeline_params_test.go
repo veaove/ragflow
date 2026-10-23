@@ -1138,6 +1138,9 @@ var operatorFormParamKeys = map[string][]string{
 	},
 	"Tokenizer": {"search_method", "filename_embd_weight", "fields"},
 	"Extractor": {"llm_id", "keywords", "questions", "tags", "summary", "metadata"},
+	// The Audio chunker exposes only the opt-in split; delimiters stay a
+	// DSL-only escape hatch (the form does not render them).
+	"OneChunker": {"chunk_token_size", "overlapped_percent"},
 }
 
 func TestCleanComponentParams_AcceptsOperatorFormParams(t *testing.T) {
@@ -1196,7 +1199,6 @@ var componentParamWhitelistExemptions = map[string]string{
 	"Parser":         "DSL file families plus the global vision parameter whitelist",
 	"GeneralChunker": "param struct lives in the chunker package without json tags; template keys + the delimiters exception cover it",
 	"QAChunker":      "no operator form; param struct is not in the schema package",
-	"OneChunker":     "no user-editable params",
 	"PageChunker":    "no user-editable params",
 	"TableChunker":   "no user-editable params",
 	"Extractor":      "covered by the cpnID-prefixed dynamic whitelist",

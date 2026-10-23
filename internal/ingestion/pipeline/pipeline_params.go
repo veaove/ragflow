@@ -92,6 +92,10 @@ var componentParamSchemaKeys = map[string]map[string]struct{}{
 	"manualchunker": titleFamilyParamKeys,
 	"tokenchunker":  extractJSONTags(schema.TokenChunkerParam{}),
 	"tokenizer":     extractJSONTags(schema.TokenizerParam{}),
+	// OneChunker (Audio / Picture / One pipelines) exposes an opt-in token
+	// budget: 0 keeps one chunk per file. Its other params (enable_children /
+	// parent_child) are added generically for chunker components below.
+	"onechunker": extractJSONTags(schema.OneChunkerParam{}),
 }
 
 // extractJSONTags returns all top-level json tag names from a struct.

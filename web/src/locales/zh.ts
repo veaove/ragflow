@@ -846,6 +846,12 @@ export default {
       builtIn: '内置解析模板',
       noConfigChunkerHint:
         '内置的 {{name}} 解析器会自动处理分块，因此无需额外配置。',
+      audioChunkerTip:
+        '转写文本默认整篇作为一个分块。设置分块 token 数后会按句子边界切分为多个分块，便于检索命中具体片段。修改后需重新解析文档才会生效。',
+      audioChunkTokenSizeTip:
+        '每个分块的 token 上限。0 表示不切分，整篇音频作为一个分块。',
+      audioOverlappedPercentTip:
+        '相邻分块之间的重叠比例，避免答案正好落在分块边界而被切断。',
       titleDescription: '在这里更新知识库配置，特别是大语言模型和提示词。',
       name: '知识库名称',
       photo: '知识库图片',
