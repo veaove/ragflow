@@ -299,7 +299,7 @@ export function QcRulePanel({
     <div className="flex h-full flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-text-secondary">
-          规则归属当前应用｜共 {total} 条。新建的规则自动在归属应用生效，其他应用可在自己的设置页勾选选用
+          规则归属当前应用｜共 {total} 条。新建的规则不会自动生效，需到目标应用的设置页手动勾选选用
         </div>
         <Button size="sm" onClick={openCreate}>
           新建规则

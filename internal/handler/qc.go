@@ -415,11 +415,16 @@ func (h *QcHandler) CreateRule(c *gin.Context) {
 		Enabled:       enabled,
 		CreatedBy:     user.ID,
 	}
-	// Create the rule AND the binding to its own app in one transaction: the
-	// binding is what makes a rule run, so a rule born in this app has to be
-	// selected for it, or it would look active in the QC menu but inspect
-	// nothing.
-	if err := dao.NewQcRuleDAO().CreateWithHomeBinding(c.Request.Context(), dao.DB, rule); err != nil {
+	// 只创建规则本身，**不自动绑定到归属应用**。
+	//
+	// 规则是租户级配置资产，归属应用（AppType/AppID）只表示"建在哪个应用的
+	// 质检菜单下"，是归属信息，不是生效开关。是否真正生效由 qc_rule_binding
+	// 决定，而绑定必须由用户在目标应用的设置页手动勾选。
+	//
+	// 之前这里用 CreateWithHomeBinding 顺手绑定了归属应用，后果是：新建一条
+	// 规则后它会**悄悄地在那个应用里开始拦截**，用户根本没勾选过，看起来就像
+	// "自动引用了"。改为一律不自动绑定。
+	if err := dao.NewQcRuleDAO().Create(c.Request.Context(), dao.DB, rule); err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return
 	}
