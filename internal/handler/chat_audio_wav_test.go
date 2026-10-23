@@ -94,3 +94,43 @@ func TestSplitWAVRejectsNonWAV(t *testing.T) {
 		t.Fatal("error = nil, want parse error for empty input")
 	}
 }
+
+// TestSplitWAVStreamingDataSize covers the placeholder length that streaming
+// encoders write: they do not know the final length when the header is
+// emitted, so the data chunk claims 0x7FFFFFFF bytes. DashScope's
+// qwen3-tts-flash returns exactly this shape. Rejecting it made every
+// synthesis segment get dropped, surfacing to users as
+// "TTS synthesis produced no audio".
+func TestSplitWAVStreamingDataSize(t *testing.T) {
+	pcm := []byte{9, 8, 7, 6}
+	b := testWAV(pcm)
+
+	dataOff := bytes.Index(b, []byte("data"))
+	if dataOff < 0 {
+		t.Fatal("test WAV has no data chunk")
+	}
+	binary.LittleEndian.PutUint32(b[dataOff+4:], 0x7FFFFFFF)
+
+	format, gotPCM, err := splitWAV(b)
+	if err != nil {
+		t.Fatalf("splitWAV with streaming data size: %v", err)
+	}
+	if format == nil || len(format.fmtChunk) == 0 {
+		t.Fatal("fmt chunk not parsed")
+	}
+	if !bytes.Equal(gotPCM, pcm) {
+		t.Errorf("pcm = %v, want %v", gotPCM, pcm)
+	}
+}
+
+// TestSplitWAVRejectsOversizedFmtChunk keeps the tolerant rule scoped to the
+// data chunk: an oversized fmt chunk still means the file is corrupt.
+func TestSplitWAVRejectsOversizedFmtChunk(t *testing.T) {
+	b := testWAV([]byte{1, 2, 3})
+	fmtOff := bytes.Index(b, []byte("fmt "))
+	binary.LittleEndian.PutUint32(b[fmtOff+4:], 0x7FFFFFFF)
+
+	if _, _, err := splitWAV(b); err == nil {
+		t.Fatal("error = nil, want parse error for oversized fmt chunk")
+	}
+}

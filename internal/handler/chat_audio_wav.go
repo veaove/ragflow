@@ -38,6 +38,15 @@ func splitWAV(b []byte) (*wavFormat, []byte, error) {
 		chunkID := string(b[off : off+4])
 		size := int(binary.LittleEndian.Uint32(b[off+4 : off+8]))
 		off += 8
+		// Streaming encoders (DashScope's qwen3-tts-flash among them) cannot
+		// know the final length when they start writing, so they emit a
+		// placeholder data size such as 0x7FFFFFFF meaning "until end of
+		// file". Trust the bytes we actually received for the data chunk;
+		// every other chunk keeps the strict bounds check, where an
+		// oversized size really does mean corruption.
+		if chunkID == "data" && size > len(b)-off {
+			size = len(b) - off
+		}
 		if size < 0 || off+size > len(b) {
 			return nil, nil, fmt.Errorf("malformed WAV chunk %q: size %d exceeds buffer", chunkID, size)
 		}
