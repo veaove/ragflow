@@ -4378,16 +4378,18 @@ Important structured information may include: names, dates, locations, events, k
       overview: {
         title: 'Operations overview',
         subtitle:
-          'Platform-wide totals and the last 30 days of tenant and conversation activity',
+          'Platform-wide totals: active tenants over 30 days, active conversations over 24 hours; trends cover the last 30 days',
         tenants: 'Tenants',
-        activeTenants: 'Active tenants (30d)',
+        activeTenants: 'Active tenants',
         members: 'Members',
         datasets: 'Knowledge bases',
         documents: 'Documents',
-        activeConversations: 'Active conversations (24h)',
+        activeConversations: 'Active sessions',
         tenantTrend: 'Tenant growth (30d)',
         conversationTrend: 'Conversations (30d)',
         emptyTrend: 'No data yet',
+        deltaLabel: 'vs. previous period',
+        noCompareLabel: 'No prior period to compare',
       },
 
       serviceStatus: 'Service status',

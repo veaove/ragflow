@@ -76,12 +76,7 @@ export default function AdminOverview() {
         LucideActivity,
         data?.active_tenants,
       ),
-      build(
-        'members',
-        t('admin.overview.members'),
-        LucideUsers,
-        data?.members,
-      ),
+      build('members', t('admin.overview.members'), LucideUsers, data?.members),
       build(
         'datasets',
         t('admin.overview.datasets'),
@@ -132,7 +127,13 @@ export default function AdminOverview() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         {metrics.map((metric) => (
-          <MetricCard key={metric.key} metric={metric} loading={isLoading} />
+          <MetricCard
+            key={metric.key}
+            metric={metric}
+            loading={isLoading}
+            deltaLabel={t('admin.overview.deltaLabel')}
+            emptyDeltaLabel={t('admin.overview.noCompareLabel')}
+          />
         ))}
       </div>
 

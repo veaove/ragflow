@@ -3883,16 +3883,19 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
 
       overview: {
         title: '运营概览',
-        subtitle: '平台整体规模指标，以及近 30 天的租户与会话活跃趋势',
+        subtitle:
+          '平台整体规模指标；活跃租户按近 30 天、活跃会话按近 24 小时统计，下方为近 30 天趋势',
         tenants: '租户总数',
-        activeTenants: '活跃租户（30 天）',
+        activeTenants: '活跃租户',
         members: '成员总数',
         datasets: '知识库总数',
         documents: '文档总数',
-        activeConversations: '活跃会话（24 小时）',
+        activeConversations: '活跃会话',
         tenantTrend: '租户增长（近 30 天）',
         conversationTrend: '会话量（近 30 天）',
         emptyTrend: '暂无统计数据',
+        deltaLabel: '较上周期',
+        noCompareLabel: '较上周期无对比数据',
       },
 
       serviceStatus: '服务状态',

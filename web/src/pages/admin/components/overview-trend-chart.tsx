@@ -68,13 +68,7 @@ export function OverviewTrendChart({
             margin={{ top: 8, right: 12, left: -8, bottom: 0 }}
           >
             <defs>
-              <linearGradient
-                id={gradientId}
-                x1="0"
-                y1="0"
-                x2="0"
-                y2="1"
-              >
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={color} stopOpacity={0.24} />
                 <stop offset="100%" stopColor={color} stopOpacity={0.02} />
               </linearGradient>
