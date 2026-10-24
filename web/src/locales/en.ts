@@ -2909,6 +2909,14 @@ Example: Virtual Hosted Style`,
       colDuration: 'Duration',
       colTokens: 'Tokens',
       colStartedAt: 'Started at',
+      runDetailTitle: 'Run detail',
+      runDetailInputs: 'Inputs',
+      runDetailOutputs: 'Outputs',
+      runDetailNodeRecords: 'Node executions',
+      runDetailNode: 'Node',
+      runDetailNodeType: 'Type',
+      runDetailError: 'Error',
+      runDetailEmpty: 'No data',
       runTrigger: {
         debug: 'Debug',
         api: 'API call',
@@ -4330,6 +4338,10 @@ Important structured information may include: names, dates, locations, events, k
       loginHighlightServicesDesc: 'Service status and task execution',
       loginHighlightAudit: 'Whitelist & audit',
       loginHighlightAuditDesc: 'Registration whitelist and audit trail',
+      // 侧栏品牌名：登录页大标题同一句话，进后台后仍要能一眼认出这是「管理端」
+      navBrand: 'Admin console',
+      profile: 'Profile',
+      logout: 'Sign out',
       title: 'RAGFlow',
       confirm: 'Confirm',
       close: 'Close',
@@ -4338,6 +4350,7 @@ Important structured information may include: names, dates, locations, events, k
       delete: 'Delete',
       cancel: 'Cancel',
       reset: 'Reset',
+      refresh: 'Refresh',
       import: 'Import',
       description: 'Description',
       noDescription: 'No description',
@@ -4361,6 +4374,10 @@ Important structured information may include: names, dates, locations, events, k
       },
 
       serviceStatus: 'Service status',
+      serviceStatusHint:
+        'Running and connection state of every service component',
+      searchServicePlaceholder: 'Search by service name or type',
+      allServiceTypes: 'All types',
       userManagement: 'User management',
       tenantManagement: 'Tenant Management',
       sandboxSettings: 'Sandbox settings',
@@ -4453,6 +4470,8 @@ Important structured information may include: names, dates, locations, events, k
       create: 'Create',
 
       extraInfo: 'Extra information',
+      viewExtraInfo: 'View extra information',
+      viewDetail: 'View details',
       serviceDetail: `Service {{name}} detail`,
       taskExecutorDetail: 'Task executor detail',
 

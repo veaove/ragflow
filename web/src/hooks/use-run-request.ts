@@ -5,6 +5,11 @@ import agentService from '@/services/agent-service';
 export interface IAgentRun {
   id: string;
   canvas_id: string;
+  /**
+   * 应用名。后端 LEFT JOIN user_canvas 得到；画布已删除时是空串，
+   * 展示侧需回退到 canvas_id。
+   */
+  canvas_title?: string;
   tenant_id: string;
   version_seq: number;
   trigger_type: string;
@@ -91,4 +96,61 @@ export function useFetchRuns(params: {
     total: data?.total ?? 0,
     loading,
   };
+}
+
+/** 一次运行的完整记录。列表接口不返回 inputs/outputs，详情单独取。 */
+export interface IAgentRunDetail extends IAgentRun {
+  inputs?: Record<string, unknown>;
+  outputs?: Record<string, unknown>;
+}
+
+/** 单个节点的执行记录（agent_node_execution）。 */
+export interface IAgentRunNode {
+  id: string;
+  run_id: string;
+  canvas_id: string;
+  node_id: string;
+  node_type: string;
+  status: string;
+  inputs?: Record<string, unknown>;
+  process?: Record<string, unknown>;
+  outputs?: Record<string, unknown>;
+  error_code?: string;
+  error_message?: string;
+  duration_ms: number;
+  retry_count: number;
+  create_time: number;
+}
+
+/** 单次运行的详情。runId 为空时不发请求。 */
+export function useFetchRunDetail(runId?: string) {
+  const { data, isFetching: loading } = useQuery<IAgentRunDetail | null>({
+    queryKey: ['agent-run-detail', runId],
+    enabled: !!runId,
+    gcTime: 0,
+    queryFn: async () => {
+      const { data } = await agentService.getRun({ runId: runId as string }, true);
+      return data?.data ?? null;
+    },
+  });
+
+  return { detail: data ?? null, loading };
+}
+
+/** 单次运行的节点执行记录。runId 为空时不发请求。 */
+export function useFetchRunNodes(runId?: string) {
+  const { data, isFetching: loading } = useQuery<IAgentRunNode[]>({
+    queryKey: ['agent-run-nodes', runId],
+    enabled: !!runId,
+    gcTime: 0,
+    queryFn: async () => {
+      const { data } = await agentService.getRunNodes(
+        { runId: runId as string },
+        true,
+      );
+      return data?.data ?? [];
+    },
+  });
+
+  return { nodes: data ?? [], loading };
 }

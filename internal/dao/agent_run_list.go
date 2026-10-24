@@ -48,10 +48,10 @@ type AgentRunListFilter struct {
 // The map values are pre-validated SQL fragments — the key never reaches the
 // database unvalidated, so there is no injection surface.
 var agentRunSortableOrders = map[string]string{
-	"created_desc":   "agent_run.create_time DESC",
-	"duration_desc":  "agent_run.duration_ms DESC",
-	"duration_asc":   "agent_run.duration_ms ASC",
-	"tokens_desc":    "(agent_run.prompt_tokens + agent_run.completion_tokens) DESC",
+	"created_desc":  "agent_run.create_time DESC",
+	"duration_desc": "agent_run.duration_ms DESC",
+	"duration_asc":  "agent_run.duration_ms ASC",
+	"tokens_desc":   "(agent_run.prompt_tokens + agent_run.completion_tokens) DESC",
 }
 
 // ListWithFilter returns the run records matching filter, plus the total
@@ -98,7 +98,14 @@ func (dao *AgentRunDAO) ListWithFilter(ctx context.Context, db *gorm.DB, filter 
 	if offset < 0 {
 		offset = 0
 	}
-	if err := q.Order(order).Limit(limit).Offset(offset).Find(&runs).Error; err != nil {
+	// Resolve the owning canvas title for display. The Count above runs on the
+	// bare query, so the join never interferes with counting.
+	if err := q.
+		// COALESCE matters: the canvas may have been deleted, and scanning a
+		// NULL into the string field would fail the whole page.
+		Select("agent_run.*, COALESCE(user_canvas.title, '') AS canvas_title").
+		Joins("LEFT JOIN user_canvas ON user_canvas.id = agent_run.canvas_id").
+		Order(order).Limit(limit).Offset(offset).Find(&runs).Error; err != nil {
 		return nil, 0, err
 	}
 	return runs, total, nil

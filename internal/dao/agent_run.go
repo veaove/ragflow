@@ -63,9 +63,14 @@ func (dao *AgentRunDAO) GetByIdempotencyKey(ctx context.Context, db *gorm.DB, ca
 // Get returns one run by id, scoped to the tenant.
 func (dao *AgentRunDAO) Get(ctx context.Context, db *gorm.DB, tenantID, runID string) (*entity.AgentRun, error) {
 	var run entity.AgentRun
+	// Join the owning canvas so the detail view can show its title. The WHERE
+	// columns must be qualified: both tables have an `id`.
 	if err := db.WithContext(ctx).
-		Where("tenant_id = ?", tenantID).
-		Where("id = ?", runID).
+		// COALESCE keeps a deleted canvas from failing the scan with a NULL.
+		Select("agent_run.*, COALESCE(user_canvas.title, '') AS canvas_title").
+		Joins("LEFT JOIN user_canvas ON user_canvas.id = agent_run.canvas_id").
+		Where("agent_run.tenant_id = ?", tenantID).
+		Where("agent_run.id = ?", runID).
 		Take(&run).Error; err != nil {
 		return nil, err
 	}

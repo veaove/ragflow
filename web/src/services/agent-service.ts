@@ -71,7 +71,15 @@ const methods = {
     method: 'get',
   },
   listRuns: {
-    url: api.listRuns,
+    url: listRuns,
+    method: 'get',
+  },
+  getRun: {
+    url: (config: { runId: string }) => api.getRun(config.runId),
+    method: 'get',
+  },
+  getRunNodes: {
+    url: (config: { runId: string }) => api.getRunNodes(config.runId),
     method: 'get',
   },
   listAgentTags: {

@@ -34,6 +34,7 @@ import { X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
+import { RunDetailDialog } from './run-detail-dialog';
 
 const PAGE_SIZE = 12;
 
@@ -58,6 +59,8 @@ export default function StudioRunsPage() {
   const page = Number(searchParams.get('page')) || 1;
 
   const [searchInput, setSearchInput] = useState(keywords);
+  // 点行查看详情：存 run id，空值即关闭弹窗。
+  const [selectedRunId, setSelectedRunId] = useState<string>();
   const debouncedKeywords = useDebounce(searchInput, { wait: 400 });
 
   const update = (mutate: (params: URLSearchParams) => void) => {
@@ -235,9 +238,16 @@ export default function StudioRunsPage() {
             </TableHeader>
             <TableBody>
               {runs.map((run) => (
-                <TableRow key={run.id} data-testid="run-table-row">
+                <TableRow
+                  key={run.id}
+                  data-testid="run-table-row"
+                  className="cursor-pointer hover:bg-background-second"
+                  onClick={() => setSelectedRunId(run.id)}
+                >
                   <TableCell className="font-mono text-xs">{run.id}</TableCell>
-                  <TableCell className="text-xs">{run.canvas_id}</TableCell>
+                  <TableCell className="text-xs">
+                    {run.canvas_title || run.canvas_id}
+                  </TableCell>
                   <TableCell className="text-xs">
                     {t(`studio.runTrigger.${run.trigger_type}`)}
                   </TableCell>
@@ -275,6 +285,10 @@ export default function StudioRunsPage() {
           />
         </div>
       )}
+      <RunDetailDialog
+        runId={selectedRunId}
+        onClose={() => setSelectedRunId(undefined)}
+      />
     </section>
   );
 }
