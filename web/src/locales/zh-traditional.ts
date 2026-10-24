@@ -54,6 +54,7 @@ export default {
         tokens: '近7日 Token 消耗',
         agentCount: 'Agent 總數',
         satisfaction: '互動滿意度',
+        userActivity: '用戶活躍度',
       },
       unit: {
         dataset: '個',
@@ -61,9 +62,11 @@ export default {
         chunk: '個',
         times: '次',
         token: 'tokens',
+        user: '人',
       },
       satisfactionHint: '點讚數 / 點踩數',
       tokensHint: '近7日累計',
+      userActivityHint: '近{{days}}日活躍 / 總用戶數',
       chart: {
         sourceTitle: '知識來源分佈',
         sourceTotal: '文檔總數',

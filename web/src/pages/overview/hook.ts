@@ -22,7 +22,9 @@ import {
 } from '@/services/knowledge-service';
 import type { IDocumentInfoFilter } from '@/interfaces/database/document';
 import type { IStats } from '@/interfaces/database/chat';
+import request from '@/utils/request';
 import { POLL_INTERVAL_MS } from './constants';
+import type { IUserActivity } from './interface';
 import { useQueries } from '@tanstack/react-query';
 
 /** 单页最大条数，与后端 page_size 上限一致。 */
@@ -129,7 +131,7 @@ async function fetchGlobalSuffixCounter(): Promise<Record<string, number>> {
 /**
  * 总览页数据源。
  *
- * 四组数据并行拉取。任意一组失败都不会让整页白屏——组件层按各自的 isError
+ * 五组数据并行拉取。任意一组失败都不会让整页白屏——组件层按各自的 isError
  * 渲染降级内容，因此这里不做整体串行等待。
  */
 export function useOverviewQueries(days = 7) {
@@ -161,6 +163,18 @@ export function useOverviewQueries(days = 7) {
       {
         queryKey: ['overview', 'suffixCounter'],
         queryFn: fetchGlobalSuffixCounter,
+        refetchInterval: POLL_INTERVAL_MS,
+        retry: 1,
+      },
+      {
+        // 用户活跃度：口径由后端定义（登录或发起会话），前端只负责展示。
+        queryKey: ['overview', 'userActivity', days],
+        queryFn: async () => {
+          const { data: jsonBody } = await request.get(
+            `/api/v1/system/user-activity?days=${days}`,
+          );
+          return jsonBody?.data as IUserActivity | undefined;
+        },
         refetchInterval: POLL_INTERVAL_MS,
         retry: 1,
       },

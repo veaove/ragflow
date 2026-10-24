@@ -19,6 +19,7 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
 
 	"ragflow/internal/dao"
 )
@@ -122,6 +123,79 @@ func (s *StatsService) GetFeedbackStats(ctx context.Context, userID string) (*Fe
 		return nil, err
 	}
 	return &FeedbackStats{Up: row.Up, Down: row.Down}, nil
+}
+
+// UserActivityStats 是总览页「用户活跃度」卡片的数据。
+//
+// 口径：
+//
+//	TotalUsers  = 租户下 status='1' 的成员数（含 owner，团队页只列非 owner，这里要算全）
+//	ActiveUsers = 窗口期内「登录过」或「在本租户发起过会话」的成员数
+//
+// 为什么活跃要两个信号：last_login_time 只在登录时刷新，长期挂着会话、
+// 靠 token 续期的用户不会被记到登录时间里；而网页对话又会真实产生
+// conversation 记录。两者取并集，才不至于把天天在用的人算成不活跃。
+// 并集用 UNION 去重，避免同一个人被算两次。
+type UserActivityStats struct {
+	TotalUsers  int64 `json:"total_users"`
+	ActiveUsers int64 `json:"active_users"`
+	Days        int   `json:"days"`
+}
+
+// defaultUserActivityDays 是「活跃」的默认回看天数，与总览页其他卡片一致。
+const defaultUserActivityDays = 7
+
+// GetUserActivity 统计当前租户的总用户数与活跃用户数。
+func (s *StatsService) GetUserActivity(ctx context.Context, userID string, days int) (*UserActivityStats, error) {
+	tenants, err := s.userTenantDAO.GetByUserID(ctx, dao.DB, userID)
+	if err != nil || len(tenants) == 0 {
+		return nil, ErrTenantNotFound
+	}
+	tenantID := tenants[0].TenantID
+	if days <= 0 || days > 365 {
+		days = defaultUserActivityDays
+	}
+
+	// 活跃窗口：自然日回退，避免「7 天」被理解成 168 小时导致边界抖动。
+	cutoff := time.Now().AddDate(0, 0, -days)
+
+	var total int64
+	err = dao.DB.WithContext(ctx).Raw(`
+		SELECT COUNT(*)
+		FROM user_tenant ut
+		JOIN user u ON u.id = ut.user_id
+		WHERE ut.tenant_id = ? AND ut.status = '1'
+	`, tenantID).Scan(&total).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// conversation.create_time 是毫秒时间戳，不能直接和 cutoff 比较。
+	// 第二个分支再 join 一次 user_tenant，保证活跃用户一定是本租户成员，
+	// 不满足「活跃 <= 总数」的人在卡片上会变成 8/5 这种坏数据。
+	var active int64
+	err = dao.DB.WithContext(ctx).Raw(`
+		SELECT COUNT(*) FROM (
+			SELECT ut.user_id
+			FROM user_tenant ut
+			JOIN user u ON u.id = ut.user_id
+			WHERE ut.tenant_id = ? AND ut.status = '1' AND u.last_login_time >= ?
+			UNION
+			SELECT DISTINCT c.user_id
+			FROM conversation c
+			JOIN dialog d ON d.id = c.dialog_id
+			JOIN user_tenant ut2
+			  ON ut2.user_id = c.user_id AND ut2.tenant_id = d.tenant_id AND ut2.status = '1'
+			WHERE d.tenant_id = ?
+			  AND c.create_time >= ?
+			  AND c.user_id IS NOT NULL AND c.user_id <> ''
+		) active_users
+	`, tenantID, cutoff, tenantID, cutoff.UnixMilli()).Scan(&active).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return &UserActivityStats{TotalUsers: total, ActiveUsers: active, Days: days}, nil
 }
 
 // HotQuestions 返回知识搜索首页的「热门问题」。

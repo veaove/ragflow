@@ -58,6 +58,31 @@ func (h *StatsHandler) GetFeedbackStats(c *gin.Context) {
 	common.SuccessWithData(c, stats, "success")
 }
 
+// GetUserActivity GET /api/v1/system/user-activity
+// @Summary 租户用户活跃度
+// @Description 总览看板「用户活跃度」卡片的数据源：租户总用户数 + 近 N 日活跃用户数。
+//
+//	活跃 = 窗口内登录过，或在本租户发起过会话（两者取并集）。
+func (h *StatsHandler) GetUserActivity(c *gin.Context) {
+	user, errorCode, errorMessage := GetUser(c)
+	if errorCode != common.CodeSuccess {
+		common.ErrorWithCode(c, errorCode, errorMessage)
+		return
+	}
+	days := 0
+	if v := c.Query("days"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			days = n
+		}
+	}
+	stats, err := h.statsService.GetUserActivity(c.Request.Context(), user.ID, days)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, stats, "success")
+}
+
 // GetHotQuestions GET /api/v1/system/hot-questions
 // @Summary 知识搜索首页的热门问题
 // @Description 取真实聊天记录里出现次数最多的用户提问，过滤寒暄短句。

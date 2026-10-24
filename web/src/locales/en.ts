@@ -174,6 +174,7 @@ export default {
         tokens: 'Tokens (7d)',
         agentCount: 'Agents',
         satisfaction: 'Interaction satisfaction',
+        userActivity: 'User activity',
       },
       unit: {
         dataset: '',
@@ -181,9 +182,11 @@ export default {
         chunk: '',
         times: '',
         token: 'tokens',
+        user: '',
       },
       satisfactionHint: 'thumbs-up / thumbs-down',
       tokensHint: 'last 7 days',
+      userActivityHint: 'active in {{days}}d / total users',
       chart: {
         sourceTitle: 'Knowledge source distribution',
         sourceTotal: 'Total documents',

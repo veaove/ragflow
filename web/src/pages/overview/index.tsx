@@ -58,10 +58,12 @@ const TAB_TRIGGER_CLASS =
 export default function Overview() {
   const { t } = useTranslation('translation', { keyPrefix: 'overview' });
   const { t: tRoot } = useTranslation();
-  const [datasetsQ, agentQ, statsQ, suffixQ] = useOverviewQueries(TREND_DAYS);
+  const [datasetsQ, agentQ, statsQ, suffixQ, activityQ] =
+    useOverviewQueries(TREND_DAYS);
 
   const datasets = datasetsQ.data ?? [];
   const stats = statsQ.data;
+  const activity = activityQ.data ?? null;
 
   const pvRecent = useMemo(() => splitRecentAndPrevious(stats?.pv), [stats?.pv]);
 
@@ -168,8 +170,10 @@ export default function Overview() {
           ))}
         </section>
 
-        {/* 满意度 + Agent 数量 */}
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {/* 满意度 / 用户活跃度 / Token 消耗
+            三列从 xl 起生效，与上方 4 张 KPI 卡片的 xl 断点对齐：
+            侧边栏占 256px，更早拆三列会把每张卡片压到 200px 左右。 */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <div className="flex items-center justify-between rounded-xl border border-border-default bg-bg-base px-5 py-4">
             <div>
               <p className="text-sm text-text-secondary">
@@ -183,6 +187,31 @@ export default function Overview() {
             </div>
             <span className="text-xs text-text-disabled">
               {t('satisfactionHint')}
+            </span>
+          </div>
+
+          {/* 用户活跃度：斜杠左侧是活跃用户数，右侧是租户总用户数。
+              右侧提示文字正好按同样顺序解释这两个数，读起来不用猜。 */}
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border-default bg-bg-base px-5 py-4">
+            <div className="min-w-0">
+              <p className="text-sm text-text-secondary">
+                {t('metric.userActivity')}
+              </p>
+              <p className="mt-1.5 flex items-baseline gap-1 text-2xl font-semibold text-text-primary">
+                {activity && activity.total_users > 0 ? (
+                  <>
+                    {`${activity.active_users} / ${activity.total_users}`}
+                    <span className="text-sm font-normal text-text-secondary">
+                      {t('unit.user')}
+                    </span>
+                  </>
+                ) : (
+                  '—'
+                )}
+              </p>
+            </div>
+            <span className="text-right text-xs text-text-disabled">
+              {t('userActivityHint', { days: TREND_DAYS })}
             </span>
           </div>
 

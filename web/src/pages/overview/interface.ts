@@ -28,6 +28,14 @@ export interface IOverviewMetric {
   delta: number | null;
 }
 
+/** 「用户活跃度」卡片：租户总用户数与窗口内的活跃用户数。 */
+export interface IUserActivity {
+  total_users: number;
+  active_users: number;
+  /** 活跃统计的回看天数，卡片提示文案要与它保持一致。 */
+  days: number;
+}
+
 /** 知识来源分布的一个分类。 */
 export interface ISourceSlice {
   key: string;

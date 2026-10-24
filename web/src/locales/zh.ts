@@ -155,6 +155,7 @@ export default {
         tokens: '近7日 Token 消耗',
         agentCount: 'Agent 总数',
         satisfaction: '交互满意度',
+        userActivity: '用户活跃度',
       },
       unit: {
         dataset: '个',
@@ -162,9 +163,11 @@ export default {
         chunk: '个',
         times: '次',
         token: 'tokens',
+        user: '人',
       },
       satisfactionHint: '点赞数 / 点踩数',
       tokensHint: '近7日累计',
+      userActivityHint: '近{{days}}日活跃 / 总用户数',
       chart: {
         sourceTitle: '知识来源分布',
         sourceTotal: '文档总数',
