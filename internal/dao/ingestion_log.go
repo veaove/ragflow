@@ -244,6 +244,65 @@ func (dao *IngestionTaskLogDAO) AggregateProgressByPipelineLogID(ctx context.Con
 	return progress, nil
 }
 
+// AggregateProgressByPipelineLogIDs computes component progress for many runs
+// at once, keyed by pipeline log id. It is the batched form of
+// AggregateProgressByPipelineLogID: the admin task list showed 7k rows and
+// called the single-run variant once per row, i.e. ~22k round trips and a
+// minute-plus response for one page load.
+//
+// totals supplies each run's expected component count; runs absent from the
+// map still get an entry with Total 0 so callers can rely on every requested
+// id being present.
+func (dao *IngestionTaskLogDAO) AggregateProgressByPipelineLogIDs(ctx context.Context, db *gorm.DB, pipelineLogIDs []string, totals map[string]int) (map[string]*TaskProgress, error) {
+	progress := make(map[string]*TaskProgress, len(pipelineLogIDs))
+	if len(pipelineLogIDs) == 0 {
+		return progress, nil
+	}
+	for _, id := range pipelineLogIDs {
+		progress[id] = &TaskProgress{Total: totals[id]}
+	}
+
+	// Latest lifecycle event per (run, component) — the same selection the
+	// single-run variant makes, just not restricted to one run.
+	latestIDs := db.WithContext(ctx).Model(&entity.IngestionTaskLog{}).
+		Select("MAX(id)").
+		Where("pipeline_log_id IN ? AND event_type = ? AND component <> ?", pipelineLogIDs, EventTypeLifecycle, "").
+		Group("pipeline_log_id, component")
+
+	type progressRow struct {
+		PipelineLogID string
+		Phase         int
+	}
+	var rows []progressRow
+	if err := db.WithContext(ctx).Model(&entity.IngestionTaskLog{}).
+		Select("pipeline_log_id, phase").
+		Where("id IN (?)", latestIDs).
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		p := progress[row.PipelineLogID]
+		if p == nil {
+			continue
+		}
+		switch {
+		case row.Phase == 1:
+			p.Done++
+		case row.Phase < 0 || row.Phase == 2:
+			p.Failed++
+		default:
+			p.Running++
+		}
+	}
+	for _, p := range progress {
+		if p.Total > 0 {
+			p.Percent = float64(p.Done) / float64(p.Total) * 100
+		}
+	}
+	return progress, nil
+}
+
 func (dao *IngestionTaskLogDAO) GetLogByLogID(ctx context.Context, db *gorm.DB, logID string) (*entity.IngestionTaskLog, error) {
 	var task *entity.IngestionTaskLog
 	err := db.WithContext(ctx).Where("id = ?", logID).First(&task).Error

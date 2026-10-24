@@ -181,48 +181,89 @@ func (s *IngestionTaskService) RemoveMany(ctx context.Context, tasks []string, o
 	return deletedTasks, nil
 }
 
+// ListAllForAdmin returns every ingestion task with its owner, run count and
+// component progress.
+//
+// The admin console reads this without paging, so the result grows with the
+// corpus (7k tasks in the test environment). Resolving owner / run count /
+// progress per row made that one request issue ~4 queries per task — 22k round
+// trips, 107s, and a browser timeout — so all three lookups are batched into
+// four queries for the whole list.
 func (s *IngestionTaskService) ListAllForAdmin(ctx context.Context) ([]map[string]interface{}, error) {
 	ingestionTasks, err := s.ingestionTaskDAO.GetAllTasks(ctx, dao.DB, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	if len(ingestionTasks) == 0 {
+		return []map[string]interface{}{}, nil
+	}
+
+	userIDs := make([]string, 0, len(ingestionTasks))
+	pipelineLogIDs := make([]string, 0, len(ingestionTasks))
+	componentTotals := make(map[string]int, len(ingestionTasks))
+	seenUser := make(map[string]struct{}, len(ingestionTasks))
+	seenLog := make(map[string]struct{}, len(ingestionTasks))
+	for _, task := range ingestionTasks {
+		if _, ok := seenUser[task.UserID]; !ok {
+			seenUser[task.UserID] = struct{}{}
+			userIDs = append(userIDs, task.UserID)
+		}
+		if task.PipelineLogID != nil && *task.PipelineLogID != "" {
+			if _, ok := seenLog[*task.PipelineLogID]; !ok {
+				seenLog[*task.PipelineLogID] = struct{}{}
+				pipelineLogIDs = append(pipelineLogIDs, *task.PipelineLogID)
+			}
+			if task.ComponentTotal > 0 {
+				componentTotals[*task.PipelineLogID] = task.ComponentTotal
+			}
+		}
+	}
+
+	emails, err := s.userDAO.GetEmailsByIDs(ctx, dao.DB, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	runCounts, err := s.pipelineLogDAO.GetRunCountsByIDs(ctx, dao.DB, pipelineLogIDs)
+	if err != nil {
+		return nil, err
+	}
+	progressByLog, err := s.ingestionTaskLogDAO.AggregateProgressByPipelineLogIDs(ctx, dao.DB, pipelineLogIDs, componentTotals)
 	if err != nil {
 		return nil, err
 	}
 
 	showTasks := make([]map[string]interface{}, 0, len(ingestionTasks))
 	for _, task := range ingestionTasks {
-		var user *entity.User
-		user, err = s.userDAO.GetByTenantID(ctx, dao.DB, task.UserID)
-		if err != nil {
-			return nil, err
+		email, ok := emails[task.UserID]
+		if !ok {
+			// 与逐行查询时一致：任务归属的用户不存在就让整个请求失败，
+			// 而不是悄悄返回空邮箱。
+			return nil, fmt.Errorf("load task owner %s: %w", task.UserID, gorm.ErrRecordNotFound)
 		}
 
 		showTask := map[string]interface{}{
 			"id":          task.ID,
 			"user_id":     task.UserID,
-			"user":        user.Email,
+			"user":        email,
 			"document_id": task.DocumentID,
 			"status":      task.Status,
 		}
 
 		if task.PipelineLogID != nil && *task.PipelineLogID != "" {
-			if run, runErr := s.pipelineLogDAO.GetByID(ctx, dao.DB, *task.PipelineLogID); runErr == nil && run.RunCount != nil && *run.RunCount > 0 {
-				showTask["run_count"] = *run.RunCount
+			if count, ok := runCounts[*task.PipelineLogID]; ok && count > 0 {
+				showTask["run_count"] = count
 			}
 		}
 
 		showTask["component_total"] = task.ComponentTotal
-		if task.ComponentTotal > 0 {
-			progress := (*dao.TaskProgress)(nil)
-			if task.PipelineLogID != nil && *task.PipelineLogID != "" {
-				progress, err = s.ingestionTaskLogDAO.AggregateProgressByPipelineLogID(ctx, dao.DB, *task.PipelineLogID, task.ComponentTotal)
-			} else {
-				err = errors.New("task has no pipeline log identity")
-			}
-			if err == nil {
+		if task.ComponentTotal > 0 && task.PipelineLogID != nil {
+			if progress, ok := progressByLog[*task.PipelineLogID]; ok && progress != nil {
 				showTask["component_done"] = progress.Done
 			} else {
 				showTask["component_done"] = 0
 			}
 		} else {
+			// 没有 pipeline log 身份的任务没有组件进度可算，旧实现也是记 0。
 			showTask["component_done"] = 0
 		}
 

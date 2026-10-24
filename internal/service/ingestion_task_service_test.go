@@ -486,6 +486,166 @@ func TestIngestionTaskServiceListAllForAdminIncludesRunAndUserEmail(t *testing.T
 	}
 }
 
+// TestListAllForAdminQueryCountIsIndependentOfTaskCount pins the batched
+// lookups behind the admin task list.
+//
+// The list is unpaged in production (7k tasks in the test environment), and
+// resolving owner / run count / progress per row turned one page load into
+// ~22k queries and 107s. Counting queries for a 1-task and a 4-task corpus and
+// requiring the same number is what stops the per-row loop from coming back.
+func TestListAllForAdminQueryCountIsIndependentOfTaskCount(t *testing.T) {
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+	status := "1"
+	for _, u := range []struct{ id, email string }{
+		{"user-1", "user-1@test.com"},
+		{"user-2", "user-2@test.com"},
+	} {
+		if err := dao.DB.Create(&entity.User{
+			ID:              u.id,
+			Email:           u.email,
+			Nickname:        u.id,
+			IsAuthenticated: "1",
+			IsActive:        "1",
+			IsAnonymous:     "0",
+			Status:          &status,
+		}).Error; err != nil {
+			t.Fatalf("insert user %s: %v", u.id, err)
+		}
+	}
+
+	seedRun := func(runID, docID string, runCount int) {
+		t.Helper()
+		if err := dao.DB.Create(&entity.PipelineOperationLog{
+			ID:              runID,
+			DocumentID:      docID,
+			TenantID:        "tenant-1",
+			KbID:            "kb-1",
+			TaskType:        string(entity.PipelineTaskTypeParse),
+			OperationStatus: string(entity.TaskStatusRunning),
+			RunCount:        &runCount,
+		}).Error; err != nil {
+			t.Fatalf("insert pipeline operation log %s: %v", runID, err)
+		}
+	}
+	seedTask := func(taskID, userID, docID, runID string, componentTotal int) {
+		t.Helper()
+		task := &entity.IngestionTask{
+			ID:             taskID,
+			UserID:         userID,
+			DocumentID:     docID,
+			DatasetID:      "kb-1",
+			Schema:         entity.JSONMap{},
+			Status:         common.CREATED,
+			ComponentTotal: componentTotal,
+		}
+		if runID != "" {
+			task.PipelineLogID = &runID
+		}
+		if err := dao.DB.Create(task).Error; err != nil {
+			t.Fatalf("insert task %s: %v", taskID, err)
+		}
+	}
+	seedEvent := func(taskID, runID, component string, phase int) {
+		t.Helper()
+		if err := dao.DB.Exec(`INSERT INTO ingestion_task_log
+			(task_id, pipeline_log_id, checkpoint, event_type, component, phase, message)
+			VALUES (?, ?, '{}', ?, ?, ?, ?)`,
+			taskID, runID, dao.EventTypeLifecycle, component, phase, component).Error; err != nil {
+			t.Fatalf("insert task log for %s/%s: %v", runID, component, err)
+		}
+	}
+
+	// run-1: two components, one done (the earlier "running" row for Parser is
+	// superseded by its later "done" row, matching the single-run semantics).
+	seedRun("run-1", "doc-1", 3)
+	seedTask("task-1", "user-1", "doc-1", "run-1", 2)
+	seedEvent("task-1", "run-1", "Parser", 0)
+	seedEvent("task-1", "run-1", "Parser", 1)
+	seedEvent("task-1", "run-1", "Tokenizer", 0)
+
+	var queries int
+	const callbackName = "test:count-list-all-for-admin-queries"
+	if err := db.Callback().Query().After("gorm:query").Register(callbackName, func(*gorm.DB) {
+		queries++
+	}); err != nil {
+		t.Fatalf("register query callback: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := db.Callback().Query().Remove(callbackName); err != nil {
+			t.Fatalf("remove query callback: %v", err)
+		}
+	})
+
+	ctx := t.Context()
+	svc := NewIngestionTaskService()
+
+	queries = 0
+	oneTask, err := svc.ListAllForAdmin(ctx)
+	if err != nil {
+		t.Fatalf("ListAllForAdmin with one task: %v", err)
+	}
+	oneTaskQueries := queries
+
+	// run-2: both components done. task-3 carries component totals but no run
+	// identity, so it must fall back to 0 instead of failing the request.
+	seedRun("run-2", "doc-2", 1)
+	seedTask("task-2", "user-2", "doc-2", "run-2", 2)
+	seedEvent("task-2", "run-2", "Parser", 1)
+	seedEvent("task-2", "run-2", "Tokenizer", 1)
+	seedRun("run-3", "doc-3", 1)
+	seedTask("task-3", "user-2", "doc-3", "", 3)
+	seedTask("task-4", "user-1", "doc-4", "", 0)
+
+	queries = 0
+	manyTasks, err := svc.ListAllForAdmin(ctx)
+	if err != nil {
+		t.Fatalf("ListAllForAdmin with four tasks: %v", err)
+	}
+	if queries != oneTaskQueries {
+		t.Fatalf("queries grew with task count: 1 task = %d queries, 4 tasks = %d queries", oneTaskQueries, queries)
+	}
+	if len(oneTask) != 1 || len(manyTasks) != 4 {
+		t.Fatalf("row counts = %d / %d, want 1 / 4", len(oneTask), len(manyTasks))
+	}
+
+	byID := make(map[string]map[string]interface{}, len(manyTasks))
+	for _, row := range manyTasks {
+		byID[row["id"].(string)] = row
+	}
+
+	cases := []struct {
+		taskID       string
+		email        string
+		runCount     interface{}
+		componentTot interface{}
+		componentDon interface{}
+	}{
+		{"task-1", "user-1@test.com", 3, 2, 1},
+		{"task-2", "user-2@test.com", 1, 2, 2},
+		{"task-3", "user-2@test.com", nil, 3, 0},
+		{"task-4", "user-1@test.com", nil, 0, 0},
+	}
+	for _, want := range cases {
+		row, ok := byID[want.taskID]
+		if !ok {
+			t.Fatalf("task %s missing from result", want.taskID)
+		}
+		if row["user"] != want.email {
+			t.Errorf("%s user = %v, want %s", want.taskID, row["user"], want.email)
+		}
+		if row["run_count"] != want.runCount {
+			t.Errorf("%s run_count = %v, want %v", want.taskID, row["run_count"], want.runCount)
+		}
+		if row["component_total"] != want.componentTot {
+			t.Errorf("%s component_total = %v, want %v", want.taskID, row["component_total"], want.componentTot)
+		}
+		if row["component_done"] != want.componentDon {
+			t.Errorf("%s component_done = %v, want %v", want.taskID, row["component_done"], want.componentDon)
+		}
+	}
+}
+
 func TestIngestionTaskServiceStartRunningTransitionsCreatedTask(t *testing.T) {
 	db := setupServiceTestDB(t)
 	pushServiceDB(t, db)

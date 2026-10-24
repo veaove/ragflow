@@ -304,6 +304,34 @@ func (dao *PipelineOperationLogDAO) GetByID(ctx context.Context, db *gorm.DB, lo
 	return &log, nil
 }
 
+// GetRunCountsByIDs returns the run count of many pipeline logs in one query,
+// keyed by log id. Logs with a NULL run_count are omitted, matching the
+// per-row read where a nil count is treated as "no runs yet".
+func (dao *PipelineOperationLogDAO) GetRunCountsByIDs(ctx context.Context, db *gorm.DB, logIDs []string) (map[string]int, error) {
+	counts := make(map[string]int, len(logIDs))
+	if len(logIDs) == 0 {
+		return counts, nil
+	}
+	var rows []struct {
+		ID       string
+		RunCount *int
+	}
+	err := db.WithContext(ctx).
+		Model(&entity.PipelineOperationLog{}).
+		Select("id, run_count").
+		Where("id IN ?", logIDs).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		if r.RunCount != nil {
+			counts[r.ID] = *r.RunCount
+		}
+	}
+	return counts, nil
+}
+
 // Create inserts a new pipeline operation log.
 func (dao *PipelineOperationLogDAO) Create(ctx context.Context, db *gorm.DB, log *entity.PipelineOperationLog) error {
 	return db.WithContext(ctx).Create(log).Error

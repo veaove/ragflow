@@ -91,6 +91,32 @@ func (dao *UserDAO) GetNicknamesByIDs(ctx context.Context, db *gorm.DB, ids []st
 	return nicknames, nil
 }
 
+// GetEmailsByIDs resolves emails for many users in one query, keyed by user
+// id; ids without a matching row are absent. Admin listings need the whole set
+// in one round trip — asking per row turns a 7k-row list into 7k queries.
+func (dao *UserDAO) GetEmailsByIDs(ctx context.Context, db *gorm.DB, ids []string) (map[string]string, error) {
+	emails := make(map[string]string, len(ids))
+	if len(ids) == 0 {
+		return emails, nil
+	}
+	var rows []struct {
+		ID    string
+		Email string
+	}
+	err := db.WithContext(ctx).
+		Model(&entity.User{}).
+		Select("id, email").
+		Where("id IN ?", ids).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		emails[r.ID] = r.Email
+	}
+	return emails, nil
+}
+
 // GetByEmail get user by email
 func (dao *UserDAO) GetByEmail(ctx context.Context, db *gorm.DB, email string) (*entity.User, error) {
 	var user entity.User

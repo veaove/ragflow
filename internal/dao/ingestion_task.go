@@ -167,12 +167,14 @@ func (dao *IngestionTaskDAO) Delete(ctx context.Context, db *gorm.DB, taskID str
 
 func (dao *IngestionTaskDAO) GetAllTasks(ctx context.Context, db *gorm.DB, page, pageSize int) ([]*entity.IngestionTask, error) {
 	var tasks []*entity.IngestionTask
-	query := db.WithContext(ctx)
+	// pageSize == 0 means "everything"; keep the same ordering as the paged
+	// branch so an unpaged admin listing is at least deterministic.
+	query := db.WithContext(ctx).Order("create_time DESC")
 	var err error
 	if pageSize == 0 {
 		err = query.Find(&tasks).Error
 	} else {
-		err = query.Order("create_time DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&tasks).Error
+		err = query.Offset((page - 1) * pageSize).Limit(pageSize).Find(&tasks).Error
 	}
 	return tasks, err
 }
