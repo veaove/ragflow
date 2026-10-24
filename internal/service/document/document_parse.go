@@ -87,6 +87,18 @@ func (s *DocumentService) StartParseDocuments(ctx context.Context, doc *entity.D
 	unlock := lockDocumentParse(doc.ID)
 	defer unlock()
 
+	// A document carries a snapshot of the dataset's parser_config taken at
+	// upload time, and the pipeline runs that snapshot as its override params.
+	// Without this refresh a re-parse keeps using the settings that were in
+	// force when the file was uploaded, so a chunk size edited on the dataset
+	// page afterwards never reaches existing files. Applied before the delete
+	// so a DSL failure cannot leave the document without its previous chunks.
+	if opts.ApplyKB {
+		if err := s.applyDatasetParserConfig(ctx, doc, kb); err != nil {
+			return err
+		}
+	}
+
 	if opts.RerunWithDelete {
 		if err := s.clearDocumentParseResults(ctx, doc, kb.TenantID); err != nil {
 			return err

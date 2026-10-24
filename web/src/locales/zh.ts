@@ -556,6 +556,9 @@ export default {
       applyAutoMetadataSettings: '应用全局自动元数据设置',
       parseFileTip: '您确定要解析吗？',
       clearChunksReparseTip: '您确定要清空分块重新解析吗？',
+      applyDatasetConfig: '应用知识库的最新配置',
+      applyDatasetConfigTip:
+        '用知识库当前的解析配置覆盖该文件的设置。取消勾选则沿用该文件已有的配置。',
       parseFile: '解析文件',
       emptyMetadata: '无元数据',
       localUpload: '本地上传',

@@ -25,5 +25,18 @@ export const buildDocumentIngestPayload = ({
     ...(option || {}),
   };
 
-  return run === 1 ? { ...payload, delete: true } : payload;
+  if (run !== 1) {
+    return payload;
+  }
+
+  // A document's parser_config is a snapshot of the dataset config taken when
+  // the file was uploaded, and the pipeline runs that snapshot. Without
+  // apply_kb, dataset settings edited afterwards never reach existing files,
+  // so a re-parse reproduces the old chunks (e.g. a whole audio transcript as
+  // one chunk). Callers that must preserve a file's own settings opt out.
+  return {
+    ...payload,
+    delete: true,
+    apply_kb: option?.apply_kb ?? true,
+  };
 };

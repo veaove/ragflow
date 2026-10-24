@@ -1,7 +1,8 @@
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DynamicForm, DynamicFormRef } from '@/components/dynamic-form';
 import { DialogProps } from '@radix-ui/react-dialog';
-import { memo, useCallback, useRef } from 'react';
+import { memo, useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export const ReparseDialog = memo(
@@ -18,13 +19,18 @@ export const ReparseDialog = memo(
     hideModal: () => void;
   }) => {
     const { t } = useTranslation();
+    // A file only carries a snapshot of the dataset config taken at upload
+    // time, so re-parsing applies the dataset's current settings by default —
+    // that is what an operator expects after editing them. Files with their own
+    // tuned settings can opt out here.
+    const [applyKb, setApplyKb] = useState(true);
 
     // Existing chunks are always dropped on re-ingest, so the dialog only
     // needs a plain confirmation with no checkboxes. Seed delete: true so the
     // click payload keeps the drop behavior.
     const defaultValues = {
       delete: true,
-      apply_kb: false,
+      apply_kb: true,
     };
 
     const formCallbackRef = useRef<DynamicFormRef>(null);
@@ -47,10 +53,10 @@ export const ReparseDialog = memo(
         const formValues = instance.getValues();
         handleOperationIconClick({
           delete: formValues.delete,
-          apply_kb: formValues.apply_kb,
+          apply_kb: applyKb,
         });
       }
-    }, [formCallbackRef, handleOperationIconClick]);
+    }, [applyKb, formCallbackRef, handleOperationIconClick]);
 
     return (
       <ConfirmDeleteDialog
@@ -62,7 +68,7 @@ export const ReparseDialog = memo(
         content={{
           title: t(`knowledgeDetails.clearChunksReparseTip`),
           node: (
-            <div>
+            <div className="flex flex-col gap-4">
               <DynamicForm.Root
                 onSubmit={(data) => {
                   console.log('submit', data);
@@ -71,6 +77,20 @@ export const ReparseDialog = memo(
                 fields={[]}
                 defaultValues={defaultValues}
               ></DynamicForm.Root>
+              <label className="flex items-start gap-2 text-sm text-text-primary">
+                <Checkbox
+                  checked={applyKb}
+                  onCheckedChange={(checked) => setApplyKb(checked === true)}
+                  className="mt-0.5"
+                  data-testid="reparse-apply-kb"
+                />
+                <span>
+                  {t('knowledgeDetails.applyDatasetConfig')}
+                  <span className="mt-0.5 block text-xs text-text-secondary">
+                    {t('knowledgeDetails.applyDatasetConfigTip')}
+                  </span>
+                </span>
+              </label>
             </div>
           ),
         }}

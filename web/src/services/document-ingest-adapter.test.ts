@@ -16,13 +16,23 @@ describe('buildDocumentIngestPayload', () => {
     });
   });
 
-  it('adds delete when a parse request has no options', () => {
+  it('applies the dataset config when a parse request has no options', () => {
     expect(
       buildDocumentIngestPayload({ documentIds: ['doc-1'], run: 1 }),
-    ).toEqual({ doc_ids: ['doc-1'], run: 1, delete: true });
+    ).toEqual({ doc_ids: ['doc-1'], run: 1, delete: true, apply_kb: true });
   });
 
-  it('does not add delete to a cancel request', () => {
+  it('honours an explicit opt-out of the dataset config', () => {
+    expect(
+      buildDocumentIngestPayload({
+        documentIds: ['doc-1'],
+        run: 1,
+        option: { delete: true, apply_kb: false },
+      }),
+    ).toEqual({ doc_ids: ['doc-1'], run: 1, delete: true, apply_kb: false });
+  });
+
+  it('does not add delete or apply_kb to a cancel request', () => {
     expect(
       buildDocumentIngestPayload({ documentIds: ['doc-1'], run: 2 }),
     ).toEqual({ doc_ids: ['doc-1'], run: 2 });

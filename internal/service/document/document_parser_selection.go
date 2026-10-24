@@ -2,6 +2,7 @@ package document
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"ragflow/internal/common"
@@ -200,4 +201,71 @@ func rebuildParserConfig(ctx context.Context, kb *entity.Knowledgebase, target, 
 		cleaned = service.ApplyComponentScopedParserConfig(cleaned, tenant.LLMID)
 	}
 	return cleaned, true
+}
+
+// applyDatasetParserConfig rewrites a document's parser_config from the
+// dataset's current parser_config.
+//
+// A document is seeded with a full copy of the dataset config when it is
+// uploaded, and the ingestion pipeline runs that copy as its override params
+// (see runPipelineWithDSL). The copy is therefore a snapshot: editing the
+// dataset config afterwards — a new chunk size, a new parser option — changes
+// nothing for files that already exist until the snapshot is refreshed. This
+// is what the re-parse "apply dataset config" option does.
+//
+// The rebuild runs against the document's OWN selection so a file that was
+// pointed at a different parser keeps its own component set: the dataset's
+// component IDs do not exist in that DSL and BuildParserConfig drops them.
+// Such a file is skipped entirely rather than being reset to its DSL defaults.
+func (s *DocumentService) applyDatasetParserConfig(ctx context.Context, doc *entity.Document, kb *entity.Knowledgebase) error {
+	if doc == nil || kb == nil || len(kb.ParserConfig) == 0 {
+		return nil
+	}
+	if !documentFollowsDatasetSelection(doc, kb) {
+		return nil
+	}
+	isPipeline := doc.PipelineID != nil && strings.TrimSpace(*doc.PipelineID) != ""
+	dslJSON, err := service.LoadPipelineDSL(ctx, isPipeline, doc.ParserID, doc.PipelineID)
+	if err != nil {
+		return fmt.Errorf("load pipeline dsl for document %s: %w", doc.ID, err)
+	}
+	raw := map[string]interface{}(kb.ParserConfig)
+	rebuilt := pipelinepkg.BuildParserConfig(dslJSON, raw)
+	// The dataset-level metadata group is parser-independent; keep it so the
+	// document's Extractor node inherits the dataset setting instead of falling
+	// back to disabled (same carry as rebuildParserConfig).
+	if meta, ok := raw["metadata"]; ok {
+		rebuilt["metadata"] = meta
+	}
+	pipelinepkg.ApplyParentChildChunkerConfig(rebuilt, raw)
+	if tenant, tenantErr := dao.NewTenantDAO().GetByID(ctx, dao.DB, kb.TenantID); tenantErr == nil && tenant != nil {
+		rebuilt = service.ApplyComponentScopedParserConfig(rebuilt, tenant.LLMID)
+	}
+	if err := s.documentDAO.UpdateByID(ctx, dao.DB, doc.ID, map[string]interface{}{
+		"parser_config": rebuilt,
+	}); err != nil {
+		return fmt.Errorf("update parser_config for document %s: %w", doc.ID, err)
+	}
+	doc.ParserConfig = rebuilt
+	return nil
+}
+
+// documentFollowsDatasetSelection reports whether the document still runs the
+// dataset's parser or pipeline. A file switched to another parser through the
+// per-document "change parser" flow owns its own config, so the dataset's
+// settings must not overwrite it.
+func documentFollowsDatasetSelection(doc *entity.Document, kb *entity.Knowledgebase) bool {
+	if !strings.EqualFold(strings.TrimSpace(doc.ParserID), strings.TrimSpace(kb.ParserID)) {
+		return false
+	}
+	return pipelineSelectionID(doc.PipelineID) == pipelineSelectionID(kb.PipelineID)
+}
+
+// pipelineSelectionID normalizes an optional canvas id for comparison: nil and
+// the empty string both mean "builtin parser".
+func pipelineSelectionID(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return strings.TrimSpace(*id)
 }

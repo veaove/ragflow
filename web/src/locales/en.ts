@@ -610,6 +610,9 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       applyAutoMetadataSettings: 'Apply global auto-metadata settings',
       parseFileTip: 'Are you sure to parse?',
       clearChunksReparseTip: 'Are you sure to clear chunks to re-parse?',
+      applyDatasetConfig: 'Apply the latest dataset settings',
+      applyDatasetConfigTip:
+        'Overwrite this file with the dataset current parse settings. Clear the checkbox to keep the settings already stored on this file.',
       parseFile: 'Parse file',
       emptyMetadata: 'No metadata',
       metadataField: 'Metadata field',
