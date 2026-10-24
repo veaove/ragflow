@@ -7,7 +7,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
 import {
   Tooltip,
   TooltipContent,
@@ -167,7 +166,7 @@ export function ParsingStatusCell({
   };
   return (
     <section
-      className="flex gap-8 items-center"
+      className="flex items-center gap-2"
       data-testid="document-parse-status"
       data-state={
         isQueued
@@ -179,8 +178,6 @@ export function ParsingStatusCell({
     >
       {showParse && (
         <div className="flex items-center gap-2">
-          <Separator orientation="vertical" className="h-[1em]" />
-
           {isRunning ? (
             <div className="relative">
               {/* While STOPPING the underlying running row stays visible

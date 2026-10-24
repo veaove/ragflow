@@ -231,31 +231,37 @@ export function useDatasetTableColumns({
         },
       },
       {
-        id: 'run-status',
-        header: '',
-        cell: ({ row }) => {
-          return (
-            <ParsingStatusCell
-              record={row.original}
-              showChangeParserModal={showChangeParserModal}
-              showLog={showLog}
-            />
-          );
-        },
-      },
-      {
         id: 'actions',
         header: t('action'),
         enableHiding: false,
+        // 表格是 w-full 的自动布局，剩余宽度会按比例摊给所有列。不放任这一列
+        // 自由伸缩，它就会被撑到内容宽度的好几倍——右边看起来空一大块，
+        // 「操作」表头也会和自己的按钮对不上。w-[1%] + nowrap 是自动布局下
+        // 让列收缩到内容宽度的标准写法（浏览器按最小内容宽度计算）。
+        //
+        // 解析/状态按钮（原先单独占一个没有表头的 run-status 列）也合并到这里：
+        // 它们常驻可见，而「操作」表头在另一列，导致标签被夹在两个按钮之间、
+        // 看不出归属。现在一行里所有行内操作都归「操作」这一列。
+        meta: {
+          headerClassName: 'w-[1%] whitespace-nowrap',
+          cellClassName: 'w-[1%] whitespace-nowrap',
+        },
         cell: ({ row }) => {
           const record = row.original;
 
           return (
-            <DatasetActionCell
-              record={record}
-              showRenameModal={showRenameModal}
-              setRowSelection={setRowSelection}
-            />
+            <div className="flex items-center gap-2">
+              <ParsingStatusCell
+                record={record}
+                showChangeParserModal={showChangeParserModal}
+                showLog={showLog}
+              />
+              <DatasetActionCell
+                record={record}
+                showRenameModal={showRenameModal}
+                setRowSelection={setRowSelection}
+              />
+            </div>
           );
         },
       },
