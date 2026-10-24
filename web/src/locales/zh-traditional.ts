@@ -71,7 +71,9 @@ export default {
         sourceTitle: '知識來源分佈',
         sourceTotal: '文檔總數',
         trendTitle: '近{{days}}日檢索趨勢',
-        trendEmptyHint: '該趨勢統計的是通過 API Key 發起的對話調用，在網頁端使用知識庫與對話不會計入此處。',
+        trendApi: 'API 檢索',
+        trendWeb: '網頁手工檢索',
+        trendEmptyHint: '兩條曲線分別統計 API Key 調用與網頁端在知識庫中的提問檢索，目前兩者都還沒有記錄。',
       },
     },
     login: {

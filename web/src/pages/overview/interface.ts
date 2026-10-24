@@ -53,6 +53,22 @@ export interface ITrendPoint {
   value: number;
 }
 
+/**
+ * 双曲线趋势的一个数据点。
+ *
+ * api = API Key 调用（api_4_conversation）
+ * web = 网页端手工检索（conversation_message 里的用户提问）
+ *
+ * 两条曲线共用同一个 X 轴，缺数据的那天补 0，否则 recharts 会把
+ * 断点连成直线，看起来像「那天有量」。
+ */
+export interface IDualTrendPoint {
+  date: string;
+  label: string;
+  api: number;
+  web: number;
+}
+
 export interface IOverviewData {
   metrics: IOverviewMetric[];
   sourceDistribution: ISourceSlice[];

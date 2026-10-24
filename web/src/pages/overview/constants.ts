@@ -93,3 +93,14 @@ export const SOURCE_LABELS: Record<string, string> = {
 
 /** 品牌主色，与 tailwind.css 的 --accent-primary 保持一致。 */
 export const BRAND_BLUE = '#065BC1';
+
+/**
+ * 双曲线趋势图的配色。
+ *
+ * api 沿用品牌蓝；web 用绿色区分（取自来源分布盘的 spreadsheet 绿），
+ * 两者色相相差足够大，在深色背景和色弱视角下都能分开。
+ */
+export const TREND_COLORS = {
+  api: BRAND_BLUE,
+  web: '#27AE60',
+} as const;

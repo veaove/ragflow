@@ -41,8 +41,8 @@ import { TrendAreaChart } from './trend-area-chart';
 import { TREND_DAYS } from './constants';
 import { useOverviewQueries } from './hook';
 import {
+  buildDualTrend,
   buildSourceDistribution,
-  buildTrend,
   calcDelta,
   seriesSum,
   splitRecentAndPrevious,
@@ -134,7 +134,16 @@ export default function Overview() {
     ];
   }, [datasets, stats?.agent_calls, agentCallsRecent, t]);
 
-  const trend = useMemo(() => buildTrend(stats?.pv), [stats?.pv]);
+  /**
+   * 趋势图改成双曲线对比：
+   *   api = API Key 发起的调用（api_4_conversation）
+   *   web = 网页端知识库 / 对话里的手工检索（conversation_message 用户提问）
+   * 两条链路互不相通，之前只画 api 那条，纯网页用户看到的永远是一条空线。
+   */
+  const trend = useMemo(
+    () => buildDualTrend(stats?.pv, stats?.web_search),
+    [stats?.pv, stats?.web_search],
+  );
   const sourceDistribution = useMemo(
     () => buildSourceDistribution(suffixQ.data),
     [suffixQ.data],
@@ -261,6 +270,8 @@ export default function Overview() {
               data={trend}
               loading={statsLoading}
               emptyHint={t('chart.trendEmptyHint')}
+              apiLabel={t('chart.trendApi')}
+              webLabel={t('chart.trendWeb')}
             />
           </div>
 

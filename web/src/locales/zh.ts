@@ -172,7 +172,9 @@ export default {
         sourceTitle: '知识来源分布',
         sourceTotal: '文档总数',
         trendTitle: '近{{days}}日检索趋势',
-        trendEmptyHint: '该趋势统计的是通过 API Key 发起的对话调用，在网页端使用知识库与对话不会计入此处。',
+        trendApi: 'API 检索',
+        trendWeb: '网页手工检索',
+        trendEmptyHint: '两条曲线分别统计 API Key 调用与网页端在知识库中的提问检索，目前两者都还没有记录。',
       },
     },
     login: {

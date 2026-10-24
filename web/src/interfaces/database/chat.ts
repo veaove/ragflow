@@ -209,6 +209,8 @@ export interface IStats {
   thumb_up: [string, number][];
   /** 智能体（agent_run）的每日调用次数。 */
   agent_calls?: [string, number][];
+  /** 网页端（知识库 / 对话）手工检索的每日次数，对应 conversation_message 里的用户提问。 */
+  web_search?: [string, number][];
 }
 
 export interface IExternalChatInfo {

@@ -15,7 +15,11 @@
  */
 
 import { SUFFIX_CATEGORY, SOURCE_COLORS, SOURCE_LABELS, TREND_DAYS } from './constants';
-import { type ISourceSlice, type ITrendPoint } from './interface';
+import {
+  type IDualTrendPoint,
+  type ISourceSlice,
+  type ITrendPoint,
+} from './interface';
 
 /**
  * 后端 `/system/stats` 每条序列的元素是 `[日期字符串, 数值]` 元组。
@@ -34,6 +38,21 @@ export function seriesSum(series: StatsSeries): number {
   return (series ?? []).reduce((sum, [, value]) => sum + (Number(value) || 0), 0);
 }
 
+/** `2026-10-19 00:00:00` -> `2026-10-19`；顺便兼容后端直接给 date 的情况。 */
+function toDateOnly(rawDate: string): string {
+  return String(rawDate).slice(0, 10);
+}
+
+const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+/** 用 UTC 构造，避免本地时区把日期整体前移一天。 */
+function weekdayLabel(date: string): string {
+  const [y, m, d] = date.split('-').map(Number);
+  if (!y || !m || !d) return date;
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return WEEKDAY_LABELS[weekday] ?? date;
+}
+
 /**
  * 把 `[date, value]` 元组序列转成图表可用的点列。
  *
@@ -41,20 +60,63 @@ export function seriesSum(series: StatsSeries): number {
  * X 轴标签用「周X」，与设计稿一致。
  */
 export function buildTrend(series: StatsSeries): ITrendPoint[] {
-  const weekdayLabels = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-
   return (series ?? []).map(([rawDate, value]) => {
-    const date = String(rawDate).slice(0, 10);
-    // 避免时区导致的偏移，直接按字符串构造 Date
-    const [y, m, d] = date.split('-').map(Number);
-    const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    const date = toDateOnly(rawDate);
 
     return {
       date,
-      label: weekdayLabels[weekday] ?? date,
+      label: weekdayLabel(date),
       value: Number(value) || 0,
     };
   });
+}
+
+/**
+ * 把「API 调用」与「网页手工检索」两条序列对齐到同一根 X 轴上。
+ *
+ * 两边的日期集合不一定相同：某天只有 API 没有网页检索（或反之）时，
+ * 只在其中一条序列里出现的日期也必须出现在轴上，否则两条曲线的点
+ * 会错位。缺失的一侧补 0——这比让它 undefined 更准确，因为
+ * recharts 对 undefined 会断线或拉直线，两种看起来都像「有数据」。
+ *
+ * 轴长固定为 days 天（含今天），中间某天两边都没数据也占一格：
+ * 否则 X 轴会跳日期，一周看起来只剩四五天，读数容易误会。
+ * 整条轴全为 0 时返回空数组，交给调用方展示空态。
+ */
+export function buildDualTrend(
+  apiSeries: StatsSeries,
+  webSeries: StatsSeries,
+  days: number = TREND_DAYS,
+): IDualTrendPoint[] {
+  const apiMap = new Map<string, number>();
+  const webMap = new Map<string, number>();
+
+  (apiSeries ?? []).forEach(([rawDate, value]) => {
+    apiMap.set(toDateOnly(rawDate), Number(value) || 0);
+  });
+  (webSeries ?? []).forEach(([rawDate, value]) => {
+    webMap.set(toDateOnly(rawDate), Number(value) || 0);
+  });
+
+  const points: IDualTrendPoint[] = [];
+  const today = new Date();
+
+  for (let i = days - 1; i >= 0; i -= 1) {
+    // 逐日回退用 Date 构造器而不是减毫秒，跨月/跨夏令时都不会算错。
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const date = `${d.getFullYear()}-${month}-${day}`;
+
+    points.push({
+      date,
+      label: weekdayLabel(date),
+      api: apiMap.get(date) ?? 0,
+      web: webMap.get(date) ?? 0,
+    });
+  }
+
+  return points.some((p) => p.api > 0 || p.web > 0) ? points : [];
 }
 
 /**

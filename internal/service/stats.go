@@ -53,6 +53,17 @@ type StatsResponse struct {
 	// 原来的 PV 统计的是 api_4_conversation（API Key 调用），
 	// 网页端使用智能体完全不计入，导致「近7日调用」常年为 0。
 	AgentCalls []StatPoint `json:"agent_calls"`
+	// WebSearch 是网页端（知识库 / 对话）手工检索的每日次数。
+	//
+	// PV 统计的是 api_4_conversation，只覆盖「拿 API Key 走接口」这条链路；
+	// 用户在网页里打开知识库、直接提问检索，一条都不会落到那张表里。
+	// 所以趋势图要画两条曲线做对比，第二条就用这里的数据。
+	//
+	// 口径：conversation_message 里 role='user' 的消息条数——网页端每一轮提问
+	// 都会触发一次检索，因此按天计数即可代表手工检索量。
+	// 注：知识库的「检索测试」(POST /datasets/search) 是纯内存查询、不落库，
+	// 历史上无法回溯，这里不计入；需要区分的话得另建事件表。
+	WebSearch []StatPoint `json:"web_search"`
 }
 
 // GetStats returns daily API conversation statistics for the first tenant of a user.
@@ -68,13 +79,14 @@ func (s *StatsService) GetStats(ctx context.Context, userID, fromDate, toDate st
 	}
 
 	response := &StatsResponse{
-		PV:      make([]StatPoint, 0, len(rows)),
-		UV:      make([]StatPoint, 0, len(rows)),
-		Speed:   make([]StatPoint, 0, len(rows)),
-		Tokens:  make([]StatPoint, 0, len(rows)),
-		Round:   make([]StatPoint, 0, len(rows)),
+		PV:         make([]StatPoint, 0, len(rows)),
+		UV:         make([]StatPoint, 0, len(rows)),
+		Speed:      make([]StatPoint, 0, len(rows)),
+		Tokens:     make([]StatPoint, 0, len(rows)),
+		Round:      make([]StatPoint, 0, len(rows)),
 		ThumbUp:    make([]StatPoint, 0, len(rows)),
 		AgentCalls: make([]StatPoint, 0, 8),
+		WebSearch:  make([]StatPoint, 0, 8),
 	}
 
 	for _, row := range rows {
@@ -107,6 +119,29 @@ func (s *StatsService) GetStats(ctx context.Context, userID, fromDate, toDate st
 		}
 		for _, row := range agentRows {
 			response.AgentCalls = append(response.AgentCalls, StatPoint{row.Dt, row.C})
+		}
+
+		// 网页端手工检索：conversation_message 里用户每提问一次就是一次检索。
+		// conversation / conversation_message 都没有 tenant_id，必须经
+		// conversation -> dialog 关联到租户（项目既有约定）。
+		// created_at 是 double 类型的秒级时间戳，直接与 Unix() 比较即可。
+		var webRows []agentRow
+		err = dao.DB.WithContext(ctx).Raw(`
+			SELECT DATE(FROM_UNIXTIME(m.created_at)) AS dt, COUNT(*) AS c
+			FROM conversation_message m
+			JOIN conversation c ON c.id = m.conversation_id
+			JOIN dialog d ON d.id = c.dialog_id
+			WHERE d.tenant_id = ?
+			  AND m.role = 'user'
+			  AND m.created_at >= ? AND m.created_at <= ?
+			GROUP BY dt
+			ORDER BY dt
+		`, tenants[0].TenantID, fromT.Unix(), toT.Unix()).Scan(&webRows).Error
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range webRows {
+			response.WebSearch = append(response.WebSearch, StatPoint{row.Dt, row.C})
 		}
 	}
 

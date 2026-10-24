@@ -191,8 +191,10 @@ export default {
         sourceTitle: 'Knowledge source distribution',
         sourceTotal: 'Total documents',
         trendTitle: 'Retrieval trend (last {{days}} days)',
+        trendApi: 'API retrieval',
+        trendWeb: 'Web manual retrieval',
         trendEmptyHint:
-          'This trend counts conversations made through API keys. Using the knowledge base or chat in the web UI is not recorded here.',
+          'The two curves count API-key calls and questions asked in the web knowledge base respectively. Neither has any record yet.',
       },
     },
     login: {

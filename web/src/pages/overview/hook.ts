@@ -39,7 +39,12 @@ export function buildStatsRange(days: number) {
       d.getDate(),
     ).padStart(2, '0')}`;
   const to = new Date();
-  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  // 回溯 (days - 1) 天，而不是 days 天。
+  //
+  // from_date 会被截断到 00:00:00，若再减整天数，窗口就横跨 8 个自然日
+  // （今天再往前 7 天的那一天也算进来），「近7日」的图上会出现 8 个点、
+  // 周X 标签重复（如「周六 … 周六」）。减 days-1 天后正好覆盖 days 个自然日。
+  const from = new Date(to.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
 
   return {
     from_date: `${fmt(from)} 00:00:00`,
