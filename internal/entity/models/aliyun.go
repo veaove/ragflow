@@ -734,6 +734,9 @@ func (a *AliyunModel) transcribeSegment(ctx context.Context, url, modelName, fil
 		return "", fmt.Errorf("failed to parse aliyun ASR response: %w, body: %s", err, string(body))
 	}
 	if parsed.Code != "" {
+		if aliyunASRNoSpeech(parsed.Code, parsed.Message) {
+			return "", fmt.Errorf("%w (%s)", ErrASRNoSpeech, strings.TrimSpace(parsed.Message))
+		}
 		return "", fmt.Errorf("aliyun ASR API error: %s: %s", parsed.Code, parsed.Message)
 	}
 	text, err := parsed.transcript()
@@ -751,10 +754,25 @@ func aliyunASRError(status int, body []byte) error {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	}
-	if err := json.Unmarshal(body, &parsed); err == nil && parsed.Code == "AUDIO_DURATION_TOO_LONG" {
-		return fmt.Errorf("aliyun ASR: audio exceeds the provider's %ds per-request limit (%s); convert it to WAV so it can be split, or split it before upload", aliyunASRMaxDurationSeconds, parsed.Message)
+	if err := json.Unmarshal(body, &parsed); err == nil {
+		switch {
+		case parsed.Code == "AUDIO_DURATION_TOO_LONG":
+			return fmt.Errorf("aliyun ASR: audio exceeds the provider's %ds per-request limit (%s); convert it to WAV so it can be split, or split it before upload", aliyunASRMaxDurationSeconds, parsed.Message)
+		case aliyunASRNoSpeech(parsed.Code, parsed.Message):
+			return fmt.Errorf("%w (%s)", ErrASRNoSpeech, strings.TrimSpace(parsed.Message))
+		}
 	}
 	return &APIStatusError{Status: status, Body: string(body)}
+}
+
+// aliyunASRNoSpeech reports whether a provider code/message means "the audio
+// carried no recognisable speech". Aliyun returns the marker as the message of
+// a CLIENT_ERROR (HTTP 400), so match either field and ignore case: a 200
+// envelope may echo the same token as its code.
+func aliyunASRNoSpeech(code, message string) bool {
+	const marker = "ASR_RESPONSE_HAVE_NO_WORDS"
+	return strings.EqualFold(strings.TrimSpace(code), marker) ||
+		strings.Contains(strings.ToUpper(message), marker)
 }
 
 func (a *AliyunModel) TranscribeAudioWithSender(ctx context.Context, modelName *string, file *string, apiConfig *APIConfig, asrConfig *ASRConfig, modelUsage *common.ModelUsage, sender func(*string, *string) error) error {

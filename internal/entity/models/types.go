@@ -17,6 +17,17 @@ const defaultMaxRerankTokens = 8196
 // ErrRerankTokenLimitPolicy identifies invalid token-limit configuration or oversized rerank input.
 var ErrRerankTokenLimitPolicy = errors.New("rerank token limit policy")
 
+// ErrASRNoSpeech marks an ASR request that reached the model but whose audio
+// carried no recognisable speech. Aliyun answers it with HTTP 400 and
+// {"code":"CLIENT_ERROR","message":"ASR_RESPONSE_HAVE_NO_WORDS"}.
+//
+// Model verification treats it as a pass: connectivity, credentials and the
+// model name are all proven by the round-trip, and the verification payload is
+// a deliberately silent test WAV (mirroring Python's _generate_test_wav). Real
+// ingestion keeps returning it as an error so a genuinely silent recording is
+// reported instead of silently producing zero chunks.
+var ErrASRNoSpeech = errors.New("asr audio contains no speech")
+
 // Message represents a chat message with role and content
 //
 //	is interface{} to support different formats:

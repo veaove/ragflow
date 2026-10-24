@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -18,10 +19,11 @@ import (
 
 type remoteModelProbeDriver struct {
 	*modelModule.DummyModel
-	remoteModels []modelModule.ListModelResponse
-	embedCalls   int
-	checkCalls   int
-	checkErr     error
+	remoteModels  []modelModule.ListModelResponse
+	embedCalls    int
+	checkCalls    int
+	checkErr      error
+	transcribeErr error
 }
 
 func (d *remoteModelProbeDriver) ListModels(context.Context, *modelModule.APIConfig) ([]modelModule.ListModelResponse, error) {
@@ -36,6 +38,44 @@ func (d *remoteModelProbeDriver) Embed(context.Context, *string, modelModule.Emb
 func (d *remoteModelProbeDriver) CheckConnection(context.Context, *modelModule.APIConfig) error {
 	d.checkCalls++
 	return d.checkErr
+}
+
+func (d *remoteModelProbeDriver) TranscribeAudio(context.Context, *string, *string, *modelModule.APIConfig, *modelModule.ASRConfig, *common.ModelUsage) (*modelModule.ASRResponse, error) {
+	if d.transcribeErr != nil {
+		return nil, d.transcribeErr
+	}
+	return &modelModule.ASRResponse{Text: "hello"}, nil
+}
+
+// TestVerifyASRModelAcceptsNoSpeechAsReachable pins the Aliyun ASR verification
+// contract: the probe clip is silent by design, so the provider answering
+// "no recognisable words" still proves the endpoint, credentials and model name
+// work, and must not fail the model. Every other provider error keeps failing.
+func TestVerifyASRModelAcceptsNoSpeechAsReachable(t *testing.T) {
+	const modelName = "fun-asr-flash-2026-06-15"
+
+	noSpeech := &remoteModelProbeDriver{
+		DummyModel:    modelModule.NewDummyModel(nil, modelModule.URLSuffix{}),
+		transcribeErr: fmt.Errorf("aliyun ASR: %w (ASR_RESPONSE_HAVE_NO_WORDS)", modelModule.ErrASRNoSpeech),
+	}
+	if err := verifyASRModel(t.Context(), noSpeech, modelName, &modelModule.APIConfig{}); err != nil {
+		t.Fatalf("verifyASRModel() = %v, want nil for a no-speech response", err)
+	}
+
+	badKey := &remoteModelProbeDriver{
+		DummyModel:    modelModule.NewDummyModel(nil, modelModule.URLSuffix{}),
+		transcribeErr: errors.New("InvalidApiKey"),
+	}
+	if err := verifyASRModel(t.Context(), badKey, modelName, &modelModule.APIConfig{}); err == nil {
+		t.Fatal("verifyASRModel() = nil, want the provider error to fail verification")
+	}
+
+	transcribed := &remoteModelProbeDriver{
+		DummyModel: modelModule.NewDummyModel(nil, modelModule.URLSuffix{}),
+	}
+	if err := verifyASRModel(t.Context(), transcribed, modelName, &modelModule.APIConfig{}); err != nil {
+		t.Fatalf("verifyASRModel() = %v, want nil for a real transcription", err)
+	}
 }
 
 func TestMonkeyOCREnvConfig(t *testing.T) {

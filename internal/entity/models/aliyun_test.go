@@ -1152,6 +1152,62 @@ func TestAliyunTranscribeAudioSurfacesAPIError(t *testing.T) {
 	}
 }
 
+// TestAliyunTranscribeAudioMapsNoSpeechToSentinel pins the provider contract seen
+// in production: a silent clip is answered with HTTP 400 and
+// {"code":"CLIENT_ERROR","message":"ASR_RESPONSE_HAVE_NO_WORDS"}. Funnelling it
+// into ErrASRNoSpeech lets model verification accept the round-trip as a
+// successful connectivity check, while real ingestion still reports the error.
+func TestAliyunTranscribeAudioMapsNoSpeechToSentinel(t *testing.T) {
+	withSSRFBypass(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"request_id":"x","code":"CLIENT_ERROR","message":"ASR_RESPONSE_HAVE_NO_WORDS"}`))
+	}))
+	defer server.Close()
+
+	model := NewAliyunModel(
+		map[string]string{"default": server.URL},
+		URLSuffix{ASR: aliyunASRTestSuffix},
+	)
+	apiKey := "test-key"
+	modelName := "fun-asr-flash-2026-06-15"
+	file := writeAliyunASRTestFile(t, "silence.wav", []byte("data"))
+
+	_, err := model.TranscribeAudio(t.Context(), &modelName, &file, &APIConfig{ApiKey: &apiKey}, nil, nil)
+	if !errors.Is(err, ErrASRNoSpeech) {
+		t.Fatalf("error = %v, want ErrASRNoSpeech", err)
+	}
+	// The provider marker stays in the message: ingestion surfaces it verbatim.
+	if !strings.Contains(err.Error(), "ASR_RESPONSE_HAVE_NO_WORDS") {
+		t.Errorf("error = %q, want it to keep the provider marker", err.Error())
+	}
+}
+
+// TestAliyunASRNoSpeechMatching covers both response shapes Aliyun uses for the
+// same condition, plus the codes that must NOT be swallowed.
+func TestAliyunASRNoSpeechMatching(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		code    string
+		message string
+		want    bool
+	}{
+		{"message marker as seen in production", "CLIENT_ERROR", "ASR_RESPONSE_HAVE_NO_WORDS", true},
+		{"marker echoed as the code", "ASR_RESPONSE_HAVE_NO_WORDS", "", true},
+		{"lower case", "client_error", "asr_response_have_no_words", true},
+		{"empty audio", "InvalidParameter", "audio is empty", false},
+		{"bad key", "InvalidApiKey", "Invalid API-key provided.", false},
+		{"duration cap", "AUDIO_DURATION_TOO_LONG", "too long", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := aliyunASRNoSpeech(tc.code, tc.message); got != tc.want {
+				t.Fatalf("aliyunASRNoSpeech(%q, %q) = %v, want %v", tc.code, tc.message, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestAliyunTranscribeAudioRejectsEmptyFile(t *testing.T) {
 	withSSRFBypass(t)
 	model := NewAliyunModel(

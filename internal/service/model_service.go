@@ -1255,6 +1255,12 @@ func generateTestWAV() []byte {
 // verifyASRModel mirrors Python sequence2txt_model.py's check_available:
 // generates a minimal test WAV, writes it to a temp file, calls
 // TranscribeAudio, and checks the result for errors.
+//
+// The test payload is silent by design (Python's _generate_test_wav), so a
+// provider that refuses silence is not a broken configuration: Aliyun answers
+// ASR_RESPONSE_HAVE_NO_WORDS, which still proves the endpoint, credentials and
+// model name work. Only that specific condition is treated as a pass — every
+// other provider error (bad key, unknown model, quota) keeps failing.
 func verifyASRModel(ctx context.Context, driver modelModule.ModelDriver, modelName string, apiConfig *modelModule.APIConfig) error {
 	wavData := generateTestWAV()
 
@@ -1274,6 +1280,11 @@ func verifyASRModel(ctx context.Context, driver modelModule.ModelDriver, modelNa
 	asrModel := modelModule.NewASRModel(driver, &modelName, apiConfig)
 	resp, err := asrModel.Transcribe(ctx, &tmpPath, nil, nil)
 	if err != nil {
+		if errors.Is(err, modelModule.ErrASRNoSpeech) {
+			zap.L().Info("ASR verification: the silent test clip produced no speech; treating the round-trip as a successful connectivity check",
+				zap.String("model", modelName))
+			return nil
+		}
 		return err
 	}
 	if resp == nil {
