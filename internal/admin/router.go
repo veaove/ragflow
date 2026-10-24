@@ -57,16 +57,26 @@ func (r *Router) Setup(engine *gin.Engine) {
 		// Protected routes
 		protected := admin.Group("")
 		protected.Use(r.handler.AuthMiddleware())
+		// Audits every state-changing admin call. Must come after Auth so the
+		// operator email is already on the context.
+		protected.Use(r.handler.AuditMiddleware())
 		{
 			protected.POST("/logout", r.handler.Logout)
+			// Platform audit trail (GOV-04)
+			protected.GET("/audits", r.handler.ListPlatformAudits)
 			// Auth
 			protected.GET("/auth", r.handler.AuthCheck)
 
 			// User management
 			protected.GET("/users", r.handler.ListUsers)
+			// 平台运营概览：租户/成员/知识库总量 + 近 30 天趋势
+			protected.GET("/overview", r.handler.GetOverview)
 			// 平台租户管理：列表（含成员/知识库/智能体计数）+ 新建
 			protected.GET("/tenants", r.handler.ListTenants)
 			protected.POST("/tenants", r.handler.CreateTenant)
+			protected.GET("/tenants/:id/resources", r.handler.ListTenantResources)
+			// 平台模型目录 + 各租户引用情况（「模型配置」页）
+			protected.GET("/models", r.handler.ListPlatformModels)
 			protected.POST("/users", r.handler.CreateUser)
 			protected.GET("/users/:username", r.handler.GetUser)
 			protected.DELETE("/users/:username", r.handler.DeleteUser)

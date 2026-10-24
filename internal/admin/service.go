@@ -1588,3 +1588,101 @@ func (s *Service) CreateTenant(ctx context.Context, name, ownerUserID, ownerEmai
 		"owner_email": owner.Email,
 	}, nil
 }
+
+// ListTenantResources 列出某个租户下的成员 / 知识库 / 智能体明细。
+//
+// 三者结构不同，统一返回 {id, name, extra}，前端只做列表展示。
+func (s *Service) ListTenantResources(ctx context.Context, tenantID, resourceType string) ([]map[string]interface{}, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return nil, fmt.Errorf("tenant id is required")
+	}
+
+	// 确认租户存在，避免传错 id 时静默返回空列表
+	var tenantCount int64
+	if err := dao.DB.WithContext(ctx).Table("tenant").Where("id = ?", tenantID).Count(&tenantCount).Error; err != nil {
+		return nil, err
+	}
+	if tenantCount == 0 {
+		return nil, fmt.Errorf("tenant not found")
+	}
+
+	result := make([]map[string]interface{}, 0)
+
+	switch resourceType {
+	case "members":
+		type memberRow struct {
+			ID       string
+			Email    string
+			Nickname string
+			Role     string
+		}
+		var rows []memberRow
+		if err := dao.DB.WithContext(ctx).Raw(`
+			SELECT u.id, u.email, IFNULL(u.nickname, '') AS nickname, ut.role
+			FROM user_tenant ut
+			JOIN user u ON u.id = ut.user_id
+			WHERE ut.tenant_id = ? AND ut.status = '1'
+			ORDER BY ut.role, u.email
+		`, tenantID).Scan(&rows).Error; err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			name := r.Nickname
+			if name == "" {
+				name = r.Email
+			}
+			result = append(result, map[string]interface{}{
+				"id": r.ID, "name": name, "extra": r.Role,
+			})
+		}
+
+	case "kbs":
+		type kbRow struct {
+			ID       string
+			Name     string
+			DocNum   int64
+			ChunkNum int64
+		}
+		var rows []kbRow
+		if err := dao.DB.WithContext(ctx).Raw(`
+			SELECT id, IFNULL(name, '') AS name, IFNULL(doc_num, 0) AS doc_num, IFNULL(chunk_num, 0) AS chunk_num
+			FROM knowledgebase
+			WHERE tenant_id = ? AND status = '1'
+			ORDER BY create_date DESC
+		`, tenantID).Scan(&rows).Error; err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			result = append(result, map[string]interface{}{
+				"id": r.ID, "name": r.Name,
+				"extra": fmt.Sprintf("%d 个文件 · %d 个分块", r.DocNum, r.ChunkNum),
+			})
+		}
+
+	case "agents":
+		type agentRow struct {
+			ID    string
+			Title string
+		}
+		var rows []agentRow
+		if err := dao.DB.WithContext(ctx).Raw(`
+			SELECT id, IFNULL(title, '未命名') AS title
+			FROM user_canvas
+			WHERE tenant_id = ?
+			ORDER BY create_date DESC
+		`, tenantID).Scan(&rows).Error; err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			result = append(result, map[string]interface{}{
+				"id": r.ID, "name": r.Title, "extra": "",
+			})
+		}
+
+	default:
+		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)
+	}
+
+	return result, nil
+}

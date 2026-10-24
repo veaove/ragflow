@@ -39,7 +39,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { createTenant, listTenants } from '@/services/admin-service';
+import {
+  createTenant,
+  listTenantResources,
+  listTenants,
+} from '@/services/admin-service';
+
+type ResourceType = 'members' | 'kbs' | 'agents';
 
 /** create_date 是毫秒时间戳，可能为 0（历史数据没写）。 */
 function formatDate(ms?: number) {
@@ -72,6 +78,29 @@ export default function Tenants() {
   const [name, setName] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
   const [error, setError] = useState('');
+
+  // 点击「成员数 / 知识库数 / 智能体数」查看明细
+  const [resourceDialog, setResourceDialog] = useState<{
+    tenantId: string;
+    tenantName: string;
+    type: ResourceType;
+  } | null>(null);
+
+  const { data: resources, isFetching: resourcesLoading } = useQuery({
+    queryKey: [
+      'admin/tenant-resources',
+      resourceDialog?.tenantId,
+      resourceDialog?.type,
+    ],
+    enabled: !!resourceDialog,
+    queryFn: async () => {
+      const { data } = await listTenantResources(
+        resourceDialog!.tenantId,
+        resourceDialog!.type,
+      );
+      return data?.data ?? [];
+    },
+  });
 
   const { data, isFetching } = useQuery({
     queryKey: ['admin/tenants', page, pageSize, keyword, status],
@@ -177,9 +206,51 @@ export default function Tenants() {
                 <TableCell className="font-medium text-text-primary">
                   {row.name}
                 </TableCell>
-                <TableCell>{row.member_count}</TableCell>
-                <TableCell>{row.kb_count}</TableCell>
-                <TableCell>{row.agent_count}</TableCell>
+                  <TableCell>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setResourceDialog({
+                          tenantId: row.id,
+                          tenantName: row.name,
+                          type: 'members',
+                        })
+                      }
+                      className="text-text-primary underline-offset-2 hover:underline"
+                    >
+                      {row.member_count}
+                    </button>
+                  </TableCell>
+                  <TableCell>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setResourceDialog({
+                          tenantId: row.id,
+                          tenantName: row.name,
+                          type: 'kbs',
+                        })
+                      }
+                      className="text-text-primary underline-offset-2 hover:underline"
+                    >
+                      {row.kb_count}
+                    </button>
+                  </TableCell>
+                  <TableCell>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setResourceDialog({
+                          tenantId: row.id,
+                          tenantName: row.name,
+                          type: 'agents',
+                        })
+                      }
+                      className="text-text-primary underline-offset-2 hover:underline"
+                    >
+                      {row.agent_count}
+                    </button>
+                  </TableCell>
                 <TableCell>
                   <Badge
                     variant={row.status === '1' ? 'success' : 'destructive'}
@@ -259,6 +330,53 @@ export default function Tenants() {
               {createMutation.isPending ? '创建中…' : '确定'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 成员 / 知识库 / 智能体明细 */}
+      <Dialog
+        open={!!resourceDialog}
+        onOpenChange={(next) => !next && setResourceDialog(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {resourceDialog?.type === 'members'
+                ? '成员列表'
+                : resourceDialog?.type === 'kbs'
+                  ? '知识库列表'
+                  : '智能体列表'}
+              {resourceDialog?.tenantName ? ` · ${resourceDialog.tenantName}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="max-h-[420px] overflow-y-auto">
+            {resourcesLoading && (
+              <p className="py-6 text-center text-sm text-text-secondary">
+                加载中…
+              </p>
+            )}
+            {!resourcesLoading && (resources?.length ?? 0) === 0 && (
+              <p className="py-6 text-center text-sm text-text-secondary">
+                暂无数据
+              </p>
+            )}
+            {resources?.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between gap-3 border-b border-border-default py-2.5 text-sm last:border-b-0"
+              >
+                <span className="min-w-0 truncate text-text-primary">
+                  {item.name}
+                </span>
+                {item.extra && (
+                  <span className="shrink-0 text-xs text-text-secondary">
+                    {item.extra}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
     </>

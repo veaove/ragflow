@@ -22,7 +22,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+
 	"ragflow/internal/common"
+	"ragflow/internal/dao"
 	"ragflow/internal/engine"
 	"ragflow/internal/engine/kvrocks"
 	"ragflow/internal/handler"
@@ -1333,4 +1336,52 @@ func (h *Handler) CreateTenant(c *gin.Context) {
 		return
 	}
 	common.SuccessWithData(c, tenant, "Create tenant")
+}
+
+// ListTenantResources GET /admin/tenants/:id/resources?type=members|kbs|agents
+// 供平台在租户列表里点击「成员数 / 知识库数 / 智能体数」查看明细。
+func (h *Handler) ListTenantResources(c *gin.Context) {
+	tenantID := strings.TrimSpace(c.Param("id"))
+	resourceType := c.DefaultQuery("type", "members")
+
+	items, err := h.service.ListTenantResources(c.Request.Context(), tenantID, resourceType)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	common.SuccessWithData(c, items, "List tenant resources")
+}
+
+// ListPlatformModels GET /admin/models
+// 平台模型目录（conf/models 全集）+ 各租户的引用情况。
+// 支持 keyword / model_type / factory / referenced 四个筛选，page 从 1 开始。
+func (h *Handler) ListPlatformModels(c *gin.Context) {
+	page, err := common.ParseRequestIntPositive(c, c.Query("page"), "page", 1)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
+	pageSize, err := common.ParseRequestIntPositive(c, c.Query("page_size"), "page_size", 20)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
+	// 上限 200：目录本身只有几百条，再大没有意义，但拦住异常大值把响应撑爆。
+	if pageSize > 200 {
+		pageSize = 200
+	}
+
+	result, err := h.service.ListPlatformModels(c.Request.Context(), PlatformModelQuery{
+		Page:           page,
+		PageSize:       pageSize,
+		Keyword:        c.Query("keyword"),
+		ModelType:      c.Query("model_type"),
+		Factory:        c.Query("factory"),
+		ReferencedOnly: c.Query("referenced") == "1",
+	})
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	common.SuccessWithData(c, result, "List platform models")
 }

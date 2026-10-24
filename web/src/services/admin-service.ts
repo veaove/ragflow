@@ -216,6 +216,96 @@ export const createTenant = (name: string, ownerEmail: string) =>
     { name, owner_email: ownerEmail },
   );
 
+export interface TenantResourceItem {
+  id: string;
+  name: string;
+  extra: string;
+}
+
+/** 查看某租户下的成员 / 知识库 / 智能体明细。 */
+export const listTenantResources = (
+  tenantId: string,
+  type: 'members' | 'kbs' | 'agents',
+) =>
+  request.get<ResponseData<TenantResourceItem[]>>(
+    `${api.adminListTenants}/${tenantId}/resources`,
+    { params: { type } },
+  );
+
+/** 一条「某租户正在使用某模型」的事实。 */
+export interface ModelReference {
+  tenant_id: string;
+  tenant_name: string;
+  provider_name: string;
+  /** 租户给该厂商起的接入实例名，可能为空（历史 tenant_llm 数据没有实例概念）。 */
+  instance_name: string;
+  /** chat / embedding / asr / vision / rerank / tts / ocr / unknown */
+  model_type: string;
+  status: string;
+  /** tenant_model = 现行模型配置，tenant_llm = 历史表 */
+  source: 'tenant_model' | 'tenant_llm';
+}
+
+/** 平台模型目录的一行 + 引用汇总。 */
+export interface PlatformModelItem {
+  llm_name: string;
+  llm_factory: string;
+  model_types: string[];
+  context_length: number | null;
+  max_output: number | null;
+  /** false 表示租户自建 provider 添加的模型，平台目录里没有 */
+  in_catalog: boolean;
+  reference_count: number;
+  tenant_count: number;
+  references: ModelReference[];
+}
+
+export interface PlatformModelSummary {
+  model_total: number;
+  factory_total: number;
+  referenced_model_total: number;
+  tenant_total: number;
+  tenant_with_model_total: number;
+}
+
+export interface ModelFactorySummary {
+  name: string;
+  model_count: number;
+  referenced_count: number;
+}
+
+export interface ModelTypeSummary {
+  value: string;
+  count: number;
+}
+
+export interface PlatformModelPage {
+  list: PlatformModelItem[];
+  total: number;
+  summary: PlatformModelSummary;
+  factories: ModelFactorySummary[];
+  model_types: ModelTypeSummary[];
+}
+
+/**
+ * 平台模型目录 + 各租户引用情况。
+ *
+ * 目录来自二进制里的 conf/models（不落库），因此筛选和分页都在服务端做；
+ * 前端只负责把 filters 原样带上。
+ */
+export const listPlatformModels = (params: {
+  page?: number;
+  page_size?: number;
+  keyword?: string;
+  model_type?: string;
+  factory?: string;
+  /** '1' 只看被租户引用过的模型 */
+  referenced?: string;
+}) =>
+  request.get<ResponseData<PlatformModelPage>>(api.adminListPlatformModels, {
+    params,
+  });
+
 export const createUser = (email: string, password: string) =>
   request.post<ResponseData<boolean>>(adminCreateUser, {
     username: email,
@@ -342,6 +432,17 @@ export const importWhitelistFromExcel = (file: File) => {
 export const getSystemVersion = () =>
   request.get<ResponseData<{ version: string }>>(adminGetSystemVersion);
 
+/**
+ * 平台运营概览：租户/成员/知识库等总量与近 30 天趋势。
+ *
+ * 管理端专用（走 admin 网关 9381），没有对应的租户侧接口，故路径直接写死，
+ * 不进 `api.ts` 的接口表。
+ */
+export const getOverview = () =>
+  request.get<ResponseData<AdminService.PlatformOverview>>(
+    '/api/v1/admin/overview',
+  );
+
 // Sandbox settings APIs
 export const listSandboxProviders = () =>
   request.get<ResponseData<AdminService.SandboxProvider[]>>(
@@ -389,3 +490,36 @@ export const testSandboxConnection = (params: {
     provider_type: params.providerType,
     config: params.config,
   });
+
+// ── 平台审计 ────────────────────────────────────────────────────────────────
+
+/** 一条平台审计记录（跨租户）。 */
+export interface PlatformAuditItem {
+  id: string;
+  tenant_id: string;
+  /** 租户名快照；租户被删或改名后历史仍可读。 */
+  tenant_name?: string;
+  operator: string;
+  /** 模块 key：tenant / user / model / queue ... */
+  object_type: string;
+  action: string;
+  /** success | failed */
+  result?: string;
+  ip_address?: string;
+  method?: string;
+  path?: string;
+  create_time: number;
+}
+
+/** 平台审计日志列表。 */
+export const listPlatformAudits = (params: {
+  page?: number;
+  page_size?: number;
+  keywords?: string;
+  module?: string;
+  result?: string;
+}) =>
+  request.get<ResponseData<{ logs: PlatformAuditItem[]; total: number }>>(
+    api.adminAudits,
+    { params },
+  );
