@@ -209,11 +209,7 @@ const AdminNavigationLayout = () => {
           </ul>
         </nav>
 
-        <div className="shrink-0 px-3 py-3">
-          <span className="hidden text-xs leading-none break-all text-white/40 lg:block">
-            {version}
-          </span>
-        </div>
+        {/* 左下角不放任何东西：主题/语言/账号在顶栏右侧，版本号在「个人中心」里 */}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -359,6 +355,11 @@ const AdminNavigationLayout = () => {
 
             <dt className="text-text-secondary">{t('admin.createDate')}</dt>
             <dd className="text-text-primary">{account.createDate || '-'}</dd>
+
+            <dt className="text-text-secondary">{t('admin.version')}</dt>
+            <dd className="truncate text-text-primary" title={version}>
+              {version || '-'}
+            </dd>
           </dl>
 
           <DialogFooter>

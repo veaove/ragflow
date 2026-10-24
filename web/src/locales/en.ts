@@ -4498,6 +4498,7 @@ Important structured information may include: names, dates, locations, events, k
       docNum: 'Documents',
       tokenNum: 'Tokens used',
       language: 'Language',
+      version: 'Version',
       createDate: 'Create date',
       updateDate: 'Update date',
       permission: 'Permission',

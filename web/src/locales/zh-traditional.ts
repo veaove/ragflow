@@ -1639,6 +1639,7 @@ export default {
       docNum: '文件數',
       tokenNum: '消耗 Token',
       language: '語言',
+      version: '版本',
       createDate: '建立日期',
       updateDate: '更新日期',
       permission: '權限',
