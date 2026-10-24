@@ -1472,6 +1472,16 @@ export default {
     },
     admin: {
       loginTitle: '管理員後台',
+      loginTagline: '平台營運 · 用戶與權限 · 服務監控',
+      loginCardTitle: '管理員登入',
+      loginCardSubtitle: '僅超級管理員可存取',
+      loginSecurityNote: '登入行為會被記錄；連續失敗請檢查帳號狀態。',
+      loginHighlightAccounts: '帳號與角色',
+      loginHighlightAccountsDesc: '用戶、角色與超管授權',
+      loginHighlightServices: '服務與監控',
+      loginHighlightServicesDesc: '服務狀態與任務執行情況',
+      loginHighlightAudit: '白名單與審計',
+      loginHighlightAuditDesc: '註冊白名單與操作留痕',
     },
   },
 };

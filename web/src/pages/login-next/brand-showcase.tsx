@@ -126,7 +126,7 @@ export function TopBarMeta({
 
   return (
     <div className={cn('flex shrink-0 items-center gap-4 sm:gap-6', className)}>
-      <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-[#EEF4FD] px-3.5 py-1.5 text-[13px] font-medium text-[#1B6DD6]">
+      <span className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-[#EEF4FD] px-3.5 py-1.5 text-[13px] font-medium text-[#1B6DD6] sm:inline-flex">
         <Languages className="size-3.5 shrink-0" strokeWidth={2} />
         {envLabel}
       </span>
@@ -150,7 +150,7 @@ export function TopBarMeta({
         }}
         target={helpHref ? '_blank' : undefined}
         rel={helpHref ? 'noreferrer noopener' : undefined}
-        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[13px] font-medium text-[#5A6474] transition-colors hover:text-[#1B6DD6]"
+        className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap text-[13px] font-medium text-[#5A6474] transition-colors hover:text-[#1B6DD6] sm:inline-flex"
       >
         <Headphones className="size-3.5 shrink-0" strokeWidth={2} />
         {helpLabel}

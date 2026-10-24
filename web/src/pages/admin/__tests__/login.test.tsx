@@ -22,6 +22,7 @@ import AdminLogin from '../login';
 const mockGetCaptcha = jest.fn();
 const mockLogin = jest.fn();
 const mockNavigate = jest.fn();
+const mockI18n = { language: 'zh-Hans' };
 
 // 页面挂载时会调 createBrowserRouter()，jsdom 里没有 Request，必须整体 mock。
 jest.mock('@/routes', () => ({
@@ -29,7 +30,13 @@ jest.mock('@/routes', () => ({
 }));
 
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  // 顶栏 TopBarMeta 会读 i18n.language 决定语言标签，这里给一个固定值。
+  useTranslation: () => ({ i18n: mockI18n, t: (key: string) => key }),
+}));
+
+// 语言切换入口来自 locales/config，整体替换掉，免得 i18next 在 jsdom 里真初始化。
+jest.mock('@/locales/config', () => ({
+  changeLanguageAsync: jest.fn(),
 }));
 
 jest.mock('react-router', () => ({
@@ -47,17 +54,6 @@ jest.mock('@/services/admin-service', () => ({
 
 jest.mock('@/pages/admin/layouts/root-layout', () => ({
   CurrentUserInfoContext: require('react').createContext([{}, jest.fn()]),
-}));
-
-// 这三个是纯装饰组件，jsdom 下要么无意义要么依赖动画/主题上下文。
-jest.mock('@/components/theme-switch', () => ({
-  __esModule: true,
-  default: () => null,
-}));
-jest.mock('@/pages/login-next/bg', () => ({ BgSvg: () => null }));
-jest.mock('@/components/spotlight', () => ({
-  __esModule: true,
-  default: () => null,
 }));
 
 function captchaResponse(id: string) {
@@ -82,10 +78,10 @@ function renderLogin() {
 }
 
 function fillAndSubmit() {
-  fireEvent.change(screen.getByPlaceholderText('emailPlaceholder'), {
+  fireEvent.change(screen.getByPlaceholderText('emailFieldPlaceholder'), {
     target: { value: 'admin@example.com' },
   });
-  fireEvent.change(screen.getByPlaceholderText('passwordPlaceholder'), {
+  fireEvent.change(screen.getByPlaceholderText('passwordFieldPlaceholder'), {
     target: { value: 'pw' },
   });
   fireEvent.change(screen.getByPlaceholderText('captchaLabel'), {
@@ -135,7 +131,9 @@ it('登录请求带上 captcha_id 与 captcha，密码仍走 RSA', async () => {
   expect(typeof payload.password).toBe('string');
   expect(payload.password.length).toBeGreaterThan(0);
 
-  await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/admin/services'));
+  await waitFor(() =>
+    expect(mockNavigate).toHaveBeenCalledWith('/admin/services'),
+  );
 });
 
 it('登录失败后刷新验证码（一次性消费，不能拿旧 captcha_id 重试）', async () => {

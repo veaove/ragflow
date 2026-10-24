@@ -4316,6 +4316,17 @@ Important structured information may include: names, dates, locations, events, k
 
     admin: {
       loginTitle: 'Admin console',
+      loginTagline: 'Platform operations · Users & permissions · Service monitoring',
+      loginCardTitle: 'Administrator sign-in',
+      loginCardSubtitle: 'Super administrators only',
+      loginSecurityNote:
+        'Sign-ins are logged. Check the account status after repeated failures.',
+      loginHighlightAccounts: 'Accounts & roles',
+      loginHighlightAccountsDesc: 'Users, roles and superuser grants',
+      loginHighlightServices: 'Services & monitoring',
+      loginHighlightServicesDesc: 'Service status and task execution',
+      loginHighlightAudit: 'Whitelist & audit',
+      loginHighlightAuditDesc: 'Registration whitelist and audit trail',
       title: 'RAGFlow',
       confirm: 'Confirm',
       close: 'Close',
