@@ -14,7 +14,10 @@
  *  limitations under the License.
  */
 
-import { LanguageAbbreviation } from '@/constants/common';
+import {
+  LanguageAbbreviation,
+  LanguageAbbreviationMap,
+} from '@/constants/common';
 import { changeLanguageAsync } from '@/locales/config';
 import { cn } from '@/lib/utils';
 import { Globe, Headphones, Languages, type LucideIcon } from 'lucide-react';
@@ -112,9 +115,14 @@ export function TopBarMeta({
   // useTranslation 会让组件在语言切换后重新渲染，isZh 随之更新。
   const { i18n } = useTranslation();
   const isZh = i18n.language?.startsWith('zh');
-  // 切换目标 = 当前语言的另一种；中文页面显示 English，英文页面显示中文。
-  const otherLabel = isZh ? 'English' : '中文';
-  const otherLanguage = isZh ? LanguageAbbreviation.En : LanguageAbbreviation.Zh;
+  // 与站内 header 保持同一套语义：按钮显示「当前语言」，点击切到另一种。
+  // 旧实现显示的是「切换目标」——英文页上写「中文」，与登录后 header 里的
+  // 「简体中文」正好相反，看起来就像显示反了。
+  const currentLabel =
+    (LanguageAbbreviationMap as Record<string, string>)[i18n.language] ??
+    i18n.language;
+  const targetLanguage = isZh ? LanguageAbbreviation.En : LanguageAbbreviation.Zh;
+  const targetLabel = LanguageAbbreviationMap[targetLanguage];
 
   return (
     <div className={cn('flex shrink-0 items-center gap-4 sm:gap-6', className)}>
@@ -124,13 +132,15 @@ export function TopBarMeta({
       </span>
       <button
         type="button"
-        onClick={() => void changeLanguageAsync(otherLanguage)}
-        // aria-label 用中文表述，读屏用户在英文页面也能听懂这个按钮做什么
-        aria-label={`切换为${otherLabel}`}
+        onClick={() => void changeLanguageAsync(targetLanguage)}
+        // 标签显示当前语言，title/aria-label 说明点击后会发生什么，
+        // 避免"点了才知道切到哪"的歧义。
+        title={`切换为${targetLabel}`}
+        aria-label={`切换为${targetLabel}`}
         className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[13px] font-medium text-[#5A6474] transition-colors hover:text-[#1B6DD6]"
       >
         <Globe className="size-3.5 shrink-0" strokeWidth={2} />
-        {otherLabel}
+        {currentLabel}
       </button>
       <a
         href={helpHref}
