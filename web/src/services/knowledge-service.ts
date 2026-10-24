@@ -514,6 +514,22 @@ export const changeDocumentsStatus = ({
 }) =>
   request.post(api.documentChangeStatus(kb_id), { data: { doc_ids, status } });
 
+/** 把一批文档移入指定文件夹；folder 传空字符串表示移出文件夹。 */
+export const setDocumentFolder = ({
+  kb_id,
+  doc_ids,
+  folder,
+}: {
+  kb_id: string;
+  doc_ids: string[];
+  folder: string;
+}) =>
+  request.post(api.documentSetFolder(kb_id), { data: { doc_ids, folder } });
+
+/** 列出该知识库已使用的文件夹及文件数。 */
+export const listDocumentFolders = (kb_id: string) =>
+  request.get(api.documentFolders(kb_id), {});
+
 export const listDataPipelineLogDocument = (
   datasetId: string,
   params?: Record<string, any>,

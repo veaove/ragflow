@@ -278,6 +278,11 @@ export default {
     `${restAPIv1}/datasets/${datasetId}/documents`,
   documentChangeStatus: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/documents/batch-update-status`,
+  // 知识库内的文件分组（虚拟文件夹）
+  documentSetFolder: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/documents/batch-folder`,
+  documentFolders: (datasetId: string) =>
+    `${restAPIv1}/datasets/${datasetId}/document-folders`,
   documentDelete: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/documents`,
   documentRename: (datasetId: string, documentId: string) =>

@@ -45,6 +45,7 @@ import {
 import kbService, {
   changeDocumentParser,
   changeDocumentsStatus,
+  setDocumentFolder as requestSetDocumentFolder,
   createDocument,
   deleteDocument,
   documentFilter,
@@ -444,6 +445,37 @@ export const useSetDocumentStatus = () => {
   });
 
   return { setDocumentStatus: mutateAsync, data, loading };
+};
+
+/**
+ * 把一批文档移入 / 移出文件夹。
+ *
+ * 文件夹是 document.folder 上的字符串分组，不做独立的表：
+ * 这里的"新建文件夹"就是把选中的文件写入一个新的 folder 值。
+ */
+export const useSetDocumentFolder = () => {
+  const queryClient = useQueryClient();
+
+  const { mutateAsync } = useMutation<
+    any,
+    Error,
+    { kb_id: string; doc_ids: string[]; folder: string }
+  >({
+    mutationFn: async ({ kb_id, doc_ids, folder }) => {
+      const { data } = await requestSetDocumentFolder({
+        kb_id,
+        doc_ids,
+        folder,
+      });
+      if (data.code === 0) {
+        message.success(folder ? `已移动到「${folder}」` : '已移出文件夹');
+        queryClient.invalidateQueries({ queryKey: DocumentKeys.all() });
+      }
+      return data;
+    },
+  });
+
+  return { setDocumentFolder: mutateAsync };
 };
 
 // This hook is used to run a document by its IDs

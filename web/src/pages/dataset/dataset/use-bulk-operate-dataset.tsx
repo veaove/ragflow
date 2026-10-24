@@ -7,11 +7,13 @@ import {
   useRemoveDocument,
   useRunDocument,
   useSetDocumentStatus,
+  useSetDocumentFolder,
 } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import {
   LucideCircleX,
   LucideCylinder,
+  LucideFolderInput,
   LucidePlayCircle,
   LucideToggleLeft,
   LucideToggleRight,
@@ -43,6 +45,7 @@ export function useBulkOperateDataset({
   const { runDocumentByIds } = useRunDocument();
   const { setDocumentStatus } = useSetDocumentStatus();
   const { removeDocument } = useRemoveDocument();
+  const { setDocumentFolder } = useSetDocumentFolder();
   const { findDocumentParseGaps } = useParserGapValidation();
 
   const runDocument = useCallback(
@@ -188,6 +191,28 @@ export function useBulkOperateDataset({
       onClick: handleDisableClick,
     },
 
+    {
+      id: 'batch-folder',
+      // 把选中的文件归到某个文件夹；输入新名字即"新建文件夹"。
+      // 文件夹是 document.folder 上的字符串分组，空名表示移出文件夹。
+      label: '移动到文件夹',
+      icon: <LucideFolderInput />,
+      onClick: async () => {
+        const folder = window.prompt(
+          '输入文件夹名称（留空表示移出文件夹）',
+          '',
+        );
+        if (folder === null) return;
+        const code = await setDocumentFolder({
+          kb_id: id as string,
+          doc_ids: selectedRowKeys,
+          folder: folder.trim(),
+        });
+        if (code === 0) {
+          setRowSelection({});
+        }
+      },
+    },
     {
       id: 'batch-metadata',
       label: t('knowledgeDetails.metadata.metadata'),

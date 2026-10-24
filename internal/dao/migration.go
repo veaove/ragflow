@@ -46,6 +46,11 @@ func RunMigrations(ctx context.Context, db *gorm.DB) error {
 		return fmt.Errorf("failed to rename document.process_duation: %w", err)
 	}
 
+	// Add document.folder for the knowledge-base file grouping feature
+	if err := migrateDocumentFolderColumn(ctx, db); err != nil {
+		return fmt.Errorf("failed to add document.folder: %w", err)
+	}
+
 	// Add unique index on user.email
 	if err := migrateAddUniqueEmail(ctx, db); err != nil {
 		return fmt.Errorf("failed to add unique index on user.email: %w", err)
@@ -1228,5 +1233,31 @@ WHERE v.version_seq = 0`).Error; err != nil {
 		common.Warn("failed to create unique index on user_canvas_version(version_seq)", zap.Error(err))
 		return nil
 	}
+	return nil
+}
+
+// migrateDocumentFolderColumn adds document.folder for grouping files into
+// virtual folders inside a knowledge base.
+//
+// Like knowledgebase.enabled, the document table is not touched by the runtime
+// AutoMigrate path, so a database created before this feature would fail with
+// Error 1054 as soon as a query names the column.
+func migrateDocumentFolderColumn(ctx context.Context, db *gorm.DB) error {
+	migrator := db.WithContext(ctx).Migrator()
+	if !migrator.HasTable(&entity.Document{}) {
+		return nil
+	}
+	if migrator.HasColumn(&entity.Document{}, "folder") {
+		return nil
+	}
+	if err := db.WithContext(ctx).Exec(
+		"ALTER TABLE document ADD COLUMN folder varchar(128) NULL",
+	).Error; err != nil {
+		if isDuplicateColumnError(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to add document.folder: %w", err)
+	}
+	common.Info("Added document.folder")
 	return nil
 }

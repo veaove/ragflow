@@ -13,6 +13,8 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+
+	"gorm.io/gorm"
 	pipelinepkg "ragflow/internal/ingestion/pipeline"
 	"ragflow/internal/permission"
 	permissionresponse "ragflow/internal/permission/response"
@@ -619,4 +621,77 @@ func pyRepr(v interface{}) string {
 		return "{" + strings.Join(parts, ", ") + "}"
 	}
 	return fmt.Sprintf("%v", v)
+}
+
+// ListDocumentFolders lists the folders currently used in a knowledge base with
+// their document counts.
+//
+// 文件夹是 document.folder 这个字符串列上的分组，没有独立的表：
+// 这里只需要「知道有哪些组、每组多少文件」，聚类一次就够。
+func (s *DocumentService) ListDocumentFolders(ctx context.Context, userID, datasetID string) ([]map[string]interface{}, common.ErrorCode, error) {
+	if err := service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, datasetID, permission.OperationRead); err != nil {
+		code, permissionErr := permissionresponse.Normalize(err)
+		return nil, code, permissionErr
+	}
+
+	type folderRow struct {
+		Folder string
+		Count  int64
+	}
+	var rows []folderRow
+	err := dao.DB.WithContext(ctx).
+		Model(&entity.Document{}).
+		Select("IFNULL(folder, '') AS folder, COUNT(*) AS count").
+		Where("kb_id = ?", datasetID).
+		Group("IFNULL(folder, '')").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, common.CodeServerError, fmt.Errorf("failed to list folders: %w", err)
+	}
+
+	result := make([]map[string]interface{}, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, map[string]interface{}{
+			"folder":    row.Folder,
+			"doc_count": row.Count,
+			"unfiled":   row.Folder == "",
+		})
+	}
+	return result, common.CodeSuccess, nil
+}
+
+// BatchSetDocumentFolder moves a batch of documents into a folder.
+// An empty folder means "move out of any folder" (stored as NULL).
+func (s *DocumentService) BatchSetDocumentFolder(ctx context.Context, userID, datasetID string, documentIDs []string, folder string) (int64, common.ErrorCode, error) {
+	if err := service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, datasetID, permission.OperationUpdate); err != nil {
+		code, permissionErr := permissionresponse.Normalize(err)
+		return 0, code, permissionErr
+	}
+	if len(documentIDs) == 0 {
+		return 0, common.CodeArgumentError, fmt.Errorf("doc_ids must be a non-empty list")
+	}
+	if datasetID == "" {
+		return 0, common.CodeArgumentError, fmt.Errorf("dataset_id is required")
+	}
+
+	folder = strings.TrimSpace(folder)
+	if len([]rune(folder)) > 128 {
+		return 0, common.CodeArgumentError, fmt.Errorf("folder name must be at most 128 characters")
+	}
+
+	// kb_id 条件不可省：防止把别处知识库的文档 id 混进来一起改。
+	query := dao.DB.WithContext(ctx).
+		Model(&entity.Document{}).
+		Where("id IN ? AND kb_id = ?", documentIDs, datasetID)
+	var value interface{}
+	if folder == "" {
+		value = gorm.Expr("NULL")
+	} else {
+		value = folder
+	}
+	res := query.Update("folder", value)
+	if res.Error != nil {
+		return 0, common.CodeServerError, fmt.Errorf("failed to set folder: %w", res.Error)
+	}
+	return res.RowsAffected, common.CodeSuccess, nil
 }

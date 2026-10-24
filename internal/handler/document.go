@@ -81,6 +81,9 @@ type documentServiceIface interface {
 	Ingest(ctx context.Context, userID string, req *document.IngestDocumentRequest) (common.ErrorCode, error)
 	RemoveIngestionTasks(ctx context.Context, tasks []string, userID string) ([]map[string]string, error)
 	BatchUpdateDocumentStatus(ctx context.Context, userID, datasetID, status string, DocumentIDs []string) (map[string]interface{}, common.ErrorCode, error)
+	// 知识库内的文件分组
+	ListDocumentFolders(ctx context.Context, userID, datasetID string) ([]map[string]interface{}, common.ErrorCode, error)
+	BatchSetDocumentFolder(ctx context.Context, userID, datasetID string, documentIDs []string, folder string) (int64, common.ErrorCode, error)
 	HasActiveIngestionTasks(ctx context.Context, datasetID string) (bool, error)
 }
 
@@ -1893,4 +1896,62 @@ func pythonJSONKindName(typeErr *json.UnmarshalTypeError) string {
 		return "dictionary"
 	}
 	return "value"
+}
+
+// ListDocumentFolders GET /datasets/:dataset_id/document-folders
+// 返回该知识库下已使用的文件夹及文件数（folder 为空表示未分类）。
+func (h *DocumentHandler) ListDocumentFolders(c *gin.Context) {
+	user, code, errorMessage := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ResponseWithCodeData(c, code, nil, errorMessage)
+		return
+	}
+	datasetID := strings.TrimSpace(c.Param("dataset_id"))
+	if datasetID == "" {
+		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "dataset_id is required")
+		return
+	}
+
+	folders, code, err := h.documentService.ListDocumentFolders(c.Request.Context(), user.ID, datasetID)
+	if err != nil {
+		common.ResponseWithCodeData(c, code, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, folders, "success")
+}
+
+// BatchSetDocumentFolder POST /datasets/:dataset_id/documents/batch-folder
+// body: {"doc_ids": [...], "folder": "合同"}；folder 为空表示移出文件夹。
+func (h *DocumentHandler) BatchSetDocumentFolder(c *gin.Context) {
+	user, code, errorMessage := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ResponseWithCodeData(c, code, nil, errorMessage)
+		return
+	}
+	datasetID := strings.TrimSpace(c.Param("dataset_id"))
+	if datasetID == "" {
+		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "dataset_id is required")
+		return
+	}
+
+	var req struct {
+		DocumentIDs []string `json:"doc_ids"`
+		Folder      string   `json:"folder"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
+	if len(req.DocumentIDs) == 0 {
+		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, `"doc_ids" must be a non-empty list.`)
+		return
+	}
+
+	affected, code, err := h.documentService.BatchSetDocumentFolder(
+		c.Request.Context(), user.ID, datasetID, req.DocumentIDs, req.Folder)
+	if err != nil {
+		common.ResponseWithCodeData(c, code, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{"affected": affected}, "success")
 }

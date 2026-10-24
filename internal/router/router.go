@@ -416,6 +416,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 				datasets.GET("/:dataset_id/graph", r.datasetsHandler.GetKnowledgeGraph)
 				datasets.POST("/:dataset_id/embedding/check", r.datasetsHandler.CheckEmbedding)
 				datasets.POST("/:dataset_id/documents/batch-update-status", r.documentHandler.BatchUpdateDocumentStatus)
+				// 文件夹：知识库内的文件分组 + 批量归组
+				datasets.GET("/:dataset_id/document-folders", r.documentHandler.ListDocumentFolders)
+				datasets.POST("/:dataset_id/documents/batch-folder", r.documentHandler.BatchSetDocumentFolder)
 				// Scheduler compile-status contract; replaces the retired
 				// RunIndex/TraceIndex/DeleteIndex /index routes.
 				datasets.GET("/:dataset_id/compilation/status", r.datasetsHandler.GetCompilationStatus)
