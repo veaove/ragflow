@@ -89,6 +89,12 @@ services:
       - ${INFINITY_PSQL_PORT}:5432
     env_file: .env
     mem_limit: ${MEM_LIMIT}
+    # Cap Infinity at one core. It is the single biggest CPU consumer on this
+    # host: rebuilding index segments during a bulk parse pins every core it can
+    # get, and on a 2-core box that starved the API and SSH until the machine
+    # looked hung. One core keeps ingestion moving while leaving a core for the
+    # API/ingestor/admin processes. Raise this if the host is scaled up.
+    cpus: "1.0"
     ulimits:
       nofile:
         soft: 500000
