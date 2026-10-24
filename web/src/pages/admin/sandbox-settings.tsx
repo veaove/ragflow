@@ -107,6 +107,19 @@ function AdminSandboxSettings() {
       defaultValue: schema.label || fieldName.replaceAll('_', ' '),
     });
 
+  /**
+   * 占位文案里只有「说明性文字」需要翻译（如 Optional / Paste PEM content…），
+   * 示例值（192.168.1.10、python3、https://…）必须原样保留，所以按
+   * provider + 字段名精确匹配，匹配不到就直接用后端原文。
+   */
+  const fieldPlaceholder = (fieldName: string, fallback?: string) => {
+    if (!fallback || !selectedProvider) return fallback;
+    return t(
+      `admin.sandboxSettingsPage.fieldPlaceholders.${selectedProvider}.${fieldName}`,
+      { defaultValue: fallback },
+    );
+  };
+
   // State
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [configValues, setConfigValues] = useState<Record<string, unknown>>({});
@@ -322,7 +335,7 @@ function AdminSandboxSettings() {
           return (
             <Textarea
               id={fieldName}
-              placeholder={schema.placeholder}
+              placeholder={fieldPlaceholder(fieldName, schema.placeholder)}
               value={value as string}
               disabled={schema.readonly}
               onChange={(e) =>
@@ -338,7 +351,7 @@ function AdminSandboxSettings() {
               type="password"
               id={fieldName}
               className="h-10"
-              placeholder={schema.placeholder}
+              placeholder={fieldPlaceholder(fieldName, schema.placeholder)}
               value={value as string}
               disabled={schema.readonly}
               onChange={(e) =>
@@ -351,7 +364,7 @@ function AdminSandboxSettings() {
           <Input
             id={fieldName}
             className="h-10"
-            placeholder={schema.placeholder}
+            placeholder={fieldPlaceholder(fieldName, schema.placeholder)}
             value={value as string}
             disabled={schema.readonly}
             onChange={(e) => handleConfigValueChange(fieldName, e.target.value)}
@@ -596,14 +609,26 @@ function AdminSandboxSettings() {
 
                                 {t(
                                   'admin.sandboxSettingsPage.namedProviderConfiguration',
-                                  { name: selectedProviderData.name },
+                                  {
+                                    name: providerText(
+                                      'name',
+                                      selectedProviderData.id,
+                                      selectedProviderData.name,
+                                    ),
+                                  },
                                 )}
                               </h3>
 
                               <p className="text-sm text-text-secondary">
                                 {t(
                                   'admin.sandboxSettingsPage.namedProviderConfigurationDescription',
-                                  { name: selectedProviderData.name },
+                                  {
+                                    name: providerText(
+                                      'name',
+                                      selectedProviderData.id,
+                                      selectedProviderData.name,
+                                    ),
+                                  },
                                 )}
                               </p>
                             </div>
