@@ -22,13 +22,6 @@ import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -120,15 +113,15 @@ export default function Tenants() {
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('admin.tenantManagement')}</CardTitle>
-        </CardHeader>
+      <div className="size-full min-w-0 overflow-auto px-5 py-4">
+        <header className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <h1 className="text-2xl font-medium text-text-primary">
+            {t('admin.tenantManagement')}
+          </h1>
 
-        <CardContent>
           {/* 筛选 + 新建 */}
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <div className="relative w-[280px]">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative w-[240px]">
               <LucideSearch className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-disabled" />
               <Input
                 value={keyword}
@@ -149,62 +142,60 @@ export default function Tenants() {
               <option value="1">正常</option>
               <option value="0">已停用</option>
             </select>
-            <div className="ml-auto">
-              <Button onClick={() => setOpen(true)}>
-                <LucidePlus className="mr-1 size-4" />
-                新建租户
-              </Button>
-            </div>
+            <Button onClick={() => setOpen(true)}>
+              <LucidePlus className="mr-1 size-4" />
+              新建租户
+            </Button>
           </div>
+        </header>
 
-          {/* 列表 */}
-          <Table>
-            <TableHeader>
+        {/* 列表 */}
+        <Table rootClassName="max-h-[calc(100vh-240px)]">
+          <TableHeader>
+            <TableRow>
+              <TableHead>租户名称</TableHead>
+              <TableHead>成员数</TableHead>
+              <TableHead>知识库数</TableHead>
+              <TableHead>智能体数</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>创建时间</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 && (
               <TableRow>
-                <TableHead>租户名称</TableHead>
-                <TableHead>成员数</TableHead>
-                <TableHead>知识库数</TableHead>
-                <TableHead>智能体数</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>创建时间</TableHead>
+                <TableCell
+                  colSpan={6}
+                  className="py-10 text-center text-sm text-text-secondary"
+                >
+                  {isFetching ? '加载中…' : '暂无租户'}
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="py-10 text-center text-sm text-text-secondary"
+            )}
+            {rows.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell className="font-medium text-text-primary">
+                  {row.name}
+                </TableCell>
+                <TableCell>{row.member_count}</TableCell>
+                <TableCell>{row.kb_count}</TableCell>
+                <TableCell>{row.agent_count}</TableCell>
+                <TableCell>
+                  <Badge
+                    variant={row.status === '1' ? 'success' : 'destructive'}
                   >
-                    {isFetching ? '加载中…' : '暂无租户'}
-                  </TableCell>
-                </TableRow>
-              )}
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-medium text-text-primary">
-                    {row.name}
-                  </TableCell>
-                  <TableCell>{row.member_count}</TableCell>
-                  <TableCell>{row.kb_count}</TableCell>
-                  <TableCell>{row.agent_count}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={row.status === '1' ? 'success' : 'destructive'}
-                    >
-                      {row.status === '1' ? '正常' : '已停用'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-text-secondary">
-                    {formatDate(row.create_date)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
+                    {row.status === '1' ? '正常' : '已停用'}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-text-secondary">
+                  {formatDate(row.create_date)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
 
-        <CardFooter className="flex items-center justify-end">
+        <div className="flex items-center justify-end pt-3">
           <RAGFlowPagination
             total={data?.total ?? 0}
             current={page}
@@ -214,8 +205,8 @@ export default function Tenants() {
               setPageSize(nextPageSize);
             }}
           />
-        </CardFooter>
-      </Card>
+        </div>
+      </div>
 
       {/* 新建租户：不自动建账号，必须指定一个已有用户作为管理员 */}
       <Dialog open={open} onOpenChange={setOpen}>

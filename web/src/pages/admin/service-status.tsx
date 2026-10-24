@@ -15,22 +15,15 @@ import {
   LucideClipboardList,
   LucideDot,
   LucideFilter,
+  LucideRefreshCw,
   LucideSettings2,
 } from 'lucide-react';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import Spotlight from '@/components/spotlight';
 import { TableEmpty } from '@/components/table-skeleton';
 import { Badge, BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -87,6 +80,12 @@ const SERVICE_TYPE_FILTER_OPTIONS = [
   { value: 'message_queue', label: 'message_queue' },
 ];
 
+/** 除服务名外都是短字段，按内容宽度收缩，剩余宽度全留给「服务名」。 */
+const NARROW_COLUMN = (headerClassName: string) => ({
+  headerClassName: `${headerClassName} whitespace-nowrap`,
+  cellClassName: 'whitespace-nowrap',
+});
+
 const AdminServiceKeys = {
   list: () => ['admin/listServices'] as const,
   detail: (id: number | string | undefined) =>
@@ -95,12 +94,13 @@ const AdminServiceKeys = {
 
 function AdminServiceStatus() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [extraInfoModalOpen, setExtraInfoModalOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [itemToMakeAction, setItemToMakeAction] =
     useState<AdminService.ListServicesItem | null>(null);
 
-  const { data: servicesList } = useQuery({
+  const { data: servicesList, isFetching } = useQuery({
     queryKey: AdminServiceKeys.list(),
     queryFn: listServices,
     retry: false,
@@ -117,6 +117,12 @@ function AdminServiceStatus() {
     () => [
       columnHelper.accessor('name', {
         header: t('admin.name'),
+        meta: { headerClassName: 'w-[24%]' },
+        cell: ({ cell }) => (
+          <span className="font-medium text-text-primary">
+            {cell.getValue()}
+          </span>
+        ),
       }),
       columnHelper.accessor('service_type', {
         header: t('admin.serviceType'),
@@ -128,6 +134,7 @@ function AdminServiceStatus() {
           },
         ),
         enableSorting: false,
+        meta: NARROW_COLUMN('w-[20%]'),
       }),
       columnHelper.accessor('host', {
         header: t('admin.host'),
@@ -136,6 +143,7 @@ function AdminServiceStatus() {
             <i>{cell.getValue()}</i>
           </Badge>
         ),
+        meta: NARROW_COLUMN('w-[18%]'),
       }),
       columnHelper.accessor('port', {
         header: t('admin.port'),
@@ -144,6 +152,7 @@ function AdminServiceStatus() {
             <i>{cell.getValue()}</i>
           </Badge>
         ),
+        meta: NARROW_COLUMN('w-[10%]'),
       }),
       columnHelper.accessor('status', {
         header: t('admin.status'),
@@ -163,37 +172,41 @@ function AdminServiceStatus() {
           </Badge>
         ),
         enableSorting: false,
+        meta: NARROW_COLUMN('w-[14%]'),
       }),
       columnHelper.display({
         id: 'actions',
         header: t('admin.actions'),
         cell: ({ row }) => (
-          <div className="opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1">
             <Button
-              variant="transparent"
+              variant="ghost"
               size="icon"
-              className="border-0 text-text-secondary"
+              className="text-text-secondary"
+              aria-label={t('admin.viewExtraInfo')}
               onClick={() => {
                 setItemToMakeAction(row.original);
                 setExtraInfoModalOpen(true);
               }}
             >
-              <LucideSettings2 />
+              <LucideSettings2 className="size-4" />
             </Button>
 
             <Button
-              variant="transparent"
+              variant="ghost"
               size="icon"
-              className="border-0 text-text-secondary"
+              className="text-text-secondary"
+              aria-label={t('admin.viewDetail')}
               onClick={() => {
                 setItemToMakeAction(row.original);
                 setDetailModalOpen(true);
               }}
             >
-              <LucideClipboardList />
+              <LucideClipboardList className="size-4" />
             </Button>
           </div>
         ),
+        meta: NARROW_COLUMN('w-[10%]'),
       }),
     ],
     [t],
@@ -219,159 +232,181 @@ function AdminServiceStatus() {
     }
   }, [detailModalOpen, serviceDetailsError]);
 
+  const filteredTotal = table.getFilteredRowModel().rows.length;
+  const serviceTypeFilter = table
+    .getColumn('service_type')
+    ?.getFilterValue() as string;
+
   return (
     <>
-      <Card className="!shadow-none relative h-full bg-transparent rounded-xl overflow-hidden">
-        <Spotlight />
+      <div className="size-full min-w-0 overflow-auto px-5 py-4">
+        <header className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-medium text-text-primary">
+              {t('admin.serviceStatus')}
+            </h1>
+            <p className="mt-1 text-sm text-text-secondary">
+              {t('admin.serviceStatusHint')}
+            </p>
+          </div>
 
-        <ScrollArea className="size-full">
-          <CardHeader className="space-y-0 flex flex-row justify-between items-center">
-            <CardTitle>{t('admin.serviceStatus')}</CardTitle>
+          <div className="flex flex-wrap items-center gap-3">
+            <SearchInput
+              className="w-60"
+              placeholder={t('admin.searchServicePlaceholder')}
+              value={table.getState().globalFilter ?? ''}
+              onChange={(e) => table.setGlobalFilter(e.target.value)}
+            />
 
-            <div className="flex items-center gap-4">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button size="icon-lg" variant="outline">
-                    <LucideFilter className="size-4" />
-                  </Button>
-                </PopoverTrigger>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-10 gap-2 px-3"
+                  data-testid="admin-service-type-filter"
+                >
+                  <LucideFilter className="size-4" />
+                  <span className="hidden max-w-40 truncate sm:inline">
+                    {serviceTypeFilter || t('admin.allServiceTypes')}
+                  </span>
+                </Button>
+              </PopoverTrigger>
 
-                <PopoverContent align="end">
-                  <div className="p-2 space-y-6">
-                    <section>
-                      <div className="font-bold mb-3">
-                        {t('admin.serviceType')}
-                      </div>
+              <PopoverContent align="end">
+                <div className="p-2 space-y-6">
+                  <section>
+                    <div className="mb-3 font-bold">
+                      {t('admin.serviceType')}
+                    </div>
 
-                      <RadioGroup
-                        value={
-                          (table
-                            .getColumn('service_type')!
-                            ?.getFilterValue() as string) ?? ''
-                        }
-                        onValueChange={
-                          table.getColumn('service_type')!?.setFilterValue
-                        }
-                      >
-                        <Label className="flex items-center space-x-2">
+                    <RadioGroup
+                      value={serviceTypeFilter ?? ''}
+                      onValueChange={(value) =>
+                        table.getColumn('service_type')?.setFilterValue(value)
+                      }
+                    >
+                      <Label className="flex items-center space-x-2">
+                        <RadioGroupItem
+                          className="bg-bg-input border-border-button"
+                          value=""
+                        />
+                        <span>{t('admin.all')}</span>
+                      </Label>
+
+                      {SERVICE_TYPE_FILTER_OPTIONS.map(({ label, value }) => (
+                        <Label
+                          key={value}
+                          className="flex items-center space-x-2"
+                        >
                           <RadioGroupItem
                             className="bg-bg-input border-border-button"
-                            value=""
+                            value={value}
                           />
-                          <span>{t('admin.all')}</span>
+                          <span>{label}</span>
                         </Label>
-
-                        {SERVICE_TYPE_FILTER_OPTIONS.map(({ label, value }) => (
-                          <Label
-                            key={value}
-                            className="flex items-center space-x-2"
-                          >
-                            <RadioGroupItem
-                              className="bg-bg-input border-border-button"
-                              value={value}
-                            />
-                            <span>{label}</span>
-                          </Label>
-                        ))}
-                      </RadioGroup>
-                    </section>
-                  </div>
-
-                  <div className="pt-4 flex justify-end">
-                    <Button
-                      variant="outline"
-                      className="dark:bg-bg-input dark:border-border-button text-text-secondary"
-                      onClick={() => table.resetColumnFilters()}
-                    >
-                      {t('admin.reset')}
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
-
-              <SearchInput
-                className="w-56 h-10 bg-bg-input border-border-button"
-                placeholder={t('header.search')}
-                value={table.getState().globalFilter}
-                onChange={(e) => table.setGlobalFilter(e.target.value)}
-              />
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            <Table>
-              <colgroup>
-                <col className="w-[22%]" />
-                <col className="w-[22%]" />
-                <col className="w-[19%]" />
-                <col className="w-[10%]" />
-                <col className="w-[15%]" />
-                <col className="w-[12%]" />
-              </colgroup>
-
-              <TableHeader>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <TableHead key={header.id}>
-                        {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                          <Button
-                            variant="ghost"
-                            onClick={header.column.getToggleSortingHandler()}
-                          >
-                            {flexRender(
-                              header.column.columnDef.header,
-                              header.getContext(),
-                            )}
-                            {getSortIcon(header.column.getIsSorted())}
-                          </Button>
-                        ) : (
-                          flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )
-                        )}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows?.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <TableRow key={row.id} className="group/row">
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id}>
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext(),
-                          )}
-                        </TableCell>
                       ))}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableEmpty columnsLength={columnDefs.length} />
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
+                    </RadioGroup>
+                  </section>
+                </div>
 
-          <CardFooter className="flex items-center justify-end">
-            <RAGFlowPagination
-              total={servicesList?.length}
-              current={table.getState().pagination.pageIndex + 1}
-              pageSize={table.getState().pagination.pageSize}
-              onChange={(page, pageSize) => {
-                table.setPagination({
-                  pageIndex: page - 1,
-                  pageSize,
-                });
-              }}
-            />
-          </CardFooter>
-        </ScrollArea>
-      </Card>
+                <div className="pt-4 flex justify-end">
+                  <Button
+                    variant="outline"
+                    className="dark:bg-bg-input dark:border-border-button text-text-secondary"
+                    onClick={() => table.resetColumnFilters()}
+                  >
+                    {t('admin.reset')}
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <Button
+              variant="outline"
+              size="icon-lg"
+              aria-label={t('admin.refresh')}
+              data-testid="admin-service-refresh"
+              onClick={() =>
+                queryClient.invalidateQueries({
+                  queryKey: AdminServiceKeys.list(),
+                })
+              }
+            >
+              <LucideRefreshCw
+                className={isFetching ? 'size-4 animate-spin' : 'size-4'}
+              />
+            </Button>
+          </div>
+        </header>
+
+        <Table rootClassName="max-h-[calc(100vh-240px)]">
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead
+                    key={header.id}
+                    className={header.column.columnDef.meta?.headerClassName}
+                  >
+                    {header.isPlaceholder ? null : header.column.getCanSort() ? (
+                      <Button
+                        variant="ghost"
+                        onClick={header.column.getToggleSortingHandler()}
+                      >
+                        {flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                        {getSortIcon(header.column.getIsSorted())}
+                      </Button>
+                    ) : (
+                      flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )
+                    )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} className="group/row">
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell
+                      key={cell.id}
+                      className={cell.column.columnDef.meta?.cellClassName}
+                    >
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableEmpty columnsLength={columnDefs.length} />
+            )}
+          </TableBody>
+        </Table>
+
+        <div className="flex items-center justify-end pt-3">
+          <RAGFlowPagination
+            total={filteredTotal}
+            current={table.getState().pagination.pageIndex + 1}
+            pageSize={table.getState().pagination.pageSize}
+            onChange={(page, pageSize) => {
+              table.setPagination({
+                pageIndex: page - 1,
+                pageSize,
+              });
+            }}
+          />
+        </div>
+      </div>
 
       {/* Extra info modal*/}
       <Dialog open={extraInfoModalOpen} onOpenChange={setExtraInfoModalOpen}>
