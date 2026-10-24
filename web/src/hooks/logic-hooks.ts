@@ -432,7 +432,14 @@ export const useSpeechWithSse = (url: string = api.chatsTts) => {
         // （如 "TTS synthesis failed for model xxx (provider)"）
         // 直接以红色 error 弹给用户 —— 那是运维信息，不是用户该看的。
         if (res?.code !== 0) {
-          message.warning('语音合成失败，请稍后重试');
+          // 「no default tts model is set」是配置缺失，不是临时故障：
+          // 提示用户去设置里选模型，否则重试多少次都不会出声。
+          const raw = String(res?.message ?? '');
+          message.warning(
+            /tts model/i.test(raw)
+              ? '当前租户未配置 TTS 模型，请先在模型设置中选择语音模型'
+              : '语音合成失败，请稍后重试',
+          );
         }
       } catch {
         // Swallow errors silently

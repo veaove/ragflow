@@ -19,7 +19,6 @@ import { useSetModalState } from '@/hooks/common-hooks';
 import { IRemoveMessageById, useSpeechWithSse } from '@/hooks/logic-hooks';
 import { useDeleteMessage, useFeedback } from '@/hooks/use-chat-request';
 import { IFeedbackRequestBody } from '@/interfaces/request/chat';
-import { hexStringToUint8Array } from '@/utils/common-util';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const useSendFeedback = (messageId: string) => {
@@ -97,34 +96,55 @@ function cacheTtsUrl(content: string, url: string) {
 }
 
 export const useSpeech = (content: string, audioBinary?: string) => {
-  const ref = useRef<HTMLAudioElement>(null);
   const { read } = useSpeechWithSse();
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const objectUrlRef = useRef<string | null>(null);
 
-  // 后端 TTS 返回的是 audio/wav（provider 决定的），而 MediaSource 不支持 WAV
-  // （Chrome 的 MSE 只认 audio/mp4 / audio/webm），把 WAV 喂给 mp4 的
-  // SourceBuffer 会被静默丢弃 —— 表现就是「按钮变成暂停、但没有声音」。
-  // 客服语音都是短句，直接拿完整 blob 交给 <audio> 原生播放最简单可靠。
+  /**
+   * 每次播放都用独立的 `new Audio(url)`。
+   *
+   * 原来复用一个渲染在按钮里的 `<audio src="">`，而组件挂载时还会把
+   * audio_binary 解出来的字节塞进同一个元素。audio_binary 是后端
+   * `[]byte` 走 JSON 的 **base64 MP3**，挂载逻辑却按十六进制解，
+   * 得到一份无效音频；元素从此停在 readyState=0 / networkState=LOADING，
+   * 之后 play() 仍然 resolve（所以图标变成暂停），但 currentTime 永远是 0
+   * —— 表现就是「点了没声音」。播放器不参与渲染就不会被这类脏状态污染。
+   */
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const stopCurrent = useCallback(() => {
+    const el = audioRef.current;
+    if (el) {
+      el.onended = null;
+      el.pause();
+      audioRef.current = null;
+    }
+    setIsPlaying(false);
+  }, []);
+
+  const playUrl = useCallback(
+    async (url: string) => {
+      stopCurrent();
+      const el = new Audio(url);
+      audioRef.current = el;
+      el.onended = () => {
+        if (audioRef.current === el) {
+          audioRef.current = null;
+          setIsPlaying(false);
+        }
+      };
+      await el.play();
+      setIsPlaying(true);
+    },
+    [stopCurrent],
+  );
+
   const speech = useCallback(async () => {
-    const audio = ref.current;
-    if (!audio) return;
-
-    // 优先用消息自带的音频。
-    //
-    // 必须在**用户手势的同步调用栈里**设置 src 并调用 play()：Chrome 的
-    // autoplay 策略只给手势上下文内的播放放行，一旦中间 await 了网络请求
-    // （下面那条回退路径），手势上下文就丢了 —— 表现正是「按钮变成暂停、
-    // 但完全没有声音」，因为 play() 的 Promise 仍会 resolve，只是不发声。
-    //
-    // 消息里的 audio_binary 是 MP3 base64（见 chat_pipeline.synthesizeTTS，
-    // Format:"mp3"），而 /chat/audio/speech 接口返回的是 WAV，两者不同源。
+    // 消息自带的音频优先。audio_binary 是 base64 MP3
+    // （chat_pipeline.synthesizeTTS 固定 Format:"mp3"）。
     if (audioBinary) {
-      audio.src = `data:audio/mp3;base64,${audioBinary}`;
       try {
-        await audio.play();
-        setIsPlaying(true);
+        await playUrl(`data:audio/mp3;base64,${audioBinary}`);
       } catch (error) {
         console.warn('tts play failed (audioBinary)', error);
         setIsPlaying(false);
@@ -132,13 +152,11 @@ export const useSpeech = (content: string, audioBinary?: string) => {
       return;
     }
 
-    // 命中缓存：同步播放，不再请求（第二次点同一段回答时走这里）。
+    // 命中缓存：直接播，不再请求（第二次点同一段回答时走这里）。
     const cached = ttsUrlCache.get(content);
     if (cached) {
-      audio.src = cached;
       try {
-        await audio.play();
-        setIsPlaying(true);
+        await playUrl(cached);
       } catch (error) {
         console.warn('tts play failed (cached)', error);
         setIsPlaying(false);
@@ -146,73 +164,52 @@ export const useSpeech = (content: string, audioBinary?: string) => {
       return;
     }
 
-    // 回退：实时请求 TTS（历史消息没有 audio_binary 时）。
-    // isLoading 让按钮显示 loading，避免用户以为点了没反应。
+    // 回退：实时请求 TTS（历史消息没有 audio_binary 时）。接口返回 WAV，
+    // 交给 <audio> 原生解码，不走 MSE。
     setIsLoading(true);
-    let response: Response | undefined;
     try {
-      response = await read({ text: content });
+      const response = await read({ text: content });
       if (!response) return;
+      // 合成失败时后端返回 200 + JSON（如 no default tts model is set）。
+      // 这种响应绝不能喂给 <audio>，否则只会得到一个解码失败的空元素。
+      // 具体报错提示由 useSpeechWithSse 统一给出。
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.startsWith('audio/')) {
+        console.warn('tts response is not audio', contentType);
+        return;
+      }
       const blob = await response.blob();
       if (blob.size === 0) return;
       const url = URL.createObjectURL(blob);
       cacheTtsUrl(content, url);
-      objectUrlRef.current = url;
-      audio.src = url;
-      await audio.play();
-      setIsPlaying(true);
+      await playUrl(url);
     } catch (error) {
       console.warn('tts play failed', error);
       setIsPlaying(false);
     } finally {
       setIsLoading(false);
     }
-  }, [read, content, audioBinary]);
-
-  const pause = useCallback(() => {
-    ref.current?.pause();
-    setIsPlaying(false);
-  }, []);
+  }, [read, content, audioBinary, playUrl]);
 
   const handleRead = useCallback(() => {
     if (isPlaying) {
-      pause();
+      stopCurrent();
     } else {
       speech();
     }
-  }, [isPlaying, pause, speech]);
+  }, [isPlaying, stopCurrent, speech]);
 
-  // 播放结束/被暂停时复位按钮状态；卸载时释放 object URL。
+  // 卸载时停掉残留播放（页面切走还在响是最容易被投诉的体验问题）。
   useEffect(() => {
-    const audio = ref.current;
-    if (!audio) return;
-    const onStopped = () => setIsPlaying(false);
-    audio.addEventListener('ended', onStopped);
-    audio.addEventListener('pause', onStopped);
     return () => {
-      audio.removeEventListener('ended', onStopped);
-      audio.removeEventListener('pause', onStopped);
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
+      const el = audioRef.current;
+      if (el) {
+        el.onended = null;
+        el.pause();
+        audioRef.current = null;
       }
     };
   }, []);
 
-  // 历史消息里若已带有十六进制音频，直接用同样的 blob 路径播放。
-  useEffect(() => {
-    if (!audioBinary) return;
-    const units = hexStringToUint8Array(audioBinary);
-    if (!units) return;
-    const audio = ref.current;
-    if (!audio) return;
-    const blob = new Blob([units], { type: 'audio/wav' });
-    const url = URL.createObjectURL(blob);
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-    }
-    objectUrlRef.current = url;
-    audio.src = url;
-  }, [audioBinary]);
-
-  return { ref, isPlaying, isLoading, handleRead };
+  return { isPlaying, isLoading, handleRead };
 };
