@@ -594,8 +594,18 @@ type aliyunASRResponse struct {
 	Output struct {
 		Text     string `json:"text"`
 		Sentence *struct {
-			Text string `json:"text"`
+			Text      string `json:"text"`
+			BeginTime int64  `json:"begin_time"`
+			EndTime   int64  `json:"end_time"`
 		} `json:"sentence"`
+		// Sentences is the array form some ASR models answer with, one entry
+		// per recognised sentence. Timings are milliseconds from the start of
+		// the audio in this request.
+		Sentences []struct {
+			Text      string `json:"text"`
+			BeginTime int64  `json:"begin_time"`
+			EndTime   int64  `json:"end_time"`
+		} `json:"sentences"`
 		Choices []struct {
 			FinishReason string `json:"finish_reason"`
 			Message      struct {
@@ -629,6 +639,31 @@ func (r *aliyunASRResponse) transcript() (string, error) {
 		return r.Output.Sentence.Text, nil
 	}
 	return "", fmt.Errorf("aliyun ASR response carries no transcription")
+}
+
+// sentences returns the recognised sentences with their timings, in the order
+// the provider reported them. It is empty when the model answered with one
+// unstructured transcript, which is a supported shape: callers fall back to the
+// plain text.
+func (r *aliyunASRResponse) sentences() []ASRSentence {
+	out := make([]ASRSentence, 0, len(r.Output.Sentences)+1)
+	for _, sentence := range r.Output.Sentences {
+		if strings.TrimSpace(sentence.Text) == "" {
+			continue
+		}
+		out = append(out, ASRSentence{BeginMS: sentence.BeginTime, EndMS: sentence.EndTime, Text: sentence.Text})
+	}
+	if r.Output.Sentence != nil && strings.TrimSpace(r.Output.Sentence.Text) != "" {
+		out = append(out, ASRSentence{
+			BeginMS: r.Output.Sentence.BeginTime,
+			EndMS:   r.Output.Sentence.EndTime,
+			Text:    r.Output.Sentence.Text,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // TranscribeAudio transcribes an audio file with a DashScope ASR model
@@ -674,20 +709,35 @@ func (a *AliyunModel) TranscribeAudio(ctx context.Context, modelName *string, fi
 	defer cancel()
 
 	transcripts := make([]string, 0, 1)
-	for _, segment := range aliyunASRSegments(audio, format) {
-		text, err := a.transcribeSegment(ctx, url, *modelName, *file, format, segment, contextText, options, apiConfig)
+	sentences := make([]ASRSentence, 0, 8)
+	for index, segment := range aliyunASRSegments(audio, format) {
+		text, segmentSentences, err := a.transcribeSegment(ctx, url, *modelName, *file, format, segment, contextText, options, apiConfig)
 		if err != nil {
 			return nil, err
 		}
 		if trimmed := strings.TrimSpace(text); trimmed != "" {
 			transcripts = append(transcripts, trimmed)
 		}
+		// Segment timings are relative to the segment; shift them onto the
+		// recording's timeline so callers can interleave two channel
+		// transcripts (dual-track calls) or anchor a sentence in the source.
+		offsetMS := int64(index) * aliyunASRSegmentSeconds * 1000
+		for _, sentence := range segmentSentences {
+			sentence.BeginMS += offsetMS
+			sentence.EndMS += offsetMS
+			if strings.TrimSpace(sentence.Text) == "" {
+				continue
+			}
+			sentences = append(sentences, sentence)
+		}
 	}
-	return &ASRResponse{Text: strings.Join(transcripts, "\n")}, nil
+	return &ASRResponse{Text: strings.Join(transcripts, "\n"), Sentences: sentences}, nil
 }
 
-// transcribeSegment posts one audio payload and returns its transcript.
-func (a *AliyunModel) transcribeSegment(ctx context.Context, url, modelName, filename, format string, audio []byte, contextText string, options map[string]interface{}, apiConfig *APIConfig) (string, error) {
+// transcribeSegment posts one audio payload and returns its transcript plus the
+// per-sentence timings the provider reported (nil when the model answers with a
+// single unstructured transcript).
+func (a *AliyunModel) transcribeSegment(ctx context.Context, url, modelName, filename, format string, audio []byte, contextText string, options map[string]interface{}, apiConfig *APIConfig) (string, []ASRSentence, error) {
 	reqBody := aliyunASRRequest{
 		Model: strings.TrimSpace(modelName),
 		Input: aliyunASRInput{Messages: []aliyunASRMessage{
@@ -699,12 +749,12 @@ func (a *AliyunModel) transcribeSegment(ctx context.Context, url, modelName, fil
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return "", nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", *apiConfig.ApiKey))
@@ -712,38 +762,38 @@ func (a *AliyunModel) transcribeSegment(ctx context.Context, url, modelName, fil
 
 	resp, err := a.baseModel.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
+		return "", nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, err := readModelErrorBody(resp.Body)
 		if err != nil {
-			return "", fmt.Errorf("API request failed with status %d; failed to read error response: %w", resp.StatusCode, err)
+			return "", nil, fmt.Errorf("API request failed with status %d; failed to read error response: %w", resp.StatusCode, err)
 		}
-		return "", aliyunASRError(resp.StatusCode, body)
+		return "", nil, aliyunASRError(resp.StatusCode, body)
 	}
 
 	body, err := readModelResponseBody(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return "", nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	var parsed aliyunASRResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", fmt.Errorf("failed to parse aliyun ASR response: %w, body: %s", err, string(body))
+		return "", nil, fmt.Errorf("failed to parse aliyun ASR response: %w, body: %s", err, string(body))
 	}
 	if parsed.Code != "" {
 		if aliyunASRNoSpeech(parsed.Code, parsed.Message) {
-			return "", fmt.Errorf("%w (%s)", ErrASRNoSpeech, strings.TrimSpace(parsed.Message))
+			return "", nil, fmt.Errorf("%w (%s)", ErrASRNoSpeech, strings.TrimSpace(parsed.Message))
 		}
-		return "", fmt.Errorf("aliyun ASR API error: %s: %s", parsed.Code, parsed.Message)
+		return "", nil, fmt.Errorf("aliyun ASR API error: %s: %s", parsed.Code, parsed.Message)
 	}
 	text, err := parsed.transcript()
 	if err != nil {
-		return "", fmt.Errorf("%w, body: %s", err, string(body))
+		return "", nil, fmt.Errorf("%w, body: %s", err, string(body))
 	}
-	return text, nil
+	return text, parsed.sentences(), nil
 }
 
 // aliyunASRError turns a non-200 body into an actionable error. A WAV over the

@@ -18,6 +18,13 @@ export const SetupSchema = z
     // Per-setup vlm is only used by Audio (its ASR model); the vision model
     // lives at the top level, shared by all vision-capable file types.
     vlm: z.object({ llm_id: z.string().optional() }).optional(),
+    // Audio dual-track ("一问一答") transcription: split a stereo recording
+    // into its two channels and re-interleave them by timeline. The role
+    // labels are only read when the switch is on; the backend falls back to
+    // 坐席 / 客户 when they are empty.
+    dialogue_split: z.boolean().optional(),
+    left_speaker: z.string().optional(),
+    right_speaker: z.string().optional(),
     system_prompt: z.string().optional(),
     table_result_type: z.string().optional(),
     markdown_image_response_type: z.string().optional(),

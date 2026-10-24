@@ -22,12 +22,14 @@ package component
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -361,6 +363,20 @@ func maybeDispatchAudio(
 			fmt.Errorf("parser: audio speech2text model: %w", err)
 	}
 
+	asrModel := modelModule.NewASRModel(driver, &modelName, apiConfig)
+
+	// Dual-track ("一问一答") mode. A stereo WAV exported by a contact-centre
+	// recorder carries one speaker per channel, which can be transcribed and
+	// re-interleaved by time into labelled turns. The switch is off unless the
+	// setup turns it on, and every other shape (mono, compressed container,
+	// unsupported bit depth) falls through to the whole-file transcription
+	// below, so enabling it never loses a file.
+	if settings := audioDialogueSetup(setup); settings.enabled {
+		if result, handled, err := dispatchAudioDialogue(ctx, binary, asrModel, settings); handled {
+			return result, true, err
+		}
+	}
+
 	tmpFile, err := writeTempAudioFile(filename, binary)
 	if err != nil {
 		return parser.ParseResult{}, true,
@@ -368,7 +384,6 @@ func maybeDispatchAudio(
 	}
 	defer os.Remove(tmpFile)
 
-	asrModel := modelModule.NewASRModel(driver, &modelName, apiConfig)
 	resp, err := asrModel.Transcribe(ctx, &tmpFile, nil, nil)
 	if err != nil {
 		return parser.ParseResult{}, true,
@@ -386,16 +401,196 @@ func maybeDispatchAudio(
 	}, true, nil
 }
 
+// audioDialogueSettings is the dual-track configuration of the audio family
+// setup. LeftRole/RightRole are the speaker labels the indexed turns carry.
+type audioDialogueSettings struct {
+	enabled   bool
+	leftRole  string
+	rightRole string
+}
+
+// audioDialogueSetup reads the dual-track settings off a Parser setup. The
+// switch is only honoured when it is explicitly true, so a knowledge base
+// saved before the option existed keeps the whole-file transcription.
+func audioDialogueSetup(setup schema.ParserSetup) audioDialogueSettings {
+	settings := audioDialogueSettings{
+		leftRole:  audioSpeakerRole(getStringOr(setup, "left_speaker", ""), "坐席"),
+		rightRole: audioSpeakerRole(getStringOr(setup, "right_speaker", ""), "客户"),
+	}
+	// Configs reach the runtime as JSON, so the flag is normally a bool; accept
+	// the string spellings too because a hand-written API payload can carry
+	// either.
+	switch raw := setup["dialogue_split"].(type) {
+	case bool:
+		settings.enabled = raw
+	case string:
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case "true", "1", "yes", "on":
+			settings.enabled = true
+		}
+	}
+	return settings
+}
+
+// audioSpeakerRole falls back to the default label when the operator left the
+// field empty: a turn without a speaker reads as plain text, which is exactly
+// what the switch is meant to avoid.
+func audioSpeakerRole(configured, fallback string) string {
+	if role := strings.TrimSpace(configured); role != "" {
+		return role
+	}
+	return fallback
+}
+
+// dispatchAudioDialogue transcribes a stereo recording channel by channel and
+// re-interleaves the two transcripts into labelled turns. The second return
+// value reports whether this function handled the file: false means the audio
+// is not a splittable dual-track WAV and the caller should fall back to the
+// whole-file transcription.
+func dispatchAudioDialogue(
+	ctx context.Context,
+	binary []byte,
+	asrModel *modelModule.ASRModel,
+	settings audioDialogueSettings,
+) (parser.ParseResult, bool, error) {
+	leftWAV, rightWAV, err := parser.SplitStereoWAV(binary)
+	if err != nil {
+		// Mono, compressed container, or a bit depth the splitter does not
+		// handle: the whole-file transcription is the right answer for it.
+		return parser.ParseResult{}, false, nil
+	}
+	leftFile, err := writeTempAudio(".wav", leftWAV)
+	if err != nil {
+		return parser.ParseResult{}, true, fmt.Errorf("parser: audio dialogue temp file: %w", err)
+	}
+	defer os.Remove(leftFile)
+	rightFile, err := writeTempAudio(".wav", rightWAV)
+	if err != nil {
+		return parser.ParseResult{}, true, fmt.Errorf("parser: audio dialogue temp file: %w", err)
+	}
+	defer os.Remove(rightFile)
+
+	// The two channels are independent requests against the same provider, so
+	// they run concurrently: the wall time is one transcription, not two.
+	var (
+		wg        sync.WaitGroup
+		leftResp  *modelModule.ASRResponse
+		rightResp *modelModule.ASRResponse
+		leftErr   error
+		rightErr  error
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		leftResp, leftErr = asrModel.Transcribe(ctx, &leftFile, nil, nil)
+	}()
+	go func() {
+		defer wg.Done()
+		rightResp, rightErr = asrModel.Transcribe(ctx, &rightFile, nil, nil)
+	}()
+	wg.Wait()
+
+	// A channel that recognised nothing is a muted track, not a failure: the
+	// recording still comes back labelled by its only speaker. Anything else
+	// is a real error and fails the document rather than silently dropping
+	// half of the conversation.
+	for _, channel := range []struct {
+		name string
+		err  error
+	}{{"left", leftErr}, {"right", rightErr}} {
+		if channel.err != nil && !isASRNoSpeechError(channel.err) {
+			return parser.ParseResult{}, true,
+				fmt.Errorf("Parser: audio transcription (%s channel): %w", channel.name, channel.err)
+		}
+	}
+
+	leftSentences := asrTimedSentences(leftResp)
+	rightSentences := asrTimedSentences(rightResp)
+	var warnings []string
+	// A driver that answers with a plain transcript and no per-sentence
+	// timings still gets the speaker labels; the two turns simply are not
+	// interleaved, so say so instead of pretending otherwise.
+	if len(leftSentences) == 0 && leftResp != nil && strings.TrimSpace(leftResp.Text) != "" {
+		leftSentences = []parser.TimedSentence{{Text: leftResp.Text}}
+		warnings = append(warnings, "audio dialogue split: the ASR model returned no sentence timings, so the left channel is one unsegmented turn")
+	}
+	if len(rightSentences) == 0 && rightResp != nil && strings.TrimSpace(rightResp.Text) != "" {
+		rightSentences = []parser.TimedSentence{{Text: rightResp.Text}}
+		warnings = append(warnings, "audio dialogue split: the ASR model returned no sentence timings, so the right channel is one unsegmented turn")
+	}
+
+	turns := parser.MergeDialogueTurns(leftSentences, rightSentences, settings.leftRole, settings.rightRole, 0)
+	lines := parser.DialogueLines(turns)
+	if len(lines) == 0 {
+		// Both channels were silent. One empty item mirrors the whole-file
+		// path's behaviour for a silent recording.
+		warnings = append(warnings, "audio dialogue split: neither channel contained recognisable speech")
+		return parser.ParseResult{
+			OutputFormat: "json",
+			JSON:         []parser.DocItem{parser.NewTextJSONItem("")},
+			Warnings:     warnings,
+		}, true, nil
+	}
+	items := make([]parser.DocItem, 0, len(lines))
+	for _, line := range lines {
+		items = append(items, parser.NewTextJSONItem(line))
+	}
+	return parser.ParseResult{OutputFormat: "json", JSON: items, Warnings: warnings}, true, nil
+}
+
+// asrTimedSentences projects a driver response onto the parser's timed
+// sentences, dropping the empty ones. A nil response (a channel that failed
+// with "no speech") contributes nothing.
+func asrTimedSentences(resp *modelModule.ASRResponse) []parser.TimedSentence {
+	if resp == nil {
+		return nil
+	}
+	out := make([]parser.TimedSentence, 0, len(resp.Sentences))
+	for _, sentence := range resp.Sentences {
+		if strings.TrimSpace(sentence.Text) == "" {
+			continue
+		}
+		out = append(out, parser.TimedSentence{
+			BeginMS: sentence.BeginMS,
+			EndMS:   sentence.EndMS,
+			Text:    sentence.Text,
+		})
+	}
+	return out
+}
+
+// isASRNoSpeechError reports whether an ASR error means "this audio carried no
+// recognisable speech". The sentinel is the contract (models.ErrASRNoSpeech);
+// the substring check covers drivers that surface the provider's own marker
+// without wrapping it.
+func isASRNoSpeechError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, modelModule.ErrASRNoSpeech) {
+		return true
+	}
+	message := strings.ToUpper(err.Error())
+	return strings.Contains(message, "ASR_RESPONSE_HAVE_NO_WORDS") ||
+		strings.Contains(message, "NO SPEECH")
+}
+
 // writeTempAudioFile writes binary to a temp file preserving the
 // original extension so the ASR provider can detect the format.
 func writeTempAudioFile(filename string, binary []byte) (string, error) {
-	ext := filepath.Ext(filename)
+	return writeTempAudio(filepath.Ext(filename), binary)
+}
+
+// writeTempAudio writes data to a temp file with the given extension. The
+// extension matters: DashScope rejects an audio whose parameters.format does
+// not match the container it is handed.
+func writeTempAudio(ext string, data []byte) (string, error) {
 	tmp, err := os.CreateTemp("", "ragflow_audio_*"+ext)
 	if err != nil {
 		return "", err
 	}
 	defer tmp.Close()
-	if _, err := tmp.Write(binary); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		os.Remove(tmp.Name())
 		return "", err
 	}

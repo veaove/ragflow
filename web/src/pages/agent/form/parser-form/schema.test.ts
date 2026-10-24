@@ -65,4 +65,26 @@ describe('parser FormSchema', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('accepts the audio dual-track settings', () => {
+    const result = FormSchema.safeParse({
+      setups: [
+        {
+          fileFormat: FileType.Audio,
+          output_format: 'text',
+          dialogue_split: true,
+          left_speaker: '坐席',
+          right_speaker: '客户',
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts an audio setup without the dual-track settings', () => {
+    const result = FormSchema.safeParse({
+      setups: [{ fileFormat: FileType.Audio, output_format: 'text' }],
+    });
+    expect(result.success).toBe(true);
+  });
 });

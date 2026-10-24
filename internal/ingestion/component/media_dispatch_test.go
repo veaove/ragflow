@@ -19,8 +19,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -1090,4 +1092,317 @@ func picturePNG(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return data.Bytes()
+}
+
+// --- Dual-track (一问一答) audio dispatch ---
+
+// buildDialogueWAV assembles a 16-bit stereo WAV with a 32-byte private header
+// (contact-centre exporters prepend one) whose left channel carries only
+// positive samples and whose right channel only negative ones, so the mock
+// driver can tell the two halves apart by the first sample it reads back.
+func buildDialogueWAV(channels int) []byte {
+	frames := make([]byte, 0, 4*8)
+	var tmp [2]byte
+	for i := 0; i < 8; i++ {
+		left := int16(1000 + i)
+		right := int16(-(1000 + i))
+		if channels == 1 {
+			left = int16(1000 + i)
+			right = left
+		}
+		binary.LittleEndian.PutUint16(tmp[:], uint16(left))
+		frames = append(frames, tmp[0], tmp[1])
+		if channels == 2 {
+			binary.LittleEndian.PutUint16(tmp[:], uint16(right))
+			frames = append(frames, tmp[0], tmp[1])
+		}
+	}
+
+	fmtBody := make([]byte, 16)
+	binary.LittleEndian.PutUint16(fmtBody[0:2], 1)
+	binary.LittleEndian.PutUint16(fmtBody[2:4], uint16(channels))
+	binary.LittleEndian.PutUint32(fmtBody[4:8], 8000)
+	binary.LittleEndian.PutUint32(fmtBody[8:12], uint32(8000*channels*2))
+	binary.LittleEndian.PutUint16(fmtBody[12:14], uint16(channels*2))
+	binary.LittleEndian.PutUint16(fmtBody[14:16], 16)
+
+	var buf bytes.Buffer
+	buf.Write(bytes.Repeat([]byte{0x7f}, 32))
+	buf.WriteString("RIFF")
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(4+8+16+8+len(frames)))
+	buf.WriteString("WAVE")
+	buf.WriteString("fmt ")
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(16))
+	buf.Write(fmtBody)
+	buf.WriteString("data")
+	_ = binary.Write(&buf, binary.LittleEndian, uint32(len(frames)))
+	buf.Write(frames)
+	return buf.Bytes()
+}
+
+// audioDialogueDriver answers each channel of a split recording with its own
+// timed sentences. The channel is identified by the sign of the first sample of
+// the mono WAV it is handed, so the two concurrent transcriptions stay
+// distinguishable.
+type audioDialogueDriver struct {
+	modelModule.ModelDriver
+	// silentRight makes the right channel answer with the provider's
+	// "no speech" marker instead of a transcript.
+	silentRight bool
+}
+
+func (d *audioDialogueDriver) TranscribeAudio(ctx context.Context, _ *string, file *string, _ *modelModule.APIConfig, _ *modelModule.ASRConfig, _ *common.ModelUsage) (*modelModule.ASRResponse, error) {
+	data, err := os.ReadFile(*file)
+	if err != nil {
+		return nil, err
+	}
+	info, ok := parser.ProbeWAV(data)
+	if !ok {
+		return nil, fmt.Errorf("test driver: expected a WAV payload, got %d bytes", len(data))
+	}
+	if info.Channels == 2 {
+		// The whole recording, unsplit: one flat transcript, as a driver that
+		// reports no timings answers.
+		return &modelModule.ASRResponse{Text: "您好\n请问有什么可以帮您\n已经为您记录了"}, nil
+	}
+	if int16(binary.LittleEndian.Uint16(info.PCM[:2])) < 0 {
+		if d.silentRight {
+			return nil, fmt.Errorf("%w (muted track)", modelModule.ErrASRNoSpeech)
+		}
+		return &modelModule.ASRResponse{
+			Text: "我的车无法启动\n仪表盘显示故障灯",
+			Sentences: []modelModule.ASRSentence{
+				{BeginMS: 4000, EndMS: 5000, Text: "我的车无法启动"},
+				{BeginMS: 6000, EndMS: 7000, Text: "仪表盘显示故障灯"},
+			},
+		}, nil
+	}
+	return &modelModule.ASRResponse{
+		Text: "您好\n请问有什么可以帮您\n已经为您记录了",
+		Sentences: []modelModule.ASRSentence{
+			{BeginMS: 0, EndMS: 1000, Text: "您好"},
+			{BeginMS: 2000, EndMS: 3000, Text: "请问有什么可以帮您"},
+			{BeginMS: 20000, EndMS: 21000, Text: "已经为您记录了"},
+		},
+	}, nil
+}
+
+func withAudioDialogueDriver(t *testing.T, drv modelModule.ModelDriver) {
+	t.Helper()
+	origResolver := resolveTenantModelByType
+	t.Cleanup(func() { resolveTenantModelByType = origResolver })
+	resolveTenantModelByType = func(ctx context.Context, db *gorm.DB, tenantID string, modelType entity.ModelType) (modelModule.ModelDriver, string, *modelModule.APIConfig, int, error) {
+		return drv, "asr-model", &modelModule.APIConfig{}, 0, nil
+	}
+}
+
+func TestMaybeDispatchAudioDialogueSplitInterleavesTurns(t *testing.T) {
+	withAudioDialogueDriver(t, &audioDialogueDriver{})
+
+	setups := defaultSetups()
+	setups["audio"]["dialogue_split"] = true
+
+	res, dispatched, err := maybeDispatchAudio(
+		t.Context(),
+		dao.DB,
+		utility.FileTypeAURAL,
+		"call.wav",
+		buildDialogueWAV(2),
+		map[string]any{"tenant_id": "t1"},
+		setups,
+	)
+	if err != nil {
+		t.Fatalf("maybeDispatchAudio: %v", err)
+	}
+	if !dispatched {
+		t.Fatalf("expected dispatched=true for AURAL file")
+	}
+	if res.OutputFormat != "json" {
+		t.Fatalf("OutputFormat = %q, want json", res.OutputFormat)
+	}
+
+	want := []string{
+		"坐席：您好请问有什么可以帮您",
+		"客户：我的车无法启动仪表盘显示故障灯",
+		"坐席：已经为您记录了",
+	}
+	got := make([]string, 0, len(res.JSON))
+	for _, item := range res.JSON {
+		text, _ := item.ToMap()["text"].(string)
+		got = append(got, text)
+		if kwd, _ := item.ToMap()["doc_type_kwd"].(string); kwd != "text" {
+			t.Errorf("doc_type_kwd = %q, want text", kwd)
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d items, want %d: %q", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("item %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestMaybeDispatchAudioDialogueSplitCustomRoles(t *testing.T) {
+	withAudioDialogueDriver(t, &audioDialogueDriver{})
+
+	setups := defaultSetups()
+	setups["audio"]["dialogue_split"] = true
+	setups["audio"]["left_speaker"] = "客服"
+	setups["audio"]["right_speaker"] = "用户"
+
+	res, _, err := maybeDispatchAudio(
+		t.Context(),
+		dao.DB,
+		utility.FileTypeAURAL,
+		"call.wav",
+		buildDialogueWAV(2),
+		map[string]any{"tenant_id": "t1"},
+		setups,
+	)
+	if err != nil {
+		t.Fatalf("maybeDispatchAudio: %v", err)
+	}
+	if len(res.JSON) == 0 {
+		t.Fatalf("JSON is empty, want labelled turns")
+	}
+	first, _ := res.JSON[0].ToMap()["text"].(string)
+	if first != "客服：您好请问有什么可以帮您" {
+		t.Errorf("first turn = %q, want the configured left role", first)
+	}
+}
+
+func TestMaybeDispatchAudioDialogueSplitFallsBackForMono(t *testing.T) {
+	withAudioDialogueDriver(t, &audioDialogueDriver{})
+
+	setups := defaultSetups()
+	setups["audio"]["dialogue_split"] = true
+
+	res, _, err := maybeDispatchAudio(
+		t.Context(),
+		dao.DB,
+		utility.FileTypeAURAL,
+		"call.wav",
+		buildDialogueWAV(1),
+		map[string]any{"tenant_id": "t1"},
+		setups,
+	)
+	if err != nil {
+		t.Fatalf("maybeDispatchAudio: %v", err)
+	}
+	// A mono recording cannot be split, so the whole-file transcription is the
+	// right answer: one item, no speaker labels, nothing lost.
+	if len(res.JSON) != 1 {
+		t.Fatalf("JSON len = %d, want 1 (whole-file fallback)", len(res.JSON))
+	}
+	text, _ := res.JSON[0].ToMap()["text"].(string)
+	if !strings.Contains(text, "请问有什么可以帮您") {
+		t.Errorf("fallback text = %q, want the whole transcript", text)
+	}
+}
+
+func TestMaybeDispatchAudioDialogueSplitToleratesMutedChannel(t *testing.T) {
+	withAudioDialogueDriver(t, &audioDialogueDriver{silentRight: true})
+
+	setups := defaultSetups()
+	setups["audio"]["dialogue_split"] = true
+
+	res, _, err := maybeDispatchAudio(
+		t.Context(),
+		dao.DB,
+		utility.FileTypeAURAL,
+		"call.wav",
+		buildDialogueWAV(2),
+		map[string]any{"tenant_id": "t1"},
+		setups,
+	)
+	if err != nil {
+		t.Fatalf("maybeDispatchAudio: %v", err)
+	}
+	if len(res.JSON) != 2 {
+		t.Fatalf("JSON len = %d, want 2 turns from the left channel alone", len(res.JSON))
+	}
+	first, _ := res.JSON[0].ToMap()["text"].(string)
+	if first != "坐席：您好请问有什么可以帮您" {
+		t.Errorf("first turn = %q, want the only speaker's turns", first)
+	}
+}
+
+func TestMaybeDispatchAudioDialogueSplitDisabledByDefault(t *testing.T) {
+	withAudioDialogueDriver(t, &audioDialogueDriver{})
+
+	// No dialogue_split key at all: the historical whole-file transcription,
+	// one item, no labels.
+	res, _, err := maybeDispatchAudio(
+		t.Context(),
+		dao.DB,
+		utility.FileTypeAURAL,
+		"call.wav",
+		buildDialogueWAV(2),
+		map[string]any{"tenant_id": "t1"},
+		defaultSetups(),
+	)
+	if err != nil {
+		t.Fatalf("maybeDispatchAudio: %v", err)
+	}
+	if len(res.JSON) != 1 {
+		t.Fatalf("JSON len = %d, want 1", len(res.JSON))
+	}
+	if text, _ := res.JSON[0].ToMap()["text"].(string); strings.Contains(text, "坐席：") {
+		t.Errorf("text = %q, want no speaker labels when the switch is off", text)
+	}
+}
+
+func TestAudioDialogueSetup(t *testing.T) {
+	cases := []struct {
+		name    string
+		setup   schema.ParserSetup
+		enabled bool
+		left    string
+		right   string
+	}{
+		{
+			name:    "absent",
+			setup:   schema.ParserSetup{},
+			enabled: false,
+			left:    "坐席",
+			right:   "客户",
+		},
+		{
+			name:    "explicitly off",
+			setup:   schema.ParserSetup{"dialogue_split": false},
+			enabled: false,
+			left:    "坐席",
+			right:   "客户",
+		},
+		{
+			name:    "enabled with custom roles",
+			setup:   schema.ParserSetup{"dialogue_split": true, "left_speaker": "客服", "right_speaker": "  "},
+			enabled: true,
+			left:    "客服",
+			right:   "客户",
+		},
+		{
+			name:    "string flag from a hand-written payload",
+			setup:   schema.ParserSetup{"dialogue_split": "true"},
+			enabled: true,
+			left:    "坐席",
+			right:   "客户",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := audioDialogueSetup(tc.setup)
+			if got.enabled != tc.enabled {
+				t.Errorf("enabled = %v, want %v", got.enabled, tc.enabled)
+			}
+			if got.leftRole != tc.left {
+				t.Errorf("leftRole = %q, want %q", got.leftRole, tc.left)
+			}
+			if got.rightRole != tc.right {
+				t.Errorf("rightRole = %q, want %q", got.rightRole, tc.right)
+			}
+		})
+	}
 }

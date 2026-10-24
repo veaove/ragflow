@@ -2644,6 +2644,13 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       imageOcrTip:
         '从上传的图片中本地提取文字。视觉增强独立于该开关，为图片补充描述。',
       imageTextSourceRequired: '图片需要文本来源，请保留 OCR 或视觉增强。',
+      audioDialogueSplit: '双轨转写',
+      audioDialogueSplitTip:
+        '录音为立体声双轨（左右声道各一路说话人）时，按声道分别转写并按时间轴合并为问答轮次。单声道或压缩格式音频仍按整段转写，不会丢失内容。',
+      audioLeftSpeaker: '左声道角色',
+      audioLeftSpeakerTip: '左声道说话人在转写结果中的称呼。',
+      audioRightSpeaker: '右声道角色',
+      audioRightSpeakerTip: '右声道说话人在转写结果中的称呼。',
       visionEnhancementPromptTip:
         '自定义视觉模型的指令。留空则使用内置提示词。',
       enableVisionEnhancement: '启用视觉增强',

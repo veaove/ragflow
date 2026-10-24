@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -1404,5 +1405,119 @@ func TestAliyunTranscribeAudioExplainsDurationLimit(t *testing.T) {
 	var statusErr *APIStatusError
 	if errors.As(err, &statusErr) {
 		t.Fatalf("error = %v, want an actionable error rather than a bare status", err)
+	}
+}
+
+// TestAliyunASRResponseSentences pins the two response shapes that carry
+// per-sentence timings: the single "sentence" object (what the Qwen ASR
+// multimodal endpoint answers with) and the "sentences" array. Both must
+// surface as ASRSentences; a response with neither keeps the historical
+// text-only contract.
+func TestAliyunASRResponseSentences(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want []ASRSentence
+	}{
+		{
+			name: "single sentence object",
+			body: `{"output":{"text":"您好","sentence":{"text":"您好","begin_time":100,"end_time":900}}}`,
+			want: []ASRSentence{{BeginMS: 100, EndMS: 900, Text: "您好"}},
+		},
+		{
+			name: "sentences array",
+			body: `{"output":{"sentences":[{"text":"第一句","begin_time":0,"end_time":800},{"text":"第二句","begin_time":2000,"end_time":2600}]}}`,
+			want: []ASRSentence{
+				{BeginMS: 0, EndMS: 800, Text: "第一句"},
+				{BeginMS: 2000, EndMS: 2600, Text: "第二句"},
+			},
+		},
+		{
+			name: "both shapes concatenate",
+			body: `{"output":{"sentence":{"text":"整段","begin_time":0,"end_time":100},"sentences":[{"text":"分句","begin_time":500,"end_time":600}]}}`,
+			want: []ASRSentence{
+				{BeginMS: 500, EndMS: 600, Text: "分句"},
+				{BeginMS: 0, EndMS: 100, Text: "整段"},
+			},
+		},
+		{
+			name: "no timings",
+			body: `{"output":{"text":"只有文本"}}`,
+			want: nil,
+		},
+		{
+			name: "blank sentence text is skipped",
+			body: `{"output":{"sentences":[{"text":"  ","begin_time":0,"end_time":10}]}}`,
+			want: nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var parsed aliyunASRResponse
+			if err := json.Unmarshal([]byte(tc.body), &parsed); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			got := parsed.sentences()
+			if len(got) != len(tc.want) {
+				t.Fatalf("sentences() = %+v, want %+v", got, tc.want)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Errorf("sentence %d = %+v, want %+v", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestAliyunTranscribeAudioShiftsSentenceTimingsOntoTimeline pins the segment
+// offset: a WAV longer than the per-request cap is cut into 120s segments, and
+// each segment's timings are relative to that segment, so they must be shifted
+// onto the recording's timeline before a caller can interleave two channel
+// transcripts.
+func TestAliyunTranscribeAudioShiftsSentenceTimingsOntoTimeline(t *testing.T) {
+	withSSRFBypass(t)
+	var mu sync.Mutex
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requests++
+		index := requests
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		// Segment-relative timings: every segment reports the same window.
+		_, _ = fmt.Fprintf(w,
+			`{"output":{"text":"seg-%d","sentence":{"text":"seg-%d","begin_time":1000,"end_time":2000}},"request_id":"req-%d"}`,
+			index, index, index)
+	}))
+	defer server.Close()
+
+	model := NewAliyunModel(
+		map[string]string{"default": server.URL},
+		URLSuffix{ASR: aliyunASRTestSuffix},
+	)
+	apiKey := "test-key"
+	modelName := "qwen-audio-3.0-asr-flash"
+	// 600 seconds at a 1Hz sample rate: the splitter cuts at 120s (5 segments).
+	file := writeAliyunASRTestFile(t, "long.wav", buildTestWAV(1, 1, 600))
+
+	response, err := model.TranscribeAudio(t.Context(), &modelName, &file, &APIConfig{ApiKey: &apiKey}, nil, nil)
+	if err != nil {
+		t.Fatalf("TranscribeAudio: %v", err)
+	}
+	if len(response.Sentences) != 5 {
+		t.Fatalf("Sentences = %d, want 5 (one per segment)", len(response.Sentences))
+	}
+	for i, sentence := range response.Sentences {
+		wantBegin := int64(1000 + i*aliyunASRSegmentSeconds*1000)
+		if sentence.BeginMS != wantBegin {
+			t.Errorf("sentence %d BeginMS = %d, want %d (segment offset)", i, sentence.BeginMS, wantBegin)
+		}
+		if sentence.EndMS != wantBegin+1000 {
+			t.Errorf("sentence %d EndMS = %d, want %d", i, sentence.EndMS, wantBegin+1000)
+		}
+		if sentence.Text != fmt.Sprintf("seg-%d", i+1) {
+			t.Errorf("sentence %d Text = %q, want seg-%d", i, sentence.Text, i+1)
+		}
 	}
 }

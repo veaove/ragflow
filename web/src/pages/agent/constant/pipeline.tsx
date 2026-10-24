@@ -237,6 +237,11 @@ export const initialParserValues = {
       fileFormat: FileType.Audio,
       output_format: AudioOutputFormat.Text,
       vlm: { llm_id: '' },
+      // Dual-track transcription is opt-in: the backend only splits a stereo
+      // WAV, and every other shape is transcribed whole.
+      dialogue_split: false,
+      left_speaker: '坐席',
+      right_speaker: '客户',
     },
   ],
 };

@@ -124,8 +124,20 @@ type RerankResponse struct {
 	Data []RerankResult `json:"data"`
 }
 
+// ASRSentence is one recognised sentence with the timing the provider reported
+// for it. Callers use it to interleave two channel transcripts of a dual-track
+// recording (agent vs customer) or to anchor text in the source audio.
+type ASRSentence struct {
+	BeginMS int64  `json:"begin_time"`
+	EndMS   int64  `json:"end_time"`
+	Text    string `json:"text"`
+}
+
 type ASRResponse struct {
 	Text string `json:"text"`
+	// Sentences carries the per-sentence timings when the provider reports
+	// them; empty when the model answered with one unstructured transcript.
+	Sentences []ASRSentence `json:"sentences,omitempty"`
 }
 
 type TTSResponse struct {

@@ -3062,6 +3062,13 @@ Best for: Documents with flowing, contextually connected content — such as boo
         'Extract text from uploaded images locally. Vision enhancement adds descriptions independently of this switch.',
       imageTextSourceRequired:
         'Images need a text source: keep OCR or vision enhancement on.',
+      audioDialogueSplit: 'Dual-track transcription',
+      audioDialogueSplitTip:
+        'For stereo dual-track recordings (one speaker per channel), transcribe each channel and merge the results by timeline into question-and-answer turns. Mono or compressed audio is still transcribed whole, so no content is lost.',
+      audioLeftSpeaker: 'Left channel role',
+      audioLeftSpeakerTip: 'How the left-channel speaker is named in the transcript.',
+      audioRightSpeaker: 'Right channel role',
+      audioRightSpeakerTip: 'How the right-channel speaker is named in the transcript.',
       visionEnhancementPromptTip:
         'Custom instruction for the vision model. Leave empty to use the built-in prompt.',
       enableChildrenDelimiters: 'Child chunk are used for retrieval',
