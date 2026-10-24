@@ -4103,6 +4103,19 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
           disk_size_gb: '磁盘（GB）',
         },
 
+        // 只有说明性占位文案需要翻译，示例值（IP、python3、URL）保持原样。
+        fieldPlaceholders: {
+          self_managed: {
+            api_token:
+              '可选；默认取环境变量 SANDBOX_EXECUTOR_MANAGER_API_TOKEN',
+          },
+          ssh: {
+            password: '使用私钥时可不填',
+            private_key: '粘贴 PEM 内容，或填写本地文件路径',
+            passphrase: '可选',
+          },
+        },
+
         testConnectionResultModal: {
           title: '连接测试结果',
           testing: '正在测试与沙箱提供方的连接…',

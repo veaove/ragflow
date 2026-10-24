@@ -4604,6 +4604,18 @@ Important structured information may include: names, dates, locations, events, k
           disk_size_gb: 'Disk Size (GB)',
         },
 
+        fieldPlaceholders: {
+          self_managed: {
+            api_token:
+              'Optional; defaults to SANDBOX_EXECUTOR_MANAGER_API_TOKEN',
+          },
+          ssh: {
+            password: 'Optional when using a private key',
+            private_key: 'Paste PEM content or enter a local file path',
+            passphrase: 'Optional',
+          },
+        },
+
         testConnectionResultModal: {
           title: 'Connection test result',
           testing: 'Testing connection to sandbox provider...',
