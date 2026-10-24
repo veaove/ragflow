@@ -419,15 +419,31 @@ func (dao *KnowledgebaseDAO) AtomicIncreaseDocNumByID(ctx context.Context, db *g
 		}).Error
 }
 
+// decrementExpr subtracts n from a denormalised counter column, flooring the
+// result at zero.
+//
+// The counters (doc_num / chunk_num / token_num) are maintained by increments
+// and decrements instead of by counting rows, so a decrement can describe more
+// items than the counter still holds — a sync retried after a partial failure, a
+// batch deleted twice, a connector mapping that outlives its rows. A bare
+// "col - ?" then drives the counter negative, and since the overview card sums
+// per-dataset counts, one bad dataset turns the whole total negative (observed
+// in production: doc_num = -14453 against 7440 real documents).
+//
+// column is always one of this package's own identifiers, never user input.
+func decrementExpr(column string, n any) any {
+	return gorm.Expr("CASE WHEN "+column+" >= ? THEN "+column+" - ? ELSE 0 END", n, n)
+}
+
 // DecreaseDocumentNum decreases document, chunk, and token counts
 // This matches the Python decrease_document_num_in_delete method
 func (dao *KnowledgebaseDAO) DecreaseDocumentNum(ctx context.Context, db *gorm.DB, kbID string, docNum, chunkNum, tokenNum int64) error {
 	return db.WithContext(ctx).Model(&entity.Knowledgebase{}).
 		Where("id = ?", kbID).
 		Updates(map[string]interface{}{
-			"doc_num":   db.Raw("doc_num - ?", docNum),
-			"chunk_num": db.Raw("chunk_num - ?", chunkNum),
-			"token_num": db.Raw("token_num - ?", tokenNum),
+			"doc_num":   decrementExpr("doc_num", docNum),
+			"chunk_num": decrementExpr("chunk_num", chunkNum),
+			"token_num": decrementExpr("token_num", tokenNum),
 		}).Error
 }
 

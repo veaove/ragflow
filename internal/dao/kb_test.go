@@ -126,6 +126,37 @@ func TestKnowledgebaseDAO_DecreaseDocumentNum_ZeroDecrement(t *testing.T) {
 	}
 }
 
+// TestKnowledgebaseDAO_DecreaseDocumentNum_FloorsAtZero pins the floor: a
+// decrement larger than the stored counter must clamp to 0 rather than go
+// negative.
+//
+// The counters are denormalised, so a decrement can describe more items than
+// the counter still holds (sync retried after a partial failure, batch deleted
+// twice). Production hit exactly this: one dataset carried doc_num = -14453
+// against 7440 real documents, and because the overview card sums per-dataset
+// counts, the displayed total became -14400.
+func TestKnowledgebaseDAO_DecreaseDocumentNum_FloorsAtZero(t *testing.T) {
+	db := setupKBTestDB(t)
+	pushDB(t, db)
+	dao := NewKnowledgebaseDAO()
+
+	testKnowledgebase(t, db, "kb-floor", 2, 10, 5)
+
+	ctx := t.Context()
+	if err := dao.DecreaseDocumentNum(ctx, db, "kb-floor", 9, 99, 99); err != nil {
+		t.Fatalf("DecreaseDocumentNum failed: %v", err)
+	}
+
+	kb, err := dao.GetByID(ctx, db, "kb-floor")
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if kb.DocNum != 0 || kb.TokenNum != 0 || kb.ChunkNum != 0 {
+		t.Fatalf("counters must floor at 0, got doc=%d token=%d chunk=%d",
+			kb.DocNum, kb.TokenNum, kb.ChunkNum)
+	}
+}
+
 // knowledgebaseQualifiedOrderExpressions are clause fragments rather than
 // column names. ListByResourceIDs prefixes the value with "knowledgebase.", so
 // these stand in for the `orderby` query parameter that reaches it from the

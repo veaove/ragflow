@@ -350,9 +350,9 @@ func (dao *ConnectorDAO) RebuildConnector(ctx context.Context, db *gorm.DB, conn
 			if err := tx.WithContext(ctx).Model(&entity.Knowledgebase{}).
 				Where("id = ?", kbID).
 				Updates(map[string]interface{}{
-					"doc_num":   gorm.Expr("doc_num - ?", len(docIDs)),
-					"token_num": gorm.Expr("token_num - ?", tokenNum),
-					"chunk_num": gorm.Expr("chunk_num - ?", chunkNum),
+					"doc_num":   decrementExpr("doc_num", len(docIDs)),
+					"token_num": decrementExpr("token_num", tokenNum),
+					"chunk_num": decrementExpr("chunk_num", chunkNum),
 				}).Error; err != nil {
 				return err
 			}
