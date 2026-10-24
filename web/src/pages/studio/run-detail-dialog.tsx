@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/table';
 import {
   IAgentRunNode,
+  useAgentTitleMap,
   useFetchRunDetail,
   useFetchRunNodes,
 } from '@/hooks/use-run-request';
@@ -53,11 +54,16 @@ export function RunDetailDialog({
   const { t } = useTranslation();
   const { detail, loading } = useFetchRunDetail(runId);
   const { nodes, loading: nodesLoading } = useFetchRunNodes(runId);
+  const agentTitleMap = useAgentTitleMap();
 
   const summary: { label: string; value: string; tone?: string }[] = [
     {
       label: t('studio.colApp'),
-      value: detail?.canvas_title || detail?.canvas_id || '-',
+      value:
+        detail?.canvas_title ||
+        agentTitleMap[detail?.canvas_id ?? ''] ||
+        detail?.canvas_id ||
+        '-',
     },
     {
       label: t('studio.colStatus'),

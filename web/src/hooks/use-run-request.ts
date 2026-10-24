@@ -154,3 +154,34 @@ export function useFetchRunNodes(runId?: string) {
 
   return { nodes: data ?? [], loading };
 }
+
+/**
+ * canvas_id → 应用名 映射。
+ *
+ * 运行日志接口已带 canvas_title（后端 LEFT JOIN user_canvas），但该改动在
+ * 部分部署里还没生效，页面会退化成一列 UUID。这里用应用列表兜底：
+ * canvas_title 有值时优先用它，没有才查这张表。
+ */
+export function useAgentTitleMap() {
+  const { data } = useQuery<Record<string, string>>({
+    queryKey: ['agent-title-map'],
+    gcTime: 0,
+    queryFn: async () => {
+      const { data } = await agentService.listAgents(
+        { params: { page: 1, page_size: 200 } },
+        true,
+      );
+      const payload = data?.data as
+        | { canvas?: { id?: string; title?: string }[] }
+        | undefined;
+      const list = payload?.canvas ?? [];
+      return Object.fromEntries(
+        list
+          .filter((item) => item.id)
+          .map((item) => [item.id as string, item.title ?? '']),
+      );
+    },
+  });
+
+  return data ?? {};
+}

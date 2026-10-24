@@ -27,6 +27,7 @@ import {
   RUN_STATUS_OPTIONS,
   RUN_TRIGGER_OPTIONS,
   RunSortKey,
+  useAgentTitleMap,
   useFetchRuns,
 } from '@/hooks/use-run-request';
 import { useDebounce } from 'ahooks';
@@ -61,6 +62,8 @@ export default function StudioRunsPage() {
   const [searchInput, setSearchInput] = useState(keywords);
   // 点行查看详情：存 run id，空值即关闭弹窗。
   const [selectedRunId, setSelectedRunId] = useState<string>();
+  // 后端 canvas_title 未就绪时用它把 canvas_id 换成应用名。
+  const agentTitleMap = useAgentTitleMap();
   const debouncedKeywords = useDebounce(searchInput, { wait: 400 });
 
   const update = (mutate: (params: URLSearchParams) => void) => {
@@ -246,7 +249,9 @@ export default function StudioRunsPage() {
                 >
                   <TableCell className="font-mono text-xs">{run.id}</TableCell>
                   <TableCell className="text-xs">
-                    {run.canvas_title || run.canvas_id}
+                    {run.canvas_title ||
+                      agentTitleMap[run.canvas_id] ||
+                      run.canvas_id}
                   </TableCell>
                   <TableCell className="text-xs">
                     {t(`studio.runTrigger.${run.trigger_type}`)}
