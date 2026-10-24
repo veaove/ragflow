@@ -95,6 +95,25 @@ function cacheTtsUrl(content: string, url: string) {
   }
 }
 
+/**
+ * base64 -> Blob。
+ *
+ * audio_binary 动辄几百 KB，走 `data:` URL 会把整段 base64 再塞进 src，
+ * 部分浏览器会直接判定为不可播放；转成 blob URL 更稳，也能被缓存复用。
+ */
+function base64ToBlob(base64: string, mime: string): Blob | null {
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mime });
+  } catch {
+    return null;
+  }
+}
+
 export const useSpeech = (content: string, audioBinary?: string) => {
   const { read } = useSpeechWithSse();
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -140,18 +159,6 @@ export const useSpeech = (content: string, audioBinary?: string) => {
   );
 
   const speech = useCallback(async () => {
-    // 消息自带的音频优先。audio_binary 是 base64 MP3
-    // （chat_pipeline.synthesizeTTS 固定 Format:"mp3"）。
-    if (audioBinary) {
-      try {
-        await playUrl(`data:audio/mp3;base64,${audioBinary}`);
-      } catch (error) {
-        console.warn('tts play failed (audioBinary)', error);
-        setIsPlaying(false);
-      }
-      return;
-    }
-
     // 命中缓存：直接播，不再请求（第二次点同一段回答时走这里）。
     const cached = ttsUrlCache.get(content);
     if (cached) {
@@ -159,6 +166,25 @@ export const useSpeech = (content: string, audioBinary?: string) => {
         await playUrl(cached);
       } catch (error) {
         console.warn('tts play failed (cached)', error);
+        setIsPlaying(false);
+      }
+      return;
+    }
+
+    // 消息自带的音频次之。audio_binary 是 base64 MP3
+    // （chat_pipeline.synthesizeTTS 固定 Format:"mp3"）。
+    if (audioBinary) {
+      const blob = base64ToBlob(audioBinary, 'audio/mp3');
+      if (!blob) {
+        console.warn('tts audioBinary is not valid base64');
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      cacheTtsUrl(content, url);
+      try {
+        await playUrl(url);
+      } catch (error) {
+        console.warn('tts play failed (audioBinary)', error);
         setIsPlaying(false);
       }
       return;
