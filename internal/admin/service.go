@@ -1469,8 +1469,13 @@ type TenantListItem struct {
 
 // ListTenants returns tenants with member / knowledge-base / agent counts.
 //
-// 计数口径：全部按 tenant_id 归属统计，不按创建人（一个租户的资源可能由
-// 多个成员创建，但归租户所有）。knowledgebase 只统计 status='1' 的有效库。
+// 计数口径：knowledgebase 只统计 status='1' 的有效库；user_tenant 只统计
+// status='1' 的有效成员。
+//
+// user_canvas 没有 tenant_id 列：租户 id 就是 owner 的 user id（见
+// dao/analytics.go 里同样拿 tenantID 去 join user_canvas.user_id 的写法），
+// 所以智能体数按 c.user_id = t.id 统计。写成 c.tenant_id = t.id 会在 MySQL
+// 上报 Error 1054，整个租户列表页直接 500。
 func (s *Service) ListTenants(ctx context.Context, pageIndex, pageSize int, keyword, status string) ([]TenantListItem, int64, error) {
 	base := dao.DB.WithContext(ctx).Table("tenant AS t")
 	if keyword != "" {
@@ -1491,7 +1496,7 @@ func (s *Service) ListTenants(ctx context.Context, pageIndex, pageSize int, keyw
 			t.name,
 			(SELECT COUNT(*) FROM user_tenant ut WHERE ut.tenant_id = t.id AND ut.status = '1') AS member_count,
 			(SELECT COUNT(*) FROM knowledgebase k WHERE k.tenant_id = t.id AND k.status = '1') AS kb_count,
-			(SELECT COUNT(*) FROM user_canvas c WHERE c.tenant_id = t.id) AS agent_count,
+			(SELECT COUNT(*) FROM user_canvas c WHERE c.user_id = t.id) AS agent_count,
 			t.status,
 			IFNULL(t.create_time, 0) AS create_date`).
 		Order("t.create_date DESC").
