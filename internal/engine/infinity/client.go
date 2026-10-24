@@ -428,6 +428,28 @@ type Engine struct {
 	docMetaMappingFileName string
 }
 
+// defaultInfinityHealthTimeout bounds how long startup waits for Infinity.
+//
+// Infinity replays its write-ahead log on every boot, and after a bulk import
+// that log can be hundreds of megabytes: on the 2-core production host a 422MB
+// log took over 20 minutes to replay. The previous hard-coded 120s ceiling
+// guaranteed the API gave up and was restarted by systemd every couple of
+// minutes, burning the CPU Infinity needed for the replay itself — one day
+// accumulated 107 API starts. 15 minutes covers a replay of that size; raise
+// RAGFLOW_INFINITY_HEALTH_TIMEOUT_SECS when the data volume grows.
+const defaultInfinityHealthTimeout = 15 * time.Minute
+
+// infinityHealthTimeout returns the startup wait for Infinity, overridable via
+// RAGFLOW_INFINITY_HEALTH_TIMEOUT_SECS (seconds).
+func infinityHealthTimeout() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("RAGFLOW_INFINITY_HEALTH_TIMEOUT_SECS")); raw != "" {
+		if secs, err := strconv.Atoi(raw); err == nil && secs > 0 {
+			return time.Duration(secs) * time.Second
+		}
+	}
+	return defaultInfinityHealthTimeout
+}
+
 // NewEngine creates an Infinity engine
 func NewEngine(ctx context.Context, infinityConfig config.InfinityConfig) (*Engine, error) {
 
@@ -453,7 +475,7 @@ func NewEngine(ctx context.Context, infinityConfig config.InfinityConfig) (*Engi
 	}
 
 	// Wait for Infinity to be healthy
-	if err = client.WaitForHealthy(ctx, 120*time.Second); err != nil {
+	if err = client.WaitForHealthy(ctx, infinityHealthTimeout()); err != nil {
 		return nil, fmt.Errorf("infinity not healthy: %w", err)
 	}
 

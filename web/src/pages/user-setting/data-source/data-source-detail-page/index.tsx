@@ -88,23 +88,6 @@ const SourceDetailPage = () => {
         },
       },
       {
-        label: t('setting.dataSourceRefreshFreq'),
-        name: 'refresh_freq',
-        type: FormFieldType.Number,
-        required: false,
-        render: (fieldProps: FormFieldConfig) => (
-          <Input
-            {...fieldProps}
-            type={FormFieldType.Number}
-            suffix={
-              <span className="px-2 text-text-secondary italic">
-                {t('setting.minutes')}
-              </span>
-            }
-          />
-        ),
-      },
-      {
         label: t('setting.dataSourceTimeoutSecs'),
         name: 'timeout_secs',
         type: FormFieldType.Number,
