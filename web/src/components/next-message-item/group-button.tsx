@@ -33,6 +33,7 @@ import {
   DislikeOutlined,
   LikeFilled,
   LikeOutlined,
+  LoadingOutlined,
   PauseCircleOutlined,
   SoundOutlined,
   SyncOutlined,
@@ -92,7 +93,10 @@ export const AssistantGroupButton = ({
     showModal: showPromptModal,
   } = useSetModalState();
   const { t } = useTranslation();
-  const { handleRead, ref, isPlaying } = useSpeech(content, audioBinary);
+  const { handleRead, ref, isPlaying, isLoading } = useSpeech(
+    content,
+    audioBinary,
+  );
 
   // 抖音式点赞：点一次点赞，再点一次取消。
   // 先本地翻转（立刻看到高亮），请求失败再翻回去。
@@ -157,7 +161,13 @@ export const AssistantGroupButton = ({
             <Tooltip>
               <TooltipTrigger asChild>
                 <span>
-                  {isPlaying ? <PauseCircleOutlined /> : <SoundOutlined />}
+                  {isLoading ? (
+                    <LoadingOutlined spin />
+                  ) : isPlaying ? (
+                    <PauseCircleOutlined />
+                  ) : (
+                    <SoundOutlined />
+                  )}
                 </span>
               </TooltipTrigger>
               <TooltipContent>{t('chat.read')}</TooltipContent>

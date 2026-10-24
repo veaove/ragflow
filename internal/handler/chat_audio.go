@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -37,6 +38,9 @@ import (
 const (
 	// chatAudioSpeechMaxBodyBytes caps the JSON body of the TTS endpoint.
 	chatAudioSpeechMaxBodyBytes int64 = 1 << 20 // 1 MiB
+	// chatAudioMaxConcurrentSegments 限制分段并发的并发数。取 3 是权衡：
+	// 再高容易撞上游限流导致合成失败（用户已遇到过）。
+	chatAudioMaxConcurrentSegments = 3
 	// chatAudioUploadMaxBytes caps the multipart body of the transcription endpoint.
 	chatAudioUploadMaxBytes int64 = 64 << 20 // 64 MiB
 )
@@ -100,46 +104,88 @@ func (h *ChatHandler) ChatAudioSpeech(c *gin.Context) {
 	// WAV segments cannot be concatenated byte-wise (each carries its own
 	// RIFF header), so they are accumulated as raw PCM and re-wrapped into
 	// a single WAV before being written.
+	// 分段并行合成。
+	//
+	// 原来是串行 for：N 段就要等 N 次 API 往返，一个两三百字的回答经常要
+	// 三四秒才出声（用户反馈「点播放响应特别慢」）。改成限流并发后总耗时
+	// 约等于最慢那一段，而不是所有段之和。
+	//
+	// 代价是首字节变晚（要等本批完成才写），但客服语音都是短句，可接受。
+	// 并发上限取 3：再高容易撞上游限流，反而更容易出现合成失败。
+	type segResult struct {
+		audio     []byte
+		mediaType string
+		err       error
+	}
+	// 收集有效分段（保持原顺序，跳过空白段）
+	validIdx := make([]int, 0, len(segments))
+	validSeg := make([]string, 0, len(segments))
+	for i, seg := range segments {
+		if strings.TrimSpace(seg) != "" {
+			validIdx = append(validIdx, i)
+			validSeg = append(validSeg, strings.TrimSpace(seg))
+		}
+	}
+
+	results := make([]segResult, len(validSeg))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, chatAudioMaxConcurrentSegments)
+	for i, seg := range validSeg {
+		wg.Add(1)
+		go func(i int, seg string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			resp, err := ttsModel.Speech(ctx, &seg, &modelModule.TTSConfig{Format: "mp3"}, nil)
+			if err != nil {
+				results[i] = segResult{err: err}
+				return
+			}
+			if resp == nil || len(resp.Audio) == 0 {
+				return
+			}
+			mt := resp.MediaType
+			if mt == "" {
+				mt = "audio/mpeg"
+			}
+			results[i] = segResult{audio: resp.Audio, mediaType: mt}
+		}(i, seg)
+	}
+	wg.Wait()
+
 	var wavFmt *wavFormat
 	var wavPCM []byte
 	var firstSynthErr error
-	for i, seg := range segments {
-		seg = strings.TrimSpace(seg)
-		if seg == "" {
-			continue
-		}
-		resp, err := ttsModel.Speech(ctx, &seg, &modelModule.TTSConfig{Format: "mp3"}, nil)
-		if err != nil {
+	for i, res := range results {
+		if res.err != nil {
 			if firstSynthErr == nil {
-				firstSynthErr = err
+				firstSynthErr = res.err
 			}
 			common.Warn("chat TTS synthesis failed",
-				zap.Int("segmentIndex", i),
-				zap.Int("segmentLen", len(seg)),
-				zap.Error(err))
+				zap.Int("segmentIndex", validIdx[i]),
+				zap.Int("segmentLen", len(validSeg[i])),
+				zap.Error(res.err))
 			continue
 		}
-		if resp == nil || len(resp.Audio) == 0 {
+		if len(res.audio) == 0 {
 			continue
 		}
-		segMediaType := resp.MediaType
-		if segMediaType == "" {
-			segMediaType = "audio/mpeg"
-		}
+		segMediaType := res.mediaType
 		if mediaType == "" {
 			mediaType = segMediaType
 		} else if segMediaType != mediaType {
 			common.Warn("chat TTS segment media type differs from the first segment, skipping",
-				zap.Int("segmentIndex", i),
+				zap.Int("segmentIndex", validIdx[i]),
 				zap.String("segmentMediaType", segMediaType),
 				zap.String("mediaType", mediaType))
 			continue
 		}
 		if segMediaType == "audio/wav" {
-			format, pcm, werr := splitWAV(resp.Audio)
+			format, pcm, werr := splitWAV(res.audio)
 			if werr != nil {
 				common.Warn("chat TTS wav segment unparsable",
-					zap.Int("segmentIndex", i),
+					zap.Int("segmentIndex", validIdx[i]),
 					zap.Error(werr))
 				continue
 			}
@@ -147,7 +193,7 @@ func (h *ChatHandler) ChatAudioSpeech(c *gin.Context) {
 				wavFmt = format
 			} else if !bytes.Equal(wavFmt.fmtChunk, format.fmtChunk) {
 				common.Warn("chat TTS wav segment format differs from the first segment, skipping",
-					zap.Int("segmentIndex", i))
+					zap.Int("segmentIndex", validIdx[i]))
 				continue
 			}
 			wavPCM = append(wavPCM, pcm...)
@@ -159,7 +205,7 @@ func (h *ChatHandler) ChatAudioSpeech(c *gin.Context) {
 			writeAudioHeaders(mediaType)
 			headerWritten = true
 		}
-		if _, werr := c.Writer.Write(resp.Audio); werr != nil {
+		if _, werr := c.Writer.Write(res.audio); werr != nil {
 			return
 		}
 		c.Writer.Flush()

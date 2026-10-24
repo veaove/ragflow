@@ -428,8 +428,11 @@ export const useSpeechWithSse = (url: string = api.chatsTts) => {
       });
       try {
         const res = await response.clone().json();
+        // 合成失败时给一句友好提示，不再把后端的英文技术报错
+        // （如 "TTS synthesis failed for model xxx (provider)"）
+        // 直接以红色 error 弹给用户 —— 那是运维信息，不是用户该看的。
         if (res?.code !== 0) {
-          message.error(res?.message);
+          message.warning('语音合成失败，请稍后重试');
         }
       } catch {
         // Swallow errors silently

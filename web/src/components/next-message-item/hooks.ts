@@ -69,10 +69,38 @@ export const useRemoveMessage = (
   return { onRemoveMessage, loading };
 };
 
+/**
+ * TTS 音频缓存：content -> blob URL。
+ *
+ * 历史消息没有 audio_binary，每次点播放都要重新请求 + 后端重新合成
+ * （用户反馈「点播放响应特别慢，过几秒才有响应」）。同一段回答第二次
+ * 播放时直接命中缓存，同步 play，既有声音也立刻出声。
+ *
+ * 上限 50 条，超出按插入顺序淘汰最早的（Map 保持插入序）。
+ */
+const ttsUrlCache = new Map<string, string>();
+const ttsCacheLimit = 50;
+
+function cacheTtsUrl(content: string, url: string) {
+  if (ttsUrlCache.has(content)) {
+    // 先删再设，刷新插入顺序
+    ttsUrlCache.delete(content);
+  }
+  ttsUrlCache.set(content, url);
+  while (ttsUrlCache.size > ttsCacheLimit) {
+    const oldest = ttsUrlCache.keys().next().value;
+    if (oldest === undefined) break;
+    const stale = ttsUrlCache.get(oldest);
+    if (stale) URL.revokeObjectURL(stale);
+    ttsUrlCache.delete(oldest);
+  }
+}
+
 export const useSpeech = (content: string, audioBinary?: string) => {
   const ref = useRef<HTMLAudioElement>(null);
   const { read } = useSpeechWithSse();
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const objectUrlRef = useRef<string | null>(null);
 
   // 后端 TTS 返回的是 audio/wav（provider 决定的），而 MediaSource 不支持 WAV
@@ -104,23 +132,40 @@ export const useSpeech = (content: string, audioBinary?: string) => {
       return;
     }
 
-    // 回退：实时请求 TTS（历史消息没有 audio_binary 时）。
-    const response = await read({ text: content });
-    if (!response) return;
-    const blob = await response.blob();
-    if (blob.size === 0) return;
-    const url = URL.createObjectURL(blob);
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
+    // 命中缓存：同步播放，不再请求（第二次点同一段回答时走这里）。
+    const cached = ttsUrlCache.get(content);
+    if (cached) {
+      audio.src = cached;
+      try {
+        await audio.play();
+        setIsPlaying(true);
+      } catch (error) {
+        console.warn('tts play failed (cached)', error);
+        setIsPlaying(false);
+      }
+      return;
     }
-    objectUrlRef.current = url;
-    audio.src = url;
+
+    // 回退：实时请求 TTS（历史消息没有 audio_binary 时）。
+    // isLoading 让按钮显示 loading，避免用户以为点了没反应。
+    setIsLoading(true);
+    let response: Response | undefined;
     try {
+      response = await read({ text: content });
+      if (!response) return;
+      const blob = await response.blob();
+      if (blob.size === 0) return;
+      const url = URL.createObjectURL(blob);
+      cacheTtsUrl(content, url);
+      objectUrlRef.current = url;
+      audio.src = url;
       await audio.play();
       setIsPlaying(true);
     } catch (error) {
       console.warn('tts play failed', error);
       setIsPlaying(false);
+    } finally {
+      setIsLoading(false);
     }
   }, [read, content, audioBinary]);
 
@@ -169,5 +214,5 @@ export const useSpeech = (content: string, audioBinary?: string) => {
     audio.src = url;
   }, [audioBinary]);
 
-  return { ref, isPlaying, handleRead };
+  return { ref, isPlaying, isLoading, handleRead };
 };
