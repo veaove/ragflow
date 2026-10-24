@@ -8,6 +8,7 @@ import {
   LucideMonitor,
   LucideServerCrash,
   LucideSquareUserRound,
+  LucideBuilding2,
   LucideUserCog,
   LucideUserStar,
   LucideZap,
@@ -45,6 +46,11 @@ const AdminNavigationLayout = () => {
         path: Routes.AdminUserManagement,
         name: t('admin.userManagement'),
         icon: <LucideUserCog className="size-[1em]" />,
+      },
+      {
+        path: Routes.AdminTenants,
+        name: t('admin.tenantManagement'),
+        icon: <LucideBuilding2 className="size-[1em]" />,
       },
       {
         path: Routes.AdminSandboxSettings,

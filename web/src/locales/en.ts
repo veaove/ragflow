@@ -4348,6 +4348,7 @@ Important structured information may include: names, dates, locations, events, k
 
       serviceStatus: 'Service status',
       userManagement: 'User management',
+      tenantManagement: 'Tenant Management',
       sandboxSettings: 'Sandbox settings',
       registrationWhitelist: 'Registration whitelist',
       roles: 'Roles',

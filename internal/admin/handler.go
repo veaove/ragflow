@@ -1285,3 +1285,52 @@ func (h *Handler) GetHardwareInfo(c *gin.Context) {
 	}
 	common.SuccessWithData(c, hardwareInfo, "SUCCESS")
 }
+
+// ListTenants GET /admin/tenants
+// @Summary 平台租户列表（含成员/知识库/智能体数量）
+func (h *Handler) ListTenants(c *gin.Context) {
+	keyword := c.DefaultQuery("keyword", "")
+	status := c.DefaultQuery("status", "")
+
+	pageInt, err := common.ParseRequestIntPositive(c, c.Query("page"), "page", 1)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
+	pageSizeInt, err := common.ParseRequestIntPositive(c, c.Query("page_size"), "page_size", 10)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
+
+	list, total, err := h.service.ListTenants(c.Request.Context(), pageInt, pageSizeInt, keyword, status)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{"list": list, "total": total}, "List tenants")
+}
+
+// createTenantHTTPRequest creates a tenant bound to an existing user.
+type createTenantHTTPRequest struct {
+	Name string `json:"name" binding:"required"`
+	// 二选一：已知用户 id，或直接给邮箱（平台运营更常用后者）。
+	OwnerUserID string `json:"owner_user_id"`
+	OwnerEmail  string `json:"owner_email"`
+}
+
+// CreateTenant POST /admin/tenants
+// @Summary 新建租户并把指定用户设为管理员
+func (h *Handler) CreateTenant(c *gin.Context) {
+	var req createTenantHTTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
+	tenant, err := h.service.CreateTenant(c.Request.Context(), req.Name, req.OwnerUserID, req.OwnerEmail)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	common.SuccessWithData(c, tenant, "Create tenant")
+}

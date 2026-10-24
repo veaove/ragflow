@@ -39,6 +39,7 @@ import (
 	servicepkg "ragflow/internal/service"
 	"ragflow/internal/storage"
 	"regexp"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -1453,4 +1454,132 @@ func (s *Service) ListAllModels(pageIndex, pageSize int) ([]map[string]interface
 
 func (s *Service) GetModelByModelName(modelName string) (*modelModule.Model, error) {
 	return dao.GetModelProviderManager().GetModelByNameOrAlias(modelName), nil
+}
+
+// TenantListItem is one row of the platform tenant list.
+type TenantListItem struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	MemberCount int64  `json:"member_count"`
+	KbCount     int64  `json:"kb_count"`
+	AgentCount  int64  `json:"agent_count"`
+	Status      string `json:"status"`
+	CreateDate  int64  `json:"create_date"`
+}
+
+// ListTenants returns tenants with member / knowledge-base / agent counts.
+//
+// 计数口径：全部按 tenant_id 归属统计，不按创建人（一个租户的资源可能由
+// 多个成员创建，但归租户所有）。knowledgebase 只统计 status='1' 的有效库。
+func (s *Service) ListTenants(ctx context.Context, pageIndex, pageSize int, keyword, status string) ([]TenantListItem, int64, error) {
+	base := dao.DB.WithContext(ctx).Table("tenant AS t")
+	if keyword != "" {
+		base = base.Where("t.name LIKE ?", "%"+keyword+"%")
+	}
+	if status != "" {
+		base = base.Where("t.status = ?", status)
+	}
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	rows := make([]TenantListItem, 0, pageSize)
+	err := base.
+		Select(`t.id,
+			t.name,
+			(SELECT COUNT(*) FROM user_tenant ut WHERE ut.tenant_id = t.id AND ut.status = '1') AS member_count,
+			(SELECT COUNT(*) FROM knowledgebase k WHERE k.tenant_id = t.id AND k.status = '1') AS kb_count,
+			(SELECT COUNT(*) FROM user_canvas c WHERE c.tenant_id = t.id) AS agent_count,
+			t.status,
+			IFNULL(t.create_time, 0) AS create_date`).
+		Order("t.create_date DESC").
+		Offset((pageIndex - 1) * pageSize).
+		Limit(pageSize).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
+// CreateTenant creates a tenant owned by an existing user.
+//
+// 不自动创建用户：平台必须先有账号，再把它指定为这个租户的管理员。
+func (s *Service) CreateTenant(ctx context.Context, name, ownerUserID, ownerEmail string) (map[string]interface{}, error) {
+	name = strings.TrimSpace(name)
+	ownerUserID = strings.TrimSpace(ownerUserID)
+	ownerEmail = strings.TrimSpace(ownerEmail)
+	if name == "" {
+		return nil, fmt.Errorf("tenant name is required")
+	}
+	if len([]rune(name)) > 100 {
+		return nil, fmt.Errorf("tenant name must be at most 100 characters")
+	}
+	if ownerUserID == "" && ownerEmail == "" {
+		return nil, fmt.Errorf("owner user is required")
+	}
+
+	// 平台指定已有用户作为管理员：优先用 id，其次按邮箱查。
+	var owner entity.User
+	q := dao.DB.WithContext(ctx)
+	if ownerUserID != "" {
+		q = q.Where("id = ?", ownerUserID)
+	} else {
+		q = q.Where("email = ?", ownerEmail)
+	}
+	if err := q.First(&owner).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("owner user not found (email: %s)", ownerEmail)
+		}
+		return nil, err
+	}
+	ownerUserID = owner.ID
+
+	// 模型配置沿用平台已有租户的默认值：tenant 表的 llm_id / embd_id 等
+	// 都是 not null，新租户必须带上，否则后续检索和对话直接报错。
+	var tmpl entity.Tenant
+	if err := dao.DB.WithContext(ctx).Order("create_date ASC").First(&tmpl).Error; err != nil {
+		return nil, fmt.Errorf("no tenant template available: %w", err)
+	}
+
+	status := "1"
+	tenantID := common.GenerateUUID()
+	tenant := &entity.Tenant{
+		ID:        tenantID,
+		Name:      &name,
+		LLMID:     tmpl.LLMID,
+		EmbdID:    tmpl.EmbdID,
+		ASRID:     tmpl.ASRID,
+		Img2TxtID: tmpl.Img2TxtID,
+		RerankID:  tmpl.RerankID,
+		ParserIDs: tmpl.ParserIDs,
+		Credit:    512,
+		Status:    &status,
+	}
+
+	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(tenant).Error; err != nil {
+			return err
+		}
+		member := &entity.UserTenant{
+			ID:        common.GenerateUUID(),
+			UserID:    ownerUserID,
+			TenantID:  tenantID,
+			Role:      "owner",
+			InvitedBy: ownerUserID,
+			Status:    &status,
+		}
+		return tx.Create(member).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"id":          tenantID,
+		"name":        name,
+		"owner_email": owner.Email,
+	}, nil
 }

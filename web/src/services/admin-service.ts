@@ -187,6 +187,35 @@ export const logout = () => request.post<ResponseData<boolean>>(adminLogout);
 export const listUsers = () =>
   request.get<ResponseData<AdminService.ListUsersItem[]>>(adminListUsers, {});
 
+export interface TenantListItem {
+  id: string;
+  name: string;
+  member_count: number;
+  kb_count: number;
+  agent_count: number;
+  status: string;
+  create_date: number;
+}
+
+/** 平台租户列表（含成员/知识库/智能体计数）。 */
+export const listTenants = (params: {
+  page?: number;
+  page_size?: number;
+  keyword?: string;
+  status?: string;
+}) =>
+  request.get<ResponseData<{ list: TenantListItem[]; total: number }>>(
+    api.adminListTenants,
+    { params },
+  );
+
+/** 新建租户，并把指定邮箱的用户设为管理员（不自动建账号）。 */
+export const createTenant = (name: string, ownerEmail: string) =>
+  request.post<ResponseData<{ id: string; name: string; owner_email: string }>>(
+    api.adminCreateTenant,
+    { name, owner_email: ownerEmail },
+  );
+
 export const createUser = (email: string, password: string) =>
   request.post<ResponseData<boolean>>(adminCreateUser, {
     username: email,

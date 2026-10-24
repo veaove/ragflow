@@ -64,6 +64,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 			// User management
 			protected.GET("/users", r.handler.ListUsers)
+			// 平台租户管理：列表（含成员/知识库/智能体计数）+ 新建
+			protected.GET("/tenants", r.handler.ListTenants)
+			protected.POST("/tenants", r.handler.CreateTenant)
 			protected.POST("/users", r.handler.CreateUser)
 			protected.GET("/users/:username", r.handler.GetUser)
 			protected.DELETE("/users/:username", r.handler.DeleteUser)

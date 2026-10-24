@@ -481,6 +481,8 @@ export default {
   adminLogin: `${restAPIv1}/admin/login`,
   adminLogout: `${restAPIv1}/admin/logout`,
   adminListUsers: `${restAPIv1}/admin/users`,
+  adminListTenants: `${restAPIv1}/admin/tenants`,
+  adminCreateTenant: `${restAPIv1}/admin/tenants`,
   adminCreateUser: `${restAPIv1}/admin/users`,
   adminSetSuperuser: (username: string) =>
     `${restAPIv1}/admin/users/${username}/admin`,
