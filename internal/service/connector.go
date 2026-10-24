@@ -89,6 +89,9 @@ var (
 	// ErrConnectorInvalidFreq is returned when a connector frequency is not
 	// positive. Handlers map it to a client error; callers match with errors.Is.
 	ErrConnectorInvalidFreq = errors.New("connector frequency must be positive")
+	// ErrConnectorPermissionDenied is returned when the caller tries to bind a
+	// connector to a knowledge base owned by another tenant.
+	ErrConnectorPermissionDenied = errors.New("no permission for this knowledge base")
 )
 
 // ConnectorService connector service
@@ -155,6 +158,14 @@ type CreateConnectorRequest struct {
 	RefreshFreq *int64         `json:"refresh_freq,omitempty"`
 	PruneFreq   *int64         `json:"prune_freq,omitempty"`
 	TimeoutSecs *int64         `json:"timeout_secs,omitempty"`
+	// KbID：可选。传了就在创建 connector 的同时写入 connector2kb 绑定。
+	//
+	// 之前这个字段不存在，而绑定只在「保存知识库设置」时才会同步
+	// （LinkDatasetConnectors）。用户从知识库配置页点「链接数据源」创建完
+	// connector 后直接点解析，connector2kb 里没有任何记录，
+	// RebuildConnector 的绑定校验必然失败并返回
+	// 「connector is not bound to this knowledge base」。
+	KbID string `json:"kb_id,omitempty"`
 }
 
 // RebuildConnectorRequest rebuild connector request.
@@ -316,7 +327,56 @@ func (s *ConnectorService) CreateConnector(ctx context.Context, userID string, r
 		return nil, err
 	}
 
+	// 调用方传了 kb_id 就顺手把 connector2kb 绑定建上。
+	//
+	// 背景：绑定原本只在「保存知识库设置」时由 LinkDatasetConnectors 同步。
+	// 用户在知识库配置页点「链接数据源」创建 connector 后，如果没再点保存，
+	// connector2kb 里就没有记录，接着点解析会直接被 RebuildConnector 的
+	// 绑定校验拦下，报「connector is not bound to this knowledge base」。
+	if kbID := strings.TrimSpace(req.KbID); kbID != "" {
+		if err := s.bindConnectorToKB(ctx, userID, connector.ID, kbID); err != nil {
+			// connector 已经建好了，这里不回滚它（数据源本身有效），
+			// 但必须把错误抛出去，否则用户会以为链接成功、后面白忙一场。
+			return nil, err
+		}
+	}
+
 	return s.connectorDAO.GetByID(ctx, dao.DB, connector.ID)
+}
+
+// bindConnectorToKB writes the connector2kb row that makes a connector usable
+// from a knowledge base. Idempotent, and refuses cross-tenant binding.
+func (s *ConnectorService) bindConnectorToKB(ctx context.Context, userID, connectorID, kbID string) error {
+	var kb entity.Knowledgebase
+	if err := dao.DB.WithContext(ctx).
+		Select("tenant_id").
+		Where("id = ? AND status = ?", kbID, string(entity.StatusValid)).
+		First(&kb).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("%w: knowledge base not found", ErrConnectorNotFound)
+		}
+		return err
+	}
+	if kb.TenantID != userID {
+		return fmt.Errorf("%w: no permission to bind this knowledge base", ErrConnectorPermissionDenied)
+	}
+
+	// 幂等：重复链接同一个数据源不报错。
+	exists, err := s.connectorDAO.Connector2KBExists(ctx, dao.DB, connectorID, kbID)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+
+	binding := &entity.Connector2Kb{
+		ID:          common.GenerateUUID(),
+		ConnectorID: connectorID,
+		KbID:        kbID,
+		AutoParse:   "1",
+	}
+	return dao.DB.WithContext(ctx).Create(binding).Error
 }
 
 // GetConnector returns one connector when the user has read permission.
@@ -1086,9 +1146,31 @@ func (s *ConnectorService) RebuildConnector(ctx context.Context, connectorID, us
 		return false, common.CodeServerError, err
 	}
 	if !bound {
-		common.Warn("rebuild denied: connector not bound to kb",
-			zap.String("connector_id", connectorID), zap.String("kb_id", kbID), zap.String("user_id", userID))
-		return false, common.CodeAuthenticationError, ErrConnectorNotBoundToKB
+		// 没绑定时先尝试自动补一条，别直接拒绝。
+		//
+		// 背景：connector 是在「用户设置 → 数据源」里创建的（全局页面，
+		// 创建时并不知道要绑哪个知识库），而 connector2kb 绑定只在
+		// 「保存知识库设置」时才由 LinkDatasetConnectors 同步。用户常见路径是
+		// 链完数据源就直接点解析，此时绑定还没写上，于是必然撞到下面这个
+		// 报错：「connector is not bound to this knowledge base」（109）。
+		//
+		// 走到这里说明 CheckDatasetAccess 已经确认调用方对这个 kb 有权限，
+		// 所以同租户的 connector 直接补绑定是安全的；跨租户仍然拒绝。
+		if connector.TenantID == userID {
+			if bindErr := s.bindConnectorToKB(ctx, userID, connectorID, kbID); bindErr == nil {
+				common.Info("rebuild: auto-bound connector to kb",
+					zap.String("connector_id", connectorID), zap.String("kb_id", kbID))
+				bound = true
+			} else {
+				common.Warn("rebuild: auto-bind failed",
+					zap.String("connector_id", connectorID), zap.String("kb_id", kbID), zap.Error(bindErr))
+			}
+		}
+		if !bound {
+			common.Warn("rebuild denied: connector not bound to kb",
+				zap.String("connector_id", connectorID), zap.String("kb_id", kbID), zap.String("user_id", userID))
+			return false, common.CodeAuthenticationError, ErrConnectorNotBoundToKB
+		}
 	}
 
 	sourceType := fmt.Sprintf("%s/%s", connector.Source, connector.ID)
