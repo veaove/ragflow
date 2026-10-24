@@ -316,7 +316,13 @@ services:
       - ragflow
     healthcheck:
       test: ["CMD", "mysqladmin" ,"ping", "-uroot", "-p${MYSQL_PASSWORD}"]
-      interval: 1s
+      # 1s here was pathological: every tick spawns a mysqladmin process inside
+      # the container, which means a Docker exec round-trip through containerd.
+      # At one probe per second dockerd itself sat at ~94% CPU (105 min of CPU
+      # time over a 2h uptime) and the box idled at 30% with 26% in kernel time.
+      # 10s matches every other service in this file and costs nothing in
+      # failover speed for a local database.
+      interval: 10s
       timeout: 2s
       retries: 60
       start_period: 30s
