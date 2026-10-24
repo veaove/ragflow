@@ -80,6 +80,10 @@ export default {
       emailPlaceholder: '請輸入郵箱地址',
       passwordLabel: '密碼',
       passwordPlaceholder: '請輸入密碼',
+      captchaLabel: '驗證碼',
+      captchaRequired: '請輸入驗證碼',
+      captchaRefresh: '點擊刷新驗證碼',
+      captchaLoading: '載入中',
       rememberMe: '記住我',
       signInTip: '沒有帳戶？',
       signUpTip: '已經有帳戶？',
@@ -1465,6 +1469,9 @@ export default {
       copySuccess: '複製成功',
       welcomeBack: '歡迎回來',
       selectLocalePlaceholder: '選擇語言',
+    },
+    admin: {
+      loginTitle: '管理員後台',
     },
   },
 };

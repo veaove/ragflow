@@ -169,8 +169,20 @@ type ResponseData<D = NonNullable<unknown>> = {
   data: D;
 };
 
-export const login = (params: { email: string; password: string }) =>
+export const login = (params: {
+  email: string;
+  password: string;
+  /** 图形验证码：captcha_id 由 GET /auth/captcha 下发，captcha 是用户输入的字符。 */
+  captcha_id?: string;
+  captcha?: string;
+}) =>
   request.post<ResponseData<AdminService.LoginData>>(adminLogin, params);
+
+/** 登录页图形验证码：一次性消费，60 秒有效。与前台登录页同一个接口。 */
+export const getCaptcha = () =>
+  request.get<
+    ResponseData<{ captcha_id: string; captcha_image: string }>
+  >('/api/v1/auth/captcha');
 export const logout = () => request.post<ResponseData<boolean>>(adminLogout);
 export const listUsers = () =>
   request.get<ResponseData<AdminService.ListUsersItem[]>>(adminListUsers, {});

@@ -1,5 +1,5 @@
 import { type AxiosResponseHeaders } from 'axios';
-import { useContext, useEffect, useId } from 'react';
+import { useCallback, useContext, useEffect, useId, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
@@ -31,7 +31,7 @@ import { Routes } from '@/routes';
 import { rsaPsw } from '@/utils';
 import authorizationUtil from '@/utils/authorization-util';
 
-import { login } from '@/services/admin-service';
+import { getCaptcha, login } from '@/services/admin-service';
 
 import ThemeSwitch from '../../components/theme-switch';
 import { BgSvg } from '../login-next/bg';
@@ -44,13 +44,41 @@ function AdminLogin() {
   const { t } = useTranslation('translation', { keyPrefix: 'login' });
   const { isLogin } = useAuth();
 
+  // 图形验证码：后端 LoginByEmail 强校验（缺了直接 109），
+  // 进页面拉一张，登录失败后再换一张。与前台登录页同一套接口。
+  const [captcha, setCaptcha] = useState<{
+    id: string;
+    image: string;
+  } | null>(null);
+  const refreshCaptcha = useCallback(async () => {
+    try {
+      const { data } = await getCaptcha();
+      const payload = data?.data;
+      if (payload?.captcha_id) {
+        setCaptcha({ id: payload.captcha_id, image: payload.captcha_image });
+      }
+    } catch {
+      setCaptcha(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshCaptcha();
+  }, [refreshCaptcha]);
+
   const loginMutation = useMutation({
     mutationKey: ['adminLogin'],
-    mutationFn: async (params: { email: string; password: string }) => {
+    mutationFn: async (params: {
+      email: string;
+      password: string;
+      captcha: string;
+    }) => {
       const rsaPassWord = rsaPsw(params.password) as string;
       return await login({
         email: params.email,
         password: rsaPassWord,
+        captcha_id: captcha?.id,
+        captcha: params.captcha,
       });
     },
     onSuccess: (request) => {
@@ -78,6 +106,10 @@ function AdminLogin() {
         });
 
         navigate('/admin/services');
+      } else {
+        // 验证码一次性消费：登录失败后必须换一张，
+        // 否则用户拿旧 captcha_id 重试会报「captcha expired」。
+        refreshCaptcha();
       }
     },
     onError: (error) => {
@@ -100,6 +132,7 @@ function AdminLogin() {
       .email()
       .min(1, { message: t('emailPlaceholder') }),
     password: z.string().min(1, { message: t('passwordPlaceholder') }),
+    captcha: z.string().min(1, { message: t('captchaRequired') }),
     remember: z.boolean().optional(),
   });
 
@@ -108,6 +141,7 @@ function AdminLogin() {
     defaultValues: {
       email: '',
       password: '',
+      captcha: '',
       remember: false,
     },
     resolver: zodResolver(FormSchema),
@@ -193,6 +227,48 @@ function AdminLogin() {
                               placeholder={t('passwordPlaceholder')}
                               autoComplete="password"
                             />
+                          </FormControl>
+
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="captcha"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel required>{t('captchaLabel')}</FormLabel>
+
+                          <FormControl>
+                            <div className="flex items-center gap-3">
+                              <Input
+                                {...field}
+                                className="h-10 flex-1"
+                                placeholder={t('captchaLabel')}
+                                autoComplete="off"
+                              />
+
+                              <button
+                                type="button"
+                                onClick={refreshCaptcha}
+                                title={t('captchaRefresh')}
+                                className="flex h-10 w-[104px] shrink-0 items-center justify-center overflow-hidden rounded-md border border-default bg-input"
+                              >
+                                {captcha?.image ? (
+                                  <img
+                                    src={captcha.image}
+                                    alt="captcha"
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="text-xs text-text-secondary">
+                                    {t('captchaLoading')}
+                                  </span>
+                                )}
+                              </button>
+                            </div>
                           </FormControl>
 
                           <FormMessage />

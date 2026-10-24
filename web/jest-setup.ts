@@ -38,3 +38,14 @@ if (typeof globalThis.fetch === 'undefined') {
   (globalThis as Record<string, unknown>).fetch = () =>
     Promise.reject(new Error('fetch is not available in tests'));
 }
+
+// jsdom does not implement ResizeObserver; radix primitives that observe
+// element size (ScrollArea, Popper-based tooltips via use-size) construct it
+// on mount and would crash any page-level render test.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  (globalThis as Record<string, unknown>).ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
