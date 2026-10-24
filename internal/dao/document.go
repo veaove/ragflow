@@ -131,8 +131,11 @@ type DocumentListOptions struct {
 	CreateTimeTo       int64
 	OrderBy            string
 	Desc               bool
-	Offset             int
-	Limit              int
+	// Folder 为 nil 表示不按文件夹筛选；指向空串表示只看"未分类"；
+	// 指向普通字符串表示只看该文件夹。
+	Folder *string
+	Offset int
+	Limit  int
 }
 
 // ListByKBID list documents by knowledge base ID
@@ -324,6 +327,14 @@ func applyDocumentListFilters(query *gorm.DB, opts DocumentListOptions, qualifie
 	}
 	if opts.Name != "" {
 		query = query.Where(column("name")+" = ?", opts.Name)
+	}
+	if opts.Folder != nil {
+		if *opts.Folder == "" {
+			// 未分类：folder 列是老库新增的，历史数据都是 NULL。
+			query = query.Where("(" + column("folder") + " IS NULL OR " + column("folder") + " = '')")
+		} else {
+			query = query.Where(column("folder")+" = ?", *opts.Folder)
+		}
 	}
 	// The document ID clause is not gated on DocIDFilterApplied here: with the
 	// flag false and IDs present, applying them narrows the query instead of

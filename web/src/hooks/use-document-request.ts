@@ -46,6 +46,7 @@ import kbService, {
   changeDocumentParser,
   changeDocumentsStatus,
   setDocumentFolder as requestSetDocumentFolder,
+  listDocumentFolders,
   createDocument,
   deleteDocument,
   documentFilter,
@@ -66,7 +67,7 @@ import dayjs from 'dayjs';
 import { get } from 'lodash';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { IHighlight } from 'react-pdf-highlighter';
-import { useParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 import {
   getCancelRequestInterval,
   markCancelRequested,
@@ -188,8 +189,30 @@ export const useUploadDocument = () => {
   return { uploadDocument: upload, loading, data };
 };
 
+/** 拉取当前知识库里已用的文件夹（含每个文件夹的文件数）。 */
+export const useFetchDocumentFolders = (datasetId?: string) => {
+  const { knowledgeId } = useGetKnowledgeSearchParams();
+  const { id } = useParams();
+  const kbId = datasetId || knowledgeId || (id as string);
+
+  const { data } = useQuery<Array<{ folder: string; doc_count: number; unfiled: boolean }>>({
+    queryKey: ['document-folders', kbId],
+    enabled: !!kbId,
+    queryFn: async () => {
+      const { data } = await listDocumentFolders(kbId);
+      return data?.data ?? [];
+    },
+  });
+
+  return { folders: data ?? [] };
+};
+
 export const useFetchDocumentList = (loop = true) => {
   const { knowledgeId } = useGetKnowledgeSearchParams();
+  // 文件夹筛选走 URL query（?folder=xxx），刷新后仍保留。
+  // 没有该参数 = 不过滤；folder= 空串 = 只看未分类。
+  const [searchParams] = useSearchParams();
+  const folderFilter = searchParams.get('folder');
   const { searchString, handleInputChange } = useHandleSearchChange();
   const { pagination, setPagination } = useGetPaginationWithRouter();
   const { id } = useParams();
@@ -207,7 +230,11 @@ export const useFetchDocumentList = (loop = true) => {
     total: number;
     has_active_tasks?: boolean;
   }>({
-    queryKey: DocumentKeys.list(debouncedSearchString, pagination, filterValue),
+    queryKey: [
+      ...DocumentKeys.list(debouncedSearchString, pagination, filterValue),
+      'folder',
+      folderFilter,
+    ],
     initialData: { docs: [], total: 0, has_active_tasks: false },
     refetchInterval: (query) => {
       if (!loop) return false;
@@ -253,6 +280,7 @@ export const useFetchDocumentList = (loop = true) => {
           run_status: adaptDocumentRunStatusFilter(run as string[] | undefined),
           return_empty_metadata: returnEmptyMetadata,
           metadata: filterValue.metadata as Record<string, string[]>,
+          ...(folderFilter !== null ? { folder: folderFilter } : {}),
         },
       );
       if (ret.data.code === 0) {

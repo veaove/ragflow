@@ -20,8 +20,12 @@ import {
   useRowSelection,
   useSelectedIds,
 } from '@/hooks/logic-hooks/use-row-selection';
-import { useFetchDocumentList } from '@/hooks/use-document-request';
-import { LucidePlus } from 'lucide-react';
+import {
+  useFetchDocumentFolders,
+  useFetchDocumentList,
+} from '@/hooks/use-document-request';
+import { LucideFolderTree, LucidePlus } from 'lucide-react';
+import { useSearchParams } from 'react-router';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MetadataType } from '../components/metedata/constant';
@@ -87,6 +91,19 @@ export default function Dataset() {
     selectedCount,
     clearRowSelection,
   } = useRowSelection();
+
+  const { folders } = useFetchDocumentFolders();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentFolder = searchParams.get('folder');
+  const handleFolderChange = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === '') {
+      next.delete('folder');
+    } else {
+      next.set('folder', value);
+    }
+    setSearchParams(next);
+  };
 
   useClearSelectionOnPageChange(pagination, clearRowSelection);
 
@@ -156,6 +173,25 @@ export default function Dataset() {
               <h1 className="leading-normal font-medium">
                 {t('knowledgeDetails.subbarFiles')}
               </h1>
+              {folders.some((f) => !f.unfiled) && (
+                <div className="mt-2 flex items-center gap-2">
+                  <LucideFolderTree className="size-4 text-text-secondary" />
+                  <select
+                    value={currentFolder ?? ''}
+                    onChange={(e) => handleFolderChange(e.target.value)}
+                    className="h-8 rounded-md border border-border-default bg-bg-base px-2 text-sm text-text-primary outline-none"
+                  >
+                    <option value="">全部文件</option>
+                    {folders
+                      .filter((f) => !f.unfiled)
+                      .map((f) => (
+                        <option key={f.folder} value={f.folder}>
+                          {f.folder}（{f.doc_count}）
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
               <p className="text-text-secondary text-sm font-normal">
                 {t('knowledgeDetails.datasetDescription')}
               </p>

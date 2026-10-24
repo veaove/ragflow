@@ -727,6 +727,12 @@ func parseDocumentListOptions(c *gin.Context, datasetID string) (dao.DocumentLis
 		Suffixes: queryValues(c, "suffix"),
 		Types:    queryValues(c, "types"),
 	}
+	// 文件夹筛选：传 folder=xxx 只看该文件夹；传 folder=（空）只看未分类；
+	// 不传则不过滤。用 GetQuery 区分"没传"和"传了空串"。
+	if folderValue, exists := c.GetQuery("folder"); exists {
+		folderCopy := folderValue
+		opts.Folder = &folderCopy
+	}
 
 	opts.RunStatuses = normalizeRunStatusFilter(queryValues(c, "run", "run_status", "ingestion_status"))
 	if len(queryValues(c, "run", "run_status", "ingestion_status")) > 0 && len(opts.RunStatuses) == 0 {
