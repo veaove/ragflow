@@ -207,6 +207,8 @@ export interface IStats {
   tokens: [string, number][];
   round: [string, number][];
   thumb_up: [string, number][];
+  /** 智能体（agent_run）的每日调用次数。 */
+  agent_calls?: [string, number][];
 }
 
 export interface IExternalChatInfo {

@@ -49,6 +49,10 @@ type StatsResponse struct {
 	Tokens  []StatPoint `json:"tokens"`
 	Round   []StatPoint `json:"round"`
 	ThumbUp []StatPoint `json:"thumb_up"`
+	// AgentCalls 是智能体（agent_run）的每日调用次数。
+	// 原来的 PV 统计的是 api_4_conversation（API Key 调用），
+	// 网页端使用智能体完全不计入，导致「近7日调用」常年为 0。
+	AgentCalls []StatPoint `json:"agent_calls"`
 }
 
 // GetStats returns daily API conversation statistics for the first tenant of a user.
@@ -69,7 +73,8 @@ func (s *StatsService) GetStats(ctx context.Context, userID, fromDate, toDate st
 		Speed:   make([]StatPoint, 0, len(rows)),
 		Tokens:  make([]StatPoint, 0, len(rows)),
 		Round:   make([]StatPoint, 0, len(rows)),
-		ThumbUp: make([]StatPoint, 0, len(rows)),
+		ThumbUp:    make([]StatPoint, 0, len(rows)),
+		AgentCalls: make([]StatPoint, 0, 8),
 	}
 
 	for _, row := range rows {
@@ -79,6 +84,30 @@ func (s *StatsService) GetStats(ctx context.Context, userID, fromDate, toDate st
 		response.Tokens = append(response.Tokens, StatPoint{row.Dt, row.Tokens / 1000.0})
 		response.Round = append(response.Round, StatPoint{row.Dt, row.Round})
 		response.ThumbUp = append(response.ThumbUp, StatPoint{row.Dt, row.ThumbUp})
+	}
+
+	// 智能体调用：按天统计 agent_run 条数（有 tenant_id，可直接过滤）。
+	fromT, fromErr := time.ParseInLocation("2006-01-02 15:04:05", fromDate, time.Local)
+	toT, toErr := time.ParseInLocation("2006-01-02 15:04:05", toDate, time.Local)
+	if fromErr == nil && toErr == nil {
+		type agentRow struct {
+			Dt string
+			C  int64
+		}
+		var agentRows []agentRow
+		err = dao.DB.WithContext(ctx).Raw(`
+			SELECT DATE(FROM_UNIXTIME(create_time / 1000)) AS dt, COUNT(*) AS c
+			FROM agent_run
+			WHERE tenant_id = ? AND create_time >= ? AND create_time <= ?
+			GROUP BY dt
+			ORDER BY dt
+		`, tenants[0].TenantID, fromT.UnixMilli(), toT.UnixMilli()).Scan(&agentRows).Error
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range agentRows {
+			response.AgentCalls = append(response.AgentCalls, StatPoint{row.Dt, row.C})
+		}
 	}
 
 	return response, nil

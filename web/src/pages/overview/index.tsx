@@ -65,7 +65,10 @@ export default function Overview() {
   const stats = statsQ.data;
   const activity = activityQ.data ?? null;
 
-  const pvRecent = useMemo(() => splitRecentAndPrevious(stats?.pv), [stats?.pv]);
+  const agentCallsRecent = useMemo(
+    () => splitRecentAndPrevious(stats?.agent_calls),
+    [stats?.agent_calls],
+  );
 
   /**
    * 交互满意度改为展示「点赞数 / 点踩数」。
@@ -121,13 +124,15 @@ export default function Overview() {
       build(
         'calls',
         t('metric.calls'),
-        seriesSum(stats?.pv),
+        // 统计智能体调用（agent_run）。原来的 pv 来自 api_4_conversation
+        // （API Key 调用），网页端用智能体完全不计入，一直显示 0。
+        seriesSum(stats?.agent_calls),
         Bot,
-        calcDelta(pvRecent.recent, pvRecent.previous),
+        calcDelta(agentCallsRecent.recent, agentCallsRecent.previous),
         t('unit.times'),
       ),
     ];
-  }, [datasets, stats?.pv, pvRecent, t]);
+  }, [datasets, stats?.agent_calls, agentCallsRecent, t]);
 
   const trend = useMemo(() => buildTrend(stats?.pv), [stats?.pv]);
   const sourceDistribution = useMemo(
