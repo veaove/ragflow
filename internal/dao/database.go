@@ -399,6 +399,11 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 		&entity.ConversationReference{},
 		&entity.API4ConversationMessage{},
 		&entity.API4ConversationReference{},
+		// Skill spaces are Go-only: every /api/v1/skills/spaces endpoint reads
+		// this table, including the permission resolver that runs first, so a
+		// missing table surfaced as "500 Permission check failed" on the whole
+		// Skills page instead of an obvious schema error.
+		&entity.SkillSpace{},
 	}
 	for _, m := range goRuntimeModels {
 		if err := autoMigrateSafely(ctx, db, m); err != nil {

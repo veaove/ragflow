@@ -32,7 +32,8 @@
       "model_types": [
         "embedding"
       ],
-      "max_batch_size": 10
+      "max_batch_size": 10,
+      "max_dimension": 2048
     },
     {
       "name": "qwen3-vl-plus",
@@ -70,7 +71,8 @@
       "model_types": [
         "embedding"
       ],
-      "max_batch_size": 10
+      "max_batch_size": 10,
+      "max_dimension": 1024
     },
     {
       "name": "qwen3-rerank",
