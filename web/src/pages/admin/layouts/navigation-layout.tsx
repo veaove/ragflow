@@ -209,7 +209,11 @@ const AdminNavigationLayout = () => {
           </ul>
         </nav>
 
-        {/* 左下角不再放任何操作入口：主题/语言/账号统一收在顶栏左侧（见 Header） */}
+        <div className="shrink-0 px-3 py-3">
+          <span className="hidden text-xs leading-none break-all text-white/40 lg:block">
+            {version}
+          </span>
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -217,6 +221,8 @@ const AdminNavigationLayout = () => {
           <span className="truncate text-base font-bold text-text-primary lg:hidden">
             {t('admin.navBrand')}
           </span>
+
+          <div className="flex-1" aria-hidden />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -233,7 +239,7 @@ const AdminNavigationLayout = () => {
               </Button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="start">
+            <DropdownMenuContent align="end">
               {headerLanguages.map((x) => (
                 <DropdownMenuItem
                   key={x.code}
@@ -267,7 +273,7 @@ const AdminNavigationLayout = () => {
               </button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuContent align="end" className="w-56">
               <div className="flex items-center gap-2.5 px-2 py-2">
                 <RAGFlowAvatar
                   name={account.nickname}
@@ -304,13 +310,6 @@ const AdminNavigationLayout = () => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          <div className="flex-1" aria-hidden />
-
-          {/* 版本号原本在侧栏左下角，那一块已经清空；挪到顶栏右端仍能一眼看到 */}
-          <span className="hidden max-w-[30%] truncate text-xs text-text-secondary sm:inline">
-            {version}
-          </span>
         </header>
 
         <main className="size-full min-w-0 overflow-hidden">
