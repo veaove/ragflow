@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"ragflow/internal/common"
-	"ragflow/internal/dao"
 	"ragflow/internal/engine"
 	"ragflow/internal/engine/kvrocks"
 	"ragflow/internal/handler"

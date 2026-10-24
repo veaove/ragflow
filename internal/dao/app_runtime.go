@@ -18,6 +18,7 @@ package dao
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"ragflow/internal/common"
@@ -180,6 +181,50 @@ func (dao *AuditLogDAO) List(ctx context.Context, db *gorm.DB, tenantID, canvasI
 	}
 	err := q.Order("create_time DESC").Limit(limit).Offset(offset).Find(&logs).Error
 	return logs, err
+}
+
+// AuditFilter narrows a platform-wide audit query. Empty fields are ignored.
+type AuditFilter struct {
+	Keywords string // matches operator / tenant_name / path / action
+	Module   string // object_type
+	Result   string // success | failed
+}
+
+// ListPlatform returns audit entries across ALL tenants, newest first.
+//
+// Unlike List it has no tenant scope on purpose: the platform console needs one
+// stream of every tenant's mutations. Callers must gate it behind superuser auth.
+func (dao *AuditLogDAO) ListPlatform(ctx context.Context, db *gorm.DB, f AuditFilter, limit, offset int) ([]*entity.AuditLog, int64, error) {
+	logs := make([]*entity.AuditLog, 0)
+	q := db.WithContext(ctx).Model(&entity.AuditLog{})
+
+	if kw := strings.TrimSpace(f.Keywords); kw != "" {
+		like := "%" + kw + "%"
+		q = q.Where(
+			"operator LIKE ? OR tenant_name LIKE ? OR path LIKE ? OR action LIKE ?",
+			like, like, like, like,
+		)
+	}
+	if f.Module != "" {
+		q = q.Where("object_type = ?", f.Module)
+	}
+	if f.Result != "" {
+		q = q.Where("result = ?", f.Result)
+	}
+
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	err := q.Order("create_time DESC").Limit(limit).Offset(offset).Find(&logs).Error
+	return logs, total, err
 }
 
 // PurgeBefore deletes audit entries older than the given millis timestamp.

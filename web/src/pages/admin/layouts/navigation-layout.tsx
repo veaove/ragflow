@@ -5,9 +5,12 @@ import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import {
+  LucideBoxes,
   LucideBuilding2,
   LucideLanguages,
+  LucideLayoutDashboard,
   LucideMonitor,
+  LucideScrollText,
   LucideServerCrash,
   LucideSquareUserRound,
   LucideUserCog,
@@ -73,6 +76,11 @@ const AdminNavigationLayout = () => {
   const navItems = useMemo(
     () => [
       {
+        path: Routes.AdminOverview,
+        name: t('admin.overview.title'),
+        icon: <LucideLayoutDashboard className="size-[1em]" />,
+      },
+      {
         path: Routes.AdminServices,
         name: t('admin.serviceStatus'),
         icon: <LucideServerCrash className="size-[1em]" />,
@@ -86,6 +94,16 @@ const AdminNavigationLayout = () => {
         path: Routes.AdminTenants,
         name: t('admin.tenantManagement'),
         icon: <LucideBuilding2 className="size-[1em]" />,
+      },
+      {
+        path: Routes.AdminModels,
+        name: t('admin.modelManagement'),
+        icon: <LucideBoxes className="size-[1em]" />,
+      },
+      {
+        path: Routes.AdminAudits,
+        name: t('admin.platformAudit'),
+        icon: <LucideScrollText className="size-[1em]" />,
       },
       {
         path: Routes.AdminSandboxSettings,

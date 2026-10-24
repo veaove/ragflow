@@ -95,9 +95,12 @@ export enum Routes {
   DataSetSetting = '/configuration',
   DataflowResult = '/dataflow-result',
   Admin = '/admin',
+  AdminOverview = `${Admin}/overview`,
   AdminServices = `${Admin}/services`,
   AdminUserManagement = `${Admin}/users`,
   AdminTenants = `${Admin}/tenants`,
+  AdminModels = `${Admin}/models`,
+  AdminAudits = `${Admin}/audits`,
   AdminSandboxSettings = `${Admin}/sandbox-settings`,
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
@@ -476,6 +479,10 @@ const routeConfigOptions = [
             Component: () => import('@/pages/admin/layouts/navigation-layout'),
             children: [
               {
+                path: Routes.AdminOverview,
+                Component: () => import('@/pages/admin/overview'),
+              },
+              {
                 path: Routes.AdminServices,
                 Component: () => import('@/pages/admin/service-status'),
               },
@@ -486,6 +493,14 @@ const routeConfigOptions = [
               {
                 path: Routes.AdminTenants,
                 Component: () => import('@/pages/admin/tenants'),
+              },
+              {
+                path: Routes.AdminModels,
+                Component: () => import('@/pages/admin/models'),
+              },
+              {
+                path: Routes.AdminAudits,
+                Component: () => import('@/pages/admin/audits'),
               },
               {
                 path: Routes.AdminSandboxSettings,

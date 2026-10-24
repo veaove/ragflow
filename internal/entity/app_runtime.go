@@ -79,15 +79,26 @@ func (AppAPIKey) TableName() string {
 // is deliberately separate from run records so its retention never follows the
 // 90-day run-record purge.
 type AuditLog struct {
-	ID         string `gorm:"column:id;primaryKey;size:32" json:"id"`
-	TenantID   string `gorm:"column:tenant_id;size:64;not null" json:"tenant_id"`
-	CanvasID   string `gorm:"column:canvas_id;size:32;not null" json:"canvas_id"`
+	ID       string `gorm:"column:id;primaryKey;size:32" json:"id"`
+	TenantID string `gorm:"column:tenant_id;size:64;not null" json:"tenant_id"`
+	// CanvasID is nullable: platform-level actions (tenant / user / model
+	// config) have no canvas context.
+	CanvasID   string `gorm:"column:canvas_id;size:32" json:"canvas_id,omitempty"`
 	Action     string `gorm:"column:action;size:32;not null" json:"action"`
 	ObjectType string `gorm:"column:object_type;size:32;not null" json:"object_type"`
 	ObjectID   string `gorm:"column:object_id;size:32" json:"object_id,omitempty"`
 	Before     JSONMap `gorm:"column:before;type:longtext" json:"before,omitempty"`
 	After      JSONMap `gorm:"column:after;type:longtext" json:"after,omitempty"`
 	Operator   string `gorm:"column:operator;size:64;not null" json:"operator"`
+	// Platform audit trail. Result is "success" | "failed"; Method/Path keep the
+	// raw HTTP verb and route template so the console can map technical routes
+	// back to business actions; TenantName is a snapshot so a renamed or deleted
+	// tenant still reads correctly in history.
+	Result     string `gorm:"column:result;size:16" json:"result,omitempty"`
+	IPAddress  string `gorm:"column:ip_address;size:64" json:"ip_address,omitempty"`
+	Method     string `gorm:"column:method;size:8" json:"method,omitempty"`
+	Path       string `gorm:"column:path;size:255" json:"path,omitempty"`
+	TenantName string `gorm:"column:tenant_name;size:128" json:"tenant_name,omitempty"`
 	CreateTime int64  `gorm:"column:create_time;not null" json:"create_time"`
 }
 

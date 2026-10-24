@@ -487,6 +487,8 @@ export default {
   adminLogout: `${restAPIv1}/admin/logout`,
   adminListUsers: `${restAPIv1}/admin/users`,
   adminListTenants: `${restAPIv1}/admin/tenants`,
+  adminListPlatformModels: `${restAPIv1}/admin/models`,
+  adminAudits: `${restAPIv1}/admin/audits`,
   adminCreateTenant: `${restAPIv1}/admin/tenants`,
   adminCreateUser: `${restAPIv1}/admin/users`,
   adminSetSuperuser: (username: string) =>

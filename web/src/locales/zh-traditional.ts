@@ -1521,6 +1521,20 @@ export default {
         share: '分享',
       },
 
+      overview: {
+        title: '營運概覽',
+        subtitle: '平台整體規模指標，以及近 30 天的租戶與會話活躍趨勢',
+        tenants: '租戶總數',
+        activeTenants: '活躍租戶（30 天）',
+        members: '成員總數',
+        datasets: '知識庫總數',
+        documents: '文件總數',
+        activeConversations: '活躍會話（24 小時）',
+        tenantTrend: '租戶增長（近 30 天）',
+        conversationTrend: '會話量（近 30 天）',
+        emptyTrend: '暫無統計資料',
+      },
+
       serviceStatus: '服務狀態',
       serviceStatusHint: '各服務元件的執行與連線狀態',
       searchServicePlaceholder: '搜尋服務名稱或類型',

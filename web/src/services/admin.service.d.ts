@@ -234,4 +234,30 @@ declare namespace AdminService {
     provider_type: string;
     config: Record<string, unknown>;
   };
+
+  /** 运营概览的单项指标：value 为当前值，prev 为 30 天前基线（用于算环比）。 */
+  export type OverviewMetric = {
+    value: number;
+    prev: number;
+  };
+
+  /** 趋势序列的一个点，date 形如 2026-10-24。 */
+  export type OverviewPoint = {
+    date: string;
+    value: number;
+  };
+
+  export type PlatformOverview = {
+    tenants: OverviewMetric;
+    active_tenants: OverviewMetric;
+    members: OverviewMetric;
+    datasets: OverviewMetric;
+    documents: OverviewMetric;
+    active_conversations: OverviewMetric;
+    /** 近 30 天租户存量（累计）。 */
+    tenant_trend: OverviewPoint[];
+    /** 近 30 天每日新增会话数。 */
+    conversation_trend: OverviewPoint[];
+    window_days: number;
+  };
 }
