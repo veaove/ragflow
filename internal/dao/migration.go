@@ -107,6 +107,15 @@ func RunMigrations(ctx context.Context, db *gorm.DB) error {
 // exact for those rows, and every reader still COALESCEs with user_id, so an
 // empty value can never make a canvas disappear.
 func migrateCanvasTenantID(ctx context.Context, db *gorm.DB) error {
+	// RunMigrations 早于 AutoMigrate，而 tenant_id 是随本次变更新增的列，
+	// 这里必须先手工补上，否则下面的 UPDATE 会以 Unknown column 失败。
+	migrator := db.WithContext(ctx).Migrator()
+	if !migrator.HasColumn(&entity.UserCanvas{}, "tenant_id") {
+		if err := migrator.AddColumn(&entity.UserCanvas{}, "TenantID"); err != nil {
+			return err
+		}
+	}
+
 	res := db.WithContext(ctx).
 		Exec("UPDATE user_canvas SET tenant_id = user_id WHERE tenant_id IS NULL OR tenant_id = ''")
 	if res.Error != nil {
