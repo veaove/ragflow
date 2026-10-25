@@ -1589,6 +1589,25 @@ func (s *Service) CreateTenant(ctx context.Context, name, ownerUserID, ownerEmai
 	}, nil
 }
 
+// canvasCategoryLabel 把 user_canvas.canvas_category 翻成中文类型名。
+//
+// 平台侧只关心「这条记录是什么」：agent_count 统计的是 user_canvas 全表，
+// 所以明细里必须能区分智能体、对话流、工作流与数据处理画布。
+func canvasCategoryLabel(category string) string {
+	switch category {
+	case entity.CanvasCategoryAgent:
+		return "智能体"
+	case entity.CanvasCategoryChatflow:
+		return "对话流"
+	case entity.CanvasCategoryWorkflow:
+		return "工作流"
+	case entity.CanvasCategoryDataflow:
+		return "数据处理"
+	default:
+		return category
+	}
+}
+
 // ListTenantResources 列出某个租户下的成员 / 知识库 / 智能体明细。
 //
 // 三者结构不同，统一返回 {id, name, extra}，前端只做列表展示。
@@ -1661,22 +1680,32 @@ func (s *Service) ListTenantResources(ctx context.Context, tenantID, resourceTyp
 		}
 
 	case "agents":
+		// user_canvas 没有 tenant_id 列（租户 id 就是 owner 的 user id），
+		// 必须按 user_id 过滤，才和 ListTenants 里 agent_count 的口径一致。
+		// 写成 tenant_id 会在 MySQL 报 Error 1054，整个明细弹窗 500。
 		type agentRow struct {
-			ID    string
-			Title string
+			ID       string
+			Title    string
+			Category string
 		}
 		var rows []agentRow
 		if err := dao.DB.WithContext(ctx).Raw(`
-			SELECT id, IFNULL(title, '未命名') AS title
+			SELECT id,
+			       IFNULL(title, '未命名') AS title,
+			       IFNULL(canvas_category, '') AS category
 			FROM user_canvas
-			WHERE tenant_id = ?
+			WHERE user_id = ?
 			ORDER BY create_date DESC
 		`, tenantID).Scan(&rows).Error; err != nil {
 			return nil, err
 		}
 		for _, r := range rows {
 			result = append(result, map[string]interface{}{
-				"id": r.ID, "name": r.Title, "extra": "",
+				"id": r.ID, "name": r.Title,
+				// 这张表同时放智能体 / 工作流 / 对话流 / 数据处理画布，
+				// 上层的 agent_count 也是全量计数，列表必须标出类型，
+				// 否则「智能体列表」里混进 11 条工作流会让人以为统计错了。
+				"extra": canvasCategoryLabel(r.Category),
 			})
 		}
 

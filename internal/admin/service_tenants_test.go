@@ -120,3 +120,71 @@ func TestListTenantsCountsOwnedResources(t *testing.T) {
 		t.Errorf("status = %q, want %q", got.Status, statusValid)
 	}
 }
+
+// TestListTenantResourcesAgentsFiltersByUserID pins the column the agent
+// drill-down reads.
+//
+// The drill-down originally filtered user_canvas by tenant_id — the same
+// non-existent column that broke ListTenants — so clicking「智能体数」in the
+// platform tenant list answered 500 (MySQL Error 1054). On a real schema the
+// query has to go through user_id, and each row must carry its canvas type
+// because the counter spans agents, chatflows, workflows and dataflow canvases.
+func TestListTenantResourcesAgentsFiltersByUserID(t *testing.T) {
+	db := testutil.SetupTestDB(t,
+		&entity.Tenant{},
+		&entity.UserCanvas{},
+	)
+	t.Cleanup(testutil.ReplaceDBForTest(t, db))
+	ctx := context.Background()
+
+	const tenantID = "tenant-1"
+	statusValid := string(entity.StatusValid)
+	tenantName := "Tenant One"
+	if err := db.Create(&entity.Tenant{ID: tenantID, Name: &tenantName, Status: &statusValid}).Error; err != nil {
+		t.Fatalf("create tenant: %v", err)
+	}
+
+	agentTitle, flowTitle, memberTitle := "agent one", "workflow one", "member agent"
+	canvases := []entity.UserCanvas{
+		{ID: "c-1", UserID: tenantID, Title: &agentTitle, CanvasCategory: entity.CanvasCategoryAgent},
+		{ID: "c-2", UserID: tenantID, Title: &flowTitle, CanvasCategory: entity.CanvasCategoryWorkflow},
+		{ID: "c-3", UserID: "u-2", Title: &memberTitle, CanvasCategory: entity.CanvasCategoryAgent},
+	}
+	for i := range canvases {
+		if err := db.Create(&canvases[i]).Error; err != nil {
+			t.Fatalf("create canvas: %v", err)
+		}
+	}
+
+	svc := NewService()
+	items, err := svc.ListTenantResources(ctx, tenantID, "agents")
+	if err != nil {
+		t.Fatalf("ListTenantResources(agents): %v", err)
+	}
+	// Only the tenant's own canvases; the member's one must not leak in,
+	// otherwise the list would not match the agent_count the user clicked.
+	if len(items) != 2 {
+		t.Fatalf("len(items) = %d, want 2: %+v", len(items), items)
+	}
+
+	extraByName := map[string]string{}
+	for _, item := range items {
+		name, _ := item["name"].(string)
+		extra, _ := item["extra"].(string)
+		extraByName[name] = extra
+	}
+	if extraByName[agentTitle] != "智能体" {
+		t.Errorf("extra for %q = %q, want 智能体", agentTitle, extraByName[agentTitle])
+	}
+	if extraByName[flowTitle] != "工作流" {
+		t.Errorf("extra for %q = %q, want 工作流", flowTitle, extraByName[flowTitle])
+	}
+	if _, leaked := extraByName[memberTitle]; leaked {
+		t.Errorf("member-owned canvas leaked into the drill-down: %+v", items)
+	}
+
+	// An unknown tenant is an explicit error, not a silent empty list.
+	if _, err := svc.ListTenantResources(ctx, "missing", "agents"); err == nil {
+		t.Error("ListTenantResources(missing tenant) = nil error, want tenant not found")
+	}
+}
