@@ -378,7 +378,9 @@ func TestFileService_UploadRejectsInaccessibleParent(t *testing.T) {
 		t.Fatalf("seed foreign folder: %v", err)
 	}
 
-	_, err := testFileService().UploadFile(t.Context(), "user-1", foreignFolder.ID, nil, 1024)
+	// UploadFile now takes a paths slice between files and maxBytes; the folder
+	// permission check happens before either is read, so nil is fine here.
+	_, err := testFileService().UploadFile(t.Context(), "user-1", foreignFolder.ID, nil, nil, 1024)
 	if !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("UploadFile error = %v, want permission denied", err)
 	}

@@ -482,7 +482,9 @@ func TestRunAgent_RejectsSessionOwnedByAnotherUser(t *testing.T) {
 		"path": []any{"begin_0", "message_0"},
 	}
 	makeCanvasWithDSL(t, "canvas-session-owner", "user-1", "tenant-1", "v-session-owner", dsl)
-	foreignMessage := json.RawMessage(`[{"role":"assistant","content":"foreign"}]`)
+	// duration_ms is filled in by marshalMessage when the row is written back,
+	// so the expected value has to carry it too or the DeepEqual below fails.
+	foreignMessage := json.RawMessage(`[{"role":"assistant","content":"foreign","duration_ms":0}]`)
 	if err := dao.NewAPI4ConversationDAO().Create(t.Context(), testDB, &entity.API4Conversation{
 		ID:        "session-foreign",
 		DialogID:  "canvas-session-owner",

@@ -150,11 +150,24 @@ func (s *Service) loadModelReferences(ctx context.Context) (*modelRefIndex, erro
 			index.names[key] = modelKeyName{Factory: factory, Model: model}
 		}
 		// Source 不参与去重：同一份引用被两张表同时记录时只算一次。
-		dedupe := strings.Join([]string{ref.TenantID, key, ref.ModelType, ref.InstanceName}, "|")
-		if _, ok := seen[dedupe]; ok {
-			return
+		//
+		// tenant_llm 是历史表，没有实例维度，它的 InstanceName 恒为空串。
+		// 若也把实例名拼进去重键，空串永远匹配不上 tenant_model 里的真实
+		// 实例名，同一份引用会被计两次，引用数比真实值翻倍。所以历史记录改成
+		// 按 (租户, 厂商+模型, 类型) 反查：该组合已出现过就不再追加。
+		if ref.Source == "tenant_llm" {
+			for _, existing := range index.byKey[key] {
+				if existing.TenantID == ref.TenantID && existing.ModelType == ref.ModelType {
+					return
+				}
+			}
+		} else {
+			dedupe := strings.Join([]string{ref.TenantID, key, ref.ModelType, ref.InstanceName}, "|")
+			if _, ok := seen[dedupe]; ok {
+				return
+			}
+			seen[dedupe] = struct{}{}
 		}
-		seen[dedupe] = struct{}{}
 		index.byKey[key] = append(index.byKey[key], ref)
 	}
 

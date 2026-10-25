@@ -229,6 +229,19 @@ func (f *fakeDocumentService) GetDocumentPreview(ctx context.Context, userID, do
 		FileName:    "preview.txt",
 	}, nil
 }
+
+// BatchSetDocumentFolder was added by the folder-grouping work. Handler tests
+// stub the service, so the fake must satisfy the interface again.
+func (f *fakeDocumentService) BatchSetDocumentFolder(ctx context.Context, userID, datasetID string, documentIDs []string, folder string) (int64, common.ErrorCode, error) {
+	return 0, common.CodeSuccess, nil
+}
+
+// ListDocumentFolders came from the same work and is also referenced by tests
+// that stub the service.
+func (f *fakeDocumentService) ListDocumentFolders(ctx context.Context, userID, datasetID string) ([]map[string]interface{}, common.ErrorCode, error) {
+	return nil, common.CodeSuccess, nil
+}
+
 func (f *fakeDocumentService) DownloadDocument(ctx context.Context, datasetID, docID string) (*document.DownloadDocumentResp, error) {
 	if f.downloadErr != nil {
 		return nil, f.downloadErr

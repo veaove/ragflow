@@ -463,7 +463,8 @@ func DefaultRange(fromStr, toStr string) (int64, int64) {
 		end = t.Add(24*time.Hour - time.Millisecond)
 	}
 	if start.After(end) {
-		start, end = end.AddDate(0, 0, -6), end
+		// 只回退 start；end 本来就是右值，赋值给自己是空操作（go vet 会报 self-assignment）。
+		start = end.AddDate(0, 0, -6)
 	}
 	return start.UnixMilli(), end.UnixMilli()
 }

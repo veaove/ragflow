@@ -209,7 +209,11 @@ func TestSetTenantDefaultModels_WithModelID(t *testing.T) {
 	daoModelProviderManager = models.GetProviderManager()
 
 	// 2. Migrate tables
+	//
+	// User 必须一起建：成员移除流程要清 user.department，
+	// 少了它后面几条用例会以 "no such table: user" 失败。
 	err = db.AutoMigrate(
+		&entity.User{},
 		&entity.Tenant{},
 		&entity.TenantModelProvider{},
 		&entity.TenantModelInstance{},

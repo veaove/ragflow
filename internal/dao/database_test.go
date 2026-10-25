@@ -48,6 +48,12 @@ func TestAutoMigrateRuntimeModelsCreatesGoRuntimeTables(t *testing.T) {
 		t.Fatal("expected memory_task to not exist initially")
 	}
 
+	// autoMigrateRuntimeModels 里有一步要给 tenant 加 enabled 列，
+	// 空 sqlite 上必须先有 tenant 表，否则那一步直接 "no such table: tenant"。
+	if err = db.AutoMigrate(&entity.Tenant{}); err != nil {
+		t.Fatalf("auto migrate tenant: %v", err)
+	}
+
 	ctx := context.Background()
 	if err = autoMigrateRuntimeModels(ctx, db); err != nil {
 		t.Fatalf("autoMigrateRuntimeModels failed: %v", err)

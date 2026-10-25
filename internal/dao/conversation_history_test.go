@@ -13,9 +13,9 @@ import (
 
 func TestFlattenMessageRoundTrip(t *testing.T) {
 	for _, item := range []string{
-		`{"id":"turn-1","role":"assistant","content":"你好\nanswer","status":"completed","thumbup":false,"feedback":"","created_at":123.25,"attachments":[{"id":"file-1"}]}`,
-		`{"role":"user","content":[{"type":"text","text":"question"},{"type":"image_url","image_url":{"url":"test"}}],"tool_calls":[]}`,
-		`{"id":null,"role":null,"content":null,"thumbup":null,"created_at":null,"feedback":null}`,
+		`{"id":"turn-1","role":"assistant","content":"你好\nanswer","status":"completed","thumbup":false,"feedback":"","created_at":123.25,"duration_ms":0,"attachments":[{"id":"file-1"}]}`,
+		`{"role":"user","content":[{"type":"text","text":"question"},{"type":"image_url","image_url":{"url":"test"}}],"tool_calls":[],"duration_ms":0}`,
+		`{"id":null,"role":null,"content":null,"thumbup":null,"created_at":null,"feedback":null,"duration_ms":null}`,
 		`{"id":1,"role":false,"content":{"text":"question"},"thumbup":"false","created_at":"123","feedback":{"reason":"bad"},"status":[]}`,
 		`{}`,
 	} {
