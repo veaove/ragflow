@@ -83,13 +83,18 @@ type AuditLog struct {
 	TenantID string `gorm:"column:tenant_id;size:64;not null" json:"tenant_id"`
 	// CanvasID is nullable: platform-level actions (tenant / user / model
 	// config) have no canvas context.
-	CanvasID   string `gorm:"column:canvas_id;size:32" json:"canvas_id,omitempty"`
-	Action     string `gorm:"column:action;size:32;not null" json:"action"`
-	ObjectType string `gorm:"column:object_type;size:32;not null" json:"object_type"`
-	ObjectID   string `gorm:"column:object_id;size:32" json:"object_id,omitempty"`
+	CanvasID   string  `gorm:"column:canvas_id;size:32" json:"canvas_id,omitempty"`
+	Action     string  `gorm:"column:action;size:32;not null" json:"action"`
+	ObjectType string  `gorm:"column:object_type;size:32;not null" json:"object_type"`
+	ObjectID   string  `gorm:"column:object_id;size:32" json:"object_id,omitempty"`
 	Before     JSONMap `gorm:"column:before;type:longtext" json:"before,omitempty"`
 	After      JSONMap `gorm:"column:after;type:longtext" json:"after,omitempty"`
-	Operator   string `gorm:"column:operator;size:64;not null" json:"operator"`
+	Operator   string  `gorm:"column:operator;size:64;not null" json:"operator"`
+	// OperatorName is a read-time decoration, never persisted: the audit table has
+	// two writers that disagree on what Operator holds (the admin middleware
+	// stores the operator's e-mail, the agent service stores a raw user id), so
+	// the console renders this resolved name and keeps Operator as the raw fact.
+	OperatorName string `gorm:"-" json:"operator_name,omitempty"`
 	// Platform audit trail. Result is "success" | "failed"; Method/Path keep the
 	// raw HTTP verb and route template so the console can map technical routes
 	// back to business actions; TenantName is a snapshot so a renamed or deleted

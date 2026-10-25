@@ -106,7 +106,7 @@ export default function PlatformAuditsPage() {
     const rows = logs.map((item: PlatformAuditItem) => [
       formatTime(item.create_time),
       item.tenant_name || item.tenant_id || '-',
-      item.operator || '-',
+      item.operator_name || item.operator || '-',
       moduleLabel(item.object_type),
       actionLabel(item.action),
       item.result === 'failed' ? t('admin.auditFailed') : t('admin.auditSuccess'),
@@ -227,15 +227,27 @@ export default function PlatformAuditsPage() {
                 </TableCell>
                 <TableCell className="text-xs">
                   {item.tenant_name || item.tenant_id ? (
-                    <span className="rounded bg-accent-primary/10 px-1.5 py-0.5 text-accent-primary">
+                    <span
+                      className="rounded bg-accent-primary/10 px-1.5 py-0.5 text-accent-primary"
+                      // 名称是解析出来的，原始 id 留在 title 里方便追查。
+                      title={item.tenant_id || undefined}
+                    >
                       {item.tenant_name || item.tenant_id}
                     </span>
                   ) : (
                     <span className="text-text-secondary">-</span>
                   )}
                 </TableCell>
-                <TableCell className="text-xs text-text-primary">
-                  {item.operator || '-'}
+                <TableCell
+                  className="text-xs text-text-primary"
+                  title={
+                    // 显示的是解析后的名字时，把库里存的原始值挂到 tooltip 上。
+                    item.operator_name && item.operator !== item.operator_name
+                      ? item.operator
+                      : undefined
+                  }
+                >
+                  {item.operator_name || item.operator || '-'}
                 </TableCell>
                 <TableCell className="text-xs text-text-primary">
                   {moduleLabel(item.object_type)}

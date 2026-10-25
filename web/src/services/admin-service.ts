@@ -522,6 +522,13 @@ export interface PlatformAuditItem {
   /** 租户名快照；租户被删或改名后历史仍可读。 */
   tenant_name?: string;
   operator: string;
+  /**
+   * 操作人的可读名（昵称优先，没昵称给邮箱）。后端在读取时解析。
+   *
+   * 审计表有两个写入方：管理后台中间件往 operator 写邮箱，智能体服务写的是
+   * 裸 user id。解析不出来（账号已删）时为空，前端回落到 operator。
+   */
+  operator_name?: string;
   /** 模块 key：tenant / user / model / queue ... */
   object_type: string;
   action: string;

@@ -188,6 +188,11 @@ type AuditFilter struct {
 	Keywords string // matches operator / tenant_name / path / action
 	Module   string // object_type
 	Result   string // success | failed
+	// ActorIDs are operator / tenant ids that already matched Keywords on a name
+	// lookup. Rows written by the agent service store raw user ids in operator
+	// (see agent_version.go writeAudit), so a name search would never find them
+	// without OR-ing the resolved ids in.
+	ActorIDs []string
 }
 
 // ListPlatform returns audit entries across ALL tenants, newest first.
@@ -200,10 +205,13 @@ func (dao *AuditLogDAO) ListPlatform(ctx context.Context, db *gorm.DB, f AuditFi
 
 	if kw := strings.TrimSpace(f.Keywords); kw != "" {
 		like := "%" + kw + "%"
-		q = q.Where(
-			"operator LIKE ? OR tenant_name LIKE ? OR path LIKE ? OR action LIKE ?",
-			like, like, like, like,
-		)
+		cond := "operator LIKE ? OR tenant_name LIKE ? OR path LIKE ? OR action LIKE ?"
+		args := []any{like, like, like, like}
+		if len(f.ActorIDs) > 0 {
+			cond += " OR operator IN ? OR tenant_id IN ?"
+			args = append(args, f.ActorIDs, f.ActorIDs)
+		}
+		q = q.Where(cond, args...)
 	}
 	if f.Module != "" {
 		q = q.Where("object_type = ?", f.Module)
