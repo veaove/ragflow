@@ -156,6 +156,16 @@ export default {
         agentCount: 'Agent 总数',
         satisfaction: '交互满意度',
         userActivity: '用户活跃度',
+        members: '成员数',
+        departments: '部门数',
+        knowledgeBases: '知识库数',
+        agents: '智能体数',
+      },
+      hint: {
+        membersActive: '近{{days}}日活跃 {{count}} 人',
+        subDepartments: '{{count}} 个子部门',
+        totalDocuments: '总文档 {{total}}',
+        agentsThisMonth: '本月新增 {{count}} 个',
       },
       unit: {
         dataset: '个',

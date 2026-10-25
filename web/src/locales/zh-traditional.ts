@@ -55,6 +55,16 @@ export default {
         agentCount: 'Agent 總數',
         satisfaction: '互動滿意度',
         userActivity: '用戶活躍度',
+        members: '成員數',
+        departments: '部門數',
+        knowledgeBases: '知識庫數',
+        agents: '智能體數',
+      },
+      hint: {
+        membersActive: '近{{days}}日活躍 {{count}} 人',
+        subDepartments: '{{count}} 個子部門',
+        totalDocuments: '總文檔 {{total}}',
+        agentsThisMonth: '本月新增 {{count}} 個',
       },
       unit: {
         dataset: '個',

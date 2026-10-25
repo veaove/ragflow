@@ -16,16 +16,35 @@
 
 import type { LucideIcon } from 'lucide-react';
 
+/**
+ * 指标卡图标底色的色调。
+ *
+ * 只有 accent 走主题强调色（跟随亮/暗色皮肤）；其余四种是固定的语义色，
+ * 用来在同一排卡片里区分「人 / 组织 / 内容 / 应用」四类对象，
+ * 靠 10% 透明度铺底，在浅色和深色主题下都不会糊成一块。
+ */
+export type MetricTone = 'accent' | 'blue' | 'green' | 'purple' | 'orange';
+
 /** 顶部 KPI 卡片。 */
 export interface IOverviewMetric {
   key: string;
   label: string;
-  value: number;
+  /** 取不到数据时传 null，卡片渲染成「—」而不是 0。 */
+  value: number | null;
   /** 单位后缀，如「条」「次」。为空表示纯数字。 */
   unit?: string;
   icon: LucideIcon;
   /** 相比上一周期的变化百分比；null 表示无法计算（首日无对比基准）。 */
   delta: number | null;
+  /**
+   * 底部灰色副文案，用来替代涨跌幅。
+   *
+   * 与 delta 互斥：给了 hint 就固定渲染 hint，不再渲染百分比——
+   * 组织规模这类指标没有「上一周期」可比，硬算环比只会得到 +∞%。
+   */
+  hint?: string;
+  /** 图标底色，默认 accent。 */
+  tone?: MetricTone;
 }
 
 /** 「用户活跃度」卡片：租户总用户数与窗口内的活跃用户数。 */

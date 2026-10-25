@@ -175,6 +175,16 @@ export default {
         agentCount: 'Agents',
         satisfaction: 'Interaction satisfaction',
         userActivity: 'User activity',
+        members: 'Members',
+        departments: 'Departments',
+        knowledgeBases: 'Knowledge bases',
+        agents: 'Agents',
+      },
+      hint: {
+        membersActive: '{{count}} active in {{days}}d',
+        subDepartments: '{{count}} sub-departments',
+        totalDocuments: '{{total}} documents',
+        agentsThisMonth: '{{count}} added this month',
       },
       unit: {
         dataset: '',

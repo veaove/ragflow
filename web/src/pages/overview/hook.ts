@@ -15,13 +15,14 @@
  */
 
 import agentService from '@/services/agent-service';
+import { fetchDepartments } from '@/services/console-service';
 import {
   documentFilter,
   getSystemStats,
   listDataset,
 } from '@/services/knowledge-service';
-import type { IDocumentInfoFilter } from '@/interfaces/database/document';
 import type { IStats } from '@/interfaces/database/chat';
+import type { IDocumentInfoFilter } from '@/interfaces/database/document';
 import request from '@/utils/request';
 import { POLL_INTERVAL_MS } from './constants';
 import type { IUserActivity } from './interface';
@@ -71,29 +72,80 @@ async function fetchAllDatasets() {
 }
 
 /**
- * 统计 Agent 数量。
+ * 统计 Agent 数量，并顺带数出本月新建的数量。
  *
  * 不指定 canvas_category 时后端会混入编译模板组，这里显式传 'agent'，
  * 并再次按 item.type 过滤一次，双重保险。
  */
-async function fetchAgentTotal(): Promise<number> {
-  let count = 0;
+async function fetchAgentSummary(): Promise<{
+  total: number;
+  thisMonth: number;
+}> {
+  const monthStart = firstDayOfMonth();
+  let total = 0;
+  let thisMonth = 0;
   let page = 1;
-  let total = Number.POSITIVE_INFINITY;
+  let upperBound = Number.POSITIVE_INFINITY;
 
-  while (count < total && page <= MAX_PAGES) {
+  while (total < upperBound && page <= MAX_PAGES) {
     const { data } = await agentService.listAgents(
       { params: { page, page_size: PAGE_SIZE, canvas_category: 'agent' } },
       true,
     );
     const canvas: any[] = data?.data?.canvas ?? [];
     if (canvas.length === 0) break;
-    count += canvas.filter((item) => item?.type === 'agent').length;
-    total = data?.data?.total ?? count;
+
+    const agents = canvas.filter((item) => item?.type === 'agent');
+    total += agents.length;
+    thisMonth += agents.filter(
+      (item) => toMillis(item?.create_time) >= monthStart,
+    ).length;
+
+    upperBound = data?.data?.total ?? total;
     page += 1;
   }
 
-  return count;
+  return { total, thisMonth };
+}
+
+/**
+ * 时间戳统一成毫秒。
+ *
+ * canvas.create_time 在历史数据里有毫秒也有秒（早期表用秒），
+ * 直接比较会把 2020 年的记录算成「本月新增」。13 位即毫秒是可靠判据。
+ */
+function toMillis(ts: unknown): number {
+  const n = Number(ts);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n < 1e12 ? n * 1000 : n;
+}
+
+/** 本月 1 日 00:00 的毫秒时间戳（本地时区，与用户看到的「本月」一致）。 */
+function firstDayOfMonth(): number {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+}
+
+/**
+ * 部门树 → 部门总数 + 子部门数。
+ *
+ * 后端返回邻接表拼好的树，根节点就是没有父级的顶层部门；
+ * 「子部门」= 排除顶层之后的节点数，与组织架构页的层级一致。
+ */
+function countDepartments(nodes: any[]): { total: number; children: number } {
+  let total = 0;
+  let children = 0;
+
+  const walk = (list: any[], isRootLevel: boolean) => {
+    for (const node of list) {
+      total += 1;
+      if (!isRootLevel) children += 1;
+      if (Array.isArray(node?.children)) walk(node.children, false);
+    }
+  };
+
+  walk(nodes, true);
+  return { total, children };
 }
 
 /**
@@ -136,10 +188,12 @@ async function fetchGlobalSuffixCounter(): Promise<Record<string, number>> {
 /**
  * 总览页数据源。
  *
- * 五组数据并行拉取。任意一组失败都不会让整页白屏——组件层按各自的 isError
+ * 六组数据并行拉取。任意一组失败都不会让整页白屏——组件层按各自的 isError
  * 渲染降级内容，因此这里不做整体串行等待。
+ *
+ * tenantId 只给「部门数」用：控制台接口路径里带租户，缺了它就不发请求。
  */
-export function useOverviewQueries(days = 7) {
+export function useOverviewQueries(days = 7, tenantId?: string) {
   return useQueries({
     queries: [
       {
@@ -149,8 +203,8 @@ export function useOverviewQueries(days = 7) {
         retry: 1,
       },
       {
-        queryKey: ['overview', 'agentTotal'],
-        queryFn: fetchAgentTotal,
+        queryKey: ['overview', 'agentSummary'],
+        queryFn: fetchAgentSummary,
         refetchInterval: POLL_INTERVAL_MS,
         retry: 1,
       },
@@ -159,7 +213,9 @@ export function useOverviewQueries(days = 7) {
         // 解包层级与 useSystemConfig 一致：
         // await 后是 { data: jsonBody }，jsonBody.data 才是 StatsResponse。
         queryFn: async () => {
-          const { data: jsonBody } = await getSystemStats(buildStatsRange(days));
+          const { data: jsonBody } = await getSystemStats(
+            buildStatsRange(days),
+          );
           return jsonBody?.data as IStats;
         },
         refetchInterval: POLL_INTERVAL_MS,
@@ -179,6 +235,19 @@ export function useOverviewQueries(days = 7) {
             `/api/v1/system/user-activity?days=${days}`,
           );
           return jsonBody?.data as IUserActivity | undefined;
+        },
+        refetchInterval: POLL_INTERVAL_MS,
+        retry: 1,
+      },
+      {
+        // 部门数：控制台接口要 tenant_id，而 tenant_id 来自租户信息接口，
+        // 因此这里按「拿不到 tenantId 就不发请求」处理，卡片显示 —。
+        queryKey: ['overview', 'departments', tenantId],
+        enabled: !!tenantId,
+        queryFn: async () => {
+          const res = await fetchDepartments(tenantId as string);
+          const tree = res?.data?.data?.departments ?? [];
+          return countDepartments(tree);
         },
         refetchInterval: POLL_INTERVAL_MS,
         retry: 1,
