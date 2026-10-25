@@ -75,7 +75,7 @@ export const createDepartment = (
   body: { name: string; parent_id?: string; sort?: number },
 ) => request.post<ResponseData<DepartmentNode>>(
   api.tenantDepartments(tenantId),
-  body,
+  { data: body },
 );
 
 export const updateDepartment = (
@@ -84,7 +84,7 @@ export const updateDepartment = (
   body: { name?: string; parent_id?: string; sort?: number },
 ) => request.put<ResponseData<{ id: string }>>(
   api.tenantDepartment(tenantId, id),
-  body,
+  { data: body },
 );
 
 export const deleteDepartment = (tenantId: string, id: string) =>
@@ -120,7 +120,7 @@ export const updateConsoleMember = (
   },
 ) => request.put<ResponseData<{ user_id: string }>>(
   api.tenantConsoleMember(tenantId, userId),
-  body,
+  { data: body },
 );
 
 /** 移除成员：复用现有的 DELETE /tenants/:id/users（body 传 user_id）。 */
@@ -141,7 +141,7 @@ export const createConsoleRole = (
   body: { name: string; description?: string; grant?: Record<string, string> },
 ) => request.post<ResponseData<{ id: string }>>(
   api.tenantConsoleRoles(tenantId),
-  body,
+  { data: body },
 );
 
 export const updateConsoleRole = (
@@ -150,7 +150,7 @@ export const updateConsoleRole = (
   body: { name?: string; description?: string },
 ) => request.put<ResponseData<{ id: string }>>(
   api.tenantConsoleRole(tenantId, id),
-  body,
+  { data: body },
 );
 
 export const deleteConsoleRole = (tenantId: string, id: string) =>
@@ -164,7 +164,7 @@ export const saveConsolePermissions = (
   permissions: RolePermissionRow[],
 ) => request.put<ResponseData<{ id: string }>>(
   api.tenantConsoleRolePermissions(tenantId, id),
-  { permissions },
+  { data: { permissions } },
 );
 
 // ── 资源授权 ────────────────────────────────────────────────────────────────
@@ -212,7 +212,7 @@ export const setGrants = (
   subjects: GrantSubject[],
 ) => request.put<ResponseData<{ resource_id: string }>>(
   api.tenantGrant(tenantId, kind, resourceId),
-  { subjects },
+  { data: { subjects } },
 );
 
 /** 移除成员后由管理员重置密码：password 需先用 rsaPsw 加密。 */
@@ -222,7 +222,7 @@ export const resetMemberPassword = (
   encryptedPassword: string,
 ) => request.put<ResponseData<{ user_id: string }>>(
   api.tenantConsoleMemberPassword(tenantId, userId),
-  { password: encryptedPassword },
+  { data: { password: encryptedPassword } },
 );
 
 /**
@@ -235,7 +235,7 @@ export const resetMemberPassword = (
 export const addTenantMember = (
   tenantId: string,
   body: { email: string; role?: string; role_id?: string },
-) => request.post<ResponseData<unknown>>(api.tenantAddMember(tenantId), body);
+) => request.post<ResponseData<unknown>>(api.tenantAddMember(tenantId), { data: body });
 
 // ── 当前用户权限 ────────────────────────────────────────────────────────────
 
