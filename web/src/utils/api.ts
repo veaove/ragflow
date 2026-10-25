@@ -501,6 +501,11 @@ export default {
     `${restAPIv1}/tenants/${tenantId}/users`,
   tenantConsoleMember: (tenantId: string, userId: string) =>
     `${restAPIv1}/tenants/${tenantId}/console/members/${userId}`,
+  tenantConsoleMemberPassword: (tenantId: string, userId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/console/members/${userId}/password`,
+  /** 直接添加成员（无需接受邀请） */
+  tenantAddMember: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/members`,
   tenantConsoleRoles: (tenantId: string) =>
     `${restAPIv1}/tenants/${tenantId}/roles`,
   tenantConsoleRole: (tenantId: string, id: string) =>

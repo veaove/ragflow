@@ -366,6 +366,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 				tenants.DELETE("/:tenant_id/departments/:id", r.consoleHandler.DeleteDepartment)
 				tenants.GET("/:tenant_id/console/members", r.consoleHandler.ListConsoleMembers)
 				tenants.PUT("/:tenant_id/console/members/:user_id", r.consoleHandler.UpdateConsoleMember)
+				tenants.PUT("/:tenant_id/console/members/:user_id/password", r.consoleHandler.ResetConsoleMemberPassword)
 				tenants.GET("/:tenant_id/roles", r.consoleHandler.ListConsoleRoles)
 				tenants.POST("/:tenant_id/roles", r.consoleHandler.CreateConsoleRole)
 				tenants.PUT("/:tenant_id/roles/:id", r.consoleHandler.UpdateConsoleRole)

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LucideSearch } from 'lucide-react';
+import { LucidePlus, LucideSearch } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -26,12 +26,15 @@ import {
   ConsoleMember,
   ConsoleRole,
   DepartmentNode,
+  addTenantMember,
   fetchConsoleMembers,
   fetchConsoleRoles,
   fetchDepartments,
   removeConsoleMember,
+  resetMemberPassword,
   updateConsoleMember,
 } from '@/services/console-service';
+import { rsaPsw } from '@/utils/index';
 
 const PAGE_SIZE = 20;
 
@@ -61,6 +64,17 @@ export default function ConsoleMembers() {
     role_id: '',
     status: '1',
   });
+
+  // 邀请成员：直接添加已注册用户，无邀请确认环节。
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('normal');
+  const [inviteError, setInviteError] = useState('');
+
+  // 重置密码：前端用 rsaPsw 加密，后端解密后再哈希。
+  const [pwTarget, setPwTarget] = useState<ConsoleMember | null>(null);
+  const [pwValue, setPwValue] = useState('');
+  const [pwError, setPwError] = useState('');
 
   const { data: deptData } = useQuery({
     queryKey: ['console/departments', tenantId],
@@ -158,13 +172,56 @@ export default function ConsoleMembers() {
     [queryClient, tenantId],
   );
 
+  const submitInvite = useCallback(async () => {
+    if (!tenantId || !inviteEmail.trim()) return;
+    setInviteError('');
+    try {
+      await addTenantMember(tenantId, {
+        email: inviteEmail.trim(),
+        role: inviteRole,
+      });
+      setInviteOpen(false);
+      setInviteEmail('');
+      setInviteRole('normal');
+      queryClient.invalidateQueries({ queryKey: ['console/members'] });
+    } catch (e: any) {
+      // 常见失败：邮箱未注册 / 调用者不是租户 owner / 已是成员。
+      setInviteError(e?.message ?? '添加失败，请确认该邮箱已注册且未被添加');
+    }
+  }, [inviteEmail, inviteRole, queryClient, tenantId]);
+
+  const submitPw = useCallback(async () => {
+    if (!tenantId || !pwTarget) return;
+    if (pwValue.length < 6) {
+      setPwError('密码至少 6 位');
+      return;
+    }
+    setPwError('');
+    try {
+      // JSEncrypt 加密失败时返回 false，兜底成空串让后端报"密码不能为空"，
+      // 而不是把 false 塞进请求体。
+      await resetMemberPassword(tenantId, pwTarget.id, rsaPsw(pwValue) || '');
+      setPwTarget(null);
+      setPwValue('');
+      window.alert('密码已重置');
+    } catch (e: any) {
+      setPwError(e?.message ?? '重置失败');
+    }
+  }, [pwTarget, pwValue, tenantId]);
+
   return (
     <section className="flex h-full flex-col p-5">
-      <header className="mb-4">
-        <h1 className="text-2xl font-medium text-text-primary">
-          {t('console.members')}
-        </h1>
-        <p className="mt-1 text-sm text-text-secondary">共 {total} 位成员</p>
+      <header className="mb-4 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-medium text-text-primary">
+            {t('console.members')}
+          </h1>
+          <p className="mt-1 text-sm text-text-secondary">共 {total} 位成员</p>
+        </div>
+        <Button onClick={() => setInviteOpen(true)}>
+          <LucidePlus className="mr-1 size-4" />
+          邀请成员
+        </Button>
       </header>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -292,6 +349,17 @@ export default function ConsoleMembers() {
                   </button>
                   <button
                     type="button"
+                    className="mr-3 text-text-primary hover:underline"
+                    onClick={() => {
+                      setPwTarget(m);
+                      setPwValue('');
+                      setPwError('');
+                    }}
+                  >
+                    重置密码
+                  </button>
+                  <button
+                    type="button"
                     className="text-state-error hover:underline"
                     onClick={() => remove(m)}
                   >
@@ -388,6 +456,87 @@ export default function ConsoleMembers() {
               取消
             </Button>
             <Button onClick={submit}>保存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* 邀请成员：直接添加已注册用户，无需对方确认 */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>邀请成员</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <div className="mb-1 text-sm text-text-secondary">
+                邮箱（须为已注册用户）
+              </div>
+              <Input
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="name@example.com"
+              />
+            </div>
+            <div>
+              <div className="mb-1 text-sm text-text-secondary">成员类型</div>
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value)}
+                className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
+              >
+                <option value="normal">普通成员</option>
+                <option value="admin">部门管理员</option>
+              </select>
+              <div className="mt-1 text-xs text-text-secondary">
+                细分角色（含自定义角色）可在添加后于「编辑」里指定。
+              </div>
+            </div>
+            {inviteError && (
+              <div className="text-xs text-state-error">{inviteError}</div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setInviteOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={submitInvite}>添加</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 重置密码 */}
+      <Dialog
+        open={!!pwTarget}
+        onOpenChange={(open) => !open && setPwTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>重置密码</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-sm text-text-secondary">
+              {pwTarget?.nickname} · {pwTarget?.email}
+            </div>
+            <div>
+              <div className="mb-1 text-sm text-text-secondary">新密码</div>
+              <Input
+                type="password"
+                value={pwValue}
+                onChange={(e) => setPwValue(e.target.value)}
+                placeholder="至少 6 位"
+              />
+            </div>
+            {pwError && (
+              <div className="text-xs text-state-error">{pwError}</div>
+            )}
+            <div className="text-xs text-text-secondary">
+              密码由 RSA 加密后传输，服务端按与登录相同的格式存储。
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setPwTarget(null)}>
+              取消
+            </Button>
+            <Button onClick={submitPw}>确定</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

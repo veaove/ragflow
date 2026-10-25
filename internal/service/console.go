@@ -434,3 +434,44 @@ func (s *ConsoleService) SavePermissions(ctx context.Context, tenantID, roleID s
 	}
 	return dao.NewRoleDAO().ReplacePermissions(ctx, dao.DB, tenantID, roleID, clean)
 }
+
+// ResetMemberPassword sets a new password for a tenant member.
+//
+// The console encrypts with the same RSA key as the login form, so the payload
+// is decrypted here before hashing. Reuses common.GenerateWerkzeugPasswordHash
+// so the stored format stays identical to every other password write path.
+func (s *ConsoleService) ResetMemberPassword(ctx context.Context, tenantID, userID, encryptedPassword string) error {
+	if strings.TrimSpace(encryptedPassword) == "" {
+		return errors.New("新密码不能为空")
+	}
+
+	// The target must be a member of this tenant — otherwise the endpoint would
+	// be a way to reset any user's password by guessing an id.
+	var membership entity.UserTenant
+	if err := dao.DB.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Where("user_id = ?", userID).
+		Take(&membership).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("成员不存在")
+		}
+		return err
+	}
+
+	plain, err := common.DecryptPassword(encryptedPassword)
+	if err != nil {
+		return errors.New("密码解密失败")
+	}
+	if len(plain) < 6 {
+		return errors.New("密码至少 6 位")
+	}
+
+	hashed, err := common.GenerateWerkzeugPasswordHash(plain)
+	if err != nil {
+		return err
+	}
+	return dao.DB.WithContext(ctx).
+		Model(&entity.User{}).
+		Where("id = ?", userID).
+		Update("password", hashed).Error
+}

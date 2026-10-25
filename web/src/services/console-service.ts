@@ -206,3 +206,22 @@ export const setGrants = (
   api.tenantGrant(tenantId, kind, resourceId),
   { subjects },
 );
+
+/** 移除成员后由管理员重置密码：password 需先用 rsaPsw 加密。 */
+export const resetMemberPassword = (
+  tenantId: string,
+  userId: string,
+  encryptedPassword: string,
+) => request.put<ResponseData<{ user_id: string }>>(
+  api.tenantConsoleMemberPassword(tenantId, userId),
+  { password: encryptedPassword },
+);
+
+/**
+ * 直接添加已注册用户为成员（无需对方接受邀请）。
+ * role 走枚举 owner/admin/normal，与 user_tenant.role 一致。
+ */
+export const addTenantMember = (
+  tenantId: string,
+  body: { email: string; role?: string },
+) => request.post<ResponseData<unknown>>(api.tenantAddMember(tenantId), body);

@@ -457,3 +457,34 @@ func (h *ConsoleHandler) SetResourceGrants(c *gin.Context) {
 	}
 	common.SuccessWithData(c, gin.H{"resource_id": c.Param("resource_id")}, "success")
 }
+
+// ResetConsoleMemberPassword handles PUT /tenants/:tenant_id/console/members/:user_id/password.
+func (h *ConsoleHandler) ResetConsoleMemberPassword(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	tenantID := consoleTenantID(c)
+	if err := requireTenantAccess(c, user.ID, tenantID, true); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
+		return
+	}
+
+	var req struct {
+		// Password is RSA-encrypted by the console (same key as the login form).
+		Password string `json:"password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, err.Error())
+		return
+	}
+
+	if err := service.NewConsoleService().ResetMemberPassword(
+		c.Request.Context(), tenantID, c.Param("user_id"), req.Password,
+	); err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{"user_id": c.Param("user_id")}, "success")
+}
