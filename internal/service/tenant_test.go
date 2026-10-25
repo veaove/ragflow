@@ -38,7 +38,9 @@ func setupTenantPermissionTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.UserTenant{}); err != nil {
+	// User 也要建：成员移除要清 user.department，权限链上还会按 id 查
+	// user 表拿 department_id，少了它整条用例以 "no such table: user" 收场。
+	if err := db.AutoMigrate(&entity.User{}, &entity.UserTenant{}); err != nil {
 		t.Fatalf("migrate tenant permission table: %v", err)
 	}
 	originalDB := dao.DB

@@ -34,7 +34,9 @@ func setupListDatasetsTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
 
-	if err := db.AutoMigrate(&entity.Knowledgebase{}, &entity.User{}, &entity.UserTenant{}, &entity.Tenant{}); err != nil {
+	// ResourceGrant 也要建：知识库列表的权限过滤 SQL 里有一层
+	// resource_grant 子查询，缺表会让整个列表查询报 no such table。
+	if err := db.AutoMigrate(&entity.Knowledgebase{}, &entity.User{}, &entity.UserTenant{}, &entity.Tenant{}, &entity.ResourceGrant{}); err != nil {
 		t.Fatalf("failed to migrate test schema: %v", err)
 	}
 

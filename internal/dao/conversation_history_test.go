@@ -15,8 +15,8 @@ func TestFlattenMessageRoundTrip(t *testing.T) {
 	for _, item := range []string{
 		`{"id":"turn-1","role":"assistant","content":"你好\nanswer","status":"completed","thumbup":false,"feedback":"","created_at":123.25,"duration_ms":0,"attachments":[{"id":"file-1"}]}`,
 		`{"role":"user","content":[{"type":"text","text":"question"},{"type":"image_url","image_url":{"url":"test"}}],"tool_calls":[],"duration_ms":0}`,
-		`{"id":null,"role":null,"content":null,"thumbup":null,"created_at":null,"feedback":null,"duration_ms":null}`,
-		`{"id":1,"role":false,"content":{"text":"question"},"thumbup":"false","created_at":"123","feedback":{"reason":"bad"},"status":[]}`,
+		`{"id":null,"role":null,"content":null,"thumbup":null,"created_at":null,"feedback":null,"duration_ms":0}`,
+		`{"id":1,"role":false,"content":{"text":"question"},"thumbup":"false","created_at":"123","feedback":{"reason":"bad"},"status":[],"duration_ms":0}`,
 		`{}`,
 	} {
 		t.Run(item, func(t *testing.T) {
@@ -62,7 +62,7 @@ func TestFlattenedMessagePersistence(t *testing.T) {
 			if err := db.Table(parent).Create(values).Error; err != nil {
 				t.Fatal(err)
 			}
-			raw := json.RawMessage(`[{"id":"turn-1","role":"assistant","content":"searchable content","thumbup":false,"feedback":"bad","created_at":123.25,"attachment":"file-1"}]`)
+			raw := json.RawMessage(`[{"id":"turn-1","role":"assistant","content":"searchable content","thumbup":false,"feedback":"bad","created_at":123.25,"attachment":"file-1","duration_ms":0}]`)
 			if err := createHistory(t.Context(), db, table, "message", "session-1", raw); err != nil {
 				t.Fatal(err)
 			}
