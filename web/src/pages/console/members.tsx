@@ -83,7 +83,7 @@ export default function ConsoleMembers() {
     enabled: !!tenantId,
     queryFn: async () => {
       const res = await fetchDepartments(tenantId as string);
-      return res?.data ?? { departments: [] };
+      return res?.data?.data ?? { departments: [] };
     },
   });
   const departments: DepartmentNode[] = deptData?.departments ?? [];
@@ -105,7 +105,7 @@ export default function ConsoleMembers() {
     enabled: !!tenantId,
     queryFn: async () => {
       const res = await fetchConsoleRoles(tenantId as string);
-      return res?.data ?? { roles: [], modules: [] };
+      return res?.data?.data ?? { roles: [], modules: [] };
     },
   });
   const roles: ConsoleRole[] = roleData?.roles ?? [];
@@ -131,7 +131,7 @@ export default function ConsoleMembers() {
         role_id: roleId || undefined,
         status: status || undefined,
       });
-      return res?.data ?? { members: [], total: 0 };
+      return res?.data?.data ?? { members: [], total: 0 };
     },
   });
   const members: ConsoleMember[] = data?.members ?? [];

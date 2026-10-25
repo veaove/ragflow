@@ -119,7 +119,7 @@ export default function ConsoleRoles() {
     enabled: !!tenantId && auditOpen,
     queryFn: async () => {
       const res = await fetchConsoleAudits({ page: 1, page_size: 100 });
-      return res?.data ?? [];
+      return res?.data?.data ?? [];
     },
   });
 
@@ -140,7 +140,7 @@ export default function ConsoleRoles() {
     enabled: !!tenantId,
     queryFn: async () => {
       const res = await fetchConsoleRoles(tenantId as string);
-      return res?.data ?? { roles: [], modules: [] };
+      return res?.data?.data ?? { roles: [], modules: [] };
     },
   });
   const roles: ConsoleRole[] = data?.roles ?? [];

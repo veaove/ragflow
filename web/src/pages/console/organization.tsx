@@ -61,7 +61,7 @@ export default function ConsoleOrganization() {
     enabled: !!tenantId,
     queryFn: async () => {
       const res = await fetchDepartments(tenantId as string);
-      return res?.data ?? { departments: [] };
+      return res?.data?.data ?? { departments: [] };
     },
   });
   const departments: DepartmentNode[] = deptData?.departments ?? [];
@@ -75,7 +75,7 @@ export default function ConsoleOrganization() {
         keywords: keywords || undefined,
         page_size: 200,
       });
-      return res?.data ?? { members: [], total: 0 };
+      return res?.data?.data ?? { members: [], total: 0 };
     },
   });
   const members: ConsoleMember[] = memberData?.members ?? [];

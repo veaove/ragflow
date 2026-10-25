@@ -11,6 +11,14 @@ type ResponseData<D = NonNullable<unknown>> = {
   data: D;
 };
 
+/**
+ * `request` 用的是 umi-request 的 `getResponse: true`：
+ * 运行时 resolve 值是 `{ data: <响应体>, response }`，但 umi 的类型声明
+ * 只写了业务类型，不含这层包裹。不加这个别名，页面里 `res.data.roles`
+ * 会在运行时拿到 undefined —— 类型检查却是通过的，列表静默显示为空。
+ */
+type ApiEnvelope<D = NonNullable<unknown>> = { data: ResponseData<D> };
+
 /** 部门树节点（后端已按 parent_id 组装好 children）。 */
 export interface DepartmentNode {
   id: string;
@@ -58,7 +66,7 @@ export interface ConsoleRole {
 // ── 组织架构 ────────────────────────────────────────────────────────────────
 
 export const fetchDepartments = (tenantId: string) =>
-  request.get<ResponseData<{ departments: DepartmentNode[] }>>(
+  request.get<ApiEnvelope<{ departments: DepartmentNode[] }>>(
     api.tenantDepartments(tenantId),
   );
 
@@ -96,7 +104,7 @@ export const fetchConsoleMembers = (
     role_id?: string;
     status?: string;
   },
-) => request.get<ResponseData<{ members: ConsoleMember[]; total: number }>>(
+) => request.get<ApiEnvelope<{ members: ConsoleMember[]; total: number }>>(
   api.tenantConsoleMembers(tenantId),
   { params },
 );
@@ -124,7 +132,7 @@ export const removeConsoleMember = (tenantId: string, userId: string) =>
 // ── 角色权限 ────────────────────────────────────────────────────────────────
 
 export const fetchConsoleRoles = (tenantId: string) =>
-  request.get<ResponseData<{ roles: ConsoleRole[]; modules: string[] }>>(
+  request.get<ApiEnvelope<{ roles: ConsoleRole[]; modules: string[] }>>(
     api.tenantConsoleRoles(tenantId),
   );
 
@@ -188,7 +196,7 @@ export const fetchGrants = (
     page?: number;
     page_size?: number;
   },
-) => request.get<ResponseData<{ resources: GrantResource[]; total: number }>>(
+) => request.get<ApiEnvelope<{ resources: GrantResource[]; total: number }>>(
   api.tenantGrants(tenantId),
   { params },
 );
@@ -241,7 +249,7 @@ export interface MyPermissions {
 }
 
 export const fetchMyPermissions = (tenantId: string) =>
-  request.get<ResponseData<MyPermissions>>(
+  request.get<ApiEnvelope<MyPermissions>>(
     api.tenantMyPermissions(tenantId),
   );
 
@@ -266,4 +274,4 @@ export const fetchConsoleAudits = (params: {
   page_size?: number;
   object_type?: string;
 }) =>
-  request.get<ResponseData<AuditEntry[]>>(api.audits, { params });
+  request.get<ApiEnvelope<AuditEntry[]>>(api.audits, { params });

@@ -77,7 +77,7 @@ export default function ConsoleGrants() {
     enabled: !!tenantId,
     queryFn: async () => {
       const res = await fetchDepartments(tenantId as string);
-      return res?.data ?? { departments: [] };
+      return res?.data?.data ?? { departments: [] };
     },
   });
   const departments: DepartmentNode[] = deptData?.departments ?? [];
@@ -90,7 +90,7 @@ export default function ConsoleGrants() {
         page: 1,
         page_size: 200,
       });
-      return res?.data ?? { members: [], total: 0 };
+      return res?.data?.data ?? { members: [], total: 0 };
     },
   });
   const members: ConsoleMember[] = memberData?.members ?? [];
@@ -117,7 +117,7 @@ export default function ConsoleGrants() {
         page,
         page_size: pageSize,
       });
-      return res?.data ?? { resources: [], total: 0 };
+      return res?.data?.data ?? { resources: [], total: 0 };
     },
   });
   const resources: GrantResource[] = data?.resources ?? [];
