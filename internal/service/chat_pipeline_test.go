@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -1789,8 +1790,9 @@ func setupChatPipelineToolSupportTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	// 同 setupChatPipelineVisionTestDB：cache=shared 否则连接池里换一条连接
-	// 就看不到 AutoMigrate 建的表。
-	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{TranslateError: true})
+	// 就看不到 AutoMigrate 建的表；库名带 UnixNano，否则 -count>1 时第二次
+	// setup 会撞上一次 seed 的数据。
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s-%d?mode=memory&cache=shared", url.QueryEscape(t.Name()), time.Now().UnixNano())), &gorm.Config{TranslateError: true})
 	if err != nil {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}

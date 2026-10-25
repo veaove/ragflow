@@ -1,8 +1,10 @@
 package service
 
 import (
+	"fmt"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -25,8 +27,12 @@ func setupChatPipelineVisionTestDB(t *testing.T) *gorm.DB {
 
 	// cache=shared 是必须的：":memory:" 会让连接池里的每条连接各拿到一个
 	// 独立的空库，AutoMigrate 建的表只存在于建它的那条连接上，别的连接
-	// 一查就是 no such table。用 t.Name() 做库名，避免同包内其他用例串数据。
-	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{TranslateError: true})
+	// 一查就是 no such table。
+	//
+	// 库名还必须每次运行都不同：cache=shared 的库在同名连接全部关闭前一直
+	// 活着，-count>1 时第二次 setup 会撞上第一次 seed 的数据，报 duplicated
+	// key。所以带上 UnixNano 保证每次都是全新的库。
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s-%d?mode=memory&cache=shared", url.QueryEscape(t.Name()), time.Now().UnixNano())), &gorm.Config{TranslateError: true})
 	if err != nil {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
