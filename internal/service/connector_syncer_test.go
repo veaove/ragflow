@@ -48,7 +48,7 @@ func stringPtr(value string) *string {
 func TestUpdateConnectorSchedulePublishesSyncerTask(t *testing.T) {
 	db := setupServiceTestDB(t)
 	pushServiceDB(t, db)
-	if err := db.AutoMigrate(&entity.Connector{}, &entity.Connector2Kb{}, &entity.Knowledgebase{}, &entity.SyncLogs{}); err != nil {
+	if err := db.AutoMigrate(&entity.ResourceGrant{}, &entity.Connector{}, &entity.Connector2Kb{}, &entity.Knowledgebase{}, &entity.SyncLogs{}); err != nil {
 		t.Fatalf("migrate connector tables: %v", err)
 	}
 
@@ -116,7 +116,7 @@ func TestUpdateConnectorSchedulePublishesSyncerTask(t *testing.T) {
 func TestResumeFailedSyncSchedulesOriginalTaskFromCheckpoint(t *testing.T) {
 	db := setupServiceTestDB(t)
 	pushServiceDB(t, db)
-	if err := db.AutoMigrate(&entity.Connector{}, &entity.Connector2Kb{}, &entity.Knowledgebase{}, &entity.SyncLogs{}, &entity.UserTenant{}); err != nil {
+	if err := db.AutoMigrate(&entity.ResourceGrant{}, &entity.Connector{}, &entity.Connector2Kb{}, &entity.Knowledgebase{}, &entity.SyncLogs{}, &entity.UserTenant{}); err != nil {
 		t.Fatalf("migrate connector tables: %v", err)
 	}
 	if err := db.Create(&entity.Connector{
@@ -212,7 +212,7 @@ func TestResumeFailedSyncSchedulesOriginalTaskFromCheckpoint(t *testing.T) {
 func TestRebuildConnectorDeletesOldSyncCheckpointsBeforePublishing(t *testing.T) {
 	db := setupServiceTestDB(t)
 	pushServiceDB(t, db)
-	if err := db.AutoMigrate(&entity.Connector{}, &entity.Connector2Kb{}, &entity.Knowledgebase{}, &entity.SyncLogs{}); err != nil {
+	if err := db.AutoMigrate(&entity.ResourceGrant{}, &entity.Connector{}, &entity.Connector2Kb{}, &entity.Knowledgebase{}, &entity.SyncLogs{}); err != nil {
 		t.Fatalf("migrate connector tables: %v", err)
 	}
 	if err := db.Create(&entity.Connector{
@@ -297,7 +297,7 @@ func TestRebuildConnectorDeletesOldSyncCheckpointsBeforePublishing(t *testing.T)
 func TestRebuildConnectorRejectsCrossTenantAndUnboundKB(t *testing.T) {
 	db := setupServiceTestDB(t)
 	pushServiceDB(t, db)
-	if err := db.AutoMigrate(&entity.Connector{}, &entity.Connector2Kb{}, &entity.Knowledgebase{}, &entity.SyncLogs{}); err != nil {
+	if err := db.AutoMigrate(&entity.ResourceGrant{}, &entity.Connector{}, &entity.Connector2Kb{}, &entity.Knowledgebase{}, &entity.SyncLogs{}); err != nil {
 		t.Fatalf("migrate connector tables: %v", err)
 	}
 	if err := db.Create(&entity.Connector{
@@ -347,7 +347,7 @@ func TestRebuildConnectorRejectsCrossTenantAndUnboundKB(t *testing.T) {
 func TestUpdateConnectorScheduleDoesNotDuplicateRunningTask(t *testing.T) {
 	db := setupServiceTestDB(t)
 	pushServiceDB(t, db)
-	if err := db.AutoMigrate(&entity.Connector{}, &entity.Connector2Kb{}, &entity.SyncLogs{}); err != nil {
+	if err := db.AutoMigrate(&entity.ResourceGrant{}, &entity.Connector{}, &entity.Connector2Kb{}, &entity.SyncLogs{}); err != nil {
 		t.Fatalf("migrate connector tables: %v", err)
 	}
 

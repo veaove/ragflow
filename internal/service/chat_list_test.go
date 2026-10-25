@@ -22,6 +22,8 @@ func setupChatListTestDB(t *testing.T) *gorm.DB {
 	}
 
 	if err = db.AutoMigrate(
+		&entity.Knowledgebase{},
+		&entity.ResourceGrant{},
 		&entity.Chat{},
 		&entity.Tenant{},
 		&entity.User{},

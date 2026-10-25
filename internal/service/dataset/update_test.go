@@ -1035,6 +1035,7 @@ func migrateDatasetUpdateTestTables(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
 	if err := db.AutoMigrate(
+		&entity.ResourceGrant{},
 		&entity.Connector{},
 		&entity.Connector2Kb{},
 		&entity.SyncLogs{},
