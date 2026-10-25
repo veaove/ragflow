@@ -1694,6 +1694,13 @@ func TestAsyncChatEmptyResponseQuoteDisabled(t *testing.T) {
 	chat.KBIDs = entity.JSONSlice{"kb-1"}
 	chat.PromptConfig["system"] = "Answer using {knowledge}"
 	chat.PromptConfig["empty_response"] = "Nothing found."
+	// DEBUG: 临时排查 tenant_model 表为何查不到
+	if tables, terr := db.Migrator().GetTables(); terr == nil {
+		t.Logf("DEBUG tables in db: %v", tables)
+	} else {
+		t.Logf("DEBUG GetTables err: %v", terr)
+	}
+	t.Logf("DEBUG dao.DB==db: %v", dao.DB == db)
 	results, err := NewChatPipelineService().AsyncChat(t.Context(), "user-1", chat,
 		[]map[string]interface{}{{"role": "user", "content": "Question"}}, true,
 		map[string]interface{}{"quote": false})
