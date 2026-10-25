@@ -1379,11 +1379,16 @@ func (s *ChatPipelineService) AsyncChat(
 			// to _extract_visible_answer → decorate_answer (dialog_service.py:914-920).
 			visibleAnswer := s.extractVisibleAnswer(thinkState.fullText)
 
+			// Stop the generate-answer clock before decorating. decorateAnswer
+			// renders timer.Markdown() into the visible answer, so exiting after
+			// it always reported "Generate answer: 0.0ms" and made the slowest
+			// phase of the pipeline look free.
+			timer.Exit(common.PhaseGenerateAnswer)
+
 			// Pass nil for ttsModel — audio was already produced per-delta.
 			final := s.decorateAnswer(ctx, visibleAnswer, kbinfos, prompt, questions, usedTokenCount, timer, embModel, chat.VectorSimilarityWeight, quote, nil, langfuseTraceID, llmModelConfig, chat.TenantID, kbTenantIDStrings(kbs), len(knowledges) > 0)
 			final.Final = true
 			final.AudioBinary = nil
-			timer.Exit(common.PhaseGenerateAnswer)
 			send(final)
 		} else {
 			// Non-streaming: get the answer synchronously.
@@ -1418,10 +1423,13 @@ func (s *ChatPipelineService) AsyncChat(
 			}
 			common.Debug("User: " + userContent + "|Assistant: " + answer)
 
+			// Same ordering fix as the streaming path: stop the clock before the
+			// decorator snapshots it into the rendered answer.
+			timer.Exit(common.PhaseGenerateAnswer)
+
 			// Synthesize TTS for the full answer (non-stream, one-shot).
 			final := s.decorateAnswer(ctx, answer, kbinfos, prompt, questions, usedTokenCount, timer, embModel, chat.VectorSimilarityWeight, quote, ttsModel, langfuseTraceID, llmModelConfig, chat.TenantID, kbTenantIDStrings(kbs), len(knowledges) > 0)
 			final.Final = true
-			timer.Exit(common.PhaseGenerateAnswer)
 			out <- final
 		}
 		common.Info("AsyncChat completed", zap.String("chat_id", chat.ID))
