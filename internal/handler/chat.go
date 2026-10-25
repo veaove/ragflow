@@ -204,7 +204,7 @@ func (h *ChatHandler) MindMap(c *gin.Context) {
 
 	ctx := c.Request.Context()
 	searchConfig := map[string]interface{}{}
-	modelTenantID := user.ID
+	modelTenantID := CurrentTenantID(c)
 	if req.SearchID != "" {
 		if h.searchSvc == nil {
 			jsonInternalError(c, fmt.Errorf("search service not configured"))

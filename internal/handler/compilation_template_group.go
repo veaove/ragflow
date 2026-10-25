@@ -72,7 +72,7 @@ func (h *CompilationTemplateGroupHandler) List(c *gin.Context) {
 	scope := c.Query("scope")
 	tenantID := c.Query("tenant_id")
 	if tenantID == "" {
-		tenantID = user.ID
+		tenantID = CurrentTenantID(c)
 	} else if err := permission.NewDatabaseChecker(dao.DB).CheckTenant(
 		c.Request.Context(), permission.Subject{UserID: user.ID}, tenantID, permission.TenantMember,
 	); err != nil {

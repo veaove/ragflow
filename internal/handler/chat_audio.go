@@ -77,7 +77,7 @@ func (h *ChatHandler) ChatAudioSpeech(c *gin.Context) {
 		return
 	}
 
-	ttsModel, err := h.modelFactory.NewDefaultTTSModel(ctx, service.ModelAccess{UserID: user.ID, TenantID: user.ID})
+	ttsModel, err := h.modelFactory.NewDefaultTTSModel(ctx, service.ModelAccess{UserID: user.ID, TenantID: CurrentTenantID(c)})
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeDataError, err.Error())
 		return
@@ -314,7 +314,7 @@ func (h *ChatHandler) ChatAudioTranscription(c *gin.Context) {
 		return
 	}
 
-	asrModel, err := h.modelFactory.NewDefaultASRModel(ctx, service.ModelAccess{UserID: user.ID, TenantID: user.ID})
+	asrModel, err := h.modelFactory.NewDefaultASRModel(ctx, service.ModelAccess{UserID: user.ID, TenantID: CurrentTenantID(c)})
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeDataError, err.Error())
 		return

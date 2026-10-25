@@ -314,7 +314,7 @@ func (h *SearchBotHandler) Ask(c *gin.Context) {
 		return
 	}
 	ctx := c.Request.Context()
-	adapter := &service.TenantStreamAdapter{Factory: h.modelFactory, TenantID: user.ID, ModelID: modelID}
+	adapter := &service.TenantStreamAdapter{Factory: h.modelFactory, TenantID: CurrentTenantID(c), ModelID: modelID}
 	for delta := range h.askSvc.StreamWithOptions(ctx, adapter, user.ID, req.Question, filtered, options) {
 		switch delta.Kind {
 		case service.AskDeltaAnswer:
@@ -400,7 +400,7 @@ func (h *SearchBotHandler) MindMap(c *gin.Context) {
 		SearchID:      req.SearchID,
 		SearchConfig:  searchConfig,
 		AuthUserID:    user.ID,
-		ModelTenantID: user.ID,
+		ModelTenantID: CurrentTenantID(c),
 		ChunkSvc:      h.chunkSvc,
 		LLM:           h.modelFactory,
 		TenantSvc:     h.tenantSvc,

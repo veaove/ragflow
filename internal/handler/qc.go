@@ -250,8 +250,8 @@ func (h *QcHandler) ListRules(c *gin.Context) {
 		enabled = &b
 	}
 	filter := dao.QcRuleListFilter{
-		// 未指定应用时按租户兜底（RAGFlow 是单用户单租户，tenant_id == user.ID）。
-		TenantID: user.ID,
+		// 未指定应用时按当前租户兜底
+		TenantID: CurrentTenantID(c),
 		AppType:  appType,
 		AppID:    appID,
 		Keyword:  c.Query("keyword"),
@@ -275,7 +275,7 @@ func (h *QcHandler) ListRules(c *gin.Context) {
 // an app that has been deleted afterwards surfaces as missing=true instead of
 // being dropped, so the rule owner can clean the dangling reference.
 func (h *QcHandler) GetRuleReferences(c *gin.Context) {
-	user, code, msg := GetUser(c)
+	_, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
 		return
@@ -292,7 +292,7 @@ func (h *QcHandler) GetRuleReferences(c *gin.Context) {
 		return
 	}
 	// 规则是租户级资产：只有同租户能看引用关系。
-	if rule == nil || rule.TenantID != user.ID {
+	if rule == nil || rule.TenantID != CurrentTenantID(c) {
 		common.ErrorWithCode(c, common.CodeNotFound, "rule not found")
 		return
 	}
@@ -315,9 +315,9 @@ func (h *QcHandler) GetRuleReferences(c *gin.Context) {
 		})
 	}
 	common.SuccessWithData(c, map[string]interface{}{
-		"rule_id":     ruleID,
-		"references":  refs,
-		"total":       len(refs),
+		"rule_id":    ruleID,
+		"references": refs,
+		"total":      len(refs),
 	}, "success")
 }
 
@@ -434,7 +434,7 @@ func (h *QcHandler) CreateRule(c *gin.Context) {
 
 // GetRule handles GET /qc/rules/:id.
 func (h *QcHandler) GetRule(c *gin.Context) {
-	user, code, msg := GetUser(c)
+	_, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
 		return
@@ -444,7 +444,7 @@ func (h *QcHandler) GetRule(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeNotFound, "rule not found")
 		return
 	}
-	if rule.TenantID != user.ID {
+	if rule.TenantID != CurrentTenantID(c) {
 		common.ErrorWithCode(c, common.CodeNotFound, "rule not found")
 		return
 	}
@@ -453,7 +453,7 @@ func (h *QcHandler) GetRule(c *gin.Context) {
 
 // UpdateRule handles PUT /qc/rules/:id.
 func (h *QcHandler) UpdateRule(c *gin.Context) {
-	user, code, msg := GetUser(c)
+	_, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
 		return
@@ -463,7 +463,7 @@ func (h *QcHandler) UpdateRule(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeNotFound, "rule not found")
 		return
 	}
-	if rule.TenantID != user.ID {
+	if rule.TenantID != CurrentTenantID(c) {
 		common.ErrorWithCode(c, common.CodeNotFound, "rule not found")
 		return
 	}
@@ -512,7 +512,7 @@ func (h *QcHandler) UpdateRule(c *gin.Context) {
 
 // DeleteRule handles DELETE /qc/rules/:id.
 func (h *QcHandler) DeleteRule(c *gin.Context) {
-	user, code, msg := GetUser(c)
+	_, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
 		return
@@ -522,7 +522,7 @@ func (h *QcHandler) DeleteRule(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeNotFound, "rule not found")
 		return
 	}
-	if rule.TenantID != user.ID {
+	if rule.TenantID != CurrentTenantID(c) {
 		common.ErrorWithCode(c, common.CodeNotFound, "rule not found")
 		return
 	}
@@ -634,7 +634,7 @@ func (h *QcHandler) UpdateRuleSelection(c *gin.Context) {
 
 // ToggleRule handles POST /qc/rules/:id/toggle.
 func (h *QcHandler) ToggleRule(c *gin.Context) {
-	user, code, msg := GetUser(c)
+	_, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
 		return
@@ -644,7 +644,7 @@ func (h *QcHandler) ToggleRule(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeNotFound, "rule not found")
 		return
 	}
-	if rule.TenantID != user.ID {
+	if rule.TenantID != CurrentTenantID(c) {
 		common.ErrorWithCode(c, common.CodeNotFound, "rule not found")
 		return
 	}
@@ -691,13 +691,13 @@ func (h *QcHandler) TestRule(c *gin.Context) {
 
 // ListHits handles GET /qc/hits.
 func (h *QcHandler) ListHits(c *gin.Context) {
-	user, code, msg := GetUser(c)
+	_, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
 		return
 	}
 	filter := qcHitFilterFromQuery(c)
-	filter.TenantID = user.ID
+	filter.TenantID = CurrentTenantID(c)
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
@@ -717,7 +717,7 @@ func (h *QcHandler) ListHits(c *gin.Context) {
 
 // GetHit handles GET /qc/hits/:id.
 func (h *QcHandler) GetHit(c *gin.Context) {
-	user, code, msg := GetUser(c)
+	_, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
 		return
@@ -727,7 +727,7 @@ func (h *QcHandler) GetHit(c *gin.Context) {
 		common.ErrorWithCode(c, common.CodeNotFound, "hit not found")
 		return
 	}
-	if hit.TenantID != user.ID {
+	if hit.TenantID != CurrentTenantID(c) {
 		common.ErrorWithCode(c, common.CodeNotFound, "hit not found")
 		return
 	}
@@ -736,13 +736,13 @@ func (h *QcHandler) GetHit(c *gin.Context) {
 
 // ExportHits handles GET /qc/hits/export (CSV).
 func (h *QcHandler) ExportHits(c *gin.Context) {
-	user, code, msg := GetUser(c)
+	_, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
 		return
 	}
 	filter := qcHitFilterFromQuery(c)
-	filter.TenantID = user.ID
+	filter.TenantID = CurrentTenantID(c)
 	hits, err := dao.NewQcHitDAO().ListAll(c.Request.Context(), dao.DB, filter)
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
