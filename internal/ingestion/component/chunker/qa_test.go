@@ -170,7 +170,9 @@ func TestQAChunker_CSVStrictPairAcceptsTwoCells(t *testing.T) {
 	inputs := map[string]any{
 		"name":          "test.csv",
 		"output_format": "html",
-		"html":          "<table><tr><td>question</td><td>answer</td></tr></table>",
+		// 第一行是表头（会被 f845b48af 的表头过滤跳过），必须再给一行真实数据，
+		// 否则整张表只剩表头、按设计不产出 chunk。
+		"html": "<table><tr><td>question</td><td>answer</td></tr><tr><td>q1</td><td>a1</td></tr></table>",
 	}
 	out, err := comp.Invoke(t.Context(), nil, inputs)
 	if err != nil {
@@ -181,7 +183,7 @@ func TestQAChunker_CSVStrictPairAcceptsTwoCells(t *testing.T) {
 		t.Fatalf("expected 1 chunk, got %d", len(chunks))
 	}
 	cww, _ := chunks[0]["text"].(string)
-	if cww != "Question: question\tAnswer: answer" {
+	if cww != "Question: q1\tAnswer: a1" {
 		t.Fatalf("unexpected content: %q", cww)
 	}
 }
@@ -417,11 +419,11 @@ func TestQAChunker_XLSXJSONRegression(t *testing.T) {
 		t.Fatalf("Invoke failed: %v", err)
 	}
 	chunks, _ := out["chunks"].([]map[string]any)
-	if len(chunks) != 3 {
-		t.Fatalf("expected 3 chunks, got %d", len(chunks))
+	// 表头行（question/answer）会被 f845b48af 的表头过滤跳过，只剩两行真实问答。
+	if len(chunks) != 2 {
+		t.Fatalf("expected 2 chunks, got %d", len(chunks))
 	}
 	expected := []string{
-		"Question: question\tAnswer: answer",
 		// rmQAPrefix strips a leading "A " answer marker from "A RAG engine."
 		"Question: What is RAGFlow?\tAnswer: RAG engine.",
 		"Question: Where are the docs?\tAnswer: On the website.",
@@ -544,7 +546,9 @@ func TestQAChunker_RowlessTableTextStaysProse(t *testing.T) {
 // must not panic the pair builder, and a matrix without identity must not move
 // the row numbers (PDF items write layout boxes into the same field).
 func TestQAChunkerPositionsRequireSpreadsheetIdentityAndFiveFields(t *testing.T) {
-	table := "<table><tr><th>q</th><th>a</th></tr></table>"
+	// 第二行是真实数据：表头行会被 f845b48af 过滤掉，只剩它产出 pair。
+	// 这个用例真正要验的是 positions/SheetIndex 推 RowNum，不是表头行为。
+	table := "<table><tr><th>q</th><th>a</th></tr><tr><td>q1</td><td>a1</td></tr></table>"
 	cases := []struct {
 		name       string
 		positions  string

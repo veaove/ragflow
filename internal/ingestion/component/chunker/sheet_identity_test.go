@@ -19,8 +19,11 @@ func TestSpreadsheetChunkersPreserveSheetIdentityThroughIndexing(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, cell := range []struct{ sheet, axis, value string }{
-		{"Sheet1", "A1", "question"}, {"Sheet1", "B1", "answer"}, {"Sheet1", "A42", "first question"}, {"Sheet1", "B42", "first answer"},
-		{"Orders", "A1", "question"}, {"Orders", "B1", "answer"}, {"Orders", "A7", "second question"}, {"Orders", "B7", "second answer"},
+		// 首行故意不用 question/answer 这类表头词：QA chunker 会把纯表头行
+		// 过滤掉（f845b48af），而这个用例要验的是 sheet identity 在整条
+		// 索引链路上不丢，跟表头无关。
+		{"Sheet1", "A1", "q1"}, {"Sheet1", "B1", "a1"}, {"Sheet1", "A42", "first question"}, {"Sheet1", "B42", "first answer"},
+		{"Orders", "A1", "q1"}, {"Orders", "B1", "a1"}, {"Orders", "A7", "second question"}, {"Orders", "B7", "second answer"},
 	} {
 		if err := book.SetCellValue(cell.sheet, cell.axis, cell.value); err != nil {
 			t.Fatal(err)
@@ -38,7 +41,7 @@ func TestSpreadsheetChunkersPreserveSheetIdentityThroughIndexing(t *testing.T) {
 		name   string
 		result parser.ParseResult
 	}{
-		{"rows.csv", parser.NewCSVParser().ParseWithResult(t.Context(), "rows.csv", []byte("question,answer\nhello,world\n"))},
+		{"rows.csv", parser.NewCSVParser().ParseWithResult(t.Context(), "rows.csv", []byte("q1,a1\nq2,a2\n"))},
 		{"book.xlsx", xlsx.ParseWithResult(t.Context(), "book.xlsx", data.Bytes())},
 	} {
 		if source.result.Err != nil {
@@ -137,7 +140,9 @@ func TestSpreadsheetChunkersPreserveSheetIdentityThroughIndexing(t *testing.T) {
 func TestQAChunkerSheetNameOnlyPreservesSourceRows(t *testing.T) {
 	book := excelize.NewFile()
 	defer book.Close()
-	for cell, value := range map[string]string{"A1": "question", "B1": "answer", "A42": "source question", "B42": "source answer"} {
+	// A1/B1 不用 question/answer：QA chunker 会过滤纯表头行（f845b48af），
+	// 本用例要验的是删掉 sheet_index 后 chunk 仍保留 sheet 名，与表头无关。
+	for cell, value := range map[string]string{"A1": "q1", "B1": "a1", "A42": "source question", "B42": "source answer"} {
 		if err := book.SetCellValue("Sheet1", cell, value); err != nil {
 			t.Fatal(err)
 		}
