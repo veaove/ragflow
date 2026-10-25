@@ -15,6 +15,7 @@
 package handler
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
@@ -22,6 +23,7 @@ import (
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
+	"ragflow/internal/entity"
 )
 
 // OverviewHandler serves the dashboard's cross-module aggregates. It exists so
@@ -58,12 +60,31 @@ func (h *OverviewHandler) GetRecentActivities(c *gin.Context) {
 		common.ErrorWithCode(c, code, msg)
 		return
 	}
-	tenantID := user.ID
+	// 用户与租户解耦后 user.ID ≠ tenant_id：新建用户不再自动生成同名租户，
+	// 这里必须取用户实际所属的租户，否则活动流会是空的。
+	tenantID := resolveOverviewTenantID(c.Request.Context(), user.ID)
 
+	// 两种调用方式：
+	//   - 总览页：?limit=8          → 取前 8 条
+	//   - 消息中心：?page=1&page_size=20 → 分页
 	limit := 8
+	offset := 0
+	pageSize := 0 // >0 表示走分页模式
 	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 50 {
 			limit = parsed
+		}
+	} else if raw := strings.TrimSpace(c.Query("page_size")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 50 {
+			pageSize = parsed
+			page := 1
+			if p := strings.TrimSpace(c.Query("page")); p != "" {
+				if parsedPage, err := strconv.Atoi(p); err == nil && parsedPage > 0 {
+					page = parsedPage
+				}
+			}
+			offset = (page - 1) * pageSize
+			limit = offset + pageSize
 		}
 	}
 	// Each branch takes a small slice before the final sort so the UNION does
@@ -108,7 +129,41 @@ LIMIT ?`
 		return
 	}
 
+	// 分页模式：把多取的（或前面的）裁掉，并给出 has_more
+	result := rows
+	hasMore := false
+	if pageSize > 0 {
+		if len(result) > offset+pageSize {
+			hasMore = true
+			result = result[offset : offset+pageSize]
+		} else if len(result) > offset {
+			result = result[offset:]
+		} else {
+			result = result[:0]
+		}
+	}
+
 	common.SuccessWithData(c, map[string]interface{}{
-		"activities": rows,
+		"activities": result,
+		"has_more":   hasMore,
 	}, "success")
+}
+
+// resolveOverviewTenantID 取用户实际所属的租户（owner 优先，其次按创建时间）。
+//
+// 用户与租户解耦后不能再拿 user.ID 当 tenant_id 用：新建的账号可能还没分配
+// 租户，此时回退到 user.ID 只是为了让查询不报错（结果必然为空）。
+func resolveOverviewTenantID(ctx context.Context, userID string) string {
+	var tenantID string
+	_ = dao.DB.WithContext(ctx).
+		Model(&entity.UserTenant{}).
+		Select("tenant_id").
+		Where("user_id = ? AND status = '1'", userID).
+		Order("CASE WHEN role = 'owner' THEN 0 ELSE 1 END, create_time ASC").
+		Limit(1).
+		Scan(&tenantID).Error
+	if strings.TrimSpace(tenantID) == "" {
+		return userID
+	}
+	return tenantID
 }

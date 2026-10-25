@@ -7,20 +7,16 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useChangeLanguage } from '@/hooks/logic-hooks';
-import {
-  useFetchUserInfo,
-  useListTenant,
-} from '@/hooks/use-user-setting-request';
+import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
 import { headerLanguages } from '@/locales/config';
-import { TenantRole } from '@/pages/user-setting/constants';
 import { Routes } from '@/routes';
 import { BellButton } from './bell-button';
 import { MobileMenuFooter } from './mobile-menu-footer';
 import { MobileNavbar } from './mobile-nav-drawer';
 import ThemeButton from './theme-button';
 import { LucideLanguages } from 'lucide-react';
-import React, { useMemo } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router';
 
 /**
@@ -44,11 +40,6 @@ export function Header({
     data: { language = 'en', avatar, nickname },
   } = useFetchUserInfo();
 
-  const { data: tenantData } = useListTenant();
-  const hasNotification = useMemo(
-    () => tenantData?.some((x) => x.role === TenantRole.Invite),
-    [tenantData],
-  );
 
   // Falls back to the first offered language so a stored preference outside
   // the switcher's subset still shows a valid label instead of a blank button.
@@ -109,7 +100,7 @@ export function Header({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {hasNotification && <BellButton className="!size-9" />}
+        <BellButton className="!size-9" />
 
         <ThemeButton className="!size-9" />
 
