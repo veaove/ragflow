@@ -17,7 +17,7 @@ func TestFlattenMessageRoundTrip(t *testing.T) {
 		`{"role":"user","content":[{"type":"text","text":"question"},{"type":"image_url","image_url":{"url":"test"}}],"tool_calls":[],"duration_ms":0}`,
 		`{"id":null,"role":null,"content":null,"thumbup":null,"created_at":null,"feedback":null,"duration_ms":0}`,
 		`{"id":1,"role":false,"content":{"text":"question"},"thumbup":"false","created_at":"123","feedback":{"reason":"bad"},"status":[],"duration_ms":0}`,
-		`{}`,
+		`{"duration_ms":0}`,
 	} {
 		t.Run(item, func(t *testing.T) {
 			fields, err := flattenMessage(json.RawMessage(item))
@@ -73,7 +73,9 @@ func TestFlattenedMessagePersistence(t *testing.T) {
 			if row.MessageID == nil || *row.MessageID != "turn-1" || row.ThumbUp == nil || *row.ThumbUp || row.CreatedAt == nil || *row.CreatedAt != 123.25 {
 				t.Fatalf("unexpected flattened fields: %+v", row.ConversationMessageFields)
 			}
-			if string(row.Metadata) != `{"attachment":"file-1"}` {
+			// duration_ms 与 attachment 一样是"认识但不拍平"的字段，会原样留在
+			// metadata 里，所以期望值要包含它。
+			if string(row.Metadata) != `{"attachment":"file-1","duration_ms":0}` {
 				t.Fatalf("metadata contains flattened fields: %s", row.Metadata)
 			}
 			histories, err := loadHistory(t.Context(), db, table, "message", []string{"session-1"})
