@@ -67,7 +67,7 @@ func NewDatasetsHandler(datasetsService *dataset.DatasetService, metadataService
 
 // ListDatasets handles GET /api/v1/datasets.
 func (h *DatasetsHandler) ListDatasets(c *gin.Context) {
-	user, errorCode, errorMessage := GetUser(c)
+	_, errorCode, errorMessage := GetUser(c)
 	if errorCode != common.CodeSuccess {
 		common.ErrorWithCode(c, errorCode, errorMessage)
 		return
@@ -75,7 +75,7 @@ func (h *DatasetsHandler) ListDatasets(c *gin.Context) {
 
 	if c.Query("type") == "filter" {
 		ctx := c.Request.Context()
-		data, code, err := h.datasetsService.ListDatasetFilters(ctx, user.ID, c.Query("canvas_id"))
+		data, code, err := h.datasetsService.ListDatasetFilters(ctx, CurrentTenantID(c), c.Query("canvas_id"))
 		if err != nil {
 			common.ErrorWithCode(c, code, err.Error())
 			return
@@ -213,7 +213,8 @@ func (h *DatasetsHandler) ListDatasets(c *gin.Context) {
 		keywords,
 		ownerIDs,
 		parserID,
-		user.ID,
+		// 跟随当前租户：切租户后列表只显示该租户下的知识库
+		CurrentTenantID(c),
 		ids,
 		c.Query("canvas_id"),
 	)
