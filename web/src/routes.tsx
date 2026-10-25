@@ -430,6 +430,10 @@ const routeConfigOptions = [
   {
     path: `${Routes.SearchShare}`,
     Component: () => import('@/pages/next-search/share'),
+    // 和 /chats/share、/agent/share 一样裸渲染：分享页是给站外访客看的，
+    // 套上主布局会拉侧边栏和顶栏那批要登录态的请求，未登录访客直接被打到
+    // 登录页，已登录用户反而会被 401 清掉本地登录态。
+    layout: false,
   },
   {
     path: `${Routes.DatasetBase}${Routes.Compilation}/:id`,

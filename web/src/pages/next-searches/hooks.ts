@@ -242,7 +242,10 @@ export const useFetchSearchDetail = (tenantId?: string) => {
 
   const { data, isLoading, isError } = useQuery<SearchDetailResponse, Error>({
     queryKey: ['searchDetail', searchId],
-    enabled: !shared_id || !!tenantId,
+    // 只要拿到 search_id 就该取数。`tenant_id` 后端根本不读（鉴权走 beta
+    // token，租户由 token 反查），早先要求 URL 必须带 tenantId 才发请求，
+    // 结果是把 tenantId 手删掉的分享链接打开就是一片空白。
+    enabled: !!searchId,
     queryFn: async () => {
       let res;
       if (shared_id) {
@@ -322,7 +325,7 @@ export const useUpdateSearch = () => {
       }
       return response.data;
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (_data, variables) => {
       message.success(t('message.updated'));
       queryClient.invalidateQueries({
         queryKey: ['searchDetail', variables.search_id],

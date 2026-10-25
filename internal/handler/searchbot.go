@@ -428,9 +428,16 @@ func (h *SearchBotHandler) SearchBotDetail(c *gin.Context) {
 	}
 
 	userSvc := service.NewUserService()
-	user, code, err := userSvc.GetUserByBetaAPIToken(ctx, c.GetHeader("Authorization"))
+	user, _, err := userSvc.GetUserByBetaAPIToken(ctx, c.GetHeader("Authorization"))
 	if err != nil {
-		common.ResponseWithCodeData(c, code, nil, "Authentication error: API key is invalid!")
+		// 必须是业务错误码，不能透传 401。
+		//
+		// 分享页是公开页：分享链接过期、或者请求里带的是登录 token 而不是
+		// beta token 时，这里都会失败。如果返回 401，前端全局拦截器会
+		// `removeAll()` + 跳登录 —— 一个失效的分享链接能把已登录用户直接
+		// 踢下线。BetaAuthMiddleware 对同类失败也用的是 CodeDataError
+		// （对齐 Python 的 login_required(auth_types=AUTH_BETA)），这里保持一致。
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, "Authentication error: API key is invalid!")
 		return
 	}
 	if h.searchSvc == nil {
