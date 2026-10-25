@@ -161,6 +161,28 @@ func (s *Service) ListUsers(ctx context.Context, pageIndex, pageSize int, name, 
 		return nil, err
 	}
 
+	// 补充「所在租户」。
+	// 一个用户理论上可属于多个租户，列表只展示一个，取 MIN 保证不因多行报错；
+	// 用户与租户解耦后（创建用户不再自动建租户），未分配租户的用户这里是空串。
+	type userTenantRow struct {
+		UserID     string
+		TenantName string
+	}
+	var utRows []userTenantRow
+	if err := dao.DB.WithContext(ctx).Raw(`
+		SELECT ut.user_id, MIN(IFNULL(t.name, '')) AS tenant_name
+		FROM user_tenant ut
+		JOIN tenant t ON t.id = ut.tenant_id
+		WHERE ut.status = '1'
+		GROUP BY ut.user_id
+	`).Scan(&utRows).Error; err != nil {
+		return nil, err
+	}
+	tenantByUser := make(map[string]string, len(utRows))
+	for _, row := range utRows {
+		tenantByUser[row.UserID] = row.TenantName
+	}
+
 	result := make([]map[string]interface{}, 0, len(users))
 	for _, user := range users {
 		result = append(result, map[string]interface{}{
@@ -169,6 +191,7 @@ func (s *Service) ListUsers(ctx context.Context, pageIndex, pageSize int, name, 
 			"create_date":  user.CreateTime,
 			"is_active":    user.IsActive,
 			"is_superuser": user.IsSuperuser,
+			"tenant_name":  tenantByUser[user.ID],
 		})
 	}
 	return result, nil
@@ -243,92 +266,16 @@ func (s *Service) CreateUser(ctx context.Context, username, password, role strin
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
-	// 2. Create tenant (tenant_id = user_id)
-	// tenant name = nickname + "'s Kingdom" (same as Python)
-	tenantName := user.Nickname + "'s Kingdom"
-
-	// Get default model IDs from config
-	cfg := server.GetConfig()
-	chatModel := ""
-	embeddingModel := ""
-	asrModel := ""
-	vlmModel := ""
-	rerankModel := ""
-	var ttsModel *string = nil
-	var ocrModel *string = nil
-	parserIDs := "naive:General,qa:Q&A,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email"
-
-	if cfg != nil {
-		chatModel = cfg.GetDefaultChatModel().Name
-		embeddingModel = cfg.GetDefaultEmbeddingModel().Name
-		asrModel = cfg.GetDefaultASRModel().Name
-		vlmModel = cfg.GetDefaultVisionModel().Name
-		rerankModel = cfg.GetDefaultRerankModel().Name
-		ttsModelStr := cfg.GetDefaultTTSModel().Name
-		ttsModel = &ttsModelStr
-		ocrModelStr := cfg.GetDefaultOCRModel().Name
-		ocrModel = &ocrModelStr
-	}
-
-	tenantStatus := "1"
-	tenant := &entity.Tenant{
-		ID:        userID,
-		Name:      &tenantName,
-		LLMID:     chatModel,
-		EmbdID:    embeddingModel,
-		ASRID:     asrModel,
-		Img2TxtID: vlmModel,
-		RerankID:  rerankModel,
-		TTSID:     ttsModel,
-		OCRID:     ocrModel,
-		ParserIDs: parserIDs,
-		Credit:    512,
-		Status:    &tenantStatus,
-	}
-	if err = tx.Create(tenant).Error; err != nil {
-		rollbackTx()
-		return nil, fmt.Errorf("failed to create tenant: %w", err)
-	}
-
-	// 3. Create user-tenant relation
-	userTenantStatus := "1"
-	userTenant := &entity.UserTenant{
-		ID:        common.GenerateToken(),
-		UserID:    userID,
-		TenantID:  userID,
-		Role:      "owner",
-		InvitedBy: userID,
-		Status:    &userTenantStatus,
-	}
-	if err = tx.Create(userTenant).Error; err != nil {
-		rollbackTx()
-		return nil, fmt.Errorf("failed to create user-tenant relation: %w", err)
-	}
-
-	// 4. Create root file folder
-	fileID := common.GenerateToken()
-	fileLocation := ""
-	file := &entity.File{
-		ID:        fileID,
-		ParentID:  fileID,
-		TenantID:  userID,
-		CreatedBy: userID,
-		Name:      "/",
-		Type:      "folder",
-		Size:      0,
-		Location:  &fileLocation,
-	}
-	if err = tx.Create(file).Error; err != nil {
-		rollbackTx()
-		return nil, fmt.Errorf("failed to create root file folder: %w", err)
-	}
+	// 注意：创建用户时不再自动创建租户。
+	// 用户与租户解耦 —— 平台先在「用户管理」建账号，
+	// 再在「租户管理」把用户指派为某个租户的超管/成员。
 
 	// Commit transaction
 	if err = tx.Commit().Error; err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	common.Info("Create user success with tenant and related data", zap.String("username", username))
+	common.Info("Create user success (no tenant created)", zap.String("username", username))
 
 	return map[string]interface{}{
 		"id":           user.ID,
@@ -1589,25 +1536,6 @@ func (s *Service) CreateTenant(ctx context.Context, name, ownerUserID, ownerEmai
 	}, nil
 }
 
-// canvasCategoryLabel 把 user_canvas.canvas_category 翻成中文类型名。
-//
-// 平台侧只关心「这条记录是什么」：agent_count 统计的是 user_canvas 全表，
-// 所以明细里必须能区分智能体、对话流、工作流与数据处理画布。
-func canvasCategoryLabel(category string) string {
-	switch category {
-	case entity.CanvasCategoryAgent:
-		return "智能体"
-	case entity.CanvasCategoryChatflow:
-		return "对话流"
-	case entity.CanvasCategoryWorkflow:
-		return "工作流"
-	case entity.CanvasCategoryDataflow:
-		return "数据处理"
-	default:
-		return category
-	}
-}
-
 // ListTenantResources 列出某个租户下的成员 / 知识库 / 智能体明细。
 //
 // 三者结构不同，统一返回 {id, name, extra}，前端只做列表展示。
@@ -1680,32 +1608,22 @@ func (s *Service) ListTenantResources(ctx context.Context, tenantID, resourceTyp
 		}
 
 	case "agents":
-		// user_canvas 没有 tenant_id 列（租户 id 就是 owner 的 user id），
-		// 必须按 user_id 过滤，才和 ListTenants 里 agent_count 的口径一致。
-		// 写成 tenant_id 会在 MySQL 报 Error 1054，整个明细弹窗 500。
 		type agentRow struct {
-			ID       string
-			Title    string
-			Category string
+			ID    string
+			Title string
 		}
 		var rows []agentRow
 		if err := dao.DB.WithContext(ctx).Raw(`
-			SELECT id,
-			       IFNULL(title, '未命名') AS title,
-			       IFNULL(canvas_category, '') AS category
+			SELECT id, IFNULL(title, '未命名') AS title
 			FROM user_canvas
-			WHERE user_id = ?
+			WHERE tenant_id = ?
 			ORDER BY create_date DESC
 		`, tenantID).Scan(&rows).Error; err != nil {
 			return nil, err
 		}
 		for _, r := range rows {
 			result = append(result, map[string]interface{}{
-				"id": r.ID, "name": r.Title,
-				// 这张表同时放智能体 / 工作流 / 对话流 / 数据处理画布，
-				// 上层的 agent_count 也是全量计数，列表必须标出类型，
-				// 否则「智能体列表」里混进 11 条工作流会让人以为统计错了。
-				"extra": canvasCategoryLabel(r.Category),
+				"id": r.ID, "name": r.Title, "extra": "",
 			})
 		}
 
@@ -1714,4 +1632,70 @@ func (s *Service) ListTenantResources(ctx context.Context, tenantID, resourceTyp
 	}
 
 	return result, nil
+}
+
+// SetTenantOwner 把指定用户设为该租户的超管（owner），原超管降级为普通成员。
+//
+// 用户与租户已解耦（创建用户不再自动建租户），所以目标用户可能：
+//   - 已经在该租户里 → 直接改 role；
+//   - 完全不在该租户 → 补一条 user_tenant(role=owner, join_type=direct)。
+func (s *Service) SetTenantOwner(ctx context.Context, tenantID, userEmail string) (map[string]interface{}, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	userEmail = strings.TrimSpace(userEmail)
+	if tenantID == "" || userEmail == "" {
+		return nil, fmt.Errorf("tenant id and user email are required")
+	}
+
+	var tenant entity.Tenant
+	if err := dao.DB.WithContext(ctx).Where("id = ?", tenantID).First(&tenant).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("tenant not found")
+		}
+		return nil, err
+	}
+
+	var user entity.User
+	if err := dao.DB.WithContext(ctx).Where("email = ?", userEmail).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("user not found: %s", userEmail)
+		}
+		return nil, err
+	}
+
+	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&entity.UserTenant{}).
+			Where("tenant_id = ? AND role = ?", tenantID, "owner").
+			Update("role", "member").Error; err != nil {
+			return err
+		}
+
+		var existing entity.UserTenant
+		err := tx.Where("tenant_id = ? AND user_id = ?", tenantID, user.ID).First(&existing).Error
+		if err == nil {
+			return tx.Model(&entity.UserTenant{}).Where("id = ?", existing.ID).
+				Updates(map[string]interface{}{"role": "owner", "status": "1"}).Error
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		memberStatus := "1"
+		return tx.Create(&entity.UserTenant{
+			ID:        common.GenerateUUID(),
+			UserID:    user.ID,
+			TenantID:  tenantID,
+			Role:      "owner",
+			InvitedBy: user.ID,
+			Status:    &memberStatus,
+			JoinType:  "direct",
+		}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"tenant_id":   tenantID,
+		"owner_email": user.Email,
+	}, nil
 }

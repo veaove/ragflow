@@ -1351,6 +1351,27 @@ func (h *Handler) ListTenantResources(c *gin.Context) {
 	common.SuccessWithData(c, items, "List tenant resources")
 }
 
+// SetTenantOwner PUT /admin/tenants/:id/owner
+// body: {"user_email": "xxx@qq.com"} —— 把该用户设为租户超管（原超管降级）。
+func (h *Handler) SetTenantOwner(c *gin.Context) {
+	tenantID := strings.TrimSpace(c.Param("id"))
+
+	var req struct {
+		UserEmail string `json:"user_email" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
+
+	result, err := h.service.SetTenantOwner(c.Request.Context(), tenantID, req.UserEmail)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	common.SuccessWithData(c, result, "Set tenant owner")
+}
+
 // ListPlatformModels GET /admin/models
 // 平台模型目录（conf/models 全集）+ 各租户的引用情况。
 // 支持 keyword / model_type / factory / referenced 四个筛选，page 从 1 开始。

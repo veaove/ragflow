@@ -45,6 +45,8 @@ declare namespace AdminService {
     is_superuser: boolean;
     role: string;
     nickname: string;
+    /** 用户所属租户名。用户与租户已解耦，未分配时为空串。 */
+    tenant_name?: string;
   };
 
   export type UserDetail = {

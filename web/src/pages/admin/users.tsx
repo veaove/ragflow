@@ -285,6 +285,19 @@ function AdminUserManagement() {
           ]
         : []),
 
+      columnHelper.accessor('tenant_name', {
+        header: '所在租户',
+        // 用户与租户解耦后，新建的用户还没分配租户，显示「未分配」。
+        cell: ({ cell }) => {
+          const value = cell.getValue();
+          return value ? (
+            <span className="text-text-primary">{value}</span>
+          ) : (
+            <span className="text-text-disabled">未分配</span>
+          );
+        },
+      }),
+
       columnHelper.accessor('is_active', {
         header: t('admin.status'),
         cell: ({ cell, row }) => {

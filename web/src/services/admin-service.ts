@@ -232,6 +232,13 @@ export const listTenantResources = (
     { params: { type } },
   );
 
+/** 把指定用户设为租户超管（原超管降级为普通成员）。 */
+export const setTenantOwner = (tenantId: string, userEmail: string) =>
+  request.put<ResponseData<{ tenant_id: string; owner_email: string }>>(
+    `${api.adminListTenants}/${tenantId}/owner`,
+    { user_email: userEmail },
+  );
+
 /** 一条「某租户正在使用某模型」的事实。 */
 export interface ModelReference {
   tenant_id: string;

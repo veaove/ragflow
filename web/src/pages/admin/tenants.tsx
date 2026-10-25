@@ -43,6 +43,8 @@ import {
   createTenant,
   listTenantResources,
   listTenants,
+  listUsers,
+  setTenantOwner,
 } from '@/services/admin-service';
 
 type ResourceType = 'members' | 'kbs' | 'agents';
@@ -140,6 +142,34 @@ export default function Tenants() {
     setPage(1);
   }, []);
 
+  // 设置超管：从用户列表里选一个
+  const [ownerDialog, setOwnerDialog] = useState<{
+    tenantId: string;
+    tenantName: string;
+  } | null>(null);
+  const [newOwnerEmail, setNewOwnerEmail] = useState('');
+
+  const { data: allUsers } = useQuery({
+    queryKey: ['admin/users'],
+    enabled: !!ownerDialog,
+    queryFn: async () => {
+      const { data } = await listUsers();
+      return (data?.data ?? []) as Array<{ email: string; nickname?: string }>;
+    },
+  });
+
+  const setOwnerMutation = useMutation({
+    mutationFn: async () =>
+      setTenantOwner(ownerDialog!.tenantId, newOwnerEmail),
+    onSuccess: ({ data }) => {
+      if (data.code === 0) {
+        setOwnerDialog(null);
+        setNewOwnerEmail('');
+        queryClient.invalidateQueries({ queryKey: ['admin/tenants'] });
+      }
+    },
+  });
+
   const rows = data?.list ?? [];
 
   return (
@@ -188,15 +218,16 @@ export default function Tenants() {
               <TableHead>成员数</TableHead>
               <TableHead>知识库数</TableHead>
               <TableHead>智能体数</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>创建时间</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>创建时间</TableHead>
+                <TableHead>操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="py-10 text-center text-sm text-text-secondary"
                 >
                   {isFetching ? '加载中…' : '暂无租户'}
@@ -260,10 +291,24 @@ export default function Tenants() {
                     {row.status === '1' ? '正常' : '已停用'}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-text-secondary">
-                  {formatDate(row.create_date)}
-                </TableCell>
-              </TableRow>
+                  <TableCell className="text-text-secondary">
+                    {formatDate(row.create_date)}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setOwnerDialog({
+                          tenantId: row.id,
+                          tenantName: row.name,
+                        })
+                      }
+                    >
+                      设置超管
+                    </Button>
+                  </TableCell>
+                </TableRow>
             ))}
           </TableBody>
         </Table>
@@ -379,6 +424,64 @@ export default function Tenants() {
               </div>
             ))}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 设置超管：从用户列表里选 */}
+      <Dialog
+        open={!!ownerDialog}
+        onOpenChange={(next) => {
+          if (!next) {
+            setOwnerDialog(null);
+            setNewOwnerEmail('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              设置超管{ownerDialog?.tenantName ? ` · ${ownerDialog.tenantName}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3">
+            <Label>选择用户</Label>
+            <select
+              value={newOwnerEmail}
+              onChange={(e) => setNewOwnerEmail(e.target.value)}
+              className="h-9 rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
+            >
+              <option value="">请选择</option>
+              {(allUsers ?? []).map((user) => (
+                <option key={user.email} value={user.email}>
+                  {user.nickname
+                    ? `${user.nickname}（${user.email}）`
+                    : user.email}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-text-secondary">
+              原超管会降级为普通成员；该用户若还不在本租户，会被自动加入。
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setOwnerDialog(null);
+                setNewOwnerEmail('');
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={() => setOwnerMutation.mutate()}
+              disabled={!newOwnerEmail || setOwnerMutation.isPending}
+            >
+              {setOwnerMutation.isPending ? '设置中…' : '确定'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
