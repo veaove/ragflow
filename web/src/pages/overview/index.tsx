@@ -24,6 +24,7 @@ import { PageContainer } from '@/layouts/components/page-container';
 import { useQuery } from '@tanstack/react-query';
 import request from '@/utils/request';
 import { ConsultationsPanel } from '@/pages/analytics/consultations';
+import { ArtifactsPanel } from './artifacts-panel';
 import { AnalyticsStatsPanel } from '@/pages/analytics/stats';
 import {
   BarChart3,
@@ -263,6 +264,9 @@ export default function Overview() {
           <TabsTrigger value="consultations" className={TAB_TRIGGER_CLASS}>
             {tRoot('analytics.consultationLog')}
           </TabsTrigger>
+          <TabsTrigger value="artifacts" className={TAB_TRIGGER_CLASS}>
+            Artifacts
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -397,6 +401,10 @@ export default function Overview() {
 
         <TabsContent value="consultations">
           <ConsultationsPanel embedded />
+        </TabsContent>
+
+        <TabsContent value="artifacts">
+          <ArtifactsPanel embedded />
         </TabsContent>
       </Tabs>
     </PageContainer>

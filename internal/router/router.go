@@ -47,6 +47,7 @@ type Router struct {
 	fileHandler          *handler.FileHandler
 	memoryHandler        *handler.MemoryHandler
 	overviewHandler      *handler.OverviewHandler
+	artifactHandler      *handler.ArtifactHandler
 	mcpHandler           *handler.MCPHandler
 	mcpServerHandler     *handler.MCPServerHandler
 	skillSearchHandler   *handler.SkillSearchHandler
@@ -171,6 +172,7 @@ func NewRouter(
 		fileHandler:          fileHandler,
 		memoryHandler:        memoryHandler,
 		overviewHandler:      handler.NewOverviewHandler(),
+		artifactHandler:      handler.NewArtifactHandler(),
 		mcpHandler:           mcpHandler,
 		mcpServerHandler:     mcpServerHandler,
 		skillSearchHandler:   skillSearchHandler,
@@ -543,6 +545,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 			overview := v1.Group("/overview")
 			{
 				overview.GET("/activities", r.overviewHandler.GetRecentActivities)
+				// 各知识库的编译产物（wiki/tree/graph/mindmap/timeline）汇总
+				overview.GET("/artifacts", r.artifactHandler.ListArtifacts)
 			}
 
 			// Search routes
