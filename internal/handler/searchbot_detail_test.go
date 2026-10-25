@@ -183,8 +183,11 @@ func TestSearchbotDetailRejectsInvalidBetaToken(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}
-	if resp["code"] != float64(common.CodeUnauthorized) {
-		t.Fatalf("code = %v, want %v", resp["code"], common.CodeUnauthorized)
+	// 期望业务错误码而不是 401：分享页是公开页，带登录 token 或链接过期时
+	// 都会走到这里。若返回 401，前端全局拦截器会 removeAll() + 跳登录，
+	// 一个失效的分享链接就能把已登录用户踢下线。见 4942b0cab。
+	if resp["code"] != float64(common.CodeDataError) {
+		t.Fatalf("code = %v, want %v", resp["code"], common.CodeDataError)
 	}
 }
 
