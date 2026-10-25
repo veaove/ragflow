@@ -324,14 +324,18 @@ func TestRebuildConnectorRejectsCrossTenantAndUnboundKB(t *testing.T) {
 
 	svc := NewConnectorService()
 
-	// The caller can access kb-1, but conn-1 is not bound to it: denied before
-	// any documents are listed or deleted.
+	// 同租户但未绑定：产品会先补一条绑定再继续，不再直接拒绝。
+	// 这是有意的行为（见 connector.go 里那段注释）：connector 是在
+	// 「用户设置 → 数据源」里创建的，创建时并不知道要绑哪个知识库，
+	// 而 connector2kb 绑定只在保存知识库设置时才同步。链完数据源直接点
+	// 解析是最常见的路径，那时绑定还没写上，直接报 109 会把它堵死。
+	// 跨租户仍然拒绝，见下面第二条。
 	ok, code, err := svc.RebuildConnector(t.Context(), "conn-1", "user-1", "kb-1")
-	if err == nil || !errors.Is(err, ErrConnectorNotBoundToKB) {
-		t.Fatalf("err = %v, want ErrConnectorNotBoundToKB", err)
+	if err != nil {
+		t.Fatalf("err = %v, want nil (same-tenant rebuild should auto-bind)", err)
 	}
-	if ok || code != common.CodeAuthenticationError {
-		t.Fatalf("ok/code = %v/%v, want false/authentication error", ok, code)
+	if !ok {
+		t.Fatalf("ok = %v, want true", ok)
 	}
 
 	// The caller cannot access a cross-tenant kb at all: denied up front.
