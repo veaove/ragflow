@@ -43,7 +43,9 @@ func setupSearchbotDetailHandlerDB(t *testing.T) {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
 
-	if err := db.AutoMigrate(&entity.User{}, &entity.UserTenant{}, &entity.Search{}, &entity.APIToken{}); err != nil {
+	// ResourceGrant 也要建：详情页的权限校验会查 resource_grant，
+	// 缺表时拿不到 401 而是 102，断言直接挂。
+	if err := db.AutoMigrate(&entity.User{}, &entity.UserTenant{}, &entity.Search{}, &entity.APIToken{}, &entity.ResourceGrant{}); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
 
