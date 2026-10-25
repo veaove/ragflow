@@ -101,7 +101,7 @@ export enum Routes {
   AdminTenants = `${Admin}/tenants`,
   AdminModels = `${Admin}/models`,
   AdminAudits = `${Admin}/audits`,
-  // 租户控制台：组织架构 / 成员 / 角色权限。一级入口是侧边栏的下拉菜单，
+  // 租户中心：组织架构 / 成员 / 角色权限。一级入口是侧边栏的下拉菜单，
   // 这里只登记三个实际页面。
   ConsoleOrganization = '/console/organization',
   ConsoleMembers = '/console/members',

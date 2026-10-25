@@ -232,7 +232,7 @@ export default {
       grants: '资源授权',
     },
     header: {
-      tenantConsole: '租户控制台',
+      tenantConsole: '租户中心',
       overview: '总览',
       knowledgeBase: '知识库',
       chat: '知识问答',

@@ -113,7 +113,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     icon: MenuItemsIcon,
     icon_name: 'file',
   },
-  // 租户控制台：与「文件管理」平级的下拉入口（两者无隶属关系），
+  // 租户中心：与「文件管理」平级的下拉入口（两者无隶属关系），
   // 三个子页共用 /console/* 前缀。
   {
     path: 'console',

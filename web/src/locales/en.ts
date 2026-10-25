@@ -253,7 +253,7 @@ export default {
       grants: 'Resource access',
     },
     header: {
-      tenantConsole: 'Tenant console',
+      tenantConsole: 'Tenant center',
       overview: 'Overview',
       knowledgeBase: 'Dataset',
       chat: 'Chat',
