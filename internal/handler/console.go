@@ -36,6 +36,22 @@ func NewConsoleHandler() *ConsoleHandler {
 // path and action from the HTTP method. Deriving instead of passing them at each
 // call site means a new console endpoint cannot silently skip the check.
 func requireTenantAccess(c *gin.Context, userID, tenantID string, write bool) error {
+	// 先看租户本身是否被平台停用：停用后连 owner 也进不来，
+	// 所以这条必须在成员关系判断之前，且不受 write 参数影响。
+	var tenant entity.Tenant
+	if err := dao.DB.WithContext(c.Request.Context()).
+		Select("id", "enabled").
+		Where("id = ?", tenantID).
+		Take(&tenant).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("租户不存在")
+		}
+		return err
+	}
+	if tenant.Enabled != nil && !*tenant.Enabled {
+		return errors.New("该租户已被平台停用，请联系平台管理员")
+	}
+
 	var membership entity.UserTenant
 	err := dao.DB.WithContext(c.Request.Context()).
 		Where("tenant_id = ?", tenantID).

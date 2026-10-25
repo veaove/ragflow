@@ -215,12 +215,25 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 				entity.GrantSubjectTeam,
 				entity.GrantSubjectUser, subject.UserID,
 				entity.GrantSubjectDepartment, deptID)
+		// 租户被停用后，库里的内容对**所有人**不可见（含 owner 与显式授权）。
+		// 停用的语义是整个租户暂停，不是某个成员被降权，所以这一条不能放进
+		// 上面那个「owner / team / 授权」的 OR 分支里。
+		//
+		// 判定方向是「有停用记录才隐藏」而不是「有启用记录才可见」：
+		// 后者在租户行缺失（历史脏数据、部分迁移）时会把用户所有内容一次性
+		// 隐藏掉，代价远大于收益。IFNULL 兼容 enabled 为 NULL 的存量行。
+		tenantDisabled := db.Model(&entity.Tenant{}).
+			Select("1").
+			Where("tenant.id = knowledgebase.tenant_id").
+			Where("IFNULL(tenant.enabled, 1) = 0")
+
 		accessibleDatasets := db.Model(&entity.Knowledgebase{}).
 			Select("knowledgebase.id").
 			Where("knowledgebase.status = ?", string(entity.StatusValid)).
 			Where("EXISTS (?)", activeOwner).
 			Where("(EXISTS (?) OR (knowledgebase.permission = ? AND EXISTS (?)) OR EXISTS (?))",
-				callerIsOwner, string(entity.TenantPermissionTeam), callerIsMember, granted)
+				callerIsOwner, string(entity.TenantPermissionTeam), callerIsMember, granted).
+			Where("NOT EXISTS (?)", tenantDisabled)
 		return query.Where("knowledgebase.id IN (?)", accessibleDatasets)
 	}}, true, nil
 }

@@ -161,6 +161,7 @@ func TestRunAgent_RealCanvas_BeginMessage(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -236,6 +237,7 @@ func TestRunAgent_SessionHistoryFeedsSysHistoryAndPersists(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -366,6 +368,7 @@ func TestRunAgent_NewSessionPersistsHistoryForNextTurn(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -452,6 +455,7 @@ func TestRunAgent_RejectsSessionOwnedByAnotherUser(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -535,6 +539,7 @@ func TestRunAgent_RealCanvas_WaitForUserResume(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -687,6 +692,7 @@ func TestRunAgent_InterruptPersistsPartialAssistantHistory(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -770,6 +776,7 @@ func TestRunAgent_RealCanvas_WaitForUserResume_EventSemantics(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -872,6 +879,7 @@ func TestRunAgent_RealCanvas_GroupedParallelOuterFollower(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -1005,6 +1013,7 @@ func TestRunAgent_AllFixture_LoopInterruptResume(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -1133,6 +1142,7 @@ func TestRunAgent_AllFixture_LoopInterruptResume_MultiTurn(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -1236,6 +1246,7 @@ func TestRunAgent_AllFixture_IterationFormatsItems(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -1352,6 +1363,7 @@ func TestRunAgent_AllFixture_VarAssigner(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -1439,6 +1451,7 @@ func TestRunAgent_AllFixture_DataOps(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -1538,6 +1551,7 @@ func TestRunAgent_RealCanvas_CompileFails(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -1603,6 +1617,7 @@ func TestRunAgent_ExeSQLConfigErrorIsUserFacing(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{}, &entity.UserCanvasVersion{}, &entity.APIToken{},
 		&entity.API4Conversation{}, &entity.TenantModelProvider{},
 		&entity.TenantModelInstance{}, &entity.TenantModel{},
@@ -1648,6 +1663,7 @@ func TestRunAgent_AllFixture_CategorizeResume(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -1799,6 +1815,7 @@ func TestRunAgent_RealCanvas_InvokeFails(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -1908,6 +1925,7 @@ func TestRunAgent_RunTracker_AttachCheckpoint_CallSequence(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -2028,6 +2046,7 @@ func TestRunAgent_FilesPopulateIteration(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -2164,6 +2183,7 @@ func TestRunAgent_MissingUploadEmitsError(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},
@@ -2240,6 +2260,7 @@ func TestRunAgent_NoFilesRunsNormally(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	if err := testDB.AutoMigrate(
 		&entity.ResourceGrant{},
+		&entity.Tenant{},
 		&entity.UserCanvas{},
 		&entity.UserCanvasVersion{},
 		&entity.AgentRun{},

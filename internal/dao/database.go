@@ -419,5 +419,29 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 			return fmt.Errorf("failed to auto-migrate runtime table %s: %w", tableName, err)
 		}
 	}
+
+	// tenant 不在上面的列表里（它的列历史上由 Python 侧迁移管理），
+	// 所以租户启停用这一列必须单独补，否则线上所有租户查询都会
+	// 报 Unknown column 'enabled'。
+	if err := ensureTenantEnabledColumn(ctx, db); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ensureTenantEnabledColumn 幂等地补上 tenant.enabled。
+//
+// 全部存量租户按「启用」处理：这个功能上线前不存在停用概念，
+// 若把存量置为禁用会一次性锁死所有租户。
+func ensureTenantEnabledColumn(ctx context.Context, db *gorm.DB) error {
+	if db.Migrator().HasColumn(&entity.Tenant{}, "enabled") {
+		return nil
+	}
+	if err := db.WithContext(ctx).Migrator().AddColumn(&entity.Tenant{}, "Enabled"); err != nil {
+		return fmt.Errorf("add tenant.enabled: %w", err)
+	}
+	if err := db.WithContext(ctx).Exec("UPDATE tenant SET enabled = 1 WHERE enabled IS NULL").Error; err != nil {
+		return fmt.Errorf("backfill tenant.enabled: %w", err)
+	}
 	return nil
 }

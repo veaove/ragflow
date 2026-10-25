@@ -41,10 +41,14 @@ import {
 } from '@/components/ui/table';
 import {
   createTenant,
+  deleteTenant,
+  getTenantResourceSummary,
   listTenantResources,
   listTenants,
   listUsers,
+  setTenantEnabled,
   setTenantOwner,
+  type TenantAssetItem,
 } from '@/services/admin-service';
 
 type ResourceType = 'members' | 'kbs' | 'agents';
@@ -158,7 +162,9 @@ export default function Tenants() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
-  const [status, setStatus] = useState('');
+  // 启停用筛选。原来的 status（软删除标记）对租户来说恒为 1，筛不出东西，
+  // 这里改用真正的启停用列 enabled。
+  const [enabledFilter, setEnabledFilter] = useState('');
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
@@ -194,13 +200,13 @@ export default function Tenants() {
     : null;
 
   const { data, isFetching } = useQuery({
-    queryKey: ['admin/tenants', page, pageSize, keyword, status],
+    queryKey: ['admin/tenants', page, pageSize, keyword, enabledFilter],
     queryFn: async () => {
       const { data } = await listTenants({
         page,
         page_size: pageSize,
         keyword,
-        status,
+        enabled: enabledFilter,
       });
       return data?.data ?? { list: [], total: 0 };
     },
@@ -262,6 +268,62 @@ export default function Tenants() {
     },
   });
 
+  // 停用 / 启用确认
+  const [toggleDialog, setToggleDialog] = useState<{
+    tenantId: string;
+    tenantName: string;
+    enabled: boolean;
+  } | null>(null);
+
+  // 删除确认（先盘点数据资产，有阻断项就只让看不让删）
+  const [deleteDialog, setDeleteDialog] = useState<{
+    tenantId: string;
+    tenantName: string;
+  } | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [actionError, setActionError] = useState('');
+
+  const { data: assets, isFetching: assetsLoading } = useQuery({
+    queryKey: ['admin/tenant-assets', deleteDialog?.tenantId],
+    enabled: !!deleteDialog,
+    queryFn: async () => {
+      const { data } = await getTenantResourceSummary(deleteDialog!.tenantId);
+      return (data?.data ?? []) as TenantAssetItem[];
+    },
+  });
+
+  // 有数据就不能删：删租户不会级联删业务表，只会在库里留下孤儿数据。
+  const blockingItems = (assets ?? []).filter((a) => a.blocking && a.count > 0);
+
+  const toggleMutation = useMutation({
+    mutationFn: async () =>
+      setTenantEnabled(toggleDialog!.tenantId, !toggleDialog!.enabled),
+    onSuccess: ({ data }) => {
+      if (data.code === 0) {
+        setToggleDialog(null);
+        setActionError('');
+        queryClient.invalidateQueries({ queryKey: ['admin/tenants'] });
+      } else {
+        setActionError(data.message ?? '操作失败');
+      }
+    },
+    onError: (err: any) => setActionError(err?.message ?? '操作失败'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => deleteTenant(deleteDialog!.tenantId),
+    onSuccess: ({ data }) => {
+      if (data.code === 0) {
+        setDeleteDialog(null);
+        setActionError('');
+        queryClient.invalidateQueries({ queryKey: ['admin/tenants'] });
+      } else {
+        setActionError(data.message ?? '删除失败');
+      }
+    },
+    onError: (err: any) => setActionError(err?.message ?? '删除失败'),
+  });
+
   const rows = data?.list ?? [];
 
   return (
@@ -284,9 +346,9 @@ export default function Tenants() {
               />
             </div>
             <select
-              value={status}
+              value={enabledFilter}
               onChange={(e) => {
-                setStatus(e.target.value);
+                setEnabledFilter(e.target.value);
                 setPage(1);
               }}
               className="h-9 rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
@@ -377,28 +439,51 @@ export default function Tenants() {
                     </button>
                   </TableCell>
                 <TableCell>
-                  <Badge
-                    variant={row.status === '1' ? 'success' : 'destructive'}
-                  >
-                    {row.status === '1' ? '正常' : '已停用'}
+                  <Badge variant={row.enabled ? 'success' : 'destructive'}>
+                    {row.enabled ? '正常' : '已停用'}
                   </Badge>
                 </TableCell>
                   <TableCell className="text-text-secondary">
                     {formatDate(row.create_date)}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setOwnerDialog({
-                          tenantId: row.id,
-                          tenantName: row.name,
-                        })
-                      }
-                    >
-                      设置超管
-                    </Button>
+                    <div className="flex items-center gap-1 whitespace-nowrap">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setOwnerDialog({
+                            tenantId: row.id,
+                            tenantName: row.name,
+                          })
+                        }
+                      >
+                        设置超管
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setToggleDialog({
+                            tenantId: row.id,
+                            tenantName: row.name,
+                            enabled: row.enabled,
+                          })
+                        }
+                      >
+                        {row.enabled ? '停用' : '启用'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setDeleteConfirmName('');
+                          setDeleteDialog({ tenantId: row.id, tenantName: row.name });
+                        }}
+                      >
+                        删除
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
             ))}
@@ -618,6 +703,172 @@ export default function Tenants() {
               disabled={!newOwnerEmail || setOwnerMutation.isPending}
             >
               {setOwnerMutation.isPending ? '设置中…' : '确定'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* 停用 / 启用确认 */}
+      <Dialog
+        open={!!toggleDialog}
+        onOpenChange={(next) => {
+          if (!next) {
+            setToggleDialog(null);
+            setActionError('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {toggleDialog?.enabled ? '停用' : '启用'}租户
+              {toggleDialog?.tenantName ? ` · ${toggleDialog.tenantName}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+
+          <p className="text-sm text-text-secondary">
+            {toggleDialog?.enabled
+              ? '停用后该租户下所有用户都将无法访问该租户（含租户管理员），数据全部保留，重新启用即可恢复。'
+              : '启用后该租户下的成员恢复正常访问。'}
+          </p>
+          {actionError && <p className="text-sm text-text-primary">{actionError}</p>}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setToggleDialog(null);
+                setActionError('');
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={() => {
+                setActionError('');
+                toggleMutation.mutate();
+              }}
+              disabled={toggleMutation.isPending}
+            >
+              {toggleMutation.isPending
+                ? '处理中…'
+                : toggleDialog?.enabled
+                  ? '确认停用'
+                  : '确认启用'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 删除确认：有数据资产时只展示清单，不允许删 */}
+      <Dialog
+        open={!!deleteDialog}
+        onOpenChange={(next) => {
+          if (!next) {
+            setDeleteDialog(null);
+            setDeleteConfirmName('');
+            setActionError('');
+          }
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>
+              删除租户
+              {deleteDialog?.tenantName ? ` · ${deleteDialog.tenantName}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+
+          {assetsLoading && (
+            <p className="py-4 text-sm text-text-secondary">
+              正在盘点该租户下的数据…
+            </p>
+          )}
+
+          {!assetsLoading && (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-text-primary">
+                {blockingItems.length > 0
+                  ? '该租户下仍有数据，请先清理后再删除：'
+                  : '该租户下没有阻断性数据，可以删除。删除后成员关系会一并移除，且不可恢复。'}
+              </p>
+
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border-default text-left text-xs text-text-secondary">
+                    <th className="py-2 pr-4 font-normal">数据项</th>
+                    <th className="py-2 pr-4 font-normal">数量</th>
+                    <th className="py-2 font-normal">状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(assets ?? []).map((item) => {
+                    const blocked = item.blocking && item.count > 0;
+                    return (
+                      <tr
+                        key={item.key}
+                        className="border-b border-border-default last:border-b-0"
+                      >
+                        <td className="py-2 pr-4 text-text-primary">{item.label}</td>
+                        <td className="py-2 pr-4 text-text-primary">{item.count}</td>
+                        <td className="py-2 text-text-secondary">
+                          {item.count === 0
+                            ? '无'
+                            : blocked
+                              ? '需先清理'
+                              : '可随租户一起移除'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {blockingItems.length === 0 && (
+                <div className="flex flex-col gap-2">
+                  <Label>
+                    请输入租户名称确认：
+                    <span className="ml-1 text-text-primary">
+                      {deleteDialog?.tenantName}
+                    </span>
+                  </Label>
+                  <Input
+                    value={deleteConfirmName}
+                    onChange={(e) => setDeleteConfirmName(e.target.value)}
+                    placeholder={deleteDialog?.tenantName ?? ''}
+                  />
+                </div>
+              )}
+
+              {actionError && (
+                <p className="text-sm text-text-primary">{actionError}</p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialog(null);
+                setDeleteConfirmName('');
+                setActionError('');
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={() => {
+                setActionError('');
+                deleteMutation.mutate();
+              }}
+              disabled={
+                assetsLoading ||
+                blockingItems.length > 0 ||
+                deleteConfirmName.trim() !== (deleteDialog?.tenantName ?? '').trim() ||
+                deleteMutation.isPending
+              }
+            >
+              {deleteMutation.isPending ? '删除中…' : '确认删除'}
             </Button>
           </DialogFooter>
         </DialogContent>

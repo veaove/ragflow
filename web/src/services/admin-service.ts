@@ -194,6 +194,8 @@ export interface TenantListItem {
   kb_count: number;
   agent_count: number;
   status: string;
+  /** 租户启停开关。与 status（软删除标记）无关：停用后记录仍在，但拒绝访问。 */
+  enabled: boolean;
   create_date: number;
 }
 
@@ -203,6 +205,8 @@ export const listTenants = (params: {
   page_size?: number;
   keyword?: string;
   status?: string;
+  /** '1' 只看启用 / '0' 只看停用 / 空 全部 */
+  enabled?: string;
 }) =>
   request.get<ResponseData<{ list: TenantListItem[]; total: number }>>(
     api.adminListTenants,
@@ -214,6 +218,44 @@ export const createTenant = (name: string, ownerEmail: string) =>
   request.post<ResponseData<{ id: string; name: string; owner_email: string }>>(
     api.adminCreateTenant,
     { name, owner_email: ownerEmail },
+  );
+
+/** 删除前置检查：租户名下的数据资产盘点。blocking 为真且 count>0 时禁止删除。 */
+export interface TenantAssetItem {
+  key: string;
+  label: string;
+  count: number;
+  blocking: boolean;
+}
+
+/** 盘点某租户的数据资产（删除前用它决定「能删」还是「先清理」）。 */
+export const getTenantResourceSummary = (tenantId: string) =>
+  request.get<ResponseData<TenantAssetItem[]>>(
+    `${api.adminListTenants}/${tenantId}/resource-summary`,
+    {},
+  );
+
+/**
+ * 启用 / 停用租户。
+ *
+ * 停用后该租户下所有用户都无法访问该租户（后端接口级拦截），
+ * 但数据全部保留，重新启用即恢复。
+ */
+export const setTenantEnabled = (tenantId: string, enabled: boolean) =>
+  request.put<ResponseData<{ id: string; enabled: boolean }>>(
+    `${api.adminListTenants}/${tenantId}/enabled`,
+    { enabled },
+  );
+
+/**
+ * 删除租户。
+ *
+ * 有数据资产时后端返回 code!=0，并把盘点结果放在 data 里，
+ * 调用方据此渲染「请先清理」清单。
+ */
+export const deleteTenant = (tenantId: string) =>
+  request.delete<ResponseData<{ id: string } | TenantAssetItem[] | null>>(
+    `${api.adminListTenants}/${tenantId}`,
   );
 
 export interface TenantResourceItem {

@@ -71,10 +71,18 @@ func (r *Router) Setup(engine *gin.Engine) {
 			protected.GET("/users", r.handler.ListUsers)
 			// 平台运营概览：租户/成员/知识库总量 + 近 30 天趋势
 			protected.GET("/overview", r.handler.GetOverview)
+			// 平台安全策略：登录方式 / 密码强度 / 会话超时 / 登录失败锁定。
+			// 只挂在 protected 组下，因为这三项是整个平台共享的，不能由租户自配；
+			// AuditMiddleware 会自动记录是谁在什么时候改了策略。
+			protected.GET("/security", r.handler.GetSecuritySettings)
+			protected.PUT("/security", r.handler.UpdateSecuritySettings)
 			// 平台租户管理：列表（含成员/知识库/智能体计数）+ 新建
 			protected.GET("/tenants", r.handler.ListTenants)
 			protected.POST("/tenants", r.handler.CreateTenant)
 			protected.GET("/tenants/:id/resources", r.handler.ListTenantResources)
+			protected.GET("/tenants/:id/resource-summary", r.handler.GetTenantResourceSummary)
+			protected.PUT("/tenants/:id/enabled", r.handler.SetTenantEnabled)
+			protected.DELETE("/tenants/:id", r.handler.DeleteTenant)
 			protected.PUT("/tenants/:id/owner", r.handler.SetTenantOwner)
 			// 平台模型目录 + 各租户引用情况（「模型配置」页）
 			protected.GET("/models", r.handler.ListPlatformModels)

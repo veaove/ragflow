@@ -38,6 +38,10 @@ type Tenant struct {
 	TenantOCRID     *string `gorm:"column:tenant_ocr_id;size:32;index" json:"tenant_ocr_id,omitempty"`
 	Credit          int     `gorm:"column:credit;default:512;index" json:"credit"`
 	Status          *string `gorm:"column:status;size:1;index;default:'1'" json:"status,omitempty"`
+	// Enabled 是租户启停开关。与 status 分开是因为两者语义不同：
+	// status 是软删除标记（写 0 记录会从查询里消失），而停用要求
+	// 「记录还在、列表还看得见、但拒绝访问」，混用会丢掉恢复的能力。
+	Enabled *bool `gorm:"column:enabled;not null;default:1;index" json:"enabled,omitempty"`
 	BaseModel
 }
 

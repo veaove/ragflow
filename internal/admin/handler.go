@@ -27,6 +27,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/engine"
 	"ragflow/internal/engine/kvrocks"
+	"ragflow/internal/entity"
 	"ragflow/internal/handler"
 	"ragflow/internal/server"
 	"ragflow/internal/service"
@@ -1300,6 +1301,7 @@ func (h *Handler) GetHardwareInfo(c *gin.Context) {
 func (h *Handler) ListTenants(c *gin.Context) {
 	keyword := c.DefaultQuery("keyword", "")
 	status := c.DefaultQuery("status", "")
+	enabled := c.DefaultQuery("enabled", "")
 
 	pageInt, err := common.ParseRequestIntPositive(c, c.Query("page"), "page", 1)
 	if err != nil {
@@ -1312,7 +1314,7 @@ func (h *Handler) ListTenants(c *gin.Context) {
 		return
 	}
 
-	list, total, err := h.service.ListTenants(c.Request.Context(), pageInt, pageSizeInt, keyword, status)
+	list, total, err := h.service.ListTenants(c.Request.Context(), pageInt, pageSizeInt, keyword, status, enabled)
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return
@@ -1356,6 +1358,64 @@ func (h *Handler) ListTenantResources(c *gin.Context) {
 		return
 	}
 	common.SuccessWithData(c, items, "List tenant resources")
+}
+
+// GetTenantResourceSummary GET /admin/tenants/:id/resource-summary
+//
+// 删除前的前置检查：前端在删除弹窗里先拉这个，有数据就只让看不让删。
+func (h *Handler) GetTenantResourceSummary(c *gin.Context) {
+	tenantID := strings.TrimSpace(c.Param("id"))
+	items, err := h.service.GetTenantResourceSummary(c.Request.Context(), tenantID)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	common.SuccessWithData(c, items, "Tenant resource summary")
+}
+
+// SetTenantEnabled PUT /admin/tenants/:id/enabled
+// body: {"enabled": false}
+//
+// 停用后该租户下所有用户都无法访问该租户（后端接口级拦截），
+// 但数据全部保留，重新启用即可恢复。
+func (h *Handler) SetTenantEnabled(c *gin.Context) {
+	tenantID := strings.TrimSpace(c.Param("id"))
+
+	var req struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.Enabled == nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, "enabled is required")
+		return
+	}
+
+	if err := h.service.SetTenantEnabled(c.Request.Context(), tenantID, *req.Enabled); err != nil {
+		// 业务校验失败（平台管理员租户）用参数错误码，前端直接把 message 弹出来
+		common.ErrorWithCode(c, common.CodeArgumentError, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{"id": tenantID, "enabled": *req.Enabled}, "Tenant updated")
+}
+
+// DeleteTenant DELETE /admin/tenants/:id
+//
+// 有数据资产时拒绝删除，并把盘点结果放进 data，前端据此渲染「请先清理」清单。
+func (h *Handler) DeleteTenant(c *gin.Context) {
+	tenantID := strings.TrimSpace(c.Param("id"))
+	// 记下操作者，用于拦住「删除自己所在租户」这种会把自己锁死的操作。
+	operatorID := ""
+	if v, exists := c.Get("user"); exists {
+		if u, ok := v.(*entity.User); ok && u != nil {
+			operatorID = u.ID
+		}
+	}
+
+	summary, err := h.service.DeleteTenant(c.Request.Context(), tenantID, operatorID)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeArgumentError, summary, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{"id": tenantID}, "Tenant deleted")
 }
 
 // SetTenantOwner PUT /admin/tenants/:id/owner

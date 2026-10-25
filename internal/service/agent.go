@@ -3246,12 +3246,15 @@ func resolveTenantIDForUser(ctx context.Context, userID string) string {
 		string(permission.RoleNormal),
 	} {
 		var tenantID string
+		// 只认启用的租户：否则新画布会落到一个已被平台停用的租户里，
+		// 建完就查不到（QueryScope 已把停用租户的内容过滤掉了）。
 		err := dao.DB.WithContext(ctx).
 			Model(&entity.UserTenant{}).
-			Select("tenant_id").
-			Where("user_id = ? AND status = ? AND role = ?", userID, string(entity.StatusValid), role).
+			Select("user_tenant.tenant_id").
+			Joins("JOIN tenant t ON t.id = user_tenant.tenant_id AND IFNULL(t.enabled, 1) = 1").
+			Where("user_tenant.user_id = ? AND user_tenant.status = ? AND user_tenant.role = ?", userID, string(entity.StatusValid), role).
 			Limit(1).
-			Pluck("tenant_id", &tenantID).Error
+			Pluck("user_tenant.tenant_id", &tenantID).Error
 		if err == nil && tenantID != "" {
 			return tenantID
 		}

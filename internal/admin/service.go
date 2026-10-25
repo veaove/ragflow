@@ -1435,7 +1435,9 @@ type TenantListItem struct {
 	KbCount     int64  `json:"kb_count"`
 	AgentCount  int64  `json:"agent_count"`
 	Status      string `json:"status"`
-	CreateDate  int64  `json:"create_date"`
+	// Enabled 是租户启停开关，与 Status（软删除标记）无关。
+	Enabled    bool  `json:"enabled"`
+	CreateDate int64 `json:"create_date"`
 }
 
 // ListTenants returns tenants with member / knowledge-base / agent counts.
@@ -1447,13 +1449,17 @@ type TenantListItem struct {
 // dao/analytics.go 里同样拿 tenantID 去 join user_canvas.user_id 的写法），
 // 所以智能体数按 c.user_id = t.id 统计。写成 c.tenant_id = t.id 会在 MySQL
 // 上报 Error 1054，整个租户列表页直接 500。
-func (s *Service) ListTenants(ctx context.Context, pageIndex, pageSize int, keyword, status string) ([]TenantListItem, int64, error) {
+func (s *Service) ListTenants(ctx context.Context, pageIndex, pageSize int, keyword, status, enabled string) ([]TenantListItem, int64, error) {
 	base := dao.DB.WithContext(ctx).Table("tenant AS t")
 	if keyword != "" {
 		base = base.Where("t.name LIKE ?", "%"+keyword+"%")
 	}
 	if status != "" {
 		base = base.Where("t.status = ?", status)
+	}
+	// 启停用筛选：存量行 enabled 可能为 NULL，按启用处理。
+	if enabled != "" {
+		base = base.Where("IFNULL(t.enabled, 1) = ?", enabled)
 	}
 
 	var total int64
@@ -1469,6 +1475,7 @@ func (s *Service) ListTenants(ctx context.Context, pageIndex, pageSize int, keyw
 			(SELECT COUNT(*) FROM knowledgebase k WHERE k.tenant_id = t.id AND k.status = '1') AS kb_count,
 			(SELECT COUNT(*) FROM user_canvas c WHERE c.user_id = t.id) AS agent_count,
 			t.status,
+			IFNULL(t.enabled, 1) AS enabled,
 			IFNULL(t.create_time, 0) AS create_date`).
 		Order("t.create_date DESC").
 		Offset((pageIndex - 1) * pageSize).
@@ -1478,6 +1485,183 @@ func (s *Service) ListTenants(ctx context.Context, pageIndex, pageSize int, keyw
 		return nil, 0, err
 	}
 	return rows, total, nil
+}
+
+// TenantResourceItem 是租户名下的一类数据资产。
+//
+// Blocking 为 true 表示该项存在时不允许删除租户：删租户不会级联删业务表，
+// 直接删只会留下一堆按 tenant_id 归属、再也找不到入口的孤儿数据。
+type TenantResourceItem struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Count    int64  `json:"count"`
+	Blocking bool   `json:"blocking"`
+}
+
+// GetTenantResourceSummary 盘点租户下的数据资产。
+//
+// 计数口径与列表页完全一致（只算 status='1'），否则会出现
+// 「列表显示 11 个知识库、删除弹窗说 13 个」这种自相矛盾。
+//
+// 成员数单独处理：租户至少有 1 个 owner，所以「成员 > 1」才是阻断条件，
+// 不能按「> 0」判定，否则任何租户都删不掉。
+func (s *Service) GetTenantResourceSummary(ctx context.Context, tenantID string) ([]TenantResourceItem, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return nil, fmt.Errorf("tenant id is required")
+	}
+
+	var tenantCount int64
+	if err := dao.DB.WithContext(ctx).Table("tenant").Where("id = ?", tenantID).Count(&tenantCount).Error; err != nil {
+		return nil, err
+	}
+	if tenantCount == 0 {
+		return nil, fmt.Errorf("tenant not found")
+	}
+
+	db := dao.DB.WithContext(ctx)
+	countOf := func(query string, args ...interface{}) (int64, error) {
+		var n int64
+		err := db.Raw(query, args...).Scan(&n).Error
+		return n, err
+	}
+
+	members, err := countOf(`SELECT COUNT(*) FROM user_tenant WHERE tenant_id = ? AND status = '1'`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	kbs, err := countOf(`SELECT COUNT(*) FROM knowledgebase WHERE tenant_id = ? AND status = '1'`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	agents, err := countOf(`SELECT COUNT(*) FROM user_canvas WHERE user_id = ?`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	docs, err := countOf(`SELECT COUNT(*) FROM document d
+		JOIN knowledgebase k ON k.id = d.kb_id AND k.tenant_id = ? AND k.status = '1'`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	files, err := countOf(`SELECT COUNT(*) FROM file WHERE tenant_id = ?`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	memories, err := countOf(`SELECT COUNT(*) FROM memory WHERE tenant_id = ?`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	return []TenantResourceItem{
+		// 只剩 owner 一个人时可直接删；多出来的成员要先移走，否则他们会变成
+		// 「无租户用户」，登录后什么都看不到。
+		{Key: "members", Label: "成员", Count: members, Blocking: members > 1},
+		{Key: "kbs", Label: "知识库", Count: kbs, Blocking: kbs > 0},
+		{Key: "agents", Label: "智能体", Count: agents, Blocking: agents > 0},
+		{Key: "docs", Label: "文档", Count: docs, Blocking: docs > 0},
+		{Key: "files", Label: "文件", Count: files, Blocking: files > 0},
+		{Key: "memories", Label: "记忆", Count: memories, Blocking: memories > 0},
+	}, nil
+}
+
+// isPlatformAdminTenant 判断该租户的 owner 是否是平台超管。
+//
+// 平台超管的租户不允许停用或删除：它是进管理后台的入口，
+// 锁掉之后没人能登进来把它改回去。
+func (s *Service) isPlatformAdminTenant(ctx context.Context, tenantID string) (bool, error) {
+	var count int64
+	err := dao.DB.WithContext(ctx).Raw(`
+		SELECT COUNT(*)
+		FROM user_tenant ut
+		JOIN user u ON u.id = ut.user_id
+		WHERE ut.tenant_id = ? AND ut.role = 'owner' AND ut.status = '1' AND u.is_superuser = 1`,
+		tenantID).Scan(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// SetTenantEnabled 启用 / 停用租户。
+//
+// 停用只改开关，不动任何数据：恢复后成员和业务数据都还在。
+func (s *Service) SetTenantEnabled(ctx context.Context, tenantID string, enabled bool) error {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return fmt.Errorf("tenant id is required")
+	}
+
+	var tenant entity.Tenant
+	if err := dao.DB.WithContext(ctx).Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("tenant not found")
+		}
+		return err
+	}
+
+	if !enabled {
+		adminTenant, err := s.isPlatformAdminTenant(ctx, tenantID)
+		if err != nil {
+			return err
+		}
+		if adminTenant {
+			return fmt.Errorf("不能停用平台管理员所在租户，否则将无法登录管理后台")
+		}
+	}
+
+	// 用显式 Update 而不是 Save：Tenant 有大量 not null 的模型字段，
+	// Save 会把没加载全的字段零值刷回库里。
+	return dao.DB.WithContext(ctx).Model(&entity.Tenant{}).
+		Where("id = ?", tenantID).
+		Update("enabled", enabled).Error
+}
+
+// DeleteTenant 删除租户。存在数据资产时拒绝，并把盘点结果返回给调用方展示。
+//
+// 返回的 summary 无论成功失败都有效：失败时前端用它渲染「请先清理」清单。
+func (s *Service) DeleteTenant(ctx context.Context, tenantID, operatorUserID string) ([]TenantResourceItem, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return nil, fmt.Errorf("tenant id is required")
+	}
+	if operatorUserID != "" && tenantID == strings.TrimSpace(operatorUserID) {
+		return nil, fmt.Errorf("不能删除当前登录账号所在的租户")
+	}
+
+	summary, err := s.GetTenantResourceSummary(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	var blocked []string
+	for _, item := range summary {
+		if item.Blocking && item.Count > 0 {
+			blocked = append(blocked, fmt.Sprintf("%s %d", item.Label, item.Count))
+		}
+	}
+	if len(blocked) > 0 {
+		return summary, fmt.Errorf("该租户下仍有数据（%s），请先清理后再删除", strings.Join(blocked, "、"))
+	}
+
+	adminTenant, err := s.isPlatformAdminTenant(ctx, tenantID)
+	if err != nil {
+		return summary, err
+	}
+	if adminTenant {
+		return summary, fmt.Errorf("不能删除平台管理员所在租户")
+	}
+
+	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 成员关系必须一起删：留下会变成指向不存在租户的悬空行。
+		if err := tx.Where("tenant_id = ?", tenantID).Delete(&entity.UserTenant{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", tenantID).Delete(&entity.Tenant{}).Error
+	})
+	if err != nil {
+		return summary, err
+	}
+	return summary, nil
 }
 
 // CreateTenant creates a tenant owned by an existing user.
