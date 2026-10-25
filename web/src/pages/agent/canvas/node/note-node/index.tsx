@@ -1,4 +1,4 @@
-import { NodeProps, NodeResizeControl } from '@xyflow/react';
+import { NodeProps } from '@xyflow/react';
 
 import {
   Form,
@@ -18,7 +18,6 @@ import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 import { useCanvasReadonly } from '../../../context';
 import { NodeWrapper } from '../node-wrapper';
-import { ResizeIcon, controlStyle } from '../resize-icon';
 import { ToolBar } from '../toolbar';
 import { useWatchFormChange, useWatchNameFormChange } from './use-watch-change';
 
@@ -78,16 +77,12 @@ function NoteNode({
       <NodeWrapper
         className="p-0  w-full h-full flex flex-col bg-bg-component border border-accent-primary rounded-lg shadow-md pb-1"
         selected={selected}
+        // 便签本来就是撑满式版式（w-full h-full），不能被 NodeWrapper 塞回 200px
+        fill
+        // 便签的可读下限比普通节点高：标题行 + 正文，再小就没法写字了。
+        minWidth={190}
+        minHeight={128}
       >
-        {!readOnly && (
-          <NodeResizeControl
-            minWidth={190}
-            minHeight={128}
-            style={controlStyle}
-          >
-            <ResizeIcon />
-          </NodeResizeControl>
-        )}
         <section className="px-2 py-1 flex gap-2 items-center note-drag-handle rounded-t border-t-2 border-accent-primary">
           <NotebookPen className="size-4" />
           <Form {...nameForm}>
