@@ -875,6 +875,14 @@ func (s *TenantService) RemoveMember(ctx context.Context, userID, tenantID, targ
 	if err := s.userTenantDAO.DeleteByUserAndTenant(ctx, dao.DB, targetUserID, tenantID); err != nil {
 		return common.CodeServerError, fmt.Errorf("failed to remove member: %w", err)
 	}
+
+	// 清空组织归属。user.department_id 是单值列、不随 user_tenant 删除而消失，
+	// 留着会让原部门永远判定为"有成员"而删不掉。
+	if err := dao.DB.WithContext(ctx).Model(&entity.User{}).
+		Where("id = ?", targetUserID).
+		Update("department_id", nil).Error; err != nil {
+		return common.CodeServerError, fmt.Errorf("failed to clear member department: %w", err)
+	}
 	return common.CodeSuccess, nil
 }
 

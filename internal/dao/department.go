@@ -75,9 +75,14 @@ func (dao *DepartmentDAO) Delete(ctx context.Context, db *gorm.DB, tenantID, id 
 			return ErrDepartmentNotEmpty
 		}
 
+		// 只统计**仍在本租户在册**的成员。user.department_id 是单值列，成员被
+		// 移出租户后该值不会自动清空（历史数据也可能残留），若按裸列统计，
+		// 这些悬空引用会让部门永远删不掉。
 		var memberCount int64
 		if err := tx.Model(&entity.User{}).
-			Where("department_id = ?", id).
+			Joins("JOIN user_tenant ut ON ut.user_id = user.id AND ut.tenant_id = ?", tenantID).
+			Where("user.department_id = ?", id).
+			Where("ut.status = ?", "1").
 			Count(&memberCount).Error; err != nil {
 			return err
 		}

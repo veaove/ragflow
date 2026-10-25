@@ -133,7 +133,9 @@ OWNER_ROLE_ID=$(req "$TOK" "$BASE/tenants/$TENANT/roles" | jq -r '[.data.roles[]
 INV_OWNER=$(req "$TOK" -X POST "$BASE/tenants/$TENANT/members" -d "{\"email\":\"zhangsan@qq.com\",\"role_id\":\"$OWNER_ROLE_ID\"}")
 ckn "B5 邀请租户管理员角色被拒绝" "0" "$(echo "$INV_OWNER" | jq -r '.code')"
 
-# 正常邀请（zhangsan 临时加入）
+# 正常邀请（zhangsan 临时加入）。先清掉可能的历史残留，保证可重复运行。
+req "$TOK" -X DELETE "$BASE/tenants/$TENANT/users" -d "{\"user_id\":\"$MEMBER_ID\"}" >/dev/null 2>&1
+sleep 1
 INV_OK=$(req "$TOK" -X POST "$BASE/tenants/$TENANT/members" -d '{"email":"zhangsan@qq.com","role":"normal"}')
 INV_OK_CODE=$(echo "$INV_OK" | jq -r '.code')
 # 已存在时也可能失败，只要不是"系统错误"即可
@@ -181,16 +183,20 @@ SAVE=$(req "$TOK" -X PUT "$BASE/tenants/$TENANT/roles/$NEW_ROLE_ID/permissions" 
 ck "C4 保存权限矩阵" "0" "$(echo "$SAVE" | jq -r '.code')"
 
 READ=$(req "$TOK" "$BASE/tenants/$TENANT/roles")
-# 角色自带的 permissions 数组即其矩阵（接口返回 {roles, modules}，没有独立 matrix）
-MATRIX_EXPR="([.data.roles[] | select(.id==\"$NEW_ROLE_ID\")][0].permissions // [])"
-ck "C5 矩阵回读 can_view 一致" "true" "$(echo "$READ" | jq -r "$MATRIX_EXPR | map(select(.module==\"dataset\"))[0].can_view")"
-ck "C6 矩阵回读 can_create 一致" "true" "$(echo "$READ" | jq -r "$MATRIX_EXPR | map(select(.module==\"dataset\"))[0].can_create")"
+# 角色自带的 permissions 数组即其矩阵（接口返回 {roles, modules}，没有独立 matrix）。
+# 全部字段名走 --arg，不在 jq 表达式里拼引号（上一版就是因此取到 null）。
+perms_of() {
+  echo "$1" | jq -r --arg rid "$NEW_ROLE_ID" --arg m "$2" --arg f "$3" \
+    '([.data.roles[] | select(.id==$rid)][0].permissions // []) | map(select(.module==$m))[0][$f]'
+}
+ck "C5 矩阵回读 can_view 一致" "true" "$(perms_of "$READ" dataset can_view)"
+ck "C6 矩阵回读 can_create 一致" "true" "$(perms_of "$READ" dataset can_create)"
 
 # 关键回归：取消勾选必须能持久化（GORM default 标签会让 false 被省略）
 SAVE_OFF=$(req "$TOK" -X PUT "$BASE/tenants/$TENANT/roles/$NEW_ROLE_ID/permissions" -d '{"permissions":[{"module":"dataset","can_view":false,"can_create":false,"can_edit":false,"can_delete":false,"can_manage":false}]}')
 ck "C7 保存全 false 矩阵" "0" "$(echo "$SAVE_OFF" | jq -r '.code')"
 READ2=$(req "$TOK" "$BASE/tenants/$TENANT/roles")
-ck "C8 取消勾选可持久化（GORM 零值回归）" "false" "$(echo "$READ2" | jq -r "$MATRIX_EXPR | map(select(.module==\"dataset\"))[0].can_view")"
+ck "C8 取消勾选可持久化（GORM 零值回归）" "false" "$(perms_of "$READ2" dataset can_view)"
 
 # ── D. 资源授权 ───────────────────────────────────────────────────────────
 echo ""
@@ -252,10 +258,13 @@ echo "  INFO  canvas tenant_id 空值数（应为 0）：见下方 SQL 检查"
 echo ""
 echo "[清理] 删除测试数据"
 
-[ -n "$ROOT_ID" ] && req "$TOK" -X DELETE "$BASE/tenants/$TENANT/departments/$ROOT_ID" >/dev/null
+# 顺序很重要：先移除成员，再删子部门，最后删父部门。
+# 反过来的话父部门因"有子部门/有成员"被拒，每跑一次就留下一对残留。
+req "$TOK" -X DELETE "$BASE/tenants/$TENANT/users" -d "{\"user_id\":\"$MEMBER_ID\"}" >/dev/null
+sleep 1
 [ -n "$CHILD_ID" ] && req "$TOK" -X DELETE "$BASE/tenants/$TENANT/departments/$CHILD_ID" >/dev/null
+[ -n "$ROOT_ID" ] && req "$TOK" -X DELETE "$BASE/tenants/$TENANT/departments/$ROOT_ID" >/dev/null
 [ -n "$NEW_ROLE_ID" ] && req "$TOK" -X DELETE "$BASE/tenants/$TENANT/roles/$NEW_ROLE_ID" >/dev/null
-req "$TOK" -X DELETE "$BASE/tenants/$TENANT/users/$MEMBER_ID" >/dev/null
 
 echo ""
 echo "=============================================="
