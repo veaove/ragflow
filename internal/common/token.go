@@ -243,16 +243,24 @@ func GenerateUUID() string {
 	return newID
 }
 
+// APITokenPrefix 是 API Key 的面向前缀。
+//
+// 它会原样出现在「配置中心 → API」的列表、复制出来的 key 以及嵌入代码的
+// URL 里，是使用者唯一能看到的品牌位，所以用部署方的缩写，不再沿用上游
+// 的 ragflow-。校验侧（middleware / CLI / 嵌入页）都只做整串比对、不解析
+// 前缀，改这里不影响任何已发出的 key。
+const APITokenPrefix = "ZSK-"
+
 // GenerateAPIToken generates secure random access key
 func GenerateAPIToken() string {
 	// Generate 32 random bytes
 	bytesArray := make([]byte, 32)
 	if _, err := rand.Read(bytesArray); err != nil {
 		// Fallback to UUID if random generation fails
-		return "ragflow-" + strings.ReplaceAll(uuid.New().String(), "-", "")
+		return APITokenPrefix + strings.ReplaceAll(uuid.New().String(), "-", "")
 	}
 	// Use URL-safe base64 encoding
-	return "ragflow-" + base64.RawURLEncoding.EncodeToString(bytesArray)
+	return APITokenPrefix + base64.RawURLEncoding.EncodeToString(bytesArray)
 }
 
 // GenerateBetaAPIToken generates a beta access key
