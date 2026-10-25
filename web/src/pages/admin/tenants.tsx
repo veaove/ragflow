@@ -62,8 +62,10 @@ function formatDate(ms?: number) {
  * 当前范围（按需求裁剪）：列表 + 统计 + 新建。
  * 不做：套餐版本、到期时间、配额/详情/停用/删除。
  *
- * 统计口径：成员数 / 知识库数 / 智能体数都按 tenant_id 归属统计，
- * 不按创建人（租户的资源可能由多个成员创建）。
+ * 统计口径：成员数 / 知识库数 按 tenant_id 归属统计；智能体数只能按
+ * user_canvas.user_id 统计（这张表没有 tenant_id，租户 id 就是 owner 的
+ * user id），所以成员自己建的画布不计入，「智能体数」点开的明细里也
+ * 只有 owner 名下的画布。
  */
 export default function Tenants() {
   const { t } = useTranslation();
