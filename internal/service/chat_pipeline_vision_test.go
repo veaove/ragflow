@@ -1,6 +1,7 @@
 package service
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -22,7 +23,10 @@ import (
 func setupChatPipelineVisionTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{TranslateError: true})
+	// cache=shared 是必须的：":memory:" 会让连接池里的每条连接各拿到一个
+	// 独立的空库，AutoMigrate 建的表只存在于建它的那条连接上，别的连接
+	// 一查就是 no such table。用 t.Name() 做库名，避免同包内其他用例串数据。
+	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{TranslateError: true})
 	if err != nil {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}

@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"reflect"
 	"sort"
 	"strings"
@@ -1694,13 +1695,6 @@ func TestAsyncChatEmptyResponseQuoteDisabled(t *testing.T) {
 	chat.KBIDs = entity.JSONSlice{"kb-1"}
 	chat.PromptConfig["system"] = "Answer using {knowledge}"
 	chat.PromptConfig["empty_response"] = "Nothing found."
-	// DEBUG: 临时排查 tenant_model 表为何查不到
-	if tables, terr := db.Migrator().GetTables(); terr == nil {
-		t.Logf("DEBUG tables in db: %v", tables)
-	} else {
-		t.Logf("DEBUG GetTables err: %v", terr)
-	}
-	t.Logf("DEBUG dao.DB==db: %v", dao.DB == db)
 	results, err := NewChatPipelineService().AsyncChat(t.Context(), "user-1", chat,
 		[]map[string]interface{}{{"role": "user", "content": "Question"}}, true,
 		map[string]interface{}{"quote": false})
@@ -1794,7 +1788,9 @@ func thinkEventWireKeys(t *testing.T, ev ThinkEvent) []string {
 func setupChatPipelineToolSupportTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{TranslateError: true})
+	// 同 setupChatPipelineVisionTestDB：cache=shared 否则连接池里换一条连接
+	// 就看不到 AutoMigrate 建的表。
+	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{TranslateError: true})
 	if err != nil {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
