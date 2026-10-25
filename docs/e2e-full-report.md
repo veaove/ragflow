@@ -218,3 +218,79 @@ F 组的解析是异步的，脚本**轮询 chunk_count 直到 >0**（最多 90 
 
 数据卫生：`knowledgebase` / `user_canvas` / `qc_rule` / `qc_rule_binding` /
 `department` / `role` / `resource_grant` 均无测试残留，binding 总数回到测试前的 9。
+
+---
+
+# 第三轮：补齐剩余 5 个缺口（48 条）
+
+用户点名的五块全部补测完成，累计 **162 条**。
+
+| 缺口 | 脚本 | 条数 | 结果 |
+|---|---|---|---|
+| 模块（文件/记忆/模型） | `e2e_modules.sh` | 24 | 24/24 |
+| 实时通道（流式 + WS） | `e2e_realtime.sh` + `ws_qc.py` | 8 | 8/8 |
+| 前端 UI | `e2e_web_ui.mjs`（Playwright） | 16 | 16/16 |
+
+## 1. 前端 UI（16 条）
+
+**为什么不能只看 HTTP 200**：`pages/404.tsx` 会渲染整整一页「页面不存在」，
+状态码 200、控制台干净、body 非空 —— 只看状态码会把「路由没发版」判成绿。
+每个页面同时检查：不含 404 文案、不是登录页、含该页应有文本。
+
+覆盖：未登录跳转（2）、9 个页面渲染（首页/知识库/智能体/记忆/文件/组织架构/成员/角色/授权）、
+侧边栏菜单齐全、**首页无 JS 运行时错误**、未知路由显示 404 页、另一租户用户正常访问自己的页面。
+
+**未覆盖**：矩阵级拦截（`role.view=false` 的角色进不了角色页）需要构造只读角色并绑定成员，
+脚本里没有现成数据，留作待补项。
+
+## 2. 文件 / 记忆 / 模型（24 条）
+
+| 组 | 条数 | 关键点 |
+|---|---|---|
+| I 文件管理 | 10 | 上传/回读/**下载返回 200 且内容非空**/祖先/父目录/跨租户 |
+| J 记忆 | 8 | 创建需 `memory_type` 为**数组**/配置/消息/跨租户 |
+| K 模型 | 6 | 租户模型 19 个、默认 chat+embedding 均已配置 |
+
+**发现缺陷（已修）**：`GET /files/:id/parent` 路由是 `/:id/parent`，
+handler 却只读 `c.Query("file_id")` → 按路由调用永远 400。
+同组 `GetFileAncestors` 用的是 `c.Param("id")`，两处写法不一致。
+
+## 3. 流式对话 + 质检 WebSocket（8 条）
+
+- **流式**：多 chunk、含 answer、含 final、拼接正文非空
+- **WebSocket**：无 token 不升级 101 / 带 token 握手 101 / **收到真实帧** / **收到 `qc_hit` 事件**
+
+实测：向已绑定的「我的质检」规则（关键词"你好"，block）发消息 →
+`answer` 被替换为「你违规了」，WS 同时收到 `qc_hit` 事件（含 rule_name、session_id）。
+
+**WS 不能用 `curl -I` 验**：`-I` 发 HEAD，路由只认 GET，会假 404。
+服务器没装 `websockets` 库，改用 `ws_qc.py` 手写握手与帧解析。
+
+## 4. 文档多格式（第 4 项，此前已测）
+
+| 格式 | 结果 |
+|---|---|
+| txt | chunk 生成、检索命中（sim 0.21）|
+| **PDF**（Doc1.pdf, 2654B）| 解析出 1252 字真实文本：`"PDF 1: Purpose of RAGFlow..."` |
+| **docx**（自造 1053B 最小合法包）| chunk 生成、检索命中独特标记词 ZEBRA7788（sim 0.83）|
+
+## 最终汇总
+
+| 脚本 | 用例 | 结果 |
+|---|---|---|
+| `e2e_console_permissions.sh` | 34 | 34/34 |
+| `e2e_business_features.sh` | 55 | 55/55 |
+| `e2e_business_flow.sh` | 25 | 25/25 |
+| `e2e_modules.sh` | 24 | 24/24 |
+| `e2e_realtime.sh` | 8 | 8/8 |
+| `e2e_web_ui.mjs` | 16 | 16/16 |
+| **合计** | **162** | **全绿** |
+
+## 三轮共发现 3 个产品缺陷（已全部修复）
+
+1. 成员列表 `role` 字段恒为空（缺 `gorm:"column:role"`）
+2. 移除成员后原部门永远删不掉（不清 `department_id` + 裸列统计）
+3. `GET /files/:id/parent` 读错参数（query 而非路径）
+
+另记录 1 个设计风险（未改）：`GET /qc/rules/selection` 返回 `app_id` 归属集，
+与实际生效的 `qc_rule_binding` 不一致，界面可能显示「已选用」但实际不拦截。
