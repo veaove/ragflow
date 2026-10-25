@@ -164,9 +164,15 @@ export function VersionDialog({
                           nodesDraggable={false}
                           nodesConnectable={false}
                           elementsSelectable={false}
+                          // 同上：关掉右下角那块 "React Flow" 水印。
+                          proOptions={{ hideAttribution: true }}
                         >
                           <AgentBackground></AgentBackground>
-                          <Spotlight className="z-0" opcity={0.7} coverage={70} />
+                          <Spotlight
+                            className="z-0"
+                            opcity={0.7}
+                            coverage={70}
+                          />
                         </ReactFlow>
                       </ReactFlowProvider>
                     </DropdownProvider>

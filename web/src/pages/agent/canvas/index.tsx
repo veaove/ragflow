@@ -444,6 +444,10 @@ function AgentCanvas({
             deleteKeyCode={readOnly ? null : ['Delete', 'Backspace']}
             onBeforeDelete={handleBeforeDelete}
             panActivationKeyCode={null}
+            // 右下角那块灰斑是 xyflow 自带的 "React Flow" 水印（深色模式下
+            // 背景是 rgba(150,150,150,.25)、字色 #999，在星空底上只剩一块
+            // 说不清是什么的半透明方块）。xyflow 是 MIT，允许关掉。
+            proOptions={{ hideAttribution: true }}
           >
             {!readOnly && sidebar}
             {enableContextMenu && contextMenu && (
