@@ -546,9 +546,10 @@ func TestQAChunker_RowlessTableTextStaysProse(t *testing.T) {
 // must not panic the pair builder, and a matrix without identity must not move
 // the row numbers (PDF items write layout boxes into the same field).
 func TestQAChunkerPositionsRequireSpreadsheetIdentityAndFiveFields(t *testing.T) {
-	// 第二行是真实数据：表头行会被 f845b48af 过滤掉，只剩它产出 pair。
-	// 这个用例真正要验的是 positions/SheetIndex 推 RowNum，不是表头行为。
-	table := "<table><tr><th>q</th><th>a</th></tr><tr><td>q1</td><td>a1</td></tr></table>"
+	// 只用一行真实数据（不带表头行）：RowNum 由 positions 推导，行与 position
+	// 必须一一对应。若保留表头行，它会被 f845b48af 过滤掉，剩下的数据行就对不上
+	// 唯一的 position，RowNum 会退化成 0。
+	table := "<table><tr><td>q1</td><td>a1</td></tr></table>"
 	cases := []struct {
 		name       string
 		positions  string
