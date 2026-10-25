@@ -155,8 +155,12 @@ func (h *FileHandler) GetParentFolder(c *gin.Context) {
 	}
 	userID := user.ID
 
-	// Get file_id from query
-	fileID := c.Query("file_id")
+	// 路由是 GET /files/:id/parent，路径参数优先；query 作为兼容回退。
+	// 之前只读 query，导致按路由调用永远 400 "file_id is required"。
+	fileID := c.Param("id")
+	if fileID == "" {
+		fileID = c.Query("file_id")
+	}
 	if fileID == "" {
 		common.ResponseWithCodeData(c, common.CodeBadRequest, nil, "file_id is required")
 		return
