@@ -433,8 +433,10 @@ func (s *databaseSource) ListResourceRefs(ctx context.Context, subject Subject, 
 			return nil, err
 		}
 		ownerIDs := append(append(make([]string, 0, len(tenantIDs)+1), tenantIDs...), subject.UserID)
+		// user_id 命中是老语义（创建者即租户），tenant_id 命中覆盖多成员租户里
+		// 由其他成员创建的画布 —— 两者 OR，任一满足即可。
 		if err := s.db.WithContext(ctx).Model(&entity.UserCanvas{}).
-			Where("user_id IN ?", ownerIDs).
+			Where("user_id IN ? OR tenant_id IN ?", ownerIDs, tenantIDs).
 			Pluck("id", &ids).Error; err != nil {
 			return nil, err
 		}
@@ -970,9 +972,15 @@ func canvasResource(canvas *entity.UserCanvas) Resource {
 	if canvas.Permission == string(entity.TenantPermissionTeam) {
 		visibility = VisibilityTenant
 	}
+	// tenant_id was added later; rows written before it exist have it empty, so
+	// fall back to user_id to keep their behaviour identical.
+	tenantID := canvas.TenantID
+	if strings.TrimSpace(tenantID) == "" {
+		tenantID = canvas.UserID
+	}
 	return Resource{
 		Ref:               ResourceRef{Kind: ResourceKindCanvas, ID: canvas.ID},
-		TenantID:          canvas.UserID,
+		TenantID:          tenantID,
 		CreatedBy:         canvas.UserID,
 		OwnerUserID:       canvas.UserID,
 		Visibility:        visibility,

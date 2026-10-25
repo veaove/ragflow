@@ -37,9 +37,15 @@ const (
 
 // UserCanvas user canvas model
 type UserCanvas struct {
-	ID             string  `gorm:"column:id;primaryKey;size:32" json:"id"`
-	Avatar         *string `gorm:"column:avatar;type:longtext" json:"avatar,omitempty"`
-	UserID         string  `gorm:"column:user_id;size:255;not null;index" json:"user_id"`
+	ID     string  `gorm:"column:id;primaryKey;size:32" json:"id"`
+	Avatar *string `gorm:"column:avatar;type:longtext" json:"avatar,omitempty"`
+	UserID string  `gorm:"column:user_id;size:255;not null;index" json:"user_id"`
+	// TenantID is the owning tenant. The original schema had no such column and
+	// used UserID as a stand-in, which breaks once a tenant has more than one
+	// member: a canvas created by member B looked like it belonged to tenant B,
+	// so the owner A could not see it. Kept nullable-empty for old rows; readers
+	// fall back to UserID.
+	TenantID       string  `gorm:"column:tenant_id;size:32;index" json:"tenant_id,omitempty"`
 	Tags           string  `gorm:"column:tags;size:512;not null;default:'';index" json:"tags"`
 	Title          *string `gorm:"column:title;size:255" json:"title,omitempty"`
 	Permission     string  `gorm:"column:permission;size:16;not null;default:me;index" json:"permission"`

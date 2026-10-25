@@ -514,6 +514,8 @@ export default {
     `${restAPIv1}/tenants/${tenantId}/roles/${id}/permissions`,
   tenantGrants: (tenantId: string) =>
     `${restAPIv1}/tenants/${tenantId}/grants`,
+  tenantMyPermissions: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/console/me/permissions`,
   tenantGrant: (tenantId: string, kind: string, resourceId: string) =>
     `${restAPIv1}/tenants/${tenantId}/grants/${kind}/${resourceId}`,
   adminCreateTenant: `${restAPIv1}/admin/tenants`,

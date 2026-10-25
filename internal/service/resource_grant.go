@@ -142,10 +142,11 @@ func (s *ResourceGrantService) listDatasets(ctx context.Context, tenantID, keywo
 }
 
 func (s *ResourceGrantService) listCanvases(ctx context.Context, tenantID, keywords string, limit, offset int) ([]*GrantResourceView, int64, error) {
-	// user_canvas has no tenant_id: a canvas belongs to its owning user, and the
-	// tenant id IS that user's id (same convention as dao/analytics.go).
+	// user_canvas 现在有 tenant_id；为空的老数据仍按 user_id 判定租户，
+	// 两者 OR 才不会漏掉任一时期创建的画布。
 	q := dao.DB.WithContext(ctx).Model(&entity.UserCanvas{}).
-		Where("user_canvas.user_id = ?", tenantID)
+		Where("(user_canvas.tenant_id = ? OR ((user_canvas.tenant_id IS NULL OR user_canvas.tenant_id = '') AND user_canvas.user_id = ?))",
+			tenantID, tenantID)
 	if kw := strings.TrimSpace(keywords); kw != "" {
 		q = q.Where("user_canvas.title LIKE ?", "%"+kw+"%")
 	}
@@ -381,8 +382,10 @@ func (s *ResourceGrantService) assertResourceInTenant(ctx context.Context, tenan
 			Where("id = ? AND tenant_id = ?", resourceID, tenantID).
 			Count(&count).Error
 	case "canvas":
+		// tenant_id 是后加的列，老数据为空时 user_id 就代表租户。
 		err = dao.DB.WithContext(ctx).Model(&entity.UserCanvas{}).
-			Where("id = ? AND user_id = ?", resourceID, tenantID).
+			Where("id = ? AND (tenant_id = ? OR ((tenant_id IS NULL OR tenant_id = '') AND user_id = ?))",
+				resourceID, tenantID, tenantID).
 			Count(&count).Error
 	case "memory":
 		err = dao.DB.WithContext(ctx).Model(&entity.Memory{}).

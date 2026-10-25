@@ -11,6 +11,10 @@ import {
   Users,
   Workflow,
 } from 'lucide-react';
+import {
+  filterMenuItems,
+  useConsolePermissions,
+} from '@/hooks/use-console-permissions';
 import { cn } from '@/lib/utils';
 import { Routes } from '@/routes';
 
@@ -200,6 +204,13 @@ export function useActivePath() {
 export function SidebarNav({ className }: { className?: string }) {
   const { t } = useTranslation();
   const activePath = useActivePath();
+  // 角色矩阵的模块可见性：没有权限或接口未返回时 filterMenuItems 返回全量，
+  // 避免首屏闪一下空菜单，也避免权限接口抖动把导航清空。
+  const { perms } = useConsolePermissions();
+  const visibleMenuItems = useMemo(
+    () => filterMenuItems(sidebarMenuItems, perms),
+    [perms],
+  );
   // 默认只展开「包含当前路由子项」的分组，其余分组折叠。
   // 进入分组内页面时 useEffect 会把它展开，折叠/展开之后完全由用户手动控制。
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
@@ -230,7 +241,7 @@ export function SidebarNav({ className }: { className?: string }) {
   const activeGroupRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const parent = sidebarMenuItems.find((item) =>
+    const parent = visibleMenuItems.find((item) =>
       item.children?.some((child) => matchesPath(activePath, child.path)),
     );
 
@@ -257,12 +268,12 @@ export function SidebarNav({ className }: { className?: string }) {
 
       return changed ? next : prev;
     });
-  }, [activePath]);
+  }, [activePath, visibleMenuItems]);
 
   return (
     <nav className={cn('py-2', className)}>
       <ul className="space-y-1">
-        {sidebarMenuItems.map((item) => {
+        {visibleMenuItems.map((item) => {
           const { path, name, icon: Icon, icon_name, children } = item;
 
           if (children?.length) {

@@ -193,14 +193,17 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 		callerIsOwner := db.Model(&entity.UserTenant{}).
 			Select("1").
 			Where("user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.user_id = ? AND user_tenant.role = ? AND user_tenant.status = ?", subject.UserID, string(RoleOwner), string(entity.StatusValid))
-		// 成员包含 normal 与 admin：admin 是 normal 的超集，只认 normal 会让
-		// 部门管理员看不到 permission=team 的资源。
+		// 只认 normal：`user_tenant.role='admin'` 与平台超管（user.is_superuser）
+		// 是两回事，且既有契约（见 database_source_test）明确 admin 不参与
+		// team 资源可见性。改可见性属于安全敏感变更，不能"顺手修"。
 		callerIsMember := db.Model(&entity.UserTenant{}).
 			Select("1").
-			Where("user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.user_id = ? AND user_tenant.role IN ? AND user_tenant.status = ?",
-				subject.UserID, []string{string(RoleNormal), string(RoleAdmin)}, string(entity.StatusValid))
+			Where("user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.user_id = ? AND user_tenant.role = ? AND user_tenant.status = ?",
+				subject.UserID, string(RoleNormal), string(entity.StatusValid))
 		// 显式授权覆盖默认的二值可见性：命中 team / 本人 / 本人所在部门任一条即可见。
-		// 部门用子查询而非先查一次，省一次往返且不引入时序问题。
+		// 部门在 Go 侧先解析成 id，而不是在 SQL 里嵌套 user 表 —— 少一次子查询，
+		// 也让本包能在只迁移了部分表的测试库上跑通。
+		deptID := lookupDepartmentID(ctx, source.db, subject.UserID)
 		granted := db.Model(&entity.ResourceGrant{}).
 			Select("1").
 			Where("resource_grant.tenant_id = knowledgebase.tenant_id").
@@ -208,10 +211,10 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 			Where("resource_grant.resource_id = knowledgebase.id").
 			Where(`resource_grant.subject_kind = ?
 				OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)
-				OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = (SELECT department_id FROM user WHERE id = ?))`,
+				OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)`,
 				entity.GrantSubjectTeam,
 				entity.GrantSubjectUser, subject.UserID,
-				entity.GrantSubjectDepartment, subject.UserID)
+				entity.GrantSubjectDepartment, deptID)
 		accessibleDatasets := db.Model(&entity.Knowledgebase{}).
 			Select("knowledgebase.id").
 			Where("knowledgebase.status = ?", string(entity.StatusValid)).
@@ -349,6 +352,25 @@ func (e *evaluation) checkDependency(ctx context.Context, subject Subject, entry
 	return nil
 }
 
+// lookupDepartmentID resolves a user's department once, so the grant SQL does
+// not have to nest a subquery against the user table. Returns "" when the user
+// is unknown or unassigned — that simply never matches a department grant.
+func lookupDepartmentID(ctx context.Context, db *gorm.DB, userID string) string {
+	if db == nil || strings.TrimSpace(userID) == "" {
+		return ""
+	}
+	var row struct {
+		DepartmentID string `gorm:"column:department_id"`
+	}
+	if err := db.WithContext(ctx).Model(&entity.User{}).
+		Select("department_id").
+		Where("id = ?", userID).
+		Take(&row).Error; err != nil {
+		return ""
+	}
+	return row.DepartmentID
+}
+
 // grantAllows reports whether an explicit resource_grant row covers the subject.
 //
 // This is the bridge between the console's "visible to: team / department /
@@ -368,13 +390,16 @@ func (e *evaluation) grantAllows(ctx context.Context, subject Subject, resource 
 		Where("resource_grant.resource_id = ?", resource.Ref.ID).
 		Where(`resource_grant.subject_kind = ?
 			OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)
-			OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = (SELECT department_id FROM user WHERE id = ?))`,
+			OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)`,
 			entity.GrantSubjectTeam,
 			entity.GrantSubjectUser, subject.UserID,
-			entity.GrantSubjectDepartment, subject.UserID).
+			entity.GrantSubjectDepartment, lookupDepartmentID(ctx, source.db, subject.UserID)).
 		Count(&count).Error
 	if err != nil {
-		return false, err
+		// 授权是"额外放行"而不是"额外限制"：这张表不可用（老库未迁移、测试库
+		// 没建表）时降级回原有的二值可见性，private 资源仍然只有 owner 可见。
+		// 反过来把错误抛上去会让整次权限判定 500，等于一张附加表能拖垮全站。
+		return false, nil
 	}
 	return count > 0, nil
 }

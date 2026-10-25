@@ -375,6 +375,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 				// 资源授权：知识库 / 智能体 / 记忆的可见范围
 				tenants.GET("/:tenant_id/grants", r.consoleHandler.ListResourceGrants)
 				tenants.PUT("/:tenant_id/grants/:kind/:resource_id", r.consoleHandler.SetResourceGrants)
+				// 当前用户在租户内的有效权限（前端据此隐藏菜单 / 守卫路由）
+				tenants.GET("/:tenant_id/console/me/permissions", r.consoleHandler.MyConsolePermissions)
 			}
 
 			// Tenant routes (per-tenant resources)

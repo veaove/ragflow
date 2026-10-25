@@ -225,3 +225,19 @@ export const addTenantMember = (
   tenantId: string,
   body: { email: string; role?: string },
 ) => request.post<ResponseData<unknown>>(api.tenantAddMember(tenantId), body);
+
+// ── 当前用户权限 ────────────────────────────────────────────────────────────
+
+/** 当前用户在租户内的有效权限矩阵。 */
+export interface MyPermissions {
+  role: string;
+  role_id: string;
+  role_name: string;
+  /** module -> 五个动作；未出现的模块视为"未配置"。 */
+  modules: Record<string, RolePermissionRow>;
+}
+
+export const fetchMyPermissions = (tenantId: string) =>
+  request.get<ResponseData<MyPermissions>>(
+    api.tenantMyPermissions(tenantId),
+  );

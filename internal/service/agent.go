@@ -996,8 +996,11 @@ func (s *AgentService) CreateAgent(ctx context.Context, userID string, req *Crea
 	// no-op when graph.nodes is already non-empty.
 	req.DSL = dslpkg.NormalizeForCanvas(req.DSL)
 	row := &entity.UserCanvas{
-		ID:             common.GenerateUUID(),
-		UserID:         userID,
+		ID:     common.GenerateUUID(),
+		UserID: userID,
+		// 显式写租户：多成员租户里，成员创建的画布必须归属租户而不是他本人，
+		// 否则租户 owner 看不到、资源授权也匹配不上。
+		TenantID:       resolveTenantIDForUser(ctx, userID),
 		Title:          req.Title,
 		Description:    req.Description,
 		Permission:     req.Permission,
@@ -3226,4 +3229,32 @@ func (s *AgentService) CancelSessionRun(ctx context.Context, userID, sessionID s
 	// an idempotent no-op. Publishing a session-scoped marker here would race
 	// completed-run cleanup and could cancel a later run that reuses sessionID.
 	return nil
+}
+
+// resolveTenantIDForUser picks the tenant a newly created canvas belongs to.
+//
+// The API carries no tenant context here, so it is derived from the caller's
+// memberships: owner first, then admin, then normal. Falling back to the user id
+// matches what pre-tenant_id rows assume, so a user with no membership row still
+// gets a usable value instead of an empty column.
+func resolveTenantIDForUser(ctx context.Context, userID string) string {
+	// Try roles in descending privilege order. At most three cheap indexed
+	// lookups, and only on canvas creation.
+	for _, role := range []string{
+		string(permission.RoleOwner),
+		string(permission.RoleAdmin),
+		string(permission.RoleNormal),
+	} {
+		var tenantID string
+		err := dao.DB.WithContext(ctx).
+			Model(&entity.UserTenant{}).
+			Select("tenant_id").
+			Where("user_id = ? AND status = ? AND role = ?", userID, string(entity.StatusValid), role).
+			Limit(1).
+			Pluck("tenant_id", &tenantID).Error
+		if err == nil && tenantID != "" {
+			return tenantID
+		}
+	}
+	return userID
 }

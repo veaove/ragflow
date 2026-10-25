@@ -91,7 +91,30 @@ func RunMigrations(ctx context.Context, db *gorm.DB) error {
 		return fmt.Errorf("failed to drop tenant model group tables: %w", err)
 	}
 
+	// Backfill user_canvas.tenant_id (column added alongside this change).
+	if err := migrateCanvasTenantID(ctx, db); err != nil {
+		return fmt.Errorf("failed to backfill user_canvas.tenant_id: %w", err)
+	}
+
 	common.Info("All manual migrations completed successfully")
+	return nil
+}
+
+// migrateCanvasTenantID backfills user_canvas.tenant_id.
+//
+// Before this column existed, a canvas was located by its creator's user id,
+// which equals the tenant id only in the single-owner model. The backfill is
+// exact for those rows, and every reader still COALESCEs with user_id, so an
+// empty value can never make a canvas disappear.
+func migrateCanvasTenantID(ctx context.Context, db *gorm.DB) error {
+	res := db.WithContext(ctx).
+		Exec("UPDATE user_canvas SET tenant_id = user_id WHERE tenant_id IS NULL OR tenant_id = ''")
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected > 0 {
+		common.Info("Backfilled user_canvas.tenant_id", zap.Int64("rows", res.RowsAffected))
+	}
 	return nil
 }
 

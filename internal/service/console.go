@@ -297,12 +297,12 @@ func (s *ConsoleService) UpdateMember(ctx context.Context, tenantID, userID stri
 
 // RoleView is a role plus its rendered matrix.
 type RoleView struct {
-	ID          string                    `json:"id"`
-	Name        string                    `json:"name"`
-	Description string                    `json:"description"`
-	IsBuiltin   bool                      `json:"is_builtin"`
-	MemberCount int64                     `json:"member_count"`
-	Permissions []*entity.RolePermission  `json:"permissions"`
+	ID          string                   `json:"id"`
+	Name        string                   `json:"name"`
+	Description string                   `json:"description"`
+	IsBuiltin   bool                     `json:"is_builtin"`
+	MemberCount int64                    `json:"member_count"`
+	Permissions []*entity.RolePermission `json:"permissions"`
 }
 
 // ListRoles seeds the builtin roles on first access, then returns every role.
@@ -474,4 +474,88 @@ func (s *ConsoleService) ResetMemberPassword(ctx context.Context, tenantID, user
 		Model(&entity.User{}).
 		Where("id = ?", userID).
 		Update("password", hashed).Error
+}
+
+// MyPermissions is the caller's effective permission matrix in one tenant.
+type MyPermissions struct {
+	RoleEnum string `json:"role"`
+	RoleID   string `json:"role_id"`
+	RoleName string `json:"role_name"`
+	// Modules maps module key -> allowed actions.
+	Modules map[string]*entity.RolePermission `json:"modules"`
+}
+
+// enumToBuiltinRole maps the legacy user_tenant.role enum onto the seeded role
+// name, so members without an explicit role_id still get a usable matrix.
+var enumToBuiltinRole = map[string]string{
+	"owner":  "租户管理员",
+	"admin":  "部门管理员",
+	"normal": "普通成员",
+}
+
+// EffectivePermissions resolves what the caller may do in a tenant.
+//
+// Resolution order: explicit role_id first, then the builtin role matching the
+// legacy enum. Members with neither get an empty matrix — deny by default, so a
+// half-configured tenant never accidentally grants everything.
+func (s *ConsoleService) EffectivePermissions(ctx context.Context, tenantID, userID string) (*MyPermissions, error) {
+	var membership entity.UserTenant
+	if err := dao.DB.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Where("user_id = ?", userID).
+		Take(&membership).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("不是该租户成员")
+		}
+		return nil, err
+	}
+
+	out := &MyPermissions{
+		RoleEnum: membership.Role,
+		RoleID:   membership.RoleID,
+		Modules:  map[string]*entity.RolePermission{},
+	}
+
+	roleDAO := dao.NewRoleDAO()
+	var role *entity.Role
+	if membership.RoleID != "" {
+		if found, err := roleDAO.Get(ctx, dao.DB, tenantID, membership.RoleID); err == nil {
+			role = found
+		}
+	}
+	if role == nil {
+		name, ok := enumToBuiltinRole[membership.Role]
+		if !ok {
+			return out, nil
+		}
+		// 内置角色可能还没生成（首次访问），先补齐再查。
+		if err := roleDAO.EnsureBuiltinRoles(ctx, dao.DB, tenantID); err != nil {
+			return nil, err
+		}
+		roles, _, err := roleDAO.ListByTenant(ctx, dao.DB, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		for _, candidate := range roles {
+			if candidate.Name == name {
+				role = candidate
+				break
+			}
+		}
+	}
+	if role == nil {
+		return out, nil
+	}
+
+	out.RoleID = role.ID
+	out.RoleName = role.Name
+	_, matrix, err := roleDAO.ListByTenant(ctx, dao.DB, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range matrix[role.ID] {
+		copied := *row
+		out.Modules[copied.Module] = &copied
+	}
+	return out, nil
 }

@@ -488,3 +488,29 @@ func (h *ConsoleHandler) ResetConsoleMemberPassword(c *gin.Context) {
 	}
 	common.SuccessWithData(c, gin.H{"user_id": c.Param("user_id")}, "success")
 }
+
+// MyConsolePermissions handles GET /tenants/:tenant_id/console/me/permissions.
+//
+// The console uses this to hide menu entries and guard routes. The backend still
+// enforces its own checks — this endpoint only tells the UI what to render.
+func (h *ConsoleHandler) MyConsolePermissions(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	tenantID := consoleTenantID(c)
+	if err := requireTenantAccess(c, user.ID, tenantID, false); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
+		return
+	}
+
+	perms, err := service.NewConsoleService().EffectivePermissions(
+		c.Request.Context(), tenantID, user.ID,
+	)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, perms, "success")
+}
