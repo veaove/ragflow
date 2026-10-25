@@ -48,7 +48,9 @@ function InnerBeginNode({
         id={NodeHandleId.Start}
       ></CommonHandle>
 
-      <section className="flex items-center gap-2">
+      {/* data-node-header：科技风皮肤靠它给卡片标题区加分隔线，
+          这个节点自绘标题、不走 NodeHeader，所以属性要手写。 */}
+      <section data-node-header="" className="flex items-center gap-2">
         <OperatorIcon name={data.label as Operator}></OperatorIcon>
         <div className="truncate text-center font-semibold text-sm">
           {t(`flow.begin`)}

@@ -10,6 +10,9 @@ export function NodeWrapper({ children, className, selected, id }: IProps) {
     useContext(AgentInstanceContext);
   return (
     <section
+      // 皮肤钩子：canvas-skin.css 只认 [data-node-card]，不依赖 tailwind 类名，
+      // 换皮肤时不需要改这里。
+      data-node-card=""
       className={cn(
         'bg-bg-component p-2.5 rounded-md w-[200px] border border-border-button text-xs group hover:shadow-md',
         { 'border border-accent-primary': selected },

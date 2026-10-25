@@ -20,7 +20,8 @@ const InnerNodeHeader = ({
   icon,
 }: IProps) => {
   return (
-    <section className={cn(wrapperClassName, 'pb-2')}>
+    // data-node-header 供 canvas-skin.css 的科技风使用（卡片内标题下加分隔线）。
+    <section data-node-header="" className={cn(wrapperClassName, 'pb-2')}>
       <div className={cn(className, 'flex gap-2.5')}>
         {icon || <OperatorIcon name={label as Operator}></OperatorIcon>}
         <span className="truncate text-center font-semibold text-sm">

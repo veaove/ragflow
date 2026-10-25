@@ -1372,6 +1372,9 @@ export default {
       note: '註解',
       noteDescription: '註解',
       notePlaceholder: '請輸入註釋',
+      canvasSkin: '畫布樣式',
+      canvasSkinLegacy: '復古',
+      canvasSkinTech: '科技',
       invoke: 'Invoke',
       invokeDescription:
         '此元件可以呼叫遠端端點呼叫。將其他元件的輸出作為參數或設定常數參數來呼叫遠端函數。',

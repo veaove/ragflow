@@ -1,0 +1,364 @@
+/*
+ * 智能体/工作室画布的「科技风」皮肤。
+ *
+ * 作用域只有 `[data-canvas-skin='tech']`（由 canvas/index.tsx 挂在画布容器上），
+ * 皮肤是纯 CSS 覆盖：组件结构、交互、几何尺寸完全不动，`legacy` 下这些规则
+ * 一条都不生效，因此旧样式是逐像素保留的。
+ *
+ * 为什么用变量覆盖而不是逐处改 className：节点内部大量复用了 tailwind 的
+ * `text-text-secondary` / `bg-bg-component` / `border-border-button`，在这里
+ * 重定义一组固定的深色三元组，节点、工具栏、控件会一起变深色，不用逐个组件改。
+ * 注意变量的值形态要和 tailwind.config.js 里的写法一致：
+ * `--text-primary` 是「R G B」三元组（`rgb(var(...))`），
+ * `--bg-component` 是完整颜色（`var(...)` 直接用）。写错会整块变黑。
+ */
+/*
+ * 变量必须同时声明在画布容器和 `.react-flow` 上：xyflow 在 `colorMode="dark"`
+ * 时会给 `.react-flow` 加 `dark` 类，而站点 tailwind 的 `.dark { --accent-primary: … }`
+ * 会在这个元素上重新定义一整套变量，把从容器继承下来的值顶掉（画布会一半深一半浅）。
+ * 这里用 (0,2,0) 的选择器压过 `.dark`，画布内部才真正拿到科技风的配色。
+ */
+[data-canvas-skin='tech'],
+[data-canvas-skin='tech'] .react-flow,
+[data-canvas-skin='tech'] .react-flow.dark,
+[data-canvas-skin='tech'] .react-flow.light {
+  /* 深色底不跟随站点主题：科技风画布本身就是深色的，浅色主题下也保持。 */
+  --bg-canvas: 5 12 24;
+  --bg-base: #08152b;
+  --bg-component: #0e2240;
+  --bg-card: rgba(120, 190, 255, 0.08);
+  --bg-input: rgba(120, 190, 255, 0.08);
+  --text-primary: 228 241 255;
+  --text-secondary: 158 190 220;
+  --text-disabled: #7ea2c8;
+  --border-default: rgba(88, 160, 230, 0.35);
+  --border-button: rgba(88, 160, 230, 0.3);
+  --border-light: rgba(88, 160, 230, 0.18);
+  /* 强调色的淡底：Begin 节点里的「对话式」标签就靠它，不覆盖的话
+     浅色主题下是近乎透明的浅蓝，深底上等于看不见。 */
+  --bg-accent: rgba(56, 189, 248, 0.14);
+  --accent-primary: 56 189 248;
+}
+
+[data-canvas-skin='tech'] {
+  position: relative;
+  isolation: isolate;
+  border-radius: 10px;
+  background: #050b17;
+}
+
+/* 星海底色：两团冷色星云 + 对角深蓝渐变 */
+[data-canvas-skin='tech']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      120% 85% at 16% -10%,
+      rgba(38, 96, 214, 0.42) 0%,
+      rgba(10, 24, 48, 0) 58%
+    ),
+    radial-gradient(
+      90% 70% at 88% 108%,
+      rgba(0, 170, 224, 0.2) 0%,
+      rgba(6, 14, 28, 0) 62%
+    ),
+    linear-gradient(140deg, #050a16 0%, #08182f 44%, #060e1d 100%);
+}
+
+/*
+ * 星点：多层 radial-gradient 平铺 + 极慢的明暗呼吸。
+ * 不用 canvas/JS 画粒子，避免画布缩放时掉帧，也避免和 ReactFlow 的
+ * transform 打架（星点是背景，本来就不该跟着平移）。
+ */
+[data-canvas-skin='tech']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image:
+    radial-gradient(
+      1.2px 1.2px at 12% 22%,
+      rgba(255, 255, 255, 0.92) 50%,
+      transparent 51%
+    ),
+    radial-gradient(
+      1px 1px at 48% 68%,
+      rgba(180, 220, 255, 0.78) 50%,
+      transparent 51%
+    ),
+    radial-gradient(
+      1.5px 1.5px at 76% 34%,
+      rgba(255, 255, 255, 0.86) 50%,
+      transparent 51%
+    ),
+    radial-gradient(
+      1px 1px at 88% 82%,
+      rgba(150, 205, 255, 0.62) 50%,
+      transparent 51%
+    ),
+    radial-gradient(
+      1px 1px at 32% 88%,
+      rgba(255, 255, 255, 0.55) 50%,
+      transparent 51%
+    ),
+    radial-gradient(
+      1.3px 1.3px at 62% 12%,
+      rgba(210, 235, 255, 0.7) 50%,
+      transparent 51%
+    ),
+    radial-gradient(
+      1px 1px at 24% 54%,
+      rgba(255, 255, 255, 0.6) 50%,
+      transparent 51%
+    ),
+    radial-gradient(
+      1.1px 1.1px at 94% 16%,
+      rgba(190, 225, 255, 0.65) 50%,
+      transparent 51%
+    ),
+    radial-gradient(
+      1px 1px at 6% 76%,
+      rgba(255, 255, 255, 0.5) 50%,
+      transparent 51%
+    );
+  background-size:
+    420px 420px,
+    320px 320px,
+    520px 520px,
+    380px 380px,
+    460px 460px,
+    350px 350px,
+    300px 300px,
+    480px 480px,
+    400px 400px;
+  opacity: 0.95;
+  animation: canvas-star-breathe 9s ease-in-out infinite alternate;
+}
+
+/* ReactFlow 铺在星海之上，且自身透明——底色完全由上面两层提供 */
+[data-canvas-skin='tech'] .react-flow {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+/* ---------- 节点卡片 ---------- */
+
+[data-canvas-skin='tech'] [data-node-card] {
+  background: linear-gradient(
+    180deg,
+    rgba(19, 46, 84, 0.92) 0%,
+    rgba(9, 24, 46, 0.94) 100%
+  );
+  border: 1px solid rgba(84, 168, 240, 0.5);
+  border-radius: 16px;
+  color: rgb(var(--text-primary));
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.08),
+    0 10px 26px -10px rgba(0, 0, 0, 0.85),
+    0 0 22px rgba(30, 102, 255, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(8px);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+[data-canvas-skin='tech'] [data-node-card]:hover {
+  border-color: rgba(120, 205, 255, 0.8);
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.2),
+    0 12px 30px -10px rgba(0, 0, 0, 0.9),
+    0 0 30px rgba(56, 189, 248, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+/* 选中：相当于截图里中间那颗「通电」的节点 */
+[data-canvas-skin='tech'] .react-flow__node.selected [data-node-card] {
+  border-color: rgba(87, 205, 255, 0.95);
+  box-shadow:
+    0 0 0 1px rgba(87, 205, 255, 0.6),
+    0 0 34px rgba(56, 189, 248, 0.55),
+    0 0 70px rgba(37, 99, 235, 0.4),
+    inset 0 0 18px rgba(56, 189, 248, 0.12);
+}
+
+/* 卡片内的标题行：图标 + 名称，加一条细分隔线（只对卡片直接子级的标题生效，
+   迭代/循环分组那种浮在顶部的标题条不受影响） */
+[data-canvas-skin='tech'] [data-node-card] > [data-node-header] {
+  padding-bottom: 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(88, 160, 230, 0.2);
+}
+
+[data-canvas-skin='tech'] [data-node-card] > [data-node-header] > div {
+  align-items: center;
+}
+
+[data-canvas-skin='tech'] [data-node-card] span,
+[data-canvas-skin='tech'] [data-node-card] label {
+  text-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+}
+
+/* ---------- 连线 ---------- */
+
+/* 发光 + 虚线流动：贴近截图里「光缆」的观感。
+   颜色用 CSS 而不是 inline style，选中/高亮的边仍由组件里的 inline stroke
+   覆盖（inline 优先），这里只管常态。 */
+[data-canvas-skin='tech'] .react-flow__edge-path {
+  stroke: rgba(96, 180, 255, 0.9);
+  stroke-width: 1.7;
+  stroke-dasharray: 14 8;
+  animation: canvas-edge-flow 2s linear infinite;
+  filter: drop-shadow(0 0 4px rgba(70, 160, 255, 0.85));
+}
+
+[data-canvas-skin='tech'] .react-flow__edge.selected .react-flow__edge-path,
+[data-canvas-skin='tech'] .react-flow__edge:hover .react-flow__edge-path {
+  /* 组件对选中/高亮边写了 inline strokeWidth: 1，只有 !important 能盖住；
+     主链路要更亮更粗，才像截图里那条「通电」的连线。 */
+  stroke-width: 2px !important;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 1));
+}
+
+/* 连接点：发光小圆点 */
+[data-canvas-skin='tech'] .react-flow__handle {
+  background: #38bdf8 !important;
+  border: 1px solid rgba(255, 255, 255, 0.7) !important;
+  box-shadow:
+    0 0 10px rgba(56, 189, 248, 0.9),
+    0 0 2px rgba(255, 255, 255, 0.9);
+}
+
+/* ---------- 底部控件 ---------- */
+
+[data-canvas-skin='tech'] .react-flow__controls {
+  background: rgba(10, 26, 48, 0.78);
+  border: 1px solid rgba(88, 160, 230, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 0 22px rgba(0, 120, 255, 0.25);
+  backdrop-filter: blur(10px);
+  color: rgb(var(--text-primary));
+}
+
+[data-canvas-skin='tech'] .react-flow__controls button {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+[data-canvas-skin='tech'] .react-flow__controls button:hover {
+  background: rgba(56, 189, 248, 0.18) !important;
+}
+
+/* ---------- 迭代 / 循环分组 ---------- */
+
+[data-canvas-skin='tech'] .react-flow__node-iterationNode > div > section,
+[data-canvas-skin='tech'] .react-flow__node-loopNode > div > section {
+  background: rgba(9, 24, 46, 0.42);
+  border-color: rgba(88, 160, 230, 0.42) !important;
+  border-radius: 0 0 14px 14px;
+  box-shadow: inset 0 0 32px rgba(30, 102, 255, 0.12);
+}
+
+/* 分组顶部的标题条（绝对定位在节点上方） */
+[data-canvas-skin='tech'] .react-flow__node-iterationNode [data-node-header],
+[data-canvas-skin='tech'] .react-flow__node-loopNode [data-node-header] {
+  background: rgba(12, 32, 58, 0.95);
+  border-color: rgba(88, 160, 230, 0.42) !important;
+}
+
+/* ---------- 画布内的皮肤切换器 ---------- */
+
+.canvas-skin-toggle {
+  position: absolute;
+  top: 12px;
+  right: 20px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--border-button);
+  background: var(--bg-base);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+
+.canvas-skin-toggle__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  color: rgb(var(--text-secondary));
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.canvas-skin-toggle__item:hover {
+  color: rgb(var(--text-primary));
+}
+
+.canvas-skin-toggle__item[data-active='true'] {
+  color: rgb(var(--text-primary));
+  background: var(--bg-card);
+}
+
+[data-canvas-skin='tech'] .canvas-skin-toggle {
+  border-color: rgba(88, 160, 230, 0.45);
+  background: rgba(8, 22, 42, 0.82);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.12),
+    0 0 18px rgba(30, 102, 255, 0.28);
+}
+
+[data-canvas-skin='tech'] .canvas-skin-toggle__item {
+  color: rgb(var(--text-secondary));
+}
+
+[data-canvas-skin='tech'] .canvas-skin-toggle__item[data-active='true'] {
+  color: #e6f4ff;
+  background: linear-gradient(
+    180deg,
+    rgba(56, 189, 248, 0.3) 0%,
+    rgba(37, 99, 235, 0.28) 100%
+  );
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
+}
+
+/* ---------- 动画 ---------- */
+
+@keyframes canvas-star-breathe {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 0.95;
+  }
+}
+
+@keyframes canvas-edge-flow {
+  to {
+    stroke-dashoffset: -40;
+  }
+}
+
+/* 尊重系统「减少动态效果」：星点不呼吸、连线不流动，静态发光保留 */
+@media (prefers-reduced-motion: reduce) {
+  [data-canvas-skin='tech']::after,
+  [data-canvas-skin='tech'] .react-flow__edge-path {
+    animation: none;
+  }
+}

@@ -3212,6 +3212,9 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       note: '注释',
       noteDescription: '注释',
       notePlaceholder: '请输入注释',
+      canvasSkin: '画布样式',
+      canvasSkinLegacy: '复古',
+      canvasSkinTech: '科技',
       invoke: 'HTTP 请求',
       invokeDescription:
         '该组件可以调用远程端点调用。将其他组件的输出作为参数或设置常量参数来调用远程函数。',

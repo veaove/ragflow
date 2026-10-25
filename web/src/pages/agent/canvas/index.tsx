@@ -57,6 +57,8 @@ import RunSheet from '../run-sheet';
 import { ButtonEdge } from './edge';
 import { ReadonlyEdge } from './edge/readonly-edge';
 import styles from './index.module.less';
+import { CanvasSkinToggle } from './canvas-skin-toggle';
+import { useCanvasSkin } from './use-canvas-skin';
 import { RagNode } from './node';
 import { StudioNode } from './node/studio-node';
 import { NodeContextMenu, INodeContextMenu } from './context-menu';
@@ -173,7 +175,6 @@ function AgentCanvas({
   } = useSelectCanvasData();
   const isValidConnection = useValidateConnection();
 
-
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance<any, any>>();
   const [contextMenu, setContextMenu] = useState<INodeContextMenu | null>(null);
@@ -226,6 +227,9 @@ function AgentCanvas({
   const { ref, showImage, hideImage, imgVisible, mouse } = useMoveNote();
 
   const { theme } = useTheme();
+
+  // 画布皮肤（复古 / 科技）只是展示偏好，存 localStorage，不写 DSL。
+  const { skin } = useCanvasSkin();
 
   useEffect(() => {
     if (!chatVisible) {
@@ -347,7 +351,12 @@ function AgentCanvas({
       currentEventListWithoutMessageById,
     });
   return (
-    <div className={cn(styles.canvasWrapper, 'px-5 pb-5')}>
+    <div
+      className={cn(styles.canvasWrapper, 'px-5 pb-5')}
+      // 皮肤钩子：canvas-skin.css 的所有科技风规则都以这个属性为前提，
+      // legacy 时它们全部不生效，旧样式逐像素保留。
+      data-canvas-skin={skin}
+    >
       <svg
         xmlns="http://www.w3.org/2000/svg"
         style={{ position: 'absolute', top: 10, left: 0 }}
@@ -440,8 +449,11 @@ function AgentCanvas({
             {enableContextMenu && contextMenu && (
               <NodeContextMenu {...contextMenu} />
             )}
-            <AgentBackground></AgentBackground>
-            <Spotlight className="z-0" opcity={0.7} coverage={70} />
+            <AgentBackground skin={skin}></AgentBackground>
+            {/* 科技风自带星海与光晕，再叠 Spotlight 会糊成一片 */}
+            {skin === 'legacy' && (
+              <Spotlight className="z-0" opcity={0.7} coverage={70} />
+            )}
             <Controls
               position={'bottom-center'}
               orientation="horizontal"
@@ -459,6 +471,7 @@ function AgentCanvas({
               )}
             </Controls>
           </ReactFlow>
+          {!readOnly && <CanvasSkinToggle />}
           {!readOnly && visible && (
             <HandleContext.Provider
               value={
