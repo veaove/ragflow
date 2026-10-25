@@ -4499,6 +4499,10 @@ Important structured information may include: names, dates, locations, events, k
         sessionSecurityDesc:
           'The timeout also applies to tokens already issued — lowering it signs everyone out.',
         sessionTimeout: 'Session timeout',
+        allowConcurrent: 'Allow concurrent sign-ins',
+        allowConcurrentDesc:
+          'When off, signing in on a new device immediately signs the old one out. When on, multiple devices and browsers can stay signed in at once.',
+
         minutes: 'minutes',
         lockEnabled: 'Lockout after failed sign-ins',
         lockEnabledDesc: 'Temporarily lock the account after the threshold is reached',

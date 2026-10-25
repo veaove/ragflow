@@ -310,6 +310,15 @@ export default function SecurityPage() {
                 />
               </Field>
               <Field
+                label={t('admin.securityPage.allowConcurrent')}
+                hint={t('admin.securityPage.allowConcurrentDesc')}
+              >
+                <Switch
+                  checked={form.session.allow_concurrent}
+                  onCheckedChange={(v) => patchSession({ allow_concurrent: v })}
+                />
+              </Field>
+              <Field
                 label={t('admin.securityPage.lockEnabled')}
                 hint={t('admin.securityPage.lockEnabledDesc')}
               >

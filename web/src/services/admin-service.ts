@@ -612,6 +612,8 @@ export interface SecuritySettings {
   };
   session: {
     timeout_minutes: number;
+    /** 是否允许同一账号在多端/多浏览器同时在线 */
+    allow_concurrent: boolean;
   };
 }
 

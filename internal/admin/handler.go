@@ -148,7 +148,7 @@ func (h *Handler) Logout(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	if err := h.service.Logout(ctx, user); err != nil {
+	if err := h.service.Logout(ctx, user, handler.CurrentAccessToken(c)); err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return
 	}

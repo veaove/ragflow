@@ -410,6 +410,9 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 		// missing table surfaced as "500 Permission check failed" on the whole
 		// Skills page instead of an obvious schema error.
 		&entity.SkillSpace{},
+		// 会话表：登录时按「是否允许多端」写入 / 清理，
+		// 表不存在会让登录直接失败，所以必须随服务启动收敛。
+		&entity.UserSession{},
 	}
 	for _, m := range goRuntimeModels {
 		if err := autoMigrateSafely(ctx, db, m); err != nil {

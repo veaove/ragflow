@@ -107,9 +107,23 @@ func NewService() *Service {
 }
 
 // Logout user logout
-func (s *Service) Logout(ctx context.Context, user interface{}) error {
-	// Invalidate token by setting it to INVALID_ prefix
-	if u, ok := user.(*entity.User); ok {
+func (s *Service) Logout(ctx context.Context, user interface{}, accessToken string) error {
+	u, ok := user.(*entity.User)
+	if !ok {
+		return nil
+	}
+
+	// 只删自己这条会话：允许多端在线时，删全部会把其它设备一起踢下线。
+	if accessToken != "" {
+		if err := dao.DB.WithContext(ctx).Where("id = ?", accessToken).
+			Delete(&entity.UserSession{}).Error; err != nil {
+			return err
+		}
+	}
+
+	// 只有退出的正是「主 token」才置 INVALID：多端场景下主 token 属于
+	// 最后一次登录的那台设备，改它不影响其它端（它们走会话表）。
+	if u.AccessToken != nil && *u.AccessToken == accessToken {
 		invalidToken := "INVALID_" + generateRandomHex(16)
 		return s.userDAO.UpdateAccessToken(ctx, dao.DB, u, invalidToken)
 	}

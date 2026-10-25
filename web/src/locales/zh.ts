@@ -4035,6 +4035,10 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
         sessionSecurityDesc:
           '会话超时对已签发的 token 同样生效，改小会让在线用户立即掉线。',
         sessionTimeout: '会话超时时间',
+        allowConcurrent: '允许多端同时在线',
+        allowConcurrentDesc:
+          '关闭后，同一账号在新设备登录会让旧设备立即下线；开启后多端、多浏览器可同时在线。',
+
         minutes: '分钟',
         lockEnabled: '登录失败锁定',
         lockEnabledDesc: '连续失败达到阈值后临时锁定该账号',

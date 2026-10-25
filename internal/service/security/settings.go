@@ -72,9 +72,13 @@ type PasswordSettings struct {
 	ExpireDays int  `json:"expire_days"`
 }
 
-// SessionSettings controls how long an access token stays valid.
+// SessionSettings controls how long an access token stays valid, and whether a
+// user may stay signed in on several devices at once.
 type SessionSettings struct {
 	TimeoutMinutes int `json:"timeout_minutes"`
+	// AllowConcurrent 为 false 时，新登录会让该账号其它会话立即失效
+	// （同一账号只能一处在线）；为 true 时多端/多浏览器可同时在线。
+	AllowConcurrent bool `json:"allow_concurrent"`
 }
 
 // Defaults mirrors what the admin UI shows before anyone saves the form.
@@ -95,6 +99,9 @@ func Defaults() Settings {
 		},
 		Session: SessionSettings{
 			TimeoutMinutes: 30,
+			// 默认与既有行为一致：后登录踢掉先登录。
+			// 放开并发是显式的安全取舍，不该由升级动作替用户做决定。
+			AllowConcurrent: false,
 		},
 	}
 }
@@ -139,6 +146,8 @@ func (s *Settings) apply(key, value string) {
 		s.Password.ExpireDays = parseInt(v, s.Password.ExpireDays)
 	case "session.timeout_minutes":
 		s.Session.TimeoutMinutes = parseInt(v, s.Session.TimeoutMinutes)
+	case "session.allow_concurrent":
+		s.Session.AllowConcurrent = parseBool(v, s.Session.AllowConcurrent)
 	}
 }
 
@@ -172,6 +181,7 @@ func (s Settings) flatten() [][2]string {
 		{"password.complexity", strconv.FormatBool(s.Password.Complexity)},
 		{"password.expire_days", strconv.Itoa(s.Password.ExpireDays)},
 		{"session.timeout_minutes", strconv.Itoa(s.Session.TimeoutMinutes)},
+		{"session.allow_concurrent", strconv.FormatBool(s.Session.AllowConcurrent)},
 	}
 }
 

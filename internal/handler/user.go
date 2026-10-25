@@ -369,7 +369,7 @@ func (h *UserHandler) Logout(c *gin.Context) {
 	operationLog.UserID = user.ID
 
 	// Logout user
-	code, err = h.userService.Logout(ctx, user)
+	code, err = h.userService.Logout(ctx, user, CurrentAccessToken(c))
 	if err != nil {
 		common.ResponseWithCodeData(c, code, false, err.Error())
 		operationLog.ErrorCode = uint16(code)

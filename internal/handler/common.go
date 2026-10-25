@@ -19,8 +19,10 @@ package handler
 import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
+	"ragflow/internal/engine/kvrocks"
 	"ragflow/internal/entity"
 	permissionresponse "ragflow/internal/permission/response"
+	"ragflow/internal/server"
 
 	"github.com/gin-gonic/gin"
 )
@@ -79,6 +81,32 @@ func orderTerms(sortTerms []dao.OrderTerm, orderby string, desc bool) []dao.Orde
 
 func orderTermsFromQuery(c *gin.Context, orderby string, desc bool) []dao.OrderTerm {
 	return orderTerms(sortTermsFromQuery(c), orderby, desc)
+}
+
+// CurrentAccessToken 从请求里解出 access_token。
+//
+// 只有「需要精确到某个会话」的动作才用它（登出要只删自己那条，
+// 否则多端在线时会把别的设备一起踢下线）。解析失败返回空串，
+// 调用方按「会话未知」降级处理，不要因此拒绝请求。
+func CurrentAccessToken(c *gin.Context) string {
+	auth := c.GetHeader("Authorization")
+	if auth == "" {
+		if cookie, err := c.Cookie("Authorization"); err == nil {
+			auth = cookie
+		}
+	}
+	if auth == "" {
+		return ""
+	}
+	secretKey, err := server.GetSecretKey(c.Request.Context(), kvrocks.Get())
+	if err != nil {
+		return ""
+	}
+	token, err := common.ExtractAccessToken(auth, secretKey)
+	if err != nil {
+		return ""
+	}
+	return token
 }
 
 func GetUser(c *gin.Context) (*entity.User, common.ErrorCode, string) {

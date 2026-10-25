@@ -29,6 +29,7 @@ import (
 	"ragflow/internal/engine/kvrocks"
 	"ragflow/internal/entity"
 	"ragflow/internal/server"
+	"ragflow/internal/service/security"
 	"regexp"
 	"strconv"
 	"strings"
@@ -315,6 +316,10 @@ func (s *UserService) Login(ctx context.Context, req *LoginRequest) (*entity.Use
 	if err := s.userDAO.Update(ctx, dao.DB, user); err != nil {
 		return nil, common.CodeServerError, fmt.Errorf("failed to update user: %w", err)
 	}
+	// 会话表是「多端在线」的唯一依据：漏记会让该端下一次请求就被判定失效。
+	if err := s.recordSession(ctx, user.ID, token); err != nil {
+		return nil, common.CodeServerError, fmt.Errorf("record session: %w", err)
+	}
 
 	return user, common.CodeSuccess, nil
 }
@@ -370,6 +375,10 @@ func (s *UserService) LoginByEmail(ctx context.Context, req *EmailLoginRequest) 
 
 	if err = s.userDAO.Update(ctx, dao.DB, user); err != nil {
 		return nil, common.CodeServerError, fmt.Errorf("failed to update user: %w", err)
+	}
+	// 会话表是「多端在线」的唯一依据：漏记会让该端下一次请求就被判定失效。
+	if err = s.recordSession(ctx, user.ID, token); err != nil {
+		return nil, common.CodeServerError, fmt.Errorf("record session: %w", err)
 	}
 
 	return user, common.CodeSuccess, nil
@@ -559,13 +568,60 @@ func (s *UserService) GetUserByToken(ctx context.Context, authorization string) 
 		return nil, common.CodeUnauthorized, fmt.Errorf("invalid access token format")
 	}
 
-	// Get user by access token
+	// 快路径：token 就是 user.access_token（最后一次登录的会话）。
 	user, err := s.userDAO.GetByAccessToken(ctx, dao.DB, accessToken)
-	if err != nil {
-		return nil, common.CodeUnauthorized, err
+	if err == nil {
+		return user, common.CodeSuccess, nil
 	}
 
-	return user, common.CodeSuccess, nil
+	// 回退：允许同一账号多端在线时，其它设备的 token 不会写进
+	// user.access_token（那是单列），只落在会话表里。
+	// 表里查不到就说明这个 token 已被踢下线或本就是伪造的。
+	var session entity.UserSession
+	if serr := dao.DB.WithContext(ctx).Where("id = ?", accessToken).Take(&session).Error; serr != nil {
+		return nil, common.CodeUnauthorized, err
+	}
+	var u entity.User
+	if serr := dao.DB.WithContext(ctx).Where("id = ?", session.UserID).Take(&u).Error; serr != nil {
+		return nil, common.CodeUnauthorized, err
+	}
+	return &u, common.CodeSuccess, nil
+}
+
+// recordSession 记录本次登录的会话。
+//
+// 平台策略「不允许多端」时先清掉该账号其它会话：user.access_token 是单列，
+// 覆盖它只能让旧 token 的快路径失效；旧 token 若还留在会话表里，
+// 回退查询会把它们又放进来 —— 所以必须显式删。
+func (s *UserService) recordSession(ctx context.Context, userID, accessToken string) error {
+	if userID == "" || accessToken == "" {
+		return nil
+	}
+
+	policy, err := security.Load(ctx, dao.DB)
+	if err != nil {
+		// 读不到策略不该阻断登录。沿用「不清理」的保守方向：
+		// 宁可多留一个会话，也不要因为一次读库失败把用户踢下线。
+		policy = security.Defaults()
+	}
+
+	db := dao.DB.WithContext(ctx)
+	if !policy.Session.AllowConcurrent {
+		if err := db.Where("user_id = ? AND id <> ?", userID, accessToken).
+			Delete(&entity.UserSession{}).Error; err != nil {
+			return fmt.Errorf("clear other sessions: %w", err)
+		}
+	}
+
+	// 同一 token 重复落库极少见（token 是随机 UUID），先删后插避免主键冲突。
+	if err := db.Where("id = ?", accessToken).Delete(&entity.UserSession{}).Error; err != nil {
+		return fmt.Errorf("reset session: %w", err)
+	}
+	return db.Create(&entity.UserSession{
+		ID:         accessToken,
+		UserID:     userID,
+		CreateTime: time.Now().UnixMilli(),
+	}).Error
 }
 
 // UpdateUserAccessToken updates user's access token
@@ -574,13 +630,23 @@ func (s *UserService) UpdateUserAccessToken(ctx context.Context, user *entity.Us
 }
 
 // Logout invalidates user's access token
-func (s *UserService) Logout(ctx context.Context, user *entity.User) (common.ErrorCode, error) {
-	// Invalidate token by setting it to an invalid value
-	// Similar to Python implementation: "INVALID_" + secrets.token_hex(16)
-	invalidToken := "INVALID_" + common.GenerateToken()
-	err := s.UpdateUserAccessToken(ctx, user, invalidToken)
-	if err != nil {
-		return common.CodeServerError, err
+func (s *UserService) Logout(ctx context.Context, user *entity.User, accessToken string) (common.ErrorCode, error) {
+	// 只删自己这条会话：多端在线时删全部会把其它设备一起踢下线。
+	if accessToken != "" {
+		if err := dao.DB.WithContext(ctx).Where("id = ?", accessToken).
+			Delete(&entity.UserSession{}).Error; err != nil {
+			return common.CodeServerError, err
+		}
+	}
+
+	// 只有退出的正是「主 token」时才把 access_token 置为无效。
+	// 多端场景下主 token 属于最后一次登录的那台设备，改动它不影响其它端
+	// （它们走会话表），但能把主 token 的快路径一并废掉。
+	if user.AccessToken != nil && *user.AccessToken == accessToken {
+		invalidToken := "INVALID_" + common.GenerateToken()
+		if err := s.UpdateUserAccessToken(ctx, user, invalidToken); err != nil {
+			return common.CodeServerError, err
+		}
 	}
 	return common.CodeSuccess, nil
 }
