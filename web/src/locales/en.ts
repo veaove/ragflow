@@ -246,7 +246,13 @@ export default {
       highlightSecurity: 'Permission audit & security',
       highlightSecurityDesc: 'Tenant isolation · Audit trail · Data encryption',
     },
+    console: {
+      organization: 'Organization',
+      members: 'Members',
+      roles: 'Roles & Permissions',
+    },
     header: {
+      tenantConsole: 'Tenant console',
       overview: 'Overview',
       knowledgeBase: 'Dataset',
       chat: 'Chat',

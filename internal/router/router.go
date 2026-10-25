@@ -29,6 +29,9 @@ type Router struct {
 	authHandler          *handler.AuthHandler
 	userHandler          *handler.UserHandler
 	tenantHandler        *handler.TenantHandler
+	// consoleHandler has no external dependencies, so it is constructed here
+	// rather than threaded through NewRouter's parameter list.
+	consoleHandler *handler.ConsoleHandler
 	documentHandler      *handler.DocumentHandler
 	datasetsHandler      *handler.DatasetsHandler
 	systemHandler        *handler.SystemHandler
@@ -152,6 +155,7 @@ func NewRouter(
 		authHandler:          authHandler,
 		userHandler:          userHandler,
 		tenantHandler:        tenantHandler,
+		consoleHandler:       handler.NewConsoleHandler(),
 		documentHandler:      documentHandler,
 		datasetsHandler:      datasetsHandler,
 		systemHandler:        systemHandler,
@@ -352,6 +356,21 @@ func (r *Router) Setup(engine *gin.Engine) {
 				tenants.GET("/:tenant_id/candidate-user", r.tenantHandler.FindCandidateUser)
 				tenants.POST("/:tenant_id/members", r.tenantHandler.AddMemberDirect)
 				tenants.DELETE("/:tenant_id/users", r.tenantHandler.RemoveTenantMember)
+
+				// 租户控制台：组织架构 / 成员 / 角色权限。
+				// 路径挂在 tenants 下，复用该组的鉴权中间件；租户归属校验在
+				// handler 内用 requireTenantAccess 完成。
+				tenants.GET("/:tenant_id/departments", r.consoleHandler.DepartmentTree)
+				tenants.POST("/:tenant_id/departments", r.consoleHandler.CreateDepartment)
+				tenants.PUT("/:tenant_id/departments/:id", r.consoleHandler.UpdateDepartment)
+				tenants.DELETE("/:tenant_id/departments/:id", r.consoleHandler.DeleteDepartment)
+				tenants.GET("/:tenant_id/console/members", r.consoleHandler.ListConsoleMembers)
+				tenants.PUT("/:tenant_id/console/members/:user_id", r.consoleHandler.UpdateConsoleMember)
+				tenants.GET("/:tenant_id/roles", r.consoleHandler.ListConsoleRoles)
+				tenants.POST("/:tenant_id/roles", r.consoleHandler.CreateConsoleRole)
+				tenants.PUT("/:tenant_id/roles/:id", r.consoleHandler.UpdateConsoleRole)
+				tenants.DELETE("/:tenant_id/roles/:id", r.consoleHandler.DeleteConsoleRole)
+				tenants.PUT("/:tenant_id/roles/:id/permissions", r.consoleHandler.SaveConsolePermissions)
 			}
 
 			// Tenant routes (per-tenant resources)

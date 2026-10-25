@@ -225,7 +225,13 @@ export default {
       highlightSecurity: '权限审计与安全管控',
       highlightSecurityDesc: '租户隔离 · 操作留痕 · 数据加密',
     },
+    console: {
+      organization: '组织架构',
+      members: '用户管理',
+      roles: '角色权限',
+    },
     header: {
+      tenantConsole: '租户控制台',
       overview: '总览',
       knowledgeBase: '知识库',
       chat: '知识问答',

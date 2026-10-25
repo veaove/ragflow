@@ -1,0 +1,160 @@
+import api from '@/utils/api';
+import request from '@/utils/request';
+
+/**
+ * 后端统一响应包。各 service 文件各自声明一份（`admin-service` 里的同名类型
+ * 没有导出），保持零耦合。
+ */
+type ResponseData<D = NonNullable<unknown>> = {
+  code: number;
+  message: string;
+  data: D;
+};
+
+/** 部门树节点（后端已按 parent_id 组装好 children）。 */
+export interface DepartmentNode {
+  id: string;
+  name: string;
+  parent_id: string;
+  member_count: number;
+  children?: DepartmentNode[];
+}
+
+/** 成员行：租户归属 + 部门 + 角色一次查齐。 */
+export interface ConsoleMember {
+  id: string;
+  nickname: string;
+  email: string;
+  department_id: string;
+  department_name: string;
+  position: string;
+  role_id: string;
+  role_name: string;
+  /** 枚举角色 owner/admin/normal，与自定义角色并存。 */
+  role: string;
+  status: string;
+  create_time: number;
+}
+
+/** 权限矩阵一行：模块 + 五个动作。 */
+export interface RolePermissionRow {
+  module: string;
+  can_view: boolean;
+  can_create: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_manage: boolean;
+}
+
+export interface ConsoleRole {
+  id: string;
+  name: string;
+  description: string;
+  is_builtin: boolean;
+  member_count: number;
+  permissions: RolePermissionRow[];
+}
+
+// ── 组织架构 ────────────────────────────────────────────────────────────────
+
+export const fetchDepartments = (tenantId: string) =>
+  request.get<ResponseData<{ departments: DepartmentNode[] }>>(
+    api.tenantDepartments(tenantId),
+  );
+
+export const createDepartment = (
+  tenantId: string,
+  body: { name: string; parent_id?: string; sort?: number },
+) => request.post<ResponseData<DepartmentNode>>(
+  api.tenantDepartments(tenantId),
+  body,
+);
+
+export const updateDepartment = (
+  tenantId: string,
+  id: string,
+  body: { name?: string; parent_id?: string; sort?: number },
+) => request.put<ResponseData<{ id: string }>>(
+  api.tenantDepartment(tenantId, id),
+  body,
+);
+
+export const deleteDepartment = (tenantId: string, id: string) =>
+  request.delete<ResponseData<{ id: string }>>(
+    api.tenantDepartment(tenantId, id),
+  );
+
+// ── 成员 ────────────────────────────────────────────────────────────────────
+
+export const fetchConsoleMembers = (
+  tenantId: string,
+  params: {
+    page?: number;
+    page_size?: number;
+    keywords?: string;
+    department_id?: string;
+    role_id?: string;
+    status?: string;
+  },
+) => request.get<ResponseData<{ members: ConsoleMember[]; total: number }>>(
+  api.tenantConsoleMembers(tenantId),
+  { params },
+);
+
+export const updateConsoleMember = (
+  tenantId: string,
+  userId: string,
+  body: {
+    department_id?: string;
+    position?: string;
+    role_id?: string;
+    status?: string;
+  },
+) => request.put<ResponseData<{ user_id: string }>>(
+  api.tenantConsoleMember(tenantId, userId),
+  body,
+);
+
+/** 移除成员：复用现有的 DELETE /tenants/:id/users（body 传 user_id）。 */
+export const removeConsoleMember = (tenantId: string, userId: string) =>
+  request.delete<ResponseData<unknown>>(api.tenantMembers(tenantId), {
+    data: { user_id: userId },
+  });
+
+// ── 角色权限 ────────────────────────────────────────────────────────────────
+
+export const fetchConsoleRoles = (tenantId: string) =>
+  request.get<ResponseData<{ roles: ConsoleRole[]; modules: string[] }>>(
+    api.tenantConsoleRoles(tenantId),
+  );
+
+export const createConsoleRole = (
+  tenantId: string,
+  body: { name: string; description?: string; grant?: Record<string, string> },
+) => request.post<ResponseData<{ id: string }>>(
+  api.tenantConsoleRoles(tenantId),
+  body,
+);
+
+export const updateConsoleRole = (
+  tenantId: string,
+  id: string,
+  body: { name?: string; description?: string },
+) => request.put<ResponseData<{ id: string }>>(
+  api.tenantConsoleRole(tenantId, id),
+  body,
+);
+
+export const deleteConsoleRole = (tenantId: string, id: string) =>
+  request.delete<ResponseData<{ id: string }>>(
+    api.tenantConsoleRole(tenantId, id),
+  );
+
+export const saveConsolePermissions = (
+  tenantId: string,
+  id: string,
+  permissions: RolePermissionRow[],
+) => request.put<ResponseData<{ id: string }>>(
+  api.tenantConsoleRolePermissions(tenantId, id),
+  { permissions },
+);

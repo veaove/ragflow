@@ -489,6 +489,24 @@ export default {
   adminListTenants: `${restAPIv1}/admin/tenants`,
   adminListPlatformModels: `${restAPIv1}/admin/models`,
   adminAudits: `${restAPIv1}/admin/audits`,
+  // 租户控制台
+  tenantDepartments: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/departments`,
+  tenantDepartment: (tenantId: string, id: string) =>
+    `${restAPIv1}/tenants/${tenantId}/departments/${id}`,
+  tenantConsoleMembers: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/console/members`,
+  /** 现有成员接口：DELETE + body{user_id} 移除成员 */
+  tenantMembers: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/users`,
+  tenantConsoleMember: (tenantId: string, userId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/console/members/${userId}`,
+  tenantConsoleRoles: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/roles`,
+  tenantConsoleRole: (tenantId: string, id: string) =>
+    `${restAPIv1}/tenants/${tenantId}/roles/${id}`,
+  tenantConsoleRolePermissions: (tenantId: string, id: string) =>
+    `${restAPIv1}/tenants/${tenantId}/roles/${id}/permissions`,
   adminCreateTenant: `${restAPIv1}/admin/tenants`,
   adminCreateUser: `${restAPIv1}/admin/users`,
   adminSetSuperuser: (username: string) =>

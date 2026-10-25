@@ -101,6 +101,11 @@ export enum Routes {
   AdminTenants = `${Admin}/tenants`,
   AdminModels = `${Admin}/models`,
   AdminAudits = `${Admin}/audits`,
+  // 租户控制台：组织架构 / 成员 / 角色权限。一级入口是侧边栏的下拉菜单，
+  // 这里只登记三个实际页面。
+  ConsoleOrganization = '/console/organization',
+  ConsoleMembers = '/console/members',
+  ConsoleRoles = '/console/roles',
   AdminSandboxSettings = `${Admin}/sandbox-settings`,
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
@@ -320,6 +325,18 @@ const routeConfigOptions = [
       {
         path: Routes.Files,
         Component: () => import('@/pages/files'),
+      },
+      {
+        path: Routes.ConsoleOrganization,
+        Component: () => import('@/pages/console/organization'),
+      },
+      {
+        path: Routes.ConsoleMembers,
+        Component: () => import('@/pages/console/members'),
+      },
+      {
+        path: Routes.ConsoleRoles,
+        Component: () => import('@/pages/console/roles'),
       },
       {
         path: Routes.Qc,

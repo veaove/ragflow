@@ -8,6 +8,7 @@ import {
   LucideHouse,
   Settings,
   ShieldCheck,
+  Users,
   Workflow,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -107,6 +108,30 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     name: 'header.fileManager',
     icon: MenuItemsIcon,
     icon_name: 'file',
+  },
+  // 租户控制台：与「文件管理」平级的下拉入口（两者无隶属关系），
+  // 三个子页共用 /console/* 前缀。
+  {
+    path: 'console',
+    name: 'header.tenantConsole',
+    icon: Users,
+    children: [
+      {
+        path: Routes.ConsoleOrganization,
+        name: 'console.organization',
+        'data-testid': 'nav-console-organization',
+      } as SidebarMenuItem,
+      {
+        path: Routes.ConsoleMembers,
+        name: 'console.members',
+        'data-testid': 'nav-console-members',
+      } as SidebarMenuItem,
+      {
+        path: Routes.ConsoleRoles,
+        name: 'console.roles',
+        'data-testid': 'nav-console-roles',
+      } as SidebarMenuItem,
+    ],
   },
   // 配置中心：一级菜单 + 6 个二级菜单。子项复用原有 /user-setting/* 页面，
   // 页面组件没有改动，只是入口从「用户设置」的二级导航挪到了这里。

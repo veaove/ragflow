@@ -22,6 +22,10 @@ type UserTenant struct {
 	UserID    string  `gorm:"column:user_id;size:32;not null;index" json:"user_id"`
 	TenantID  string  `gorm:"column:tenant_id;size:32;not null;index" json:"tenant_id"`
 	Role      string  `gorm:"column:role;size:32;not null;index" json:"role"`
+	// RoleID points at a tenant-scoped custom role. It is optional: when empty
+	// the permission engine falls back to the Role enum above, so pre-existing
+	// memberships keep their behaviour untouched.
+	RoleID    string  `gorm:"column:role_id;size:32;index" json:"role_id,omitempty"`
 	InvitedBy string  `gorm:"column:invited_by;size:32;not null;index" json:"invited_by"`
 	Status    *string `gorm:"column:status;size:1;index;default:'1'" json:"status,omitempty"`
 	// JoinType distinguishes how the member entered: "invite" (accepted an

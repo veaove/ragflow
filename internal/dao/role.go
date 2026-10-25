@@ -1,0 +1,275 @@
+package dao
+
+import (
+	"context"
+	"time"
+
+	"gorm.io/gorm"
+
+	"ragflow/internal/common"
+	"ragflow/internal/entity"
+)
+
+// ConsoleModules is the fixed module list of the permission matrix. It matches
+// the console's rows one-to-one; unknown modules arriving from the client are
+// dropped rather than persisted, so the matrix can never grow junk rows.
+var ConsoleModules = []string{
+	"dataset",  // 知识库
+	"agent",    // 智能体
+	"memory",   // 记忆
+	"file",     // 文件管理
+	"chat",     // 知识问答
+	"model",    // 模型配置
+	"member",   // 组织成员
+	"role",     // 角色管理
+	"apikey",   // API 密钥
+	"quota",    // 配额用量
+	"audit",    // 审计日志
+	"security", // 安全设置
+}
+
+// builtinRoleSpec defines a seeded role and its default matrix.
+type builtinRoleSpec struct {
+	name        string
+	description string
+	// grant maps a module to its allowed actions. "all" grants every action.
+	grant map[string]string
+}
+
+// builtinRoles are created lazily per tenant on first read.
+//
+// Their permissions are intentionally NOT editable (see Update/Delete): the
+// permission engine still keys off `user_tenant.role` for owner/normal, and
+// letting these drift would make the two models disagree.
+var builtinRoles = []builtinRoleSpec{
+	{
+		name:        "租户管理员",
+		description: "拥有租户内全部权限",
+		grant:       map[string]string{"*": "all"},
+	},
+	{
+		name:        "部门管理员",
+		description: "管理本部门成员与资源",
+		grant: map[string]string{
+			"*":      "view",
+			"member": "manage",
+			"role":   "view",
+		},
+	},
+	{
+		name:        "普通成员",
+		description: "基础使用权限",
+		grant: map[string]string{
+			"*": "view",
+		},
+	},
+}
+
+// RoleDAO reads and writes tenant-scoped roles and their matrices.
+type RoleDAO struct{}
+
+func NewRoleDAO() *RoleDAO {
+	return &RoleDAO{}
+}
+
+// EnsureBuiltinRoles seeds the three builtin roles for a tenant that has none.
+// It is idempotent and cheap (one count query on the happy path).
+func (dao *RoleDAO) EnsureBuiltinRoles(ctx context.Context, db *gorm.DB, tenantID string) error {
+	var existing int64
+	if err := db.WithContext(ctx).
+		Model(&entity.Role{}).
+		Where("tenant_id = ?", tenantID).
+		Where("is_builtin = ?", true).
+		Count(&existing).Error; err != nil {
+		return err
+	}
+	if existing >= int64(len(builtinRoles)) {
+		return nil
+	}
+
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, spec := range builtinRoles {
+			var found entity.Role
+			err := tx.Where("tenant_id = ?", tenantID).
+				Where("name = ?", spec.name).
+				Take(&found).Error
+			if err == nil {
+				continue
+			}
+			if err != gorm.ErrRecordNotFound {
+				return err
+			}
+
+			role := entity.Role{
+				ID:          common.GenerateUUID(),
+				TenantID:    tenantID,
+				Name:        spec.name,
+				Description: spec.description,
+				IsBuiltin:   true,
+				BaseModel:   entity.BaseModel{CreateTime: ptrInt64(time.Now().UnixMilli())},
+			}
+			if err := tx.Create(&role).Error; err != nil {
+				return err
+			}
+
+			rows := buildPermissionRows(role.ID, spec.grant)
+			if len(rows) > 0 {
+				if err := tx.Create(&rows).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// buildPermissionRows expands a grant map into one row per module.
+func buildPermissionRows(roleID string, grant map[string]string) []*entity.RolePermission {
+	rows := make([]*entity.RolePermission, 0, len(ConsoleModules))
+	for _, module := range ConsoleModules {
+		action, ok := grant[module]
+		if !ok {
+			action = grant["*"]
+		}
+		row := &entity.RolePermission{
+			ID:     common.GenerateUUID(),
+			RoleID: roleID,
+			Module: module,
+		}
+		switch action {
+		case "all":
+			row.CanView, row.CanCreate, row.CanEdit, row.CanDelete, row.CanManage = true, true, true, true, true
+		case "manage":
+			row.CanView, row.CanManage = true, true
+		case "view":
+			row.CanView = true
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// ListByTenant returns roles plus their matrices.
+func (dao *RoleDAO) ListByTenant(ctx context.Context, db *gorm.DB, tenantID string) ([]*entity.Role, map[string][]*entity.RolePermission, error) {
+	roles := make([]*entity.Role, 0)
+	if err := db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Order("is_builtin DESC, name ASC").
+		Find(&roles).Error; err != nil {
+		return nil, nil, err
+	}
+	if len(roles) == 0 {
+		return roles, map[string][]*entity.RolePermission{}, nil
+	}
+
+	ids := make([]string, 0, len(roles))
+	for _, role := range roles {
+		ids = append(ids, role.ID)
+	}
+	perms := make([]*entity.RolePermission, 0)
+	if err := db.WithContext(ctx).
+		Where("role_id IN ?", ids).
+		Find(&perms).Error; err != nil {
+		return nil, nil, err
+	}
+
+	byRole := make(map[string][]*entity.RolePermission, len(roles))
+	for _, p := range perms {
+		byRole[p.RoleID] = append(byRole[p.RoleID], p)
+	}
+	return roles, byRole, nil
+}
+
+// Get loads one role scoped to its tenant.
+func (dao *RoleDAO) Get(ctx context.Context, db *gorm.DB, tenantID, id string) (*entity.Role, error) {
+	var role entity.Role
+	if err := db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Where("id = ?", id).
+		Take(&role).Error; err != nil {
+		return nil, err
+	}
+	return &role, nil
+}
+
+func (dao *RoleDAO) Create(ctx context.Context, db *gorm.DB, role *entity.Role, grant map[string]string) error {
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(role).Error; err != nil {
+			return err
+		}
+		rows := buildPermissionRows(role.ID, grant)
+		if len(rows) > 0 {
+			return tx.Create(&rows).Error
+		}
+		return nil
+	})
+}
+
+// Update refuses builtin roles so the seeded matrix stays honest.
+func (dao *RoleDAO) Update(ctx context.Context, db *gorm.DB, tenantID, id string, fields map[string]any) error {
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		role, err := dao.Get(ctx, tx, tenantID, id)
+		if err != nil {
+			return err
+		}
+		if role.IsBuiltin {
+			return ErrBuiltinRoleImmutable
+		}
+		return tx.Model(&entity.Role{}).
+			Where("tenant_id = ?", tenantID).
+			Where("id = ?", id).
+			Updates(fields).Error
+	})
+}
+
+// Delete removes a custom role and its matrix. Members referencing it have
+// role_id cleared by the caller's service layer.
+func (dao *RoleDAO) Delete(ctx context.Context, db *gorm.DB, tenantID, id string) error {
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		role, err := dao.Get(ctx, tx, tenantID, id)
+		if err != nil {
+			return err
+		}
+		if role.IsBuiltin {
+			return ErrBuiltinRoleImmutable
+		}
+		if err := tx.Where("role_id = ?", id).Delete(&entity.RolePermission{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("tenant_id = ?", tenantID).
+			Where("id = ?", id).
+			Delete(&entity.Role{}).Error
+	})
+}
+
+// ReplacePermissions overwrites a role's whole matrix.
+//
+// Delete-then-insert rather than diffing: the matrix is 12 rows, and a full
+// replace keeps "revoked to false" identical to "row absent", which is what the
+// console's save button means.
+func (dao *RoleDAO) ReplacePermissions(ctx context.Context, db *gorm.DB, tenantID, roleID string, rows []*entity.RolePermission) error {
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		role, err := dao.Get(ctx, tx, tenantID, roleID)
+		if err != nil {
+			return err
+		}
+		if role.IsBuiltin {
+			return ErrBuiltinRoleImmutable
+		}
+		if err := tx.Where("role_id = ?", roleID).Delete(&entity.RolePermission{}).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		for _, row := range rows {
+			row.ID = common.GenerateUUID()
+			row.RoleID = roleID
+		}
+		return tx.Create(&rows).Error
+	})
+}
+
+func ptrInt64(v int64) *int64 {
+	return &v
+}

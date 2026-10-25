@@ -1,0 +1,396 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { LucidePlus, LucideShield, LucideShieldCheck } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
+import {
+  ConsoleRole,
+  RolePermissionRow,
+  createConsoleRole,
+  deleteConsoleRole,
+  fetchConsoleRoles,
+  saveConsolePermissions,
+} from '@/services/console-service';
+
+/** 矩阵行的中文名。后端只回 module key，文案在前端维护。 */
+const MODULE_LABELS: Record<string, string> = {
+  dataset: '知识库',
+  agent: '智能体',
+  memory: '记忆',
+  file: '文件管理',
+  chat: '知识问答',
+  model: '模型配置',
+  member: '组织成员',
+  role: '角色管理',
+  apikey: 'API 密钥',
+  quota: '配额用量',
+  audit: '审计日志',
+  security: '安全设置',
+};
+
+const ACTION_COLUMNS: { key: keyof RolePermissionRow; label: string }[] = [
+  { key: 'can_view', label: '查看' },
+  { key: 'can_create', label: '创建' },
+  { key: 'can_edit', label: '编辑' },
+  { key: 'can_delete', label: '删除' },
+  { key: 'can_manage', label: '管理' },
+];
+
+/** 把后端矩阵补齐成「每个模块一行」，缺失模块视为全 false。 */
+function normalizeMatrix(
+  modules: string[],
+  rows: RolePermissionRow[],
+): RolePermissionRow[] {
+  const byModule = new Map(rows.map((r) => [r.module, r]));
+  return modules.map((module) => {
+    const found = byModule.get(module);
+    return found
+      ? { ...found }
+      : {
+          module,
+          can_view: false,
+          can_create: false,
+          can_edit: false,
+          can_delete: false,
+          can_manage: false,
+        };
+  });
+}
+
+/**
+ * 角色权限：左侧角色列表，右侧模块 × 动作矩阵。
+ *
+ * 内置角色（租户管理员 / 部门管理员 / 普通成员）不可编辑 —— 权限引擎仍以
+ * `user_tenant.role` 枚举为准，放任内置矩阵漂移会让两套模型对不上。
+ */
+export default function ConsoleRoles() {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { data: tenantInfo } = useFetchTenantInfo();
+  const tenantId = tenantInfo?.tenant_id as string | undefined;
+
+  const [selectedId, setSelectedId] = useState<string>('');
+  const [draft, setDraft] = useState<RolePermissionRow[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+
+  const { data, isFetching } = useQuery({
+    queryKey: ['console/roles', tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const res = await fetchConsoleRoles(tenantId as string);
+      return res?.data ?? { roles: [], modules: [] };
+    },
+  });
+  const roles: ConsoleRole[] = data?.roles ?? [];
+  const modules: string[] = data?.modules ?? [];
+
+  const selected = useMemo(
+    () => roles.find((r) => r.id === selectedId),
+    [roles, selectedId],
+  );
+
+  // 默认选中第一个角色，避免右侧空着。
+  useEffect(() => {
+    if (!selectedId && roles.length > 0) {
+      setSelectedId(roles[0].id);
+    }
+  }, [roles, selectedId]);
+
+  // 切角色时用后端矩阵重置草稿。
+  useEffect(() => {
+    if (selected) {
+      setDraft(normalizeMatrix(modules, selected.permissions ?? []));
+      setDirty(false);
+    }
+  }, [modules, selected]);
+
+  const toggleCell = useCallback(
+    (module: string, key: keyof RolePermissionRow) => {
+      if (selected?.is_builtin) return;
+      setDraft((rows) =>
+        rows.map((row) =>
+          row.module === module ? { ...row, [key]: !row[key] } : row,
+        ),
+      );
+      setDirty(true);
+    },
+    [selected],
+  );
+
+  const toggleRow = useCallback(
+    (module: string) => {
+      if (selected?.is_builtin) return;
+      setDraft((rows) =>
+        rows.map((row) => {
+          if (row.module !== module) return row;
+          const allOn = ACTION_COLUMNS.every((c) => row[c.key] === true);
+          const next = allOn ? false : true;
+          return {
+            ...row,
+            can_view: next,
+            can_create: next,
+            can_edit: next,
+            can_delete: next,
+            can_manage: next,
+          };
+        }),
+      );
+      setDirty(true);
+    },
+    [selected],
+  );
+
+  const save = useCallback(async () => {
+    if (!tenantId || !selected) return;
+    await saveConsolePermissions(tenantId, selected.id, draft);
+    setDirty(false);
+    queryClient.invalidateQueries({ queryKey: ['console/roles'] });
+  }, [draft, queryClient, selected, tenantId]);
+
+  const createRole = useCallback(async () => {
+    if (!tenantId || !newName.trim()) return;
+    try {
+      await createConsoleRole(tenantId, {
+        name: newName.trim(),
+        description: newDesc.trim(),
+      });
+      setCreateOpen(false);
+      setNewName('');
+      setNewDesc('');
+      queryClient.invalidateQueries({ queryKey: ['console/roles'] });
+    } catch {
+      window.alert('创建失败：角色名可能已存在');
+    }
+  }, [newDesc, newName, queryClient, tenantId]);
+
+  const removeRole = useCallback(
+    async (role: ConsoleRole) => {
+      if (!tenantId || role.is_builtin) return;
+      if (!window.confirm(`确定删除角色「${role.name}」？成员会回退为默认角色`))
+        return;
+      await deleteConsoleRole(tenantId, role.id);
+      if (selectedId === role.id) setSelectedId('');
+      queryClient.invalidateQueries({ queryKey: ['console/roles'] });
+    },
+    [queryClient, selectedId, tenantId],
+  );
+
+  const builtin = roles.filter((r) => r.is_builtin);
+  const custom = roles.filter((r) => !r.is_builtin);
+
+  const renderRoleItem = (role: ConsoleRole) => (
+    <div
+      key={role.id}
+      className={`cursor-pointer rounded-md px-3 py-2 ${
+        selectedId === role.id
+          ? 'bg-accent-primary/10'
+          : 'hover:bg-background-second'
+      }`}
+      onClick={() => setSelectedId(role.id)}
+    >
+      <div className="flex items-center gap-2">
+        {role.is_builtin ? (
+          <LucideShieldCheck className="size-4 text-accent-primary" />
+        ) : (
+          <LucideShield className="size-4 text-text-secondary" />
+        )}
+        <span className="text-sm font-medium text-text-primary">
+          {role.name}
+        </span>
+        {role.is_builtin && (
+          <span className="rounded bg-background-second px-1 text-[10px] text-text-secondary">
+            内置
+          </span>
+        )}
+        {!role.is_builtin && (
+          <span className="rounded bg-accent-primary/10 px-1 text-[10px] text-accent-primary">
+            自定义
+          </span>
+        )}
+      </div>
+      <div className="mt-0.5 truncate pl-6 text-xs text-text-secondary">
+        {role.description || '—'}
+      </div>
+    </div>
+  );
+
+  return (
+    <section className="flex h-full flex-col p-5">
+      <header className="mb-4">
+        <h1 className="text-2xl font-medium text-text-primary">
+          {t('console.roles')}
+        </h1>
+        <p className="mt-1 text-sm text-text-secondary">
+          基于 RBAC 的细粒度权限管理
+        </p>
+      </header>
+
+      <div className="flex min-h-0 flex-1 gap-4">
+        <aside className="flex w-64 shrink-0 flex-col rounded-lg border border-border-default">
+          <div className="flex items-center justify-between border-b border-border-default px-3 py-2">
+            <span className="text-sm font-medium text-text-primary">
+              角色列表
+            </span>
+            <Button
+              variant="transparent"
+              size="icon-sm"
+              onClick={() => setCreateOpen(true)}
+              title="新建角色"
+            >
+              <LucidePlus className="size-4" />
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+            {builtin.length > 0 && (
+              <div className="px-1 pb-1 text-xs text-text-secondary">内置角色</div>
+            )}
+            {builtin.map(renderRoleItem)}
+            {custom.length > 0 && (
+              <div className="px-1 pb-1 pt-3 text-xs text-text-secondary">
+                自定义角色
+              </div>
+            )}
+            {custom.map(renderRoleItem)}
+            {roles.length === 0 && (
+              <div className="py-8 text-center text-xs text-text-secondary">
+                {isFetching ? '…' : '暂无角色'}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-border-default">
+          <div className="flex items-center gap-2 border-b border-border-default px-4 py-2">
+            <span className="text-sm font-medium text-text-primary">
+              权限配置 - {selected?.name ?? '未选择'}
+            </span>
+            {selected?.is_builtin && (
+              <span className="rounded bg-background-second px-1.5 py-0.5 text-[10px] text-text-secondary">
+                内置
+              </span>
+            )}
+            {selected && !selected.is_builtin && (
+              <button
+                type="button"
+                className="ml-auto text-xs text-state-error hover:underline"
+                onClick={() => removeRole(selected)}
+              >
+                删除角色
+              </button>
+            )}
+            {dirty && (
+              <Button className="ml-2 h-8" onClick={save}>
+                保存
+              </Button>
+            )}
+          </div>
+
+          {selected?.is_builtin && (
+            <div className="mx-4 mt-3 rounded border border-accent-primary/20 bg-accent-primary/5 px-3 py-2 text-xs text-accent-primary">
+              该角色为系统内置，权限固定不可修改。
+            </div>
+          )}
+
+          <div className="min-h-0 flex-1 overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>功能模块</TableHead>
+                  <TableHead className="w-[70px] text-center">全选</TableHead>
+                  {ACTION_COLUMNS.map((c) => (
+                    <TableHead key={c.key} className="w-[70px] text-center">
+                      {c.label}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {draft.map((row) => {
+                  const allOn = ACTION_COLUMNS.every((c) => row[c.key] === true);
+                  return (
+                    <TableRow key={row.module}>
+                      <TableCell className="text-sm text-text-primary">
+                        {MODULE_LABELS[row.module] ?? row.module}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <input
+                          type="checkbox"
+                          checked={allOn}
+                          disabled={selected?.is_builtin}
+                          onChange={() => toggleRow(row.module)}
+                        />
+                      </TableCell>
+                      {ACTION_COLUMNS.map((c) => (
+                        <TableCell key={c.key} className="text-center">
+                          <input
+                            type="checkbox"
+                            checked={row[c.key] === true}
+                            disabled={selected?.is_builtin}
+                            onChange={() => toggleCell(row.module, c.key)}
+                          />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </div>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新建角色</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <div className="mb-1 text-sm text-text-secondary">角色名称</div>
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="例如：合规质检员"
+              />
+            </div>
+            <div>
+              <div className="mb-1 text-sm text-text-secondary">描述</div>
+              <Input
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                placeholder="一句话说明这个角色能做什么"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setCreateOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={createRole}>创建</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}

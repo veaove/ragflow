@@ -36,6 +36,11 @@ type User struct {
 	LoginChannel    *string    `gorm:"column:login_channel;index" json:"login_channel,omitempty"`
 	Status          *string    `gorm:"column:status;size:1;default:1;index" json:"status"`
 	IsSuperuser     *bool      `gorm:"column:is_superuser;index" json:"is_superuser,omitempty"`
+	// DepartmentID places the member in the tenant org tree; empty means
+	// "unassigned" (shown as 未分配 in the console).
+	DepartmentID string `gorm:"column:department_id;size:32;index" json:"department_id,omitempty"`
+	// Position is the job title shown in the member list (岗位).
+	Position string `gorm:"column:position;size:64" json:"position,omitempty"`
 	BaseModel
 }
 
