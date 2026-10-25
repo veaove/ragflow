@@ -1597,6 +1597,97 @@ func accountStatusLabel(status, isActive string) string {
 	return "active"
 }
 
+// parserLabel 把 knowledgebase.parser_id 翻成中文名，取值与知识库配置页的
+// knowledgeConfiguration.parserLabel 对齐，避免同一份配置在两处叫不同名字。
+//
+// naive 是 general 的历史别名（老数据里两种写法都有），统一显示成「通用」。
+func parserLabel(parserID string) string {
+	if parserID == "" {
+		return ""
+	}
+	switch parserID {
+	case "naive", "general":
+		return "通用"
+	case "qa":
+		return "问答"
+	case "resume":
+		return "简历"
+	case "manual":
+		return "手动"
+	case "table":
+		return "表格"
+	case "paper":
+		return "论文"
+	case "book":
+		return "书籍"
+	case "laws":
+		return "法律"
+	case "presentation":
+		return "演示文稿"
+	case "picture":
+		return "图片"
+	case "one":
+		return "单文件"
+	case "audio":
+		return "音频"
+	case "email":
+		return "邮件"
+	case "tag":
+		return "标签"
+	case "knowledge_graph":
+		return "知识图谱"
+	default:
+		// 认不出来的 id 原样返回：显示 "graph_rag_v2" 也比显示「未知」有用。
+		return parserID
+	}
+}
+
+// datasetEnabledLabel 是知识库的业务开关。
+//
+// 注意 enabled 与 status 是两回事：status 是软删除标记（写 0 就从列表和
+// 检索里消失），enabled 才是用户在界面上点的「启用/停用」。这里只读 enabled。
+func datasetEnabledLabel(enabled int64) string {
+	if enabled == 0 {
+		return "disabled"
+	}
+	return "enabled"
+}
+
+// embeddingLabel 把 embd_id 还原成人能读的模型名。
+//
+// 新数据的 embd_id 存的是 tenant_model.id（32 位十六进制），需要先 JOIN 出
+// model_name；老数据可能直接存 "BAAI/bge-large-zh-v1.5@BAAI"，取 @ 前那段。
+// 两种都拿不到时（模型已被删除）显示「已删除的模型」，而不是把裸 id 甩给用户
+// ——那串十六进制在界面上除了占地方没有任何意义。
+func embeddingLabel(modelName, embdID string) string {
+	if modelName != "" {
+		return modelName
+	}
+	if embdID == "" {
+		return ""
+	}
+	if idx := strings.Index(embdID, "@"); idx > 0 {
+		return embdID[:idx]
+	}
+	if looksLikeHexID(embdID) {
+		return "已删除的模型"
+	}
+	return embdID
+}
+
+// looksLikeHexID 判断字符串是不是 32 位小写十六进制（tenant_model.id 的形状）。
+func looksLikeHexID(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // ListTenantResources 列出某个租户下的成员 / 知识库 / 智能体明细。
 //
 // 三种资源的字段不同，统一返回 {id, name, extra, cells}：
@@ -1670,28 +1761,86 @@ func (s *Service) ListTenantResources(ctx context.Context, tenantID, resourceTyp
 		}
 
 	case "kbs":
+		// 知识库能展示的字段最多，一次取齐，省得前端再补一轮请求：
+		// 规模（文件/分块）、解析方式、向量模型、启用开关、创建人、时间。
 		type kbRow struct {
-			ID       string
-			Name     string
-			DocNum   int64
-			ChunkNum int64
+			ID           string
+			Name         string
+			DocNum       int64
+			ChunkNum     int64
+			ParserID     string
+			EmbdID       string
+			CreatorName  string
+			CreatorEmail string
+			Enabled      int64
+			CreateDate   *time.Time
+			UpdateDate   *time.Time
 		}
 		var rows []kbRow
 		if err := dao.DB.WithContext(ctx).Raw(`
-			SELECT id, IFNULL(name, '') AS name, IFNULL(doc_num, 0) AS doc_num, IFNULL(chunk_num, 0) AS chunk_num
-			FROM knowledgebase
-			WHERE tenant_id = ? AND status = '1'
-			ORDER BY create_date DESC
+			SELECT kb.id,
+			       IFNULL(kb.name, '') AS name,
+			       IFNULL(kb.doc_num, 0) AS doc_num,
+			       IFNULL(kb.chunk_num, 0) AS chunk_num,
+			       IFNULL(kb.parser_id, '') AS parser_id,
+			       IFNULL(kb.embd_id, '') AS embd_id,
+			       IFNULL(u.nickname, '') AS creator_name,
+			       IFNULL(u.email, '') AS creator_email,
+			       IFNULL(kb.enabled, 1) AS enabled,
+			       kb.create_date,
+			       kb.update_date
+			FROM knowledgebase kb
+			LEFT JOIN user u ON u.id = kb.created_by
+			WHERE kb.tenant_id = ? AND kb.status = '1'
+			ORDER BY kb.create_date DESC
 		`, tenantID).Scan(&rows).Error; err != nil {
 			return nil, err
 		}
+
+		// embd_id -> tenant_model.model_name。刻意单独查一次而不写进上面的
+		// JOIN：模型目录是平台侧配置，缺表或缺行都只该让这一列退化成原始 id，
+		// 不该把整个知识库列表拖成 500。
+		embdIDs := make([]string, 0, len(rows))
 		for _, r := range rows {
+			if r.EmbdID != "" {
+				embdIDs = append(embdIDs, r.EmbdID)
+			}
+		}
+		modelNames := map[string]string{}
+		if len(embdIDs) > 0 {
+			type modelRow struct {
+				ID        string
+				ModelName string
+			}
+			var models []modelRow
+			if err := dao.DB.WithContext(ctx).
+				Table("tenant_model").
+				Select("id, IFNULL(model_name, '') AS model_name").
+				Where("id IN ?", embdIDs).
+				Scan(&models).Error; err == nil {
+				for _, m := range models {
+					modelNames[m.ID] = m.ModelName
+				}
+			}
+		}
+
+		for _, r := range rows {
+			creator := r.CreatorName
+			if creator == "" {
+				creator = r.CreatorEmail
+			}
 			result = append(result, map[string]interface{}{
 				"id": r.ID, "name": r.Name,
 				"extra": fmt.Sprintf("%d 个文件 · %d 个分块", r.DocNum, r.ChunkNum),
 				"cells": map[string]string{
-					"docs":   fmt.Sprintf("%d", r.DocNum),
-					"chunks": fmt.Sprintf("%d", r.ChunkNum),
+					"docs":      fmt.Sprintf("%d", r.DocNum),
+					"chunks":    fmt.Sprintf("%d", r.ChunkNum),
+					"parser":    parserLabel(r.ParserID),
+					"embedding": embeddingLabel(modelNames[r.EmbdID], r.EmbdID),
+					"status":    datasetEnabledLabel(r.Enabled),
+					"creator":   creator,
+					"created":   formatOptionalTime(r.CreateDate, "2006-01-02"),
+					"updated":   formatOptionalTime(r.UpdateDate, "2006-01-02 15:04"),
 				},
 			})
 		}

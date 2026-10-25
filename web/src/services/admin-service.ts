@@ -225,7 +225,7 @@ export interface TenantResourceItem {
   /**
    * 「一列一个值」的明细，按资源类型给不同的键：
    *   members -> email / role / status / last_login / joined
-   *   kbs     -> docs / chunks
+   *   kbs     -> docs / chunks / parser / embedding / status / creator / created / updated
    *   agents  -> category / created
    * 文本（角色、状态、时间）后端已经格式化好，前端只负责排版。
    */

@@ -58,10 +58,16 @@ type ResourceType = 'members' | 'kbs' | 'agents';
  */
 const RESOURCE_COLUMNS: Record<
   ResourceType,
-  { firstColumn: string; columns: { key: string; label: string }[] }
+  {
+    firstColumn: string;
+    /** 弹窗宽度：列多了 max-w-xl 会把每一列都挤到换行。 */
+    width: string;
+    columns: { key: string; label: string }[];
+  }
 > = {
   members: {
     firstColumn: '成员',
+    width: 'max-w-3xl',
     // 邮箱不做独立列：没昵称时它就是成员列本身，做成两列会并排重复一遍。
     // 有昵称时以副行显示在主行下面（见下面的明细表格）。
     columns: [
@@ -73,13 +79,23 @@ const RESOURCE_COLUMNS: Record<
   },
   kbs: {
     firstColumn: '知识库',
+    width: 'max-w-5xl',
+    // 这几列回答的是「有多大 / 怎么切的 / 用哪个模型 / 能不能用 / 谁建的」，
+    // 排查检索效果时基本都从这几项开始看。
     columns: [
       { key: 'docs', label: '文件数' },
       { key: 'chunks', label: '分块数' },
+      { key: 'parser', label: '解析方法' },
+      { key: 'embedding', label: '嵌入模型' },
+      { key: 'status', label: '状态' },
+      { key: 'creator', label: '创建人' },
+      { key: 'created', label: '创建时间' },
+      { key: 'updated', label: '更新时间' },
     ],
   },
   agents: {
     firstColumn: '名称',
+    width: 'max-w-3xl',
     columns: [
       { key: 'category', label: '类型' },
       { key: 'created', label: '创建时间' },
@@ -95,9 +111,14 @@ const ROLE_LABELS: Record<string, string> = {
   invite: '待接受',
 };
 
-/** user.status / user.is_active 归一化后的展示名（后端给 active/disabled）。 */
-const ACCOUNT_STATUS_LABELS: Record<string, string> = {
+/**
+ * 状态列的展示名。后端给的是归一化后的英文枚举：
+ * 账号给 active/disabled（status 与 is_active 合并判断），
+ * 知识库给 enabled/disabled（业务开关，不是软删除标记）。
+ */
+const STATUS_LABELS: Record<string, string> = {
   active: '正常',
+  enabled: '已启用',
   disabled: '已停用',
 };
 
@@ -106,7 +127,7 @@ function resourceCellText(key: string, raw?: string) {
   const value = raw ?? '';
   if (!value) return '—';
   if (key === 'role') return ROLE_LABELS[value] ?? value;
-  if (key === 'status') return ACCOUNT_STATUS_LABELS[value] ?? value;
+  if (key === 'status') return STATUS_LABELS[value] ?? value;
   return value;
 }
 
@@ -166,6 +187,11 @@ export default function Tenants() {
       return data?.data ?? [];
     },
   });
+
+  // 当前弹窗的列定义，弹窗宽度也由它决定（知识库列多，需要更宽）。
+  const resourceLayout = resourceDialog
+    ? RESOURCE_COLUMNS[resourceDialog.type]
+    : null;
 
   const { data, isFetching } = useQuery({
     queryKey: ['admin/tenants', page, pageSize, keyword, status],
@@ -460,7 +486,7 @@ export default function Tenants() {
         open={!!resourceDialog}
         onOpenChange={(next) => !next && setResourceDialog(null)}
       >
-        <DialogContent className="max-w-3xl">
+        <DialogContent className={resourceLayout?.width ?? 'max-w-3xl'}>
           <DialogHeader>
             <DialogTitle>
               {resourceDialog?.type === 'members'
@@ -489,9 +515,9 @@ export default function Tenants() {
                 <thead className="sticky top-0 bg-bg-base">
                   <tr className="border-b border-border-default text-left text-xs text-text-secondary">
                     <th className="py-2 pr-4 font-normal">
-                      {RESOURCE_COLUMNS[resourceDialog.type].firstColumn}
+                      {resourceLayout?.firstColumn}
                     </th>
-                    {RESOURCE_COLUMNS[resourceDialog.type].columns.map((col) => (
+                    {resourceLayout?.columns.map((col) => (
                       <th
                         key={col.key}
                         className="whitespace-nowrap py-2 pr-4 font-normal last:pr-0"
@@ -521,16 +547,14 @@ export default function Tenants() {
                             </div>
                           )}
                         </td>
-                        {RESOURCE_COLUMNS[resourceDialog.type].columns.map(
-                          (col) => (
-                            <td
-                              key={col.key}
-                              className="whitespace-nowrap py-2 pr-4 text-text-secondary last:pr-0"
-                            >
-                              {resourceCellText(col.key, item.cells?.[col.key])}
-                            </td>
-                          ),
-                        )}
+                        {resourceLayout?.columns.map((col) => (
+                          <td
+                            key={col.key}
+                            className="whitespace-nowrap py-2 pr-4 text-text-secondary last:pr-0"
+                          >
+                            {resourceCellText(col.key, item.cells?.[col.key])}
+                          </td>
+                        ))}
                       </tr>
                     );
                   })}

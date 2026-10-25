@@ -17,6 +17,7 @@ package admin
 import (
 	"context"
 	"testing"
+	"time"
 
 	"ragflow/internal/entity"
 	"ragflow/internal/ingestion/testutil"
@@ -186,5 +187,143 @@ func TestListTenantResourcesAgentsFiltersByUserID(t *testing.T) {
 	// An unknown tenant is an explicit error, not a silent empty list.
 	if _, err := svc.ListTenantResources(ctx, "missing", "agents"); err == nil {
 		t.Error("ListTenantResources(missing tenant) = nil error, want tenant not found")
+	}
+}
+
+// TestListTenantResourcesKBsShowsOperationalColumns pins the knowledge-base
+// drill-down.
+//
+// Knowledge bases are the riskiest of the three resource types to summarise:
+// every interesting field is either a code (parser_id, permission), a foreign id
+// (embd_id, created_by) or a flag that is easy to confuse with another column
+// (enabled vs status — the latter is the soft-delete marker). The agents branch
+// already paid for getting a column name wrong with MySQL Error 1054, so the
+// knowledge-base query gets the same treatment: run it against a real schema and
+// assert each surfaced value, not just the row count.
+func TestListTenantResourcesKBsShowsOperationalColumns(t *testing.T) {
+	db := testutil.SetupTestDB(t,
+		&entity.Tenant{},
+		&entity.User{},
+		&entity.Knowledgebase{},
+	)
+	t.Cleanup(testutil.ReplaceDBForTest(t, db))
+	ctx := context.Background()
+
+	const tenantID = "tenant-1"
+	statusValid := string(entity.StatusValid)
+	deleted := "0"
+	tenantName := "Tenant One"
+	if err := db.Create(&entity.Tenant{ID: tenantID, Name: &tenantName, Status: &statusValid}).Error; err != nil {
+		t.Fatalf("create tenant: %v", err)
+	}
+
+	// u-2 has no nickname: the drill-down must fall back to the e-mail so the
+	// creator column never renders empty.
+	users := []entity.User{
+		{ID: "u-1", Nickname: "Nick One", Email: "nick@example.com", IsAuthenticated: "1", IsActive: "1"},
+		{ID: "u-2", Nickname: "", Email: "plain@example.com", IsAuthenticated: "1", IsActive: "1"},
+	}
+	for i := range users {
+		if err := db.Create(&users[i]).Error; err != nil {
+			t.Fatalf("create user: %v", err)
+		}
+	}
+
+	// embd_id pointing at a tenant_model row that does not exist in this schema:
+	// the model catalog is optional, so the column must degrade instead of
+	// failing the whole list.
+	missingModelID := "66efe49d791f41629de93675f4bf9a7c"
+	created := time.Date(2026, 10, 20, 9, 30, 0, 0, time.Local)
+	updated := time.Date(2026, 10, 24, 18, 5, 0, 0, time.Local)
+
+	kbs := []entity.Knowledgebase{
+		{
+			ID: "kb-1", TenantID: tenantID, Name: "kb one", Permission: "me",
+			EmbdID: "BAAI/bge-large-zh-v1.5@BAAI", ParserID: "qa", CreatedBy: "u-1",
+			DocNum: 3, ChunkNum: 42,
+			BaseModel: entity.BaseModel{CreateDate: &created, UpdateDate: &updated},
+		},
+		{
+			ID: "kb-2", TenantID: tenantID, Name: "kb two", Permission: "me",
+			EmbdID: missingModelID, ParserID: "general", CreatedBy: "u-2",
+			DocNum: 50, ChunkNum: 58,
+		},
+		{
+			ID: "kb-3", TenantID: "tenant-2", Name: "other tenant kb", Permission: "me",
+			EmbdID: missingModelID, ParserID: "general", CreatedBy: "u-1",
+		},
+		{
+			ID: "kb-4", TenantID: tenantID, Name: "soft deleted kb", Permission: "me",
+			EmbdID: missingModelID, ParserID: "general", CreatedBy: "u-1", Status: &deleted,
+		},
+	}
+	for i := range kbs {
+		if err := db.Create(&kbs[i]).Error; err != nil {
+			t.Fatalf("create knowledgebase: %v", err)
+		}
+	}
+	// enabled is a plain pointer bool with a DB default; write it explicitly so
+	// the "disabled" case does not depend on how the default tag is rendered.
+	if err := db.Model(&entity.Knowledgebase{}).Where("id = ?", "kb-2").Update("enabled", false).Error; err != nil {
+		t.Fatalf("disable kb-2: %v", err)
+	}
+
+	svc := NewService()
+	items, err := svc.ListTenantResources(ctx, tenantID, "kbs")
+	if err != nil {
+		t.Fatalf("ListTenantResources(kbs): %v", err)
+	}
+	// kb-3 belongs to another tenant and kb-4 is soft deleted (status = '0'):
+	// neither may show up, otherwise the list will not match kb_count.
+	if len(items) != 2 {
+		t.Fatalf("len(items) = %d, want 2: %+v", len(items), items)
+	}
+
+	cellsByName := map[string]map[string]string{}
+	for _, item := range items {
+		name, _ := item["name"].(string)
+		cells, _ := item["cells"].(map[string]string)
+		cellsByName[name] = cells
+	}
+
+	want := map[string]map[string]string{
+		"kb one": {
+			"docs":      "3",
+			"chunks":    "42",
+			"parser":    "问答",
+			"embedding": "BAAI/bge-large-zh-v1.5",
+			"status":    "enabled",
+			"creator":   "Nick One",
+			"created":   "2026-10-20",
+			"updated":   "2026-10-24 18:05",
+		},
+		"kb two": {
+			"docs":   "50",
+			"chunks": "58",
+			"parser": "通用",
+			// 未收录在模型目录里的 id 不能原样甩给用户。
+			"embedding": "已删除的模型",
+			"status":    "disabled",
+			// 没昵称的账号回落到邮箱。
+			"creator": "plain@example.com",
+		},
+	}
+	for name, wantCells := range want {
+		got, ok := cellsByName[name]
+		if !ok {
+			t.Errorf("%q missing from drill-down: %+v", name, items)
+			continue
+		}
+		for key, wantValue := range wantCells {
+			if got[key] != wantValue {
+				t.Errorf("%s.cells[%s] = %q, want %q", name, key, got[key], wantValue)
+			}
+		}
+	}
+	if _, leaked := cellsByName["other tenant kb"]; leaked {
+		t.Errorf("other tenant's knowledge base leaked into the drill-down: %+v", items)
+	}
+	if _, leaked := cellsByName["soft deleted kb"]; leaked {
+		t.Errorf("soft-deleted knowledge base leaked into the drill-down: %+v", items)
 	}
 }
