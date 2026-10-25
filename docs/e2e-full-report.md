@@ -294,3 +294,87 @@ handler 却只读 `c.Query("file_id")` → 按路由调用永远 400。
 
 另记录 1 个设计风险（未改）：`GET /qc/rules/selection` 返回 `app_id` 归属集，
 与实际生效的 `qc_rule_binding` 不一致，界面可能显示「已选用」但实际不拦截。
+
+---
+
+# 第四轮：矩阵级权限守卫（14 条）+ 一个严重缺陷
+
+补上此前唯一没验的场景：`role.view=false` 的角色能不能被挡住。
+
+## 1. 先修了一个严重缺陷（本轮最大收获）
+
+**现象**：用户管理页接口返回 3 条成员，页面显示「共 0 位成员 / 暂无成员」；
+角色权限页接口返回 3 个内置角色，页面显示「暂无角色」。**四个控制台页面列表全空。**
+
+**根因**：`request` 用 umi-request 的 `getResponse: true`，运行时 resolve 值是
+`{ data: <响应体>, response }`，而响应体本身是 `{code, data: {业务}, message}`。
+页面写 `res?.data` → 拿到整个响应体 → `res.data.members` 是 undefined → 回落空数组。
+
+**为什么 tsc 没拦住**：`request.get<T>` 的泛型只描述了业务类型，不含 umi 那层
+`{data}` 包裹，所以 `res.data.roles` 类型上合法、运行时是 undefined。**静态检查在这里是失效的。**
+
+**为什么 162 条用例没抓到**：UI 用例只断言了页面标题文案（「成员/用户/邀请」），
+没断言列表数据。标题在、列表空，用例照样绿 —— 典型假阳性。
+
+**修复**（`02e4762d8`）：service 层加 `ApiEnvelope<T> = { data: ResponseData<T> }`
+如实描述运行时结构，4 个页面 10 处取值改为 `res?.data?.data`。
+修复后实测：「共 3 位成员」，邮箱、角色、部门全部正常渲染。
+
+## 2. 后端矩阵拦截：6/6 通过，可靠
+
+| 用例 | 结果 |
+|---|---|
+| owner 读角色 | 200 |
+| 只读成员读角色（role.view=false）| **403** |
+| 只读成员读部门（member.view=true）| 200 |
+| 只读成员建部门（member.create=false）| **403** |
+| 只读成员改角色矩阵 | **403** |
+| **打开 role.view 后同一成员立即能读** | 200 |
+
+最后一条说明：**权限变更实时生效，无缓存延迟**。
+
+## 3. 前端守卫不生效（架构问题，未改）
+
+`ConsoleGuard` 与菜单过滤依赖 `useConsolePermissions`，其租户来自
+`GET /users/me/models`；而 `GetTenantInfo` 查的是**用户的 owner 租户**
+（源码注释：*should be only one owner tenant per user*）。于是：
+
+| 用户类型 | 前端行为 |
+|---|---|
+| 有 owner 租户 | 查的是自己当 owner 的租户 → **必然全权限** |
+| 纯成员（无自有租户）| 接口返回 `102 Tenant not found!` → `tenantId` undefined → 所有数据 query 的 `enabled=false` → **一个请求都不发**，页面骨架渲染、列表全空、也没有「无访问权限」提示 |
+
+**即：前端矩阵守卫在两种情况下都不起作用。真正的防线是后端接口级拦截（已验 403）。**
+
+建议：前端应按「当前访问的租户上下文」查权限，而不是「我的 owner 租户」。
+用例已按实际行为断言并标注为已知缺陷 —— 将来修好了 Y1/Y3 会变红，提醒更新。
+
+## 4. 脚本自身的三个坑（已修）
+
+1. `q()` 的 mysql 客户端未指定 `utf8mb4` → **中文角色名查不到** → 删旧角色静默失败 → 创建遇重名 → 拿到空 id，整条链路全空
+2. setup 里 `"$(q "SELECT ...")"` 嵌套引号 → bash 语法错误
+3. 成员已存在时 `POST /members` 是 **no-op**，`role_id` 不会更新 → 矩阵断言读到旧值；必须先移除再邀请
+
+## 累计
+
+| 脚本 | 用例 | 结果 |
+|---|---|---|
+| `e2e_console_permissions.sh` | 34 | 34/34 |
+| `e2e_business_features.sh` | 55 | 55/55 |
+| `e2e_business_flow.sh` | 25 | 25/25 |
+| `e2e_modules.sh` | 24 | 24/24 |
+| `e2e_realtime.sh` | 8 | 8/8 |
+| `e2e_web_ui.mjs` | 16 | 16/16 |
+| `e2e_matrix_guard.sh` + `.mjs` | 14 | 14/14（含 4 条记录已知缺陷）|
+| **合计** | **176** | **全绿** |
+
+## 四轮共发现 4 个产品缺陷（全部已修）
+
+1. 成员列表 `role` 字段恒为空（缺 `gorm:"column:role"`）
+2. 移除成员后原部门永远删不掉（不清 `department_id` + 裸列统计）
+3. `GET /files/:id/parent` 读错参数（query 而非路径）
+4. **四个控制台页面列表全空（响应体少解一层）**
+
+另记录 2 个设计/架构风险（未改）：
+- `GET /qc/rules/selection` 返回归属集而非生效集（binding）
+- 前端矩阵守卫按「owner 租户」判权限，实际不生效
