@@ -2,8 +2,10 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -28,6 +30,10 @@ func NewConsoleHandler() *ConsoleHandler {
 // This is the only guard between a logged-in user and another tenant's org
 // chart, so it must run before every console query. write=true additionally
 // demands owner/admin — a normal member may read the tree but not reshape it.
+//
+// On top of that it enforces the role matrix, deriving module from the request
+// path and action from the HTTP method. Deriving instead of passing them at each
+// call site means a new console endpoint cannot silently skip the check.
 func requireTenantAccess(c *gin.Context, userID, tenantID string, write bool) error {
 	var membership entity.UserTenant
 	err := dao.DB.WithContext(c.Request.Context()).
@@ -45,6 +51,109 @@ func requireTenantAccess(c *gin.Context, userID, tenantID string, write bool) er
 	}
 	if write && membership.Role != string(permissionRoleOwner) && membership.Role != string(permissionRoleAdmin) {
 		return errors.New("仅租户管理员可执行该操作")
+	}
+
+	module, action := inferModuleAction(c.Request.URL.Path, c.Request.Method)
+	if module == "" || action == "" {
+		return nil
+	}
+	return checkModuleAction(c, userID, tenantID, module, action)
+}
+
+// Module keys of the role matrix that the console itself exposes.
+const (
+	moduleMember = "member"
+	moduleRole   = "role"
+
+	actionView   = "view"
+	actionCreate = "create"
+	actionEdit   = "edit"
+	actionDelete = "delete"
+	actionManage = "manage"
+)
+
+// moduleLabels are only used to build readable error messages.
+var moduleLabels = map[string]string{
+	moduleMember: "组织成员",
+	moduleRole:   "角色管理",
+}
+
+// inferModuleAction maps a console request onto one matrix cell.
+//
+// Returning empty strings means "not governed by the matrix" and the check is
+// skipped. `/console/me/permissions` is explicitly exempt: the endpoint that
+// reports your own permissions must never be blocked by them.
+func inferModuleAction(path, method string) (string, string) {
+	if strings.HasSuffix(path, "/console/me/permissions") {
+		return "", ""
+	}
+
+	var module string
+	switch {
+	case strings.Contains(path, "/departments"), strings.Contains(path, "/console/members"):
+		module = moduleMember
+	case strings.Contains(path, "/roles"), strings.Contains(path, "/grants"):
+		module = moduleRole
+	default:
+		return "", ""
+	}
+
+	// 保存权限矩阵、保存资源授权属于「管理」级，比普通编辑更敏感。
+	if method == http.MethodPut &&
+		(strings.HasSuffix(path, "/permissions") || strings.Contains(path, "/grants/")) {
+		return module, actionManage
+	}
+
+	switch method {
+	case http.MethodGet:
+		return module, actionView
+	case http.MethodPost:
+		return module, actionCreate
+	case http.MethodPut, http.MethodPatch:
+		return module, actionEdit
+	case http.MethodDelete:
+		return module, actionDelete
+	}
+	return "", ""
+}
+
+// checkModuleAction enforces one cell of the role matrix.
+//
+// **Default-permit**: when nothing constrains the module (no role, no role_id,
+// no row) the DAO returns nil and the call is allowed. That is deliberate — an
+// incomplete matrix, or one seeded before this check existed, must never lock an
+// operator out. Only an explicit `false` denies. The tenant owner is exempt at
+// the DAO level.
+func checkModuleAction(c *gin.Context, userID, tenantID, module, action string) error {
+	row, err := dao.NewRoleDAO().ModulePermission(c.Request.Context(), dao.DB, tenantID, userID, module)
+	if err != nil {
+		return err
+	}
+	if row == nil {
+		return nil
+	}
+
+	var allowed bool
+	switch action {
+	case actionView:
+		allowed = row.CanView
+	case actionCreate:
+		allowed = row.CanCreate
+	case actionEdit:
+		allowed = row.CanEdit
+	case actionDelete:
+		allowed = row.CanDelete
+	case actionManage:
+		allowed = row.CanManage
+	default:
+		return nil
+	}
+	if !allowed {
+		label := moduleLabels[module]
+		if label == "" {
+			label = module
+		}
+		return fmt.Errorf("当前角色没有「%s」模块的该操作权限", label)
 	}
 	return nil
 }

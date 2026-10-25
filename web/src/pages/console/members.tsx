@@ -3,6 +3,7 @@ import { LucidePlus, LucideSearch } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ConsoleGuard } from '@/components/console-guard';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -210,7 +211,8 @@ export default function ConsoleMembers() {
   }, [pwTarget, pwValue, tenantId]);
 
   return (
-    <section className="flex h-full flex-col p-5">
+    <ConsoleGuard module="member">
+      <section className="flex h-full flex-col p-5">
       <header className="mb-4 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-medium text-text-primary">
@@ -540,6 +542,7 @@ export default function ConsoleMembers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+      </section>
+    </ConsoleGuard>
   );
 }

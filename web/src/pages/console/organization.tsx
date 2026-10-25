@@ -8,8 +8,8 @@ import {
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Button } from '@/components/ui/button';
-import {
+import { ConsoleGuard } from '@/components/console-guard';
+import { Button } from '@/components/ui/button';import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -205,7 +205,8 @@ export default function ConsoleOrganization() {
     });
 
   return (
-    <section className="flex h-full flex-col p-5">
+    <ConsoleGuard module="member">
+      <section className="flex h-full flex-col p-5">
       <header className="mb-4">
         <h1 className="text-2xl font-medium text-text-primary">
           {t('console.organization')}
@@ -354,6 +355,7 @@ export default function ConsoleOrganization() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+      </section>
+    </ConsoleGuard>
   );
 }

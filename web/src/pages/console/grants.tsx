@@ -3,6 +3,7 @@ import { LucidePlus, LucideSearch, LucideX } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ConsoleGuard } from '@/components/console-guard';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -178,7 +179,8 @@ export default function ConsoleGrants() {
   }, [draft, editing, kind, queryClient, tenantId]);
 
   return (
-    <section className="flex h-full flex-col p-5">
+    <ConsoleGuard module="role">
+      <section className="flex h-full flex-col p-5">
       <header className="mb-4">
         <h1 className="text-2xl font-medium text-text-primary">
           {t('console.grants')}
@@ -400,6 +402,7 @@ export default function ConsoleGrants() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+      </section>
+    </ConsoleGuard>
   );
 }

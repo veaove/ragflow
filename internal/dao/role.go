@@ -273,3 +273,81 @@ func (dao *RoleDAO) ReplacePermissions(ctx context.Context, db *gorm.DB, tenantI
 func ptrInt64(v int64) *int64 {
 	return &v
 }
+
+// ModulePermission returns the matrix row governing `module` for one member.
+//
+// Returns (nil, nil) when nothing constrains the module — no membership role, no
+// role_id, or no row for that module. Callers treat nil as "allowed": the console
+// defaults to permitting and only honours an explicit denial, so an incomplete
+// matrix can never lock an operator out of the tenant console.
+func (dao *RoleDAO) ModulePermission(ctx context.Context, db *gorm.DB, tenantID, userID, module string) (*entity.RolePermission, error) {
+	var membership entity.UserTenant
+	if err := db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Where("user_id = ?", userID).
+		Take(&membership).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// The tenant owner is never constrained: a misconfigured matrix must not be
+	// able to lock the owner out of their own tenant.
+	if membership.Role == roleEnumOwner {
+		return nil, nil
+	}
+
+	roleID := membership.RoleID
+	if roleID == "" {
+		name, ok := builtinRoleNameForEnum(membership.Role)
+		if !ok {
+			return nil, nil
+		}
+		var role entity.Role
+		if err := db.WithContext(ctx).
+			Where("tenant_id = ?", tenantID).
+			Where("name = ?", name).
+			Take(&role).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return nil, nil
+			}
+			return nil, err
+		}
+		roleID = role.ID
+	}
+
+	var row entity.RolePermission
+	if err := db.WithContext(ctx).
+		Where("role_id = ?", roleID).
+		Where("module = ?", module).
+		Take(&row).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &row, nil
+}
+
+// roleEnumOwner mirrors user_tenant.role = "owner".
+//
+// Defined locally rather than imported from the permission package: permission
+// already imports dao, so referencing it here would create an import cycle.
+const roleEnumOwner = "owner"
+
+// builtinRoleNameForEnum maps the legacy role enum onto the seeded role name.
+//
+// Spelled out instead of indexing into builtinRoles so reordering that slice
+// cannot silently remap roles.
+func builtinRoleNameForEnum(roleEnum string) (string, bool) {
+	switch roleEnum {
+	case "owner":
+		return "租户管理员", true
+	case "admin":
+		return "部门管理员", true
+	case "normal":
+		return "普通成员", true
+	}
+	return "", false
+}
