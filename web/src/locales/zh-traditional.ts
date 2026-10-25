@@ -102,6 +102,7 @@ export default {
       review: '來自 500 多條評論',
     },
     header: {
+      tenantConsole: '租戶中心',
       overview: '總覽',
       knowledgeBase: '知識庫',
       chat: '知識問答',
