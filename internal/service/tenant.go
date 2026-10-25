@@ -1005,6 +1005,10 @@ func (s *TenantService) FindCandidateUser(ctx context.Context, operatorID, tenan
 type AddMemberDirectRequest struct {
 	Email string `json:"email"`
 	Role  string `json:"role"`
+	// RoleID grants a tenant role (builtin or custom) at invite time. When set,
+	// it wins over Role: the enum is then derived from the role so the legacy
+	// `user_tenant.role` stays consistent with the matrix the member inherits.
+	RoleID string `json:"role_id"`
 }
 
 // AddMemberDirect adds a registered user to the tenant immediately (no
@@ -1022,9 +1026,32 @@ func (s *TenantService) AddMemberDirect(ctx context.Context, operatorID, tenantI
 	if role == "" {
 		role = TenantRoleNormal
 	}
-	// Owner is deliberately not assignable through this path.
-	if role != TenantRoleNormal && role != TenantRoleAdmin {
-		return nil, common.CodeArgumentError, fmt.Errorf("role must be normal or admin")
+
+	// A role_id (builtin or custom) takes precedence: derive the enum from it so
+	// `user_tenant.role` and the matrix agree. The builtin 租户管理员 role is
+	// backed by owner semantics and must not be granted by invitation.
+	var roleID string
+	if strings.TrimSpace(req.RoleID) != "" {
+		granted, roleErr := dao.NewRoleDAO().Get(ctx, dao.DB, tenantID, req.RoleID)
+		if roleErr != nil {
+			return nil, common.CodeDataError, fmt.Errorf("role not found")
+		}
+		if granted.IsBuiltin && granted.Name == "租户管理员" {
+			return nil, common.CodeArgumentError, fmt.Errorf("cannot grant the tenant-owner role by invitation")
+		}
+		roleID = granted.ID
+		switch {
+		case granted.IsBuiltin && granted.Name == "部门管理员":
+			role = TenantRoleAdmin
+		default:
+			// Custom roles run on normal member privileges plus their matrix.
+			role = TenantRoleNormal
+		}
+	} else {
+		// Owner is deliberately not assignable through this path.
+		if role != TenantRoleNormal && role != TenantRoleAdmin {
+			return nil, common.CodeArgumentError, fmt.Errorf("role must be normal or admin")
+		}
 	}
 
 	member, err := s.userDAO.GetByEmail(ctx, dao.DB, email)
@@ -1058,6 +1085,7 @@ func (s *TenantService) AddMemberDirect(ctx context.Context, operatorID, tenantI
 		UserID:    member.ID,
 		TenantID:  tenantID,
 		Role:      role,
+		RoleID:    roleID,
 		InvitedBy: operatorID,
 		Status:    &status,
 		JoinType:  JoinTypeDirect,

@@ -69,7 +69,8 @@ export default function ConsoleMembers() {
   // 邀请成员：直接添加已注册用户，无邀请确认环节。
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('normal');
+  // 空值表示「普通成员（默认）」，非空则是 role_id（内置或自定义角色）。
+  const [inviteRoleId, setInviteRoleId] = useState('');
   const [inviteError, setInviteError] = useState('');
 
   // 重置密码：前端用 rsaPsw 加密，后端解密后再哈希。
@@ -179,17 +180,18 @@ export default function ConsoleMembers() {
     try {
       await addTenantMember(tenantId, {
         email: inviteEmail.trim(),
-        role: inviteRole,
+        // 选了角色就传 role_id（后端据此推导枚举），否则按默认普通成员。
+        ...(inviteRoleId ? { role_id: inviteRoleId } : { role: 'normal' }),
       });
       setInviteOpen(false);
       setInviteEmail('');
-      setInviteRole('normal');
+      setInviteRoleId('');
       queryClient.invalidateQueries({ queryKey: ['console/members'] });
     } catch (e: any) {
       // 常见失败：邮箱未注册 / 调用者不是租户 owner / 已是成员。
       setInviteError(e?.message ?? '添加失败，请确认该邮箱已注册且未被添加');
     }
-  }, [inviteEmail, inviteRole, queryClient, tenantId]);
+  }, [inviteEmail, inviteRoleId, queryClient, tenantId]);
 
   const submitPw = useCallback(async () => {
     if (!tenantId || !pwTarget) return;
@@ -479,17 +481,23 @@ export default function ConsoleMembers() {
               />
             </div>
             <div>
-              <div className="mb-1 text-sm text-text-secondary">成员类型</div>
+              <div className="mb-1 text-sm text-text-secondary">角色</div>
               <select
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value)}
+                value={inviteRoleId}
+                onChange={(e) => setInviteRoleId(e.target.value)}
                 className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
               >
-                <option value="normal">普通成员</option>
-                <option value="admin">部门管理员</option>
+                <option value="">普通成员（默认）</option>
+                {roles
+                  .filter((r) => r.name !== '租户管理员')
+                  .map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
               </select>
               <div className="mt-1 text-xs text-text-secondary">
-                细分角色（含自定义角色）可在添加后于「编辑」里指定。
+                「租户管理员」等同于租户所有者，不能通过邀请授予。
               </div>
             </div>
             {inviteError && (

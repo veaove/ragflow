@@ -489,6 +489,8 @@ export default {
   adminListTenants: `${restAPIv1}/admin/tenants`,
   adminListPlatformModels: `${restAPIv1}/admin/models`,
   adminAudits: `${restAPIv1}/admin/audits`,
+  /** 当前租户的操作审计（平台级为 adminAudits） */
+  audits: `${restAPIv1}/audits`,
   // 租户控制台
   tenantDepartments: (tenantId: string) =>
     `${restAPIv1}/tenants/${tenantId}/departments`,

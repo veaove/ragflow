@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -352,6 +353,8 @@ func (h *ConsoleHandler) UpdateConsoleMember(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
 		return
 	}
+	auditConsoleChange(c, user, tenantID, "update", "member", c.Param("user_id"), nil,
+		entity.JSONMap{"role_id": req.RoleID, "department_id": req.DepartmentID, "status": req.Status})
 	common.SuccessWithData(c, gin.H{"user_id": c.Param("user_id")}, "success")
 }
 
@@ -406,6 +409,8 @@ func (h *ConsoleHandler) CreateConsoleRole(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
 		return
 	}
+	auditConsoleChange(c, user, tenantID, "create", "role", role.ID, nil,
+		entity.JSONMap{"name": role.Name})
 	common.SuccessWithData(c, role, "success")
 }
 
@@ -443,6 +448,7 @@ func (h *ConsoleHandler) UpdateConsoleRole(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
 		return
 	}
+	auditConsoleChange(c, user, tenantID, "update", "role", c.Param("id"), nil, entity.JSONMap(fields))
 	common.SuccessWithData(c, gin.H{"id": c.Param("id")}, "success")
 }
 
@@ -463,6 +469,7 @@ func (h *ConsoleHandler) DeleteConsoleRole(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
 		return
 	}
+	auditConsoleChange(c, user, tenantID, "delete", "role", c.Param("id"), nil, nil)
 	common.SuccessWithData(c, gin.H{"id": c.Param("id")}, "success")
 }
 
@@ -491,6 +498,8 @@ func (h *ConsoleHandler) SaveConsolePermissions(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
 		return
 	}
+	auditConsoleChange(c, user, tenantID, "update", "role_permission", c.Param("id"), nil,
+		entity.JSONMap{"rows": len(req.Permissions)})
 	common.SuccessWithData(c, gin.H{"id": c.Param("id")}, "success")
 }
 
@@ -564,6 +573,8 @@ func (h *ConsoleHandler) SetResourceGrants(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
 		return
 	}
+	auditConsoleChange(c, user, tenantID, "update", "resource_grant", c.Param("resource_id"), nil,
+		entity.JSONMap{"kind": c.Param("kind"), "subjects": len(req.Subjects)})
 	common.SuccessWithData(c, gin.H{"resource_id": c.Param("resource_id")}, "success")
 }
 
@@ -595,6 +606,8 @@ func (h *ConsoleHandler) ResetConsoleMemberPassword(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
 		return
 	}
+	// 只记「谁重置了谁」，不落任何密码相关内容。
+	auditConsoleChange(c, user, tenantID, "update", "member_password", c.Param("user_id"), nil, nil)
 	common.SuccessWithData(c, gin.H{"user_id": c.Param("user_id")}, "success")
 }
 
@@ -622,4 +635,40 @@ func (h *ConsoleHandler) MyConsolePermissions(c *gin.Context) {
 		return
 	}
 	common.SuccessWithData(c, perms, "success")
+}
+
+// auditConsoleChange records one permission-affecting console action.
+//
+// Operator stores a readable identity (nickname, else e-mail) rather than a raw
+// id: this table has several writers that disagree on the column, and the console
+// renders it directly without a join.
+//
+// Best-effort by design — the business operation has already committed, and
+// failing the response because the audit row could not be written would lose the
+// user's work. Failures are intentionally swallowed here and surface through the
+// DB driver's own error log.
+func auditConsoleChange(c *gin.Context, operator *entity.User, tenantID, action, objectType, objectID string, before, after entity.JSONMap) {
+	if operator == nil {
+		return
+	}
+	name := operator.Nickname
+	if name == "" {
+		name = operator.Email
+	}
+	entry := &entity.AuditLog{
+		ID:         common.GenerateUUID(),
+		TenantID:   tenantID,
+		Action:     action,
+		ObjectType: objectType,
+		ObjectID:   objectID,
+		Before:     before,
+		After:      after,
+		Operator:   name,
+		Result:     "success",
+		IPAddress:  c.ClientIP(),
+		Method:     c.Request.Method,
+		Path:       c.FullPath(),
+		CreateTime: time.Now().UnixMilli(),
+	}
+	_ = dao.DB.WithContext(c.Request.Context()).Create(entry).Error
 }

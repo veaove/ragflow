@@ -164,7 +164,7 @@ func (dao *AuditLogDAO) Create(ctx context.Context, db *gorm.DB, log *entity.Aud
 }
 
 // List returns audit entries of a canvas (or all of a tenant), newest first.
-func (dao *AuditLogDAO) List(ctx context.Context, db *gorm.DB, tenantID, canvasID, action string, limit, offset int) ([]*entity.AuditLog, error) {
+func (dao *AuditLogDAO) List(ctx context.Context, db *gorm.DB, tenantID, canvasID, action, objectType string, limit, offset int) ([]*entity.AuditLog, error) {
 	logs := make([]*entity.AuditLog, 0)
 	q := db.WithContext(ctx).Model(&entity.AuditLog{}).Where("tenant_id = ?", tenantID)
 	if canvasID != "" {
@@ -172,6 +172,9 @@ func (dao *AuditLogDAO) List(ctx context.Context, db *gorm.DB, tenantID, canvasI
 	}
 	if action != "" {
 		q = q.Where("action = ?", action)
+	}
+	if objectType != "" {
+		q = q.Where("object_type = ?", objectType)
 	}
 	if limit <= 0 {
 		limit = 50

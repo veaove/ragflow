@@ -23,10 +23,12 @@ import {
 } from '@/components/ui/table';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import {
+  AuditEntry,
   ConsoleRole,
   RolePermissionRow,
   createConsoleRole,
   deleteConsoleRole,
+  fetchConsoleAudits,
   fetchConsoleRoles,
   saveConsolePermissions,
 } from '@/services/console-service';
@@ -54,6 +56,21 @@ const ACTION_COLUMNS: { key: keyof RolePermissionRow; label: string }[] = [
   { key: 'can_delete', label: '删除' },
   { key: 'can_manage', label: '管理' },
 ];
+
+/** 审计里的动作 / 对象 → 中文，仅用于展示。 */
+const ACTION_LABELS: Record<string, string> = {
+  create: '创建',
+  update: '修改',
+  delete: '删除',
+};
+
+const OBJECT_LABELS: Record<string, string> = {
+  role: '角色',
+  role_permission: '权限矩阵',
+  member: '成员',
+  member_password: '密码重置',
+  resource_grant: '资源授权',
+};
 
 /** 把后端矩阵补齐成「每个模块一行」，缺失模块视为全 false。 */
 function normalizeMatrix(
@@ -94,6 +111,29 @@ export default function ConsoleRoles() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  // 变更记录：点开才请求，避免每次进页面都拉审计。
+  const [auditOpen, setAuditOpen] = useState(false);
+
+  const { data: auditData } = useQuery({
+    queryKey: ['console/audits', tenantId],
+    enabled: !!tenantId && auditOpen,
+    queryFn: async () => {
+      const res = await fetchConsoleAudits({ page: 1, page_size: 100 });
+      return res?.data ?? [];
+    },
+  });
+
+  /** 只保留权限相关的动作，其它审计（如智能体运行）不在这里展示。 */
+  const PERMISSION_OBJECTS = [
+    'role',
+    'role_permission',
+    'member',
+    'member_password',
+    'resource_grant',
+  ];
+  const audits: AuditEntry[] = (auditData ?? []).filter((a) =>
+    PERMISSION_OBJECTS.includes(a.object_type),
+  );
 
   const { data, isFetching } = useQuery({
     queryKey: ['console/roles', tenantId],
@@ -239,13 +279,18 @@ export default function ConsoleRoles() {
   return (
     <ConsoleGuard module="role">
       <section className="flex h-full flex-col p-5">
-      <header className="mb-4">
-        <h1 className="text-2xl font-medium text-text-primary">
-          {t('console.roles')}
-        </h1>
-        <p className="mt-1 text-sm text-text-secondary">
-          基于 RBAC 的细粒度权限管理
-        </p>
+      <header className="mb-4 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-medium text-text-primary">
+            {t('console.roles')}
+          </h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            基于 RBAC 的细粒度权限管理
+          </p>
+        </div>
+        <Button variant="secondary" onClick={() => setAuditOpen(true)}>
+          变更记录
+        </Button>
       </header>
 
       <div className="flex min-h-0 flex-1 gap-4">
@@ -390,6 +435,69 @@ export default function ConsoleRoles() {
               取消
             </Button>
             <Button onClick={createRole}>创建</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 权限变更记录：读写同一个 audit_log 表，这里只看权限相关的对象类型 */}
+      <Dialog open={auditOpen} onOpenChange={setAuditOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>权限变更记录</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>时间</TableHead>
+                  <TableHead>操作人</TableHead>
+                  <TableHead>动作</TableHead>
+                  <TableHead>对象</TableHead>
+                  <TableHead>IP</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {audits.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="py-8 text-center text-sm text-text-secondary"
+                    >
+                      暂无变更记录
+                    </TableCell>
+                  </TableRow>
+                )}
+                {audits.map((a) => (
+                  <TableRow key={a.id}>
+                    <TableCell className="whitespace-nowrap text-xs text-text-secondary">
+                      {a.create_time
+                        ? new Date(a.create_time).toLocaleString()
+                        : '-'}
+                    </TableCell>
+                    <TableCell className="text-xs">{a.operator || '-'}</TableCell>
+                    <TableCell className="text-xs">
+                      {ACTION_LABELS[a.action] ?? a.action}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {OBJECT_LABELS[a.object_type] ?? a.object_type}
+                      {a.object_id ? (
+                        <span className="ml-1 text-text-secondary">
+                          {a.object_id.slice(0, 8)}
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="text-xs text-text-secondary">
+                      {a.ip_address || '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setAuditOpen(false)}>
+              关闭
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

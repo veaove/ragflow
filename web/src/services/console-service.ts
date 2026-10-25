@@ -219,11 +219,14 @@ export const resetMemberPassword = (
 
 /**
  * 直接添加已注册用户为成员（无需对方接受邀请）。
- * role 走枚举 owner/admin/normal，与 user_tenant.role 一致。
+ *
+ * 两种方式二选一：
+ * - `role`：枚举 normal / admin（不带 role_id）
+ * - `role_id`：指定任意租户角色（含自定义），后端会据此推导枚举
  */
 export const addTenantMember = (
   tenantId: string,
-  body: { email: string; role?: string },
+  body: { email: string; role?: string; role_id?: string },
 ) => request.post<ResponseData<unknown>>(api.tenantAddMember(tenantId), body);
 
 // ── 当前用户权限 ────────────────────────────────────────────────────────────
@@ -241,3 +244,26 @@ export const fetchMyPermissions = (tenantId: string) =>
   request.get<ResponseData<MyPermissions>>(
     api.tenantMyPermissions(tenantId),
   );
+
+// ── 权限变更记录 ────────────────────────────────────────────────────────────
+
+/** 审计记录（权限相关的 object_type 由前端过滤）。 */
+export interface AuditEntry {
+  id: string;
+  action: string;
+  object_type: string;
+  object_id: string;
+  operator: string;
+  result?: string;
+  ip_address?: string;
+  create_time: number;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+}
+
+export const fetchConsoleAudits = (params: {
+  page?: number;
+  page_size?: number;
+  object_type?: string;
+}) =>
+  request.get<ResponseData<AuditEntry[]>>(api.audits, { params });

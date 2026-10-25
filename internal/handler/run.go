@@ -128,7 +128,7 @@ func (h *AuditHandler) ListAudits(c *gin.Context) {
 	if size < 1 {
 		size = 50
 	}
-	logs, err := dao.NewAuditLogDAO().List(c.Request.Context(), dao.DB, user.ID, canvasID, action, size, (page-1)*size)
+	logs, err := dao.NewAuditLogDAO().List(c.Request.Context(), dao.DB, user.ID, canvasID, action, c.Query("object_type"), size, (page-1)*size)
 	if err != nil {
 		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
 		return

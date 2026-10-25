@@ -108,7 +108,7 @@ func (d *AnalyticsDAO) CountChatSessions(ctx context.Context, db *gorm.DB, tenan
 func (d *AnalyticsDAO) CountCanvasSessions(ctx context.Context, db *gorm.DB, tenantID string, from, to int64, appID string) (int64, error) {
 	var total int64
 	q := db.WithContext(ctx).Table("api_4_conversation AS a").
-		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND COALESCE(NULLIF(u.tenant_id, ''), u.user_id) = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		q = q.Where("a.dialog_id = ?", appID)
@@ -215,7 +215,7 @@ func (d *AnalyticsDAO) ListCanvasSessions(ctx context.Context, db *gorm.DB, tena
 				WHERE m.conversation_id = a.id AND m.role = 'assistant'
 					AND m.feedback IS NOT NULL AND m.feedback <> ''
 				ORDER BY m.position DESC LIMIT 1) AS feedback`).
-		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND COALESCE(NULLIF(u.tenant_id, ''), u.user_id) = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		q = q.Where("a.dialog_id = ?", appID)
@@ -332,7 +332,7 @@ func (d *AnalyticsDAO) GetCanvasDetail(ctx context.Context, db *gorm.DB, tenantI
 			a.create_time AS start_time,
 			COALESCE(a.round, 0) AS rounds,
 			COALESCE(a.duration, 0) AS duration_ms`).
-		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND COALESCE(NULLIF(u.tenant_id, ''), u.user_id) = ?", tenantID).
 		Where("a.id = ?", sessionID).
 		Take(&head).Error
 	if err != nil {
@@ -463,7 +463,7 @@ func (d *AnalyticsDAO) TotalsCanvas(ctx context.Context, db *gorm.DB, tenantID s
 			0 AS success,
 			COALESCE(AVG(a.round), 0) AS rounds,
 			0 AS tokens`).
-		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND COALESCE(NULLIF(u.tenant_id, ''), u.user_id) = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		q = q.Where("a.dialog_id = ?", appID)
@@ -497,7 +497,7 @@ func (d *AnalyticsDAO) TotalsCanvas(ctx context.Context, db *gorm.DB, tenantID s
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up = 1 THEN 1 ELSE 0 END), 0) AS good,
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up IS NOT NULL THEN 1 ELSE 0 END), 0) AS rated`).
 		Joins("JOIN api_4_conversation AS a ON a.id = m.conversation_id").
-		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND COALESCE(NULLIF(u.tenant_id, ''), u.user_id) = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		aggQ = aggQ.Where("a.dialog_id = ?", appID)
@@ -602,7 +602,7 @@ func (d *AnalyticsDAO) TrendCanvas(ctx context.Context, db *gorm.DB, tenantID st
 			COUNT(DISTINCT a.user_id) AS customers,
 			0 AS good,
 			0 AS rated`).
-		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND COALESCE(NULLIF(u.tenant_id, ''), u.user_id) = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		q = q.Where("a.dialog_id = ?", appID)
@@ -623,7 +623,7 @@ func (d *AnalyticsDAO) TrendCanvas(ctx context.Context, db *gorm.DB, tenantID st
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up = 1 THEN 1 ELSE 0 END), 0) AS good,
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up IS NOT NULL THEN 1 ELSE 0 END), 0) AS rated`).
 		Joins("JOIN api_4_conversation AS a ON a.id = m.conversation_id").
-		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND COALESCE(NULLIF(u.tenant_id, ''), u.user_id) = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to)
 	if appID != "" {
 		rateQ = rateQ.Where("a.dialog_id = ?", appID)
@@ -699,7 +699,7 @@ func (d *AnalyticsDAO) AppsCanvas(ctx context.Context, db *gorm.DB, tenantID str
 			COALESCE(MAX(lat.avg_ms), 0) AS avg_ms,
 			0 AS good,
 			0 AS rated`).
-		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND COALESCE(NULLIF(u.tenant_id, ''), u.user_id) = ?", tenantID).
 		Joins(`LEFT JOIN (
 			SELECT canvas_id, AVG(duration_ms) AS avg_ms
 			FROM agent_run
@@ -730,7 +730,7 @@ func (d *AnalyticsDAO) CountDistinctCustomers(ctx context.Context, db *gorm.DB, 
 	canvasQ := `
 		SELECT a.user_id AS uid
 		FROM api_4_conversation AS a
-		JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?
+		JOIN user_canvas AS u ON u.id = a.dialog_id AND COALESCE(NULLIF(u.tenant_id, ''), u.user_id) = ?
 		WHERE a.create_time >= ? AND a.create_time <= ? AND COALESCE(a.user_id, '') <> ''`
 	args := []any{tenantID, from, to, tenantID, from, to}
 	if appID != "" {
@@ -782,7 +782,7 @@ func (d *AnalyticsDAO) AppRatesCanvas(ctx context.Context, db *gorm.DB, tenantID
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up = 1 THEN 1 ELSE 0 END), 0) AS good,
 			COALESCE(SUM(CASE WHEN m.role = 'assistant' AND m.thumb_up IS NOT NULL THEN 1 ELSE 0 END), 0) AS rated`).
 		Joins("JOIN api_4_conversation AS a ON a.id = m.conversation_id").
-		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND u.user_id = ?", tenantID).
+		Joins("JOIN user_canvas AS u ON u.id = a.dialog_id AND COALESCE(NULLIF(u.tenant_id, ''), u.user_id) = ?", tenantID).
 		Where("a.create_time >= ? AND a.create_time <= ?", from, to).
 		Group("a.dialog_id").
 		Scan(&rows).Error
