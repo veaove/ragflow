@@ -260,11 +260,19 @@ echo "[清理] 删除测试数据"
 
 # 顺序很重要：先移除成员，再删子部门，最后删父部门。
 # 反过来的话父部门因"有子部门/有成员"被拒，每跑一次就留下一对残留。
-req "$TOK" -X DELETE "$BASE/tenants/$TENANT/users" -d "{\"user_id\":\"$MEMBER_ID\"}" >/dev/null
+# 每步都打印返回码：清理失败如果静默，下一轮跑起来会有莫名其妙的脏数据。
+cleanup_step() { # cleanup_step <desc> <curl args...>
+  local desc="$1"; shift
+  local code
+  code=$(req "$TOK" "$@" | jq -r '.code // "no-response"')
+  echo "  $desc → code=$code"
+}
+
+cleanup_step "移除测试成员" -X DELETE "$BASE/tenants/$TENANT/users" -d "{\"user_id\":\"$MEMBER_ID\"}"
 sleep 1
-[ -n "$CHILD_ID" ] && req "$TOK" -X DELETE "$BASE/tenants/$TENANT/departments/$CHILD_ID" >/dev/null
-[ -n "$ROOT_ID" ] && req "$TOK" -X DELETE "$BASE/tenants/$TENANT/departments/$ROOT_ID" >/dev/null
-[ -n "$NEW_ROLE_ID" ] && req "$TOK" -X DELETE "$BASE/tenants/$TENANT/roles/$NEW_ROLE_ID" >/dev/null
+[ -n "$CHILD_ID" ] && cleanup_step "删除子部门" -X DELETE "$BASE/tenants/$TENANT/departments/$CHILD_ID"
+[ -n "$ROOT_ID" ] && cleanup_step "删除父部门" -X DELETE "$BASE/tenants/$TENANT/departments/$ROOT_ID"
+[ -n "$NEW_ROLE_ID" ] && cleanup_step "删除测试角色" -X DELETE "$BASE/tenants/$TENANT/roles/$NEW_ROLE_ID"
 
 echo ""
 echo "=============================================="
