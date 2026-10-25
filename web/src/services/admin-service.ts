@@ -594,3 +594,37 @@ export const listPlatformAudits = (params: {
     api.adminAudits,
     { params },
   );
+
+/** 平台安全策略。字段与后端 security.Settings 一一对应。 */
+export interface SecuritySettings {
+  login: {
+    method_password: boolean;
+    method_sso: boolean;
+    method_ldap: boolean;
+    lock_enabled: boolean;
+    lock_threshold: number;
+    lock_minutes: number;
+  };
+  password: {
+    min_length: number;
+    complexity: boolean;
+    expire_days: number;
+  };
+  session: {
+    timeout_minutes: number;
+  };
+}
+
+/** 读取安全策略。未保存过的字段由后端补默认值。 */
+export const getSecuritySettings = () =>
+  request.get<ResponseData<SecuritySettings>>(api.adminSecurity);
+
+/** 保存安全策略（整体替换，返回保存后的全量）。 */
+export const updateSecuritySettings = (settings: SecuritySettings) =>
+  request.put<ResponseData<SecuritySettings>>(api.adminSecurity, settings);
+
+/** 手动解除某个账号的登录失败锁定。 */
+export const unlockUserLogin = (username: string) =>
+  request.put<ResponseData<{ username: string; locked: boolean }>>(
+    `${api.adminListUsers}/${encodeURIComponent(username)}/unlock`,
+  );

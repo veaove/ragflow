@@ -30,12 +30,41 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-const accessTokenExpireSeconds = 86400
+// accessTokenExpireSeconds is the session lifetime applied when an access token
+// is verified. It used to be a constant; it is a variable now so the platform
+// security policy can change it without a restart.
+//
+// atomic because ExtractAccessToken runs on every authenticated request while
+// the admin console may be saving a new policy at the same time.
+var accessTokenExpireSeconds atomic.Int64
+
+func init() {
+	accessTokenExpireSeconds.Store(86400)
+}
+
+// SetAccessTokenTTL updates the session lifetime, in seconds. Ignored when the
+// value is not positive, so a broken policy can never make tokens immortal or
+// instantly invalid.
+//
+// Note this only affects tokens verified after the call. Tokens already issued
+// carry their own timestamp and are re-checked on every request, so shrinking
+// the TTL does invalidate older sessions — the admin UI warns about that.
+func SetAccessTokenTTL(seconds int64) {
+	if seconds > 0 {
+		accessTokenExpireSeconds.Store(seconds)
+	}
+}
+
+// AccessTokenTTL reports the lifetime currently in effect, in seconds.
+func AccessTokenTTL() int64 {
+	return accessTokenExpireSeconds.Load()
+}
 
 // ExtractAccessToken extract access token from authorization header
 // This is equivalent to: str(jwt.loads(authorization)) in Python
@@ -47,7 +76,7 @@ func ExtractAccessToken(authorization, secretKey string) (string, error) {
 	// Strip "Bearer " prefix if present
 	token := strings.TrimPrefix(authorization, "Bearer ")
 
-	encodedValue, err := unsignAccessToken(token, secretKey, accessTokenExpireSeconds)
+	encodedValue, err := unsignAccessToken(token, secretKey, accessTokenExpireSeconds.Load())
 	if err != nil {
 		return "", fmt.Errorf("failed to decode token: %w", err)
 	}

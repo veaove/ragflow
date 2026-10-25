@@ -93,6 +93,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 			protected.PUT("/users/:username/activate", r.handler.UpdateUserActivateStatus)
 			protected.PUT("/users/:username/admin", r.handler.GrantAdmin)
 			protected.DELETE("/users/:username/admin", r.handler.RevokeAdmin)
+			// 解除登录失败锁定（配合安全策略里的锁定阈值使用）
+			protected.PUT("/users/:username/unlock", r.handler.UnlockUserLogin)
 
 			// Service management
 			protected.GET("/services", r.handler.GetServices)

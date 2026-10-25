@@ -12,6 +12,7 @@ import {
   LucideMonitor,
   LucideScrollText,
   LucideServerCrash,
+  LucideShieldCheck,
   LucideSquareUserRound,
   LucideUserCog,
   LucideUserStar,
@@ -104,6 +105,11 @@ const AdminNavigationLayout = () => {
         path: Routes.AdminAudits,
         name: t('admin.platformAudit'),
         icon: <LucideScrollText className="size-[1em]" />,
+      },
+      {
+        path: Routes.AdminSecurity,
+        name: t('admin.securitySettings'),
+        icon: <LucideShieldCheck className="size-[1em]" />,
       },
       {
         path: Routes.AdminSandboxSettings,

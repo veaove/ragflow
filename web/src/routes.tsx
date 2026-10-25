@@ -108,6 +108,8 @@ export enum Routes {
   ConsoleRoles = '/console/roles',
   ConsoleGrants = '/console/grants',
   AdminSandboxSettings = `${Admin}/sandbox-settings`,
+  // 平台安全策略：登录方式 / 密码强度 / 会话超时 / 登录失败锁定
+  AdminSecurity = `${Admin}/security`,
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
   AdminMonitoring = `${Admin}/monitoring`,
@@ -527,6 +529,10 @@ const routeConfigOptions = [
               {
                 path: Routes.AdminSandboxSettings,
                 Component: () => import('@/pages/admin/sandbox-settings'),
+              },
+              {
+                path: Routes.AdminSecurity,
+                Component: () => import('@/pages/admin/security'),
               },
               ...(IS_ENTERPRISE
                 ? [

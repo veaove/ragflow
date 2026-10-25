@@ -3996,9 +3996,53 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       auditActionDelete: '删除',
       auditActionRead: '查询',
       sandboxSettings: '沙箱配置',
+      securitySettings: '安全设置',
       registrationWhitelist: '注册白名单',
       roles: '角色',
       monitoring: '监控',
+
+      securityPage: {
+        description: '平台级安全策略，对所有租户生效。',
+        loadFailed: '加载安全配置失败',
+        save: '保存',
+        saving: '保存中…',
+        saved: '已保存',
+        saveFailed: '保存失败',
+
+        loginMethods: '登录方式',
+        loginMethodsDesc:
+          '控制允许的登录入口。关闭账号密码登录前请确认其他方式可用，否则将无人能登录。',
+        methodPassword: '账号密码登录',
+        methodPasswordDesc: '使用邮箱和密码登录',
+        methodSSO: 'SSO 单点登录',
+        methodSSODesc: '需对接企业身份提供商，当前部署未开通',
+        methodLDAP: 'LDAP 目录同步',
+        methodLDAPDesc: '需对接 LDAP 服务器，当前部署未开通',
+        enterpriseOnly: '企业增强',
+        atLeastOneMethod: '至少需要保留一种登录方式',
+
+        passwordPolicy: '密码策略',
+        passwordPolicyDesc: '仅对新设置的密码生效，不会影响既有密码。',
+        minLength: '最小密码长度',
+        minLengthUnit: '位',
+        complexity: '密码复杂度',
+        complexityDesc: '必须包含大写字母、小写字母和数字',
+        expireDays: '定期更换',
+        expireDaysUnit: '天',
+        expireNever: '填 0 表示不强制更换',
+
+        sessionSecurity: '会话与登录安全',
+        sessionSecurityDesc:
+          '会话超时对已签发的 token 同样生效，改小会让在线用户立即掉线。',
+        sessionTimeout: '会话超时时间',
+        minutes: '分钟',
+        lockEnabled: '登录失败锁定',
+        lockEnabledDesc: '连续失败达到阈值后临时锁定该账号',
+        lockThreshold: '失败次数阈值',
+        lockThresholdUnit: '次',
+        lockMinutes: '锁定时长',
+        lockHint: '锁定期内该账号无法登录，管理后台可手动解除。',
+      },
 
       sandboxSettingsPage: {
         description:

@@ -134,6 +134,12 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*enti
 		return nil, common.CodeExceptionError, err
 	}
 
+	// Enforce the platform password policy before hashing. This runs on the
+	// plaintext, so it must happen after decryption and before GenerateWerkzeug.
+	if err := newLoginGuard().checkPasswordPolicy(ctx, decryptedPassword); err != nil {
+		return nil, common.CodeOperatingError, err
+	}
+
 	var hashedPassword string
 	hashedPassword, err = common.GenerateWerkzeugPasswordHash(decryptedPassword)
 	if err != nil {
@@ -266,9 +272,20 @@ func (s *UserService) Login(ctx context.Context, req *LoginRequest) (*entity.Use
 		return nil, common.CodeAuthenticationError, err
 	}
 
+	// Lockout check runs before the user lookup so that a locked account and an
+	// address that was never registered look identical from the outside.
+	guard := newLoginGuard()
+	policy, lockErr := guard.checkLocked(ctx, req.Username)
+	if lockErr != nil {
+		return nil, common.CodeAuthenticationError, lockErr
+	}
+
 	// Get user by email (using username field as email)
 	user, err := s.userDAO.GetByEmail(ctx, dao.DB, req.Username)
 	if err != nil {
+		// Count failures for unknown addresses too, otherwise the lockout itself
+		// becomes an account-enumeration oracle.
+		guard.recordFailure(ctx, req.Username, "", policy)
 		return nil, common.CodeAuthenticationError, fmt.Errorf("invalid email or password")
 	}
 
@@ -280,12 +297,15 @@ func (s *UserService) Login(ctx context.Context, req *LoginRequest) (*entity.Use
 
 	// Verify password
 	if user.Password == nil || !s.VerifyPassword(*user.Password, decryptedPassword) {
+		guard.recordFailure(ctx, req.Username, "", policy)
 		return nil, common.CodeAuthenticationError, fmt.Errorf("invalid username or password")
 	}
 
 	if user.Status == nil || *user.Status != "1" {
 		return nil, common.CodeForbidden, fmt.Errorf("user is disabled")
 	}
+
+	guard.clearFailures(ctx, req.Username)
 
 	// Generate new access token
 	token := common.GenerateToken()
@@ -311,8 +331,17 @@ func (s *UserService) LoginByEmail(ctx context.Context, req *EmailLoginRequest) 
 		return nil, common.CodeAuthenticationError, err
 	}
 
+	// /auth/login routes here, so the lockout has to be enforced on this path —
+	// adding it only to Login() would leave the frontend login page unguarded.
+	guard := newLoginGuard()
+	policy, lockErr := guard.checkLocked(ctx, req.Email)
+	if lockErr != nil {
+		return nil, common.CodeAuthenticationError, lockErr
+	}
+
 	user, err := s.userDAO.GetByEmail(ctx, dao.DB, req.Email)
 	if err != nil {
+		guard.recordFailure(ctx, req.Email, "", policy)
 		common.Error("user not found by email", err)
 		return nil, common.CodeAuthenticationError, fmt.Errorf("email: %s is not registered", req.Email)
 	}
@@ -323,12 +352,15 @@ func (s *UserService) LoginByEmail(ctx context.Context, req *EmailLoginRequest) 
 	}
 
 	if user.Password == nil || !s.VerifyPassword(*user.Password, decryptedPassword) {
+		guard.recordFailure(ctx, req.Email, "", policy)
 		return nil, common.CodeAuthenticationError, fmt.Errorf("email and password do not match")
 	}
 
 	if user.IsActive == "0" {
 		return nil, common.CodeForbidden, fmt.Errorf("this account has been disabled, please contact the administrator")
 	}
+
+	guard.clearFailures(ctx, req.Email)
 
 	// Generate new access token
 	token := common.GenerateToken()
@@ -728,6 +760,13 @@ func (s *UserService) ChangePassword(ctx context.Context, user *entity.User, req
 
 	// If new password is provided, update password
 	if req.NewPassword != nil {
+		// Users choosing their own password must satisfy the platform policy.
+		// The admin reset path is deliberately exempt: it exists to rescue an
+		// account that is already locked out, and a policy check there would make
+		// it impossible to set a temporary password.
+		if err := newLoginGuard().checkPasswordPolicy(ctx, *req.NewPassword); err != nil {
+			return common.CodeBadRequest, err
+		}
 		hashedPassword, err := common.GenerateWerkzeugPasswordHash(*req.NewPassword)
 		if err != nil {
 			return common.CodeServerError, fmt.Errorf("failed to hash new password: %w", err)
@@ -742,6 +781,19 @@ func (s *UserService) ChangePassword(ctx context.Context, user *entity.User, req
 		return common.CodeServerError, err
 	}
 	return common.CodeSuccess, nil
+}
+
+// UnlockLogin clears the failed sign-in counter for an account.
+//
+// Exposed for the admin console: without it a locked-out user has no recourse
+// but to wait out the window, which turns a security feature into a support
+// ticket. The admin reset path also bypasses the password policy for the same
+// reason — recovery must not be blockable by policy.
+func (s *UserService) UnlockLogin(ctx context.Context, email string) error {
+	if email == "" {
+		return fmt.Errorf("email is required")
+	}
+	return newLoginGuard().unlock(ctx, email)
 }
 
 // SetTenantInfoRequest represents the request for setting tenant info

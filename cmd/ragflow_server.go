@@ -40,6 +40,7 @@ import (
 	"ragflow/internal/server"
 	"ragflow/internal/server/admin"
 	apipkg "ragflow/internal/server/api"
+	"ragflow/internal/service/security"
 	"ragflow/internal/server/bootstrap"
 	deepdocpkg "ragflow/internal/server/deepdoc"
 	ingestorpkg "ragflow/internal/server/ingestor"
@@ -469,6 +470,17 @@ func main() {
 	if migrate {
 		common.Info("Database migrations completed")
 		return
+	}
+
+	// Push the configured session TTL into the token layer before any server
+	// mode boots, so the very first token issued already honours the policy
+	// instead of defaulting to 24h until someone saves the form again.
+	if secSettings, loadErr := security.Load(ctx, dao.DB); loadErr != nil {
+		common.Info("load security settings failed, keeping the default session TTL", zap.Error(loadErr))
+	} else {
+		common.SetAccessTokenTTL(secSettings.TimeoutSeconds())
+		common.Info("session TTL applied from security policy",
+			zap.Int("timeout_minutes", secSettings.Session.TimeoutMinutes))
 	}
 
 	if err = checkDatabaseVersion(ctx); err != nil {
