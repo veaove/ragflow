@@ -193,14 +193,31 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 		callerIsOwner := db.Model(&entity.UserTenant{}).
 			Select("1").
 			Where("user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.user_id = ? AND user_tenant.role = ? AND user_tenant.status = ?", subject.UserID, string(RoleOwner), string(entity.StatusValid))
+		// 成员包含 normal 与 admin：admin 是 normal 的超集，只认 normal 会让
+		// 部门管理员看不到 permission=team 的资源。
 		callerIsMember := db.Model(&entity.UserTenant{}).
 			Select("1").
-			Where("user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.user_id = ? AND user_tenant.role = ? AND user_tenant.status = ?", subject.UserID, string(RoleNormal), string(entity.StatusValid))
+			Where("user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.user_id = ? AND user_tenant.role IN ? AND user_tenant.status = ?",
+				subject.UserID, []string{string(RoleNormal), string(RoleAdmin)}, string(entity.StatusValid))
+		// 显式授权覆盖默认的二值可见性：命中 team / 本人 / 本人所在部门任一条即可见。
+		// 部门用子查询而非先查一次，省一次往返且不引入时序问题。
+		granted := db.Model(&entity.ResourceGrant{}).
+			Select("1").
+			Where("resource_grant.tenant_id = knowledgebase.tenant_id").
+			Where("resource_grant.resource_kind = ?", string(ResourceKindDataset)).
+			Where("resource_grant.resource_id = knowledgebase.id").
+			Where(`resource_grant.subject_kind = ?
+				OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)
+				OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = (SELECT department_id FROM user WHERE id = ?))`,
+				entity.GrantSubjectTeam,
+				entity.GrantSubjectUser, subject.UserID,
+				entity.GrantSubjectDepartment, subject.UserID)
 		accessibleDatasets := db.Model(&entity.Knowledgebase{}).
 			Select("knowledgebase.id").
 			Where("knowledgebase.status = ?", string(entity.StatusValid)).
 			Where("EXISTS (?)", activeOwner).
-			Where("(EXISTS (?) OR (knowledgebase.permission = ? AND EXISTS (?)))", callerIsOwner, string(entity.TenantPermissionTeam), callerIsMember)
+			Where("(EXISTS (?) OR (knowledgebase.permission = ? AND EXISTS (?)) OR EXISTS (?))",
+				callerIsOwner, string(entity.TenantPermissionTeam), callerIsMember, granted)
 		return query.Where("knowledgebase.id IN (?)", accessibleDatasets)
 	}}, true, nil
 }
@@ -332,6 +349,36 @@ func (e *evaluation) checkDependency(ctx context.Context, subject Subject, entry
 	return nil
 }
 
+// grantAllows reports whether an explicit resource_grant row covers the subject.
+//
+// This is the bridge between the console's "visible to: team / department /
+// user" setting and the engine: rows here override the legacy binary
+// `permission` column. Department membership is resolved with a subquery so the
+// check stays a single round trip.
+func (e *evaluation) grantAllows(ctx context.Context, subject Subject, resource Resource) (bool, error) {
+	source, ok := e.source.(*databaseSource)
+	if !ok || source.db == nil {
+		return false, nil
+	}
+	var count int64
+	err := source.db.WithContext(ctx).
+		Model(&entity.ResourceGrant{}).
+		Where("resource_grant.tenant_id = ?", resource.TenantID).
+		Where("resource_grant.resource_kind = ?", string(resource.Ref.Kind)).
+		Where("resource_grant.resource_id = ?", resource.Ref.ID).
+		Where(`resource_grant.subject_kind = ?
+			OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)
+			OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = (SELECT department_id FROM user WHERE id = ?))`,
+			entity.GrantSubjectTeam,
+			entity.GrantSubjectUser, subject.UserID,
+			entity.GrantSubjectDepartment, subject.UserID).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func (e *evaluation) resolveAccess(ctx context.Context, subject Subject, ref ResourceRef) (Access, error) {
 	if err := validateSubject(subject); err != nil {
 		return Access{}, err
@@ -370,6 +417,17 @@ func (e *evaluation) resolveResource(ctx context.Context, subject Subject, resou
 
 	switch resource.Visibility {
 	case VisibilityPrivate:
+		// private 默认只有 owner 可见；resource_grant 是它的唯一例外。
+		// 只在这一支查授权表：tenant 可见性已经放行，没必要为它多一次查询。
+		if granted, err := e.grantAllows(ctx, subject, resource); err != nil {
+			return Access{}, err
+		} else if granted {
+			operations := resource.TenantOperations
+			if operations == nil {
+				operations = resource.OwnerOperations
+			}
+			return resourceAccessWithOperations(resource, AccessSourceShared, operations), nil
+		}
 		return Access{}, ErrPermissionDenied
 	case VisibilityTenant:
 		requirement := resource.TenantRequirement

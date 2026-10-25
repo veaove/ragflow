@@ -131,6 +131,11 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
         name: 'console.roles',
         'data-testid': 'nav-console-roles',
       } as SidebarMenuItem,
+      {
+        path: Routes.ConsoleGrants,
+        name: 'console.grants',
+        'data-testid': 'nav-console-grants',
+      } as SidebarMenuItem,
     ],
   },
   // 配置中心：一级菜单 + 6 个二级菜单。子项复用原有 /user-setting/* 页面，

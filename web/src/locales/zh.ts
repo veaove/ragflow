@@ -229,6 +229,7 @@ export default {
       organization: '组织架构',
       members: '用户管理',
       roles: '角色权限',
+      grants: '资源授权',
     },
     header: {
       tenantConsole: '租户控制台',

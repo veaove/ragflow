@@ -158,3 +158,51 @@ export const saveConsolePermissions = (
   api.tenantConsoleRolePermissions(tenantId, id),
   { permissions },
 );
+
+// ── 资源授权 ────────────────────────────────────────────────────────────────
+
+/** 授权主体：全团队 / 某个部门 / 某个成员。 */
+export interface GrantSubject {
+  kind: 'team' | 'department' | 'user';
+  id: string;
+  name: string;
+}
+
+/** 一行资源 + 它当前的授权规则。 */
+export interface GrantResource {
+  resource_id: string;
+  resource_name: string;
+  owner_id: string;
+  owner_name: string;
+  /** 旧二值语义：private（仅自己）/ team（全团队），没有显式规则时由它决定。 */
+  default_scope: string;
+  grants: GrantSubject[];
+  update_time: number;
+}
+
+export const fetchGrants = (
+  tenantId: string,
+  params: {
+    kind: 'dataset' | 'canvas' | 'memory';
+    keywords?: string;
+    page?: number;
+    page_size?: number;
+  },
+) => request.get<ResponseData<{ resources: GrantResource[]; total: number }>>(
+  api.tenantGrants(tenantId),
+  { params },
+);
+
+/**
+ * 整体覆盖某个资源的授权规则。传空数组表示撤销所有显式规则，
+ * 回到 `default_scope` 决定的默认可见性。
+ */
+export const setGrants = (
+  tenantId: string,
+  kind: 'dataset' | 'canvas' | 'memory',
+  resourceId: string,
+  subjects: GrantSubject[],
+) => request.put<ResponseData<{ resource_id: string }>>(
+  api.tenantGrant(tenantId, kind, resourceId),
+  { subjects },
+);

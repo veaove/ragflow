@@ -250,6 +250,7 @@ export default {
       organization: 'Organization',
       members: 'Members',
       roles: 'Roles & Permissions',
+      grants: 'Resource access',
     },
     header: {
       tenantConsole: 'Tenant console',

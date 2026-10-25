@@ -384,3 +384,76 @@ func (h *ConsoleHandler) SaveConsolePermissions(c *gin.Context) {
 	}
 	common.SuccessWithData(c, gin.H{"id": c.Param("id")}, "success")
 }
+
+// ─── 资源授权 ────────────────────────────────────────────────────────────────
+
+// ListResourceGrants handles GET /tenants/:tenant_id/grants?kind=dataset.
+//
+// Returns the resource rows plus their current rules so the console can render
+// "可见范围" without a second round trip per row.
+func (h *ConsoleHandler) ListResourceGrants(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	tenantID := consoleTenantID(c)
+	if err := requireTenantAccess(c, user.ID, tenantID, false); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
+		return
+	}
+
+	kind := c.DefaultQuery("kind", "dataset")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 200 {
+		size = 20
+	}
+
+	rows, total, err := service.NewResourceGrantService().ListResources(
+		c.Request.Context(), tenantID, kind,
+		c.Query("keywords"), size, (page-1)*size,
+	)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{"resources": rows, "total": total}, "success")
+}
+
+// SetResourceGrants handles PUT /tenants/:tenant_id/grants/:kind/:resource_id.
+//
+// The body carries the complete rule set: {subjects:[{kind,id}]}. Sending an
+// empty list revokes every explicit rule, leaving the legacy permission column
+// in charge again.
+func (h *ConsoleHandler) SetResourceGrants(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	tenantID := consoleTenantID(c)
+	if err := requireTenantAccess(c, user.ID, tenantID, true); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
+		return
+	}
+
+	var req struct {
+		Subjects []service.GrantSubject `json:"subjects"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, err.Error())
+		return
+	}
+
+	if err := service.NewResourceGrantService().SetGrants(
+		c.Request.Context(), tenantID, c.Param("kind"), c.Param("resource_id"), req.Subjects,
+	); err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{"resource_id": c.Param("resource_id")}, "success")
+}

@@ -371,6 +371,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 				tenants.PUT("/:tenant_id/roles/:id", r.consoleHandler.UpdateConsoleRole)
 				tenants.DELETE("/:tenant_id/roles/:id", r.consoleHandler.DeleteConsoleRole)
 				tenants.PUT("/:tenant_id/roles/:id/permissions", r.consoleHandler.SaveConsolePermissions)
+				// 资源授权：知识库 / 智能体 / 记忆的可见范围
+				tenants.GET("/:tenant_id/grants", r.consoleHandler.ListResourceGrants)
+				tenants.PUT("/:tenant_id/grants/:kind/:resource_id", r.consoleHandler.SetResourceGrants)
 			}
 
 			// Tenant routes (per-tenant resources)

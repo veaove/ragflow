@@ -106,6 +106,7 @@ export enum Routes {
   ConsoleOrganization = '/console/organization',
   ConsoleMembers = '/console/members',
   ConsoleRoles = '/console/roles',
+  ConsoleGrants = '/console/grants',
   AdminSandboxSettings = `${Admin}/sandbox-settings`,
   AdminWhitelist = `${Admin}/whitelist`,
   AdminRoles = `${Admin}/roles`,
@@ -337,6 +338,10 @@ const routeConfigOptions = [
       {
         path: Routes.ConsoleRoles,
         Component: () => import('@/pages/console/roles'),
+      },
+      {
+        path: Routes.ConsoleGrants,
+        Component: () => import('@/pages/console/grants'),
       },
       {
         path: Routes.Qc,
