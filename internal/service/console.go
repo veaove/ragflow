@@ -43,9 +43,11 @@ type ConsoleMember struct {
 	Position       string `json:"position"`
 	RoleID         string `json:"role_id"`
 	RoleName       string `json:"role_name"`
-	RoleEnum       string `json:"role"`
-	Status         string `json:"status"`
-	CreateTime     int64  `json:"create_time"`
+	// 字段名带 Enum 是为了和 RoleName（角色显示名）区分，但 SQL 列名是 role，
+	// 必须显式声明 column，否则 GORM 会按 role_enum 去找而不存在 → 永远空。
+	RoleEnum   string `gorm:"column:role" json:"role"`
+	Status     string `json:"status"`
+	CreateTime int64  `json:"create_time"`
 	// CreateDate carries the raw datetime so the conversion to millis works on
 	// both MySQL and the sqlite used by tests (no UNIX_TIMESTAMP there).
 	CreateDate *time.Time `gorm:"column:create_date" json:"-"`
