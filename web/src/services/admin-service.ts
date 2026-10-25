@@ -323,10 +323,15 @@ export const listPlatformModels = (params: {
     params,
   });
 
-export const createUser = (email: string, password: string) =>
+export const createUser = (
+  email: string,
+  password: string,
+  tenantId: string,
+) =>
   request.post<ResponseData<boolean>>(adminCreateUser, {
     username: email,
     password,
+    tenant_id: tenantId,
   });
 
 export const grantSuperuser = (email: string) =>

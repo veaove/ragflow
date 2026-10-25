@@ -210,12 +210,17 @@ export default function Tenants() {
   } | null>(null);
   const [newOwnerEmail, setNewOwnerEmail] = useState('');
 
+  // 新建租户（选管理员）和设置超管都要选用户，所以常驻查询
   const { data: allUsers } = useQuery({
     queryKey: ['admin/users'],
-    enabled: !!ownerDialog,
     queryFn: async () => {
       const { data } = await listUsers();
-      return (data?.data ?? []) as Array<{ email: string; nickname?: string }>;
+      return (data?.data ?? []) as Array<{
+        email: string;
+        nickname?: string;
+        is_superuser?: boolean;
+        tenant_name?: string;
+      }>;
     },
   });
 
@@ -405,14 +410,23 @@ export default function Tenants() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label>管理员邮箱</Label>
-              <Input
+              <Label>管理员账户</Label>
+              <select
                 value={ownerEmail}
                 onChange={(e) => setOwnerEmail(e.target.value)}
-                placeholder="必须是系统中已存在的用户"
-              />
+                className="h-9 rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
+              >
+                <option value="">请选择用户</option>
+                {(allUsers ?? []).map((user) => (
+                  <option key={user.email} value={user.email}>
+                    {user.email} · {user.nickname || '无昵称'} ·{' '}
+                    {user.is_superuser ? '平台超管' : '普通用户'} ·{' '}
+                    {user.tenant_name || '未分配租户'}
+                  </option>
+                ))}
+              </select>
               <p className="text-xs text-text-secondary">
-                不会自动创建账号。请先在「用户管理」里建好用户，再填写他的邮箱。
+                不会自动创建账号。请先在「用户管理」里建好用户，再从这里选择。
               </p>
             </div>
             {error && (
@@ -554,9 +568,9 @@ export default function Tenants() {
               <option value="">请选择</option>
               {(allUsers ?? []).map((user) => (
                 <option key={user.email} value={user.email}>
-                  {user.nickname
-                    ? `${user.nickname}（${user.email}）`
-                    : user.email}
+                  {user.email} · {user.nickname || '无昵称'} ·{' '}
+                  {user.is_superuser ? '平台超管' : '普通用户'} ·{' '}
+                  {user.tenant_name || '未分配租户'}
                 </option>
               ))}
             </select>

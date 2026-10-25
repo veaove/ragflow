@@ -191,12 +191,14 @@ function AdminUserManagement() {
       email,
       password,
       role,
+      tenantId,
     }: {
       email: string;
       password: string;
       role?: string;
+      tenantId: string;
     }) => {
-      await createUser(email, rsaPsw(password) as string);
+      await createUser(email, rsaPsw(password) as string, tenantId);
 
       if (IS_ENTERPRISE && role) {
         await updateUserRoleMutation.mutateAsync({ email, role });

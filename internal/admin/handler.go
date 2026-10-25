@@ -248,6 +248,9 @@ type CreateUserHTTPRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
 	Role     string `json:"role"`
+	// TenantID 必填：用户与租户解耦后，建用户时就要明确他归属哪个租户，
+	// 否则新建的账号登录后没有可用空间。
+	TenantID string `json:"tenant_id"`
 }
 
 // CreateUser handle create user
@@ -261,9 +264,13 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	if req.Role == "" {
 		req.Role = "user"
 	}
+	if strings.TrimSpace(req.TenantID) == "" {
+		common.ErrorWithCode(c, common.CodeBadRequest, "tenant_id is required")
+		return
+	}
 	ctx := c.Request.Context()
 
-	userInfo, err := h.service.CreateUser(ctx, req.Username, req.Password, req.Role)
+	userInfo, err := h.service.CreateUser(ctx, req.Username, req.Password, req.Role, req.TenantID)
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return

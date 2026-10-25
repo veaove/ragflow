@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { listRoles } from '@/services/admin-service';
+import { listRoles, listTenants } from '@/services/admin-service';
 
 import EnterpriseFeature from '../components/enterprise-feature';
 import { IS_ENTERPRISE } from '../utils';
@@ -33,6 +33,8 @@ interface CreateUserFormData {
   password: string;
   confirmPassword: string;
   role?: string;
+  /** 所属租户，必选 —— 用户与租户解耦后建号时就要确定归属。 */
+  tenantId: string;
 }
 
 interface CreateUserFormProps {
@@ -47,6 +49,14 @@ export const CreateUserForm = ({
   onSubmit = () => {},
 }: CreateUserFormProps) => {
   const { t } = useTranslation();
+
+  const { data: tenantList } = useQuery({
+    queryKey: ['admin/tenants-all'],
+    queryFn: async () => {
+      const { data } = await listTenants({ page: 1, page_size: 100 });
+      return data?.data?.list ?? [];
+    },
+  });
 
   const { data: roleList } = useQuery({
     queryKey: ['admin/listRoles'],
@@ -130,6 +140,40 @@ export const CreateUserForm = ({
           )}
         />
 
+        <FormField
+          control={form.control}
+          name="tenantId"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium">
+                所属租户 <span className="text-text-disabled">（必选）</span>
+              </FormLabel>
+              <FormControl>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <SelectTrigger className="w-full h-10">
+                    <SelectValue placeholder="请选择租户" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-bg-base">
+                    {tenantList?.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name}
+                      </SelectItem>
+                    )) ?? (
+                      <div className="text-text-secondary px-2 py-6 text-sm text-center">
+                        暂无租户，请先在「租户管理」创建
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </FormControl>
+              <FormMessage />
+              <p className="text-xs text-text-secondary">
+                用户创建后归属该租户，角色为普通成员；超管请在「租户管理」里单独设置。
+              </p>
+            </FormItem>
+          )}
+        />
+
         <EnterpriseFeature>
           {/* Role field */}
           {() => (
@@ -188,6 +232,7 @@ function useCreateUserForm(props?: {
           .string()
           .min(1, { message: t('admin.confirmPasswordRequired') }),
         role: z.string().optional(),
+        tenantId: z.string().min(1, { message: '请选择所属租户' }),
       })
       .refine((data) => data.password === data.confirmPassword, {
         message: t('admin.confirmPasswordDoNotMatch'),
@@ -200,6 +245,7 @@ function useCreateUserForm(props?: {
       email: '',
       password: '',
       confirmPassword: '',
+      tenantId: '',
       ...(props?.defaultValues ?? {}),
     },
     resolver: zodResolver(schema),
