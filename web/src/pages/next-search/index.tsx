@@ -26,7 +26,6 @@ import { useCheckSettings } from './hooks';
 import './index.less';
 import SearchHome from './search-home';
 import { SearchSetting } from './search-setting';
-import SearchingPage from './searching';
 
 export default function SearchPage() {
   const [isSearching, setIsSearching] = useState(false);
@@ -55,32 +54,23 @@ export default function SearchPage() {
     >
       <div className="flex gap-3 flex-1 min-w-0 bg-bg-base border-0.5 border-border-button">
         <div className="flex-1 min-w-0 overflow-hidden">
-          {!isSearching && (
-            <div className="animate-fade-in-down h-full overflow-x-hidden overflow-y-auto">
-              <SearchHome
-                setIsSearching={setIsSearching}
-                isSearching={isSearching}
-                searchText={searchText}
-                setSearchText={setSearchText}
-                userInfo={userInfo}
-                canSearch={!checkOpenSetting}
-                kbIds={
-                  (SearchData as ISearchAppDetailProps)?.search_config
-                    ?.kb_ids ?? []
-                }
-              />
-            </div>
-          )}
-          {isSearching && (
-            <div className="animate-fade-in-up h-full">
-              <SearchingPage
-                setIsSearching={setIsSearching}
-                searchText={searchText}
-                setSearchText={setSearchText}
-                data={SearchData as ISearchAppDetailProps}
-              />
-            </div>
-          )}
+          {/* 不再整页切换到独立的结果页：提问后结果内嵌在「AI 回答」卡片里，
+              这样上方的搜索框、热门问题都还在，用户可以接着问。 */}
+          <div className="animate-fade-in-down h-full overflow-x-hidden overflow-y-auto">
+            <SearchHome
+              setIsSearching={setIsSearching}
+              isSearching={isSearching}
+              searchText={searchText}
+              setSearchText={setSearchText}
+              userInfo={userInfo}
+              canSearch={!checkOpenSetting}
+              kbIds={
+                (SearchData as ISearchAppDetailProps)?.search_config?.kb_ids ??
+                []
+              }
+              data={SearchData as ISearchAppDetailProps}
+            />
+          </div>
         </div>
         {openSetting && (
           <SearchSetting

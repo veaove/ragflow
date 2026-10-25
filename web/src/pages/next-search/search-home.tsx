@@ -16,6 +16,7 @@
 
 import message from '@/components/ui/message';
 import { IUserInfo } from '@/interfaces/database/user-setting';
+import type { ISearchAppDetailProps } from '../next-searches/hooks';
 import request from '@/utils/request';
 import { useQuery } from '@tanstack/react-query';
 import { isEmpty, trim } from 'lodash';
@@ -29,6 +30,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import './index.less';
+import SearchingPage from './searching';
 import { RAGFlowLogo } from './ragflow-logo';
 
 
@@ -50,6 +52,7 @@ export default function SearchHome({
   canSearch,
   showEmbedLogo,
   kbIds = [],
+  data,
 }: {
   isSearching: boolean;
   setIsSearching: Dispatch<SetStateAction<boolean>>;
@@ -60,6 +63,8 @@ export default function SearchHome({
   showEmbedLogo?: boolean;
   /** 当前搜索应用绑定的知识库，用于「相似问题」实时检索。 */
   kbIds?: string[];
+  /** 搜索结果区域复用同一份搜索应用配置。 */
+  data?: ISearchAppDetailProps;
 }) {
   const { t } = useTranslation();
 
@@ -211,17 +216,29 @@ export default function SearchHome({
               基于知识库内容智能生成
             </p>
 
-            <div className="flex flex-1 flex-col items-center justify-center gap-3">
-              <div className="flex size-16 items-center justify-center rounded-full bg-[#EEF2FF]">
-                <Sparkles size={28} className="text-[#4F46E5]" />
+            {isSearching ? (
+              // 提问后不再跳转到独立页面，直接在这个卡片里出结果
+              <div className="-mx-6 mt-4 min-h-0 flex-1 overflow-auto px-2">
+                <SearchingPage
+                  setIsSearching={setIsSearching}
+                  searchText={searchText}
+                  setSearchText={setSearchText}
+                  data={data as ISearchAppDetailProps}
+                />
               </div>
-              <p className="text-lg font-medium text-text-primary">
-                开始智能问答
-              </p>
-              <p className="max-w-[360px] text-center text-sm text-text-secondary">
-                输入您的问题，AI 将基于知识库内容为您提供准确、全面的答案
-              </p>
-            </div>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3">
+                <div className="flex size-16 items-center justify-center rounded-full bg-[#EEF2FF]">
+                  <Sparkles size={28} className="text-[#4F46E5]" />
+                </div>
+                <p className="text-lg font-medium text-text-primary">
+                  开始智能问答
+                </p>
+                <p className="max-w-[360px] text-center text-sm text-text-secondary">
+                  输入您的问题，AI 将基于知识库内容为您提供准确、全面的答案
+                </p>
+              </div>
+            )}
           </div>
 
           {/* 相似问题 */}
