@@ -26,12 +26,12 @@ import (
 )
 
 type Router struct {
-	authHandler          *handler.AuthHandler
-	userHandler          *handler.UserHandler
-	tenantHandler        *handler.TenantHandler
+	authHandler   *handler.AuthHandler
+	userHandler   *handler.UserHandler
+	tenantHandler *handler.TenantHandler
 	// consoleHandler has no external dependencies, so it is constructed here
 	// rather than threaded through NewRouter's parameter list.
-	consoleHandler *handler.ConsoleHandler
+	consoleHandler       *handler.ConsoleHandler
 	documentHandler      *handler.DocumentHandler
 	datasetsHandler      *handler.DatasetsHandler
 	systemHandler        *handler.SystemHandler
