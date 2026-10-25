@@ -90,7 +90,7 @@ func TestListTenantsCountsOwnedResources(t *testing.T) {
 	}
 
 	svc := NewService()
-	rows, total, err := svc.ListTenants(ctx, 1, 20, "", "")
+	rows, total, err := svc.ListTenants(ctx, 1, 20, "", "", "")
 	if err != nil {
 		t.Fatalf("ListTenants: %v", err)
 	}
