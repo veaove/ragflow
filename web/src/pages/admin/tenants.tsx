@@ -49,6 +49,67 @@ import {
 
 type ResourceType = 'members' | 'kbs' | 'agents';
 
+/**
+ * 明细弹窗的列定义。
+ *
+ * 列由「类型」决定，值全部来自后端的 `cells`——角色/状态/时间在后端就
+ * 定好格式了，这里只把英文枚举翻成中文、空值补「—」。
+ * 第一列（名称）固定由 `item.name` 渲染，不在此表里。
+ */
+const RESOURCE_COLUMNS: Record<
+  ResourceType,
+  { firstColumn: string; columns: { key: string; label: string }[] }
+> = {
+  members: {
+    firstColumn: '成员',
+    // 邮箱不做独立列：没昵称时它就是成员列本身，做成两列会并排重复一遍。
+    // 有昵称时以副行显示在主行下面（见下面的明细表格）。
+    columns: [
+      { key: 'role', label: '角色' },
+      { key: 'status', label: '状态' },
+      { key: 'last_login', label: '最近登录' },
+      { key: 'joined', label: '加入时间' },
+    ],
+  },
+  kbs: {
+    firstColumn: '知识库',
+    columns: [
+      { key: 'docs', label: '文件数' },
+      { key: 'chunks', label: '分块数' },
+    ],
+  },
+  agents: {
+    firstColumn: '名称',
+    columns: [
+      { key: 'category', label: '类型' },
+      { key: 'created', label: '创建时间' },
+    ],
+  },
+};
+
+/** user_tenant.role 的展示名。 */
+const ROLE_LABELS: Record<string, string> = {
+  owner: '拥有者',
+  admin: '管理员',
+  normal: '成员',
+  invite: '待接受',
+};
+
+/** user.status / user.is_active 归一化后的展示名（后端给 active/disabled）。 */
+const ACCOUNT_STATUS_LABELS: Record<string, string> = {
+  active: '正常',
+  disabled: '已停用',
+};
+
+/** 把某一个 cells 值翻成展示文案；空值统一显示「—」，避免表格出现空洞。 */
+function resourceCellText(key: string, raw?: string) {
+  const value = raw ?? '';
+  if (!value) return '—';
+  if (key === 'role') return ROLE_LABELS[value] ?? value;
+  if (key === 'status') return ACCOUNT_STATUS_LABELS[value] ?? value;
+  return value;
+}
+
 /** create_date 是毫秒时间戳，可能为 0（历史数据没写）。 */
 function formatDate(ms?: number) {
   if (!ms) return '-';
@@ -385,7 +446,7 @@ export default function Tenants() {
         open={!!resourceDialog}
         onOpenChange={(next) => !next && setResourceDialog(null)}
       >
-        <DialogContent>
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>
               {resourceDialog?.type === 'members'
@@ -397,33 +458,72 @@ export default function Tenants() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="max-h-[420px] overflow-y-auto">
-            {resourcesLoading && (
-              <p className="py-6 text-center text-sm text-text-secondary">
-                加载中…
-              </p>
-            )}
-            {!resourcesLoading && (resources?.length ?? 0) === 0 && (
-              <p className="py-6 text-center text-sm text-text-secondary">
-                暂无数据
-              </p>
-            )}
-            {resources?.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between gap-3 border-b border-border-default py-2.5 text-sm last:border-b-0"
-              >
-                <span className="min-w-0 truncate text-text-primary">
-                  {item.name}
-                </span>
-                {item.extra && (
-                  <span className="shrink-0 text-xs text-text-secondary">
-                    {item.extra}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+          {resourcesLoading && (
+            <p className="py-6 text-center text-sm text-text-secondary">
+              加载中…
+            </p>
+          )}
+          {!resourcesLoading && (resources?.length ?? 0) === 0 && (
+            <p className="py-6 text-center text-sm text-text-secondary">
+              暂无数据
+            </p>
+          )}
+
+          {!resourcesLoading && (resources?.length ?? 0) > 0 && resourceDialog && (
+            <div className="max-h-[420px] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-bg-base">
+                  <tr className="border-b border-border-default text-left text-xs text-text-secondary">
+                    <th className="py-2 pr-4 font-normal">
+                      {RESOURCE_COLUMNS[resourceDialog.type].firstColumn}
+                    </th>
+                    {RESOURCE_COLUMNS[resourceDialog.type].columns.map((col) => (
+                      <th
+                        key={col.key}
+                        className="whitespace-nowrap py-2 pr-4 font-normal last:pr-0"
+                      >
+                        {col.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {resources?.map((item) => {
+                    // 昵称和邮箱都在时，邮箱降为副行；没有昵称时主行就是邮箱。
+                    const email = item.cells?.email ?? '';
+                    const subLine = email && email !== item.name ? email : '';
+                    return (
+                      <tr
+                        key={item.id}
+                        className="border-b border-border-default last:border-b-0"
+                      >
+                        <td className="py-2 pr-4">
+                          <div className="max-w-[240px] truncate text-text-primary">
+                            {item.name}
+                          </div>
+                          {subLine && (
+                            <div className="max-w-[240px] truncate text-xs text-text-secondary">
+                              {subLine}
+                            </div>
+                          )}
+                        </td>
+                        {RESOURCE_COLUMNS[resourceDialog.type].columns.map(
+                          (col) => (
+                            <td
+                              key={col.key}
+                              className="whitespace-nowrap py-2 pr-4 text-text-secondary last:pr-0"
+                            >
+                              {resourceCellText(col.key, item.cells?.[col.key])}
+                            </td>
+                          ),
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

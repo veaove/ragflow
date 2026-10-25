@@ -206,10 +206,22 @@ func (s *Service) ListUsers(ctx context.Context, pageIndex, pageSize int, name, 
 // Returns:
 //   - map[string]interface{}: user information without password
 //   - error: error message
-func (s *Service) CreateUser(ctx context.Context, username, password, role string) (map[string]interface{}, error) {
+func (s *Service) CreateUser(ctx context.Context, username, password, role, tenantID string) (map[string]interface{}, error) {
 	emailRegex := regexp.MustCompile(`^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$`)
 	if !emailRegex.MatchString(username) {
 		return nil, fmt.Errorf("invalid email address: %s", username)
+	}
+
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return nil, fmt.Errorf("tenant_id is required")
+	}
+	var tenant entity.Tenant
+	if err := dao.DB.WithContext(ctx).Where("id = ?", tenantID).First(&tenant).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("tenant not found")
+		}
+		return nil, err
 	}
 
 	existUser, _ := s.userDAO.GetByEmail(ctx, dao.DB, username)
@@ -266,9 +278,21 @@ func (s *Service) CreateUser(ctx context.Context, username, password, role strin
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
-	// 注意：创建用户时不再自动创建租户。
-	// 用户与租户解耦 —— 平台先在「用户管理」建账号，
-	// 再在「租户管理」把用户指派为某个租户的超管/成员。
+	// 绑定到调用方选定的租户，角色固定为普通成员（超管通过「设置超管」单独指定）。
+	memberStatus := "1"
+	member := &entity.UserTenant{
+		ID:        common.GenerateUUID(),
+		UserID:    userID,
+		TenantID:  tenantID,
+		Role:      "member",
+		InvitedBy: userID,
+		Status:    &memberStatus,
+		JoinType:  "direct",
+	}
+	if err = tx.Create(member).Error; err != nil {
+		rollbackTx()
+		return nil, fmt.Errorf("failed to bind user to tenant: %w", err)
+	}
 
 	// Commit transaction
 	if err = tx.Commit().Error; err != nil {
@@ -1536,9 +1560,50 @@ func (s *Service) CreateTenant(ctx context.Context, name, ownerUserID, ownerEmai
 	}, nil
 }
 
+// formatOptionalTime 用固定布局渲染可空时间；nil 返回空串，由前端补「—」。
+func formatOptionalTime(t *time.Time, layout string) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(layout)
+}
+
+// canvasCategoryLabel 把 user_canvas.canvas_category 翻成中文类型名。
+//
+// 平台侧只关心「这条记录是什么」：agent_count 统计的是 user_canvas 全表，
+// 所以明细里必须能区分智能体、对话流、工作流与数据处理画布。
+func canvasCategoryLabel(category string) string {
+	switch category {
+	case entity.CanvasCategoryAgent:
+		return "智能体"
+	case entity.CanvasCategoryChatflow:
+		return "对话流"
+	case entity.CanvasCategoryWorkflow:
+		return "工作流"
+	case entity.CanvasCategoryDataflow:
+		return "数据处理"
+	default:
+		return category
+	}
+}
+
+// accountStatusLabel 归一化账号启用状态（user.status / user.is_active 都是
+// varchar('1'/'0')）。任一处明确写了停用就算停用，避免把被禁用的账号
+// 显示成「正常」——那会让人以为自己点错了。
+func accountStatusLabel(status, isActive string) string {
+	if status == "0" || isActive == "0" {
+		return "disabled"
+	}
+	return "active"
+}
+
 // ListTenantResources 列出某个租户下的成员 / 知识库 / 智能体明细。
 //
-// 三者结构不同，统一返回 {id, name, extra}，前端只做列表展示。
+// 三种资源的字段不同，统一返回 {id, name, extra, cells}：
+//   - name/extra 是列表里最显眼的一行（主标题 + 右侧摘要）；
+//   - cells 是「一列一个值」的明细，前端按类型决定展示哪几列。
+//
+// 文本（角色 / 状态 / 时间）在这里就定好格式，前端只排版，不做二次判断。
 func (s *Service) ListTenantResources(ctx context.Context, tenantID, resourceType string) ([]map[string]interface{}, error) {
 	tenantID = strings.TrimSpace(tenantID)
 	if tenantID == "" {
@@ -1558,19 +1623,32 @@ func (s *Service) ListTenantResources(ctx context.Context, tenantID, resourceTyp
 
 	switch resourceType {
 	case "members":
+		// 除了展示用的 name / extra，再给前端一列一列的明细（cells）。
+		// 角色、状态、时间都在这里定好格式，前端只负责排版。
 		type memberRow struct {
-			ID       string
-			Email    string
-			Nickname string
-			Role     string
+			ID            string
+			Email         string
+			Nickname      string
+			Role          string
+			UserStatus    string
+			IsActive      string
+			LastLoginTime *time.Time
+			JoinedAt      *time.Time
 		}
 		var rows []memberRow
 		if err := dao.DB.WithContext(ctx).Raw(`
-			SELECT u.id, u.email, IFNULL(u.nickname, '') AS nickname, ut.role
+			SELECT u.id,
+			       u.email,
+			       IFNULL(u.nickname, '') AS nickname,
+			       ut.role,
+			       IFNULL(u.status, '') AS user_status,
+			       IFNULL(u.is_active, '') AS is_active,
+			       u.last_login_time,
+			       ut.create_date AS joined_at
 			FROM user_tenant ut
 			JOIN user u ON u.id = ut.user_id
 			WHERE ut.tenant_id = ? AND ut.status = '1'
-			ORDER BY ut.role, u.email
+			ORDER BY (ut.role = 'owner') DESC, ut.create_date, u.email
 		`, tenantID).Scan(&rows).Error; err != nil {
 			return nil, err
 		}
@@ -1581,6 +1659,13 @@ func (s *Service) ListTenantResources(ctx context.Context, tenantID, resourceTyp
 			}
 			result = append(result, map[string]interface{}{
 				"id": r.ID, "name": name, "extra": r.Role,
+				"cells": map[string]string{
+					"email":      r.Email,
+					"role":       r.Role,
+					"status":     accountStatusLabel(r.UserStatus, r.IsActive),
+					"last_login": formatOptionalTime(r.LastLoginTime, "2006-01-02 15:04"),
+					"joined":     formatOptionalTime(r.JoinedAt, "2006-01-02"),
+				},
 			})
 		}
 
@@ -1604,26 +1689,47 @@ func (s *Service) ListTenantResources(ctx context.Context, tenantID, resourceTyp
 			result = append(result, map[string]interface{}{
 				"id": r.ID, "name": r.Name,
 				"extra": fmt.Sprintf("%d 个文件 · %d 个分块", r.DocNum, r.ChunkNum),
+				"cells": map[string]string{
+					"docs":   fmt.Sprintf("%d", r.DocNum),
+					"chunks": fmt.Sprintf("%d", r.ChunkNum),
+				},
 			})
 		}
 
 	case "agents":
+		// user_canvas 没有 tenant_id 列（租户 id 就是 owner 的 user id），
+		// 必须按 user_id 过滤，才和 ListTenants 里 agent_count 的口径一致。
+		// 写成 tenant_id 会在 MySQL 报 Error 1054，整个明细弹窗 500。
 		type agentRow struct {
-			ID    string
-			Title string
+			ID         string
+			Title      string
+			Category   string
+			CreateDate *time.Time
 		}
 		var rows []agentRow
 		if err := dao.DB.WithContext(ctx).Raw(`
-			SELECT id, IFNULL(title, '未命名') AS title
+			SELECT id,
+			       IFNULL(title, '未命名') AS title,
+			       IFNULL(canvas_category, '') AS category,
+			       create_date
 			FROM user_canvas
-			WHERE tenant_id = ?
+			WHERE user_id = ?
 			ORDER BY create_date DESC
 		`, tenantID).Scan(&rows).Error; err != nil {
 			return nil, err
 		}
 		for _, r := range rows {
+			category := canvasCategoryLabel(r.Category)
 			result = append(result, map[string]interface{}{
-				"id": r.ID, "name": r.Title, "extra": "",
+				"id": r.ID, "name": r.Title,
+				// 这张表同时放智能体 / 工作流 / 对话流 / 数据处理画布，
+				// 上层的 agent_count 也是全量计数，列表必须标出类型，
+				// 否则「智能体列表」里混进十几条工作流会让人以为统计错了。
+				"extra": category,
+				"cells": map[string]string{
+					"category": category,
+					"created":  formatOptionalTime(r.CreateDate, "2006-01-02"),
+				},
 			})
 		}
 

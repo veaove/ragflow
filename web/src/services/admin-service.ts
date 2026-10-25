@@ -218,8 +218,18 @@ export const createTenant = (name: string, ownerEmail: string) =>
 
 export interface TenantResourceItem {
   id: string;
+  /** 列表主列：成员是昵称（没昵称则邮箱），知识库 / 画布是名称。 */
   name: string;
+  /** 右侧摘要，保留给不按列渲染的场景。 */
   extra: string;
+  /**
+   * 「一列一个值」的明细，按资源类型给不同的键：
+   *   members -> email / role / status / last_login / joined
+   *   kbs     -> docs / chunks
+   *   agents  -> category / created
+   * 文本（角色、状态、时间）后端已经格式化好，前端只负责排版。
+   */
+  cells?: Record<string, string>;
 }
 
 /** 查看某租户下的成员 / 知识库 / 智能体明细。 */
