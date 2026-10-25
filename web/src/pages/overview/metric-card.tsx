@@ -18,25 +18,12 @@ import { cn } from '@/lib/utils';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatCompactNumber, formatThousand } from './utils';
-import type { IOverviewMetric, MetricTone } from './interface';
+import type { IOverviewMetric } from './interface';
 
 /** 数值展示：大数字用万/亿缩写，其余用千分位。 */
 const renderValue = (value: number) =>
   value >= 100_000 ? formatCompactNumber(value) : formatThousand(value);
 
-/**
- * 图标底色。accent 跟随主题，其余为固定语义色。
- *
- * 统一用 500/600 档 + 10% 透明度：底色在浅色主题下是淡色块，
- * 深色主题下是低饱和发光感，不需要为两套皮肤各写一份。
- */
-const TONE_CLASS: Record<MetricTone, string> = {
-  accent: 'bg-accent-primary/10 text-accent-primary',
-  blue: 'bg-blue-500/10 text-blue-600',
-  green: 'bg-emerald-500/10 text-emerald-600',
-  purple: 'bg-violet-500/10 text-violet-600',
-  orange: 'bg-orange-500/10 text-orange-600',
-};
 
 export function MetricCard({
   metric,
@@ -53,55 +40,44 @@ export function MetricCard({
   deltaLabel?: string;
   emptyDeltaLabel?: string;
 }) {
-  const {
-    icon: Icon,
-    label,
-    value,
-    unit,
-    delta,
-    hint,
-    tone = 'accent',
-  } = metric;
+  const { label, value, unit, delta, hint } = metric;
 
   return (
-    <div className="flex flex-col justify-between rounded-xl border border-border-default bg-bg-base p-5 transition-shadow hover:shadow-sm">
-      <header className="flex items-start justify-between gap-3">
-        <span className="text-sm text-text-secondary">{label}</span>
-        <span
-          className={cn(
-            'flex size-9 shrink-0 items-center justify-center rounded-lg',
-            TONE_CLASS[tone],
-          )}
-        >
-          <Icon className="size-4.5" strokeWidth={2} />
-        </span>
-      </header>
-
-      <div className="mt-4">
-        {loading ? (
-          <Skeleton className="h-8 w-24" />
-        ) : (
-          <p className="flex items-baseline gap-1 text-[26px] font-semibold leading-none text-text-primary">
-            {value === null ? '—' : renderValue(value)}
-            {unit && value !== null && (
-              <span className="text-sm font-normal text-text-secondary">
-                {unit}
-              </span>
-            )}
-          </p>
+    <div
+      className="rounded-lg border border-border-default px-3 py-3"
+      title={hint}
+    >
+      <div className="flex items-center gap-1 text-xs text-text-secondary">
+        <span className="truncate">{label}</span>
+        {hint && (
+          <span className="cursor-help text-text-disabled" aria-hidden>
+            ⓘ
+          </span>
         )}
       </div>
 
-      <footer className="mt-3 flex h-5 items-center gap-1.5 text-xs">
+      <div className="mt-1.5 flex items-baseline gap-0.5 text-xl font-semibold text-text-primary">
         {loading ? (
-          <Skeleton className="h-4 w-28" />
-        ) : hint ? (
-          // 没有环比口径的指标（成员数、部门数等）走这里。
-          <span className="text-text-disabled">{hint}</span>
+          <Skeleton className="h-6 w-16" />
+        ) : value === null ? (
+          '—'
+        ) : (
+          <>
+            {renderValue(value)}
+            {unit && (
+              <span className="text-xs font-normal text-text-secondary">
+                {unit}
+              </span>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="mt-1 flex h-4 items-center gap-1 text-xs">
+        {loading ? (
+          <Skeleton className="h-3 w-20" />
         ) : delta === null ? (
-          // 上期基数为 0，无法计算环比，此时不展示涨跌幅，
-          // 避免出现「+∞%」这种会误导用户的数字。
-          <span className="text-text-disabled">{emptyDeltaLabel}</span>
+          <span className="text-text-disabled">{hint || emptyDeltaLabel}</span>
         ) : (
           <>
             <span
@@ -111,9 +87,9 @@ export function MetricCard({
               )}
             >
               {delta >= 0 ? (
-                <TrendingUp className="size-3.5" />
+                <TrendingUp className="size-3" />
               ) : (
-                <TrendingDown className="size-3.5" />
+                <TrendingDown className="size-3" />
               )}
               {delta >= 0 ? '+' : ''}
               {delta.toFixed(1)}%
@@ -121,7 +97,7 @@ export function MetricCard({
             <span className="text-text-disabled">{deltaLabel}</span>
           </>
         )}
-      </footer>
+      </div>
     </div>
   );
 }

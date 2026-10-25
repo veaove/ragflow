@@ -31,7 +31,6 @@ import {
   Bot,
   FileText,
   Folder,
-  Layers,
   User,
   Users,
   Workflow,
@@ -110,14 +109,6 @@ export default function Overview() {
     ): IOverviewMetric => ({ key, label, value, icon, delta, unit });
 
     return [
-      build(
-        'datasets',
-        t('metric.datasets'),
-        datasets.length,
-        Layers,
-        null,
-        t('unit.dataset'),
-      ),
       build(
         'documents',
         t('metric.documents'),
@@ -275,8 +266,9 @@ export default function Overview() {
             左侧菜单已经标出当前位置，副标题也不含任何可操作信息，
             占掉首屏一块高度却只重复一句品牌话术。 */}
 
-            {/* 指标卡片 */}
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {/* 7 个 KPI 一排，与「报表统计」页的卡片同款（紧凑、无图标）。
+            原来分两段各 4 列，「知识库总数」和下方「知识库数」重复，已去掉前者。 */}
+            <section className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
               {metrics.map((metric) => (
                 <MetricCard
                   key={metric.key}
@@ -284,11 +276,6 @@ export default function Overview() {
                   loading={metric.key === 'calls' ? statsLoading : cardsLoading}
                 />
               ))}
-            </section>
-
-            {/* 组织与配置规模：成员 / 部门 / 知识库 / 智能体。
-            与上一排同样是四列，断点保持一致，两排卡片左右边界对齐。 */}
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {scaleCards.map(({ metric, loading }) => (
                 <MetricCard
                   key={metric.key}
