@@ -1000,7 +1000,8 @@ func (h *DocumentHandler) UploadDocuments(c *gin.Context) {
 		common.ErrorWithCode(c, errorCode, errorMessage)
 		return
 	}
-	tenantID := user.ID
+	// 跟随当前租户（前端可通过 X-Tenant-ID 切换）
+	tenantID := CurrentTenantID(c)
 	datasetID := c.Param("dataset_id")
 	uploadType := strings.ToLower(c.DefaultQuery("type", "local"))
 

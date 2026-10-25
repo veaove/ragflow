@@ -86,6 +86,8 @@ export interface ITenantUser {
 }
 
 export interface ITenant {
+  /** 租户名，供顶栏切换器显示。 */
+  tenant_name?: string;
   avatar: string;
   delta_seconds: number;
   email: string;

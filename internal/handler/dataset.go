@@ -269,8 +269,9 @@ func (h *DatasetsHandler) CreateDataset(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	result, code, err := h.datasetsService.CreateDataset(ctx, &req, permission.Subject{
-		UserID:   user.ID,
-		TenantID: user.ID,
+		UserID: user.ID,
+		// 跟随当前租户（前端可通过 X-Tenant-ID 切换）
+		TenantID: CurrentTenantID(c),
 	})
 	if err != nil {
 		common.ErrorWithCode(c, code, err.Error())
@@ -773,7 +774,7 @@ func (h *DatasetsHandler) DeleteDatasets(c *gin.Context) {
 
 	result, code, err := h.datasetsService.DeleteDatasets(ctx, ids, req.DeleteAll, permission.Subject{
 		UserID:   user.ID,
-		TenantID: user.ID,
+		TenantID: CurrentTenantID(c),
 	})
 	if err != nil {
 		common.ErrorWithCode(c, code, err.Error())

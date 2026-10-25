@@ -7,16 +7,24 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useChangeLanguage } from '@/hooks/logic-hooks';
-import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
+import {
+  useFetchUserInfo,
+  useListTenant,
+} from '@/hooks/use-user-setting-request';
+import { TenantRole } from '@/pages/user-setting/constants';
 import { cn } from '@/lib/utils';
 import { headerLanguages } from '@/locales/config';
 import { Routes } from '@/routes';
+import {
+  getCurrentTenantId,
+  setCurrentTenantId,
+} from '@/utils/tenant-context';
 import { BellButton } from './bell-button';
 import { MobileMenuFooter } from './mobile-menu-footer';
 import { MobileNavbar } from './mobile-nav-drawer';
 import ThemeButton from './theme-button';
-import { LucideLanguages } from 'lucide-react';
-import React from 'react';
+import { LucideChevronDown, LucideCheck, LucideLanguages } from 'lucide-react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router';
 
 /**
@@ -39,6 +47,18 @@ export function Header({
   const {
     data: { language = 'en', avatar, nickname },
   } = useFetchUserInfo();
+
+  // 有团队邀请时给铃铛亮红点；消息中心本身常驻可见。
+  const { data: tenantData } = useListTenant();
+
+  // 当前租户：localStorage 里指定的那个；没指定就用列表第一个（后端默认租户）
+  const selectedTenantId = getCurrentTenantId();
+  const currentTenant =
+    tenantData?.find((t) => t.tenant_id === selectedTenantId) ?? tenantData?.[0];
+  const hasInvite = useMemo(
+    () => !!tenantData?.some((x) => x.role === TenantRole.Invite),
+    [tenantData],
+  );
 
 
   // Falls back to the first offered language so a stored preference outside
@@ -100,7 +120,54 @@ export function Header({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <BellButton className="!size-9" />
+        {/* 租户切换：仅在用户属于多个租户时出现 */}
+        {tenantData && tenantData.length > 1 && currentTenant && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-md border border-border-default px-2 py-1.5 outline-none hover:bg-bg-card"
+              >
+                <span className="flex size-6 shrink-0 items-center justify-center rounded bg-bg-card text-xs text-text-primary">
+                  {(currentTenant.tenant_name || currentTenant.nickname || '?').slice(
+                    0,
+                    2,
+                  )}
+                </span>
+                <span className="max-w-[120px] truncate text-sm text-text-primary">
+                  {currentTenant.tenant_name ||
+                    currentTenant.nickname ||
+                    '当前租户'}
+                </span>
+                <LucideChevronDown className="size-3.5 shrink-0 text-text-secondary" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {tenantData.map((tenant) => {
+                const isCurrent = tenant.tenant_id === currentTenant.tenant_id;
+                return (
+                  <DropdownMenuItem
+                    key={tenant.tenant_id}
+                    onClick={() => {
+                      if (isCurrent) return;
+                      setCurrentTenantId(tenant.tenant_id);
+                      // 整页刷新：所有 react-query 缓存都指向旧租户，
+                      // 逐个失效既容易漏、也容易短暂展示错的数据
+                      window.location.reload();
+                    }}
+                  >
+                    {isCurrent && <LucideCheck className="mr-2 size-3.5" />}
+                    <span className={isCurrent ? 'font-medium' : ''}>
+                      {tenant.tenant_name || tenant.tenant_id}
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        <BellButton className="!size-9" hasInvite={hasInvite} />
 
         <ThemeButton className="!size-9" />
 

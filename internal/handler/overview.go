@@ -15,7 +15,6 @@
 package handler
 
 import (
-	"context"
 	"strconv"
 	"strings"
 
@@ -23,7 +22,6 @@ import (
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
-	"ragflow/internal/entity"
 )
 
 // OverviewHandler serves the dashboard's cross-module aggregates. It exists so
@@ -55,14 +53,14 @@ type recentActivity struct {
 // of its own, so it joins knowledgebase — uploading into someone else's KB
 // must not leak into this feed.
 func (h *OverviewHandler) GetRecentActivities(c *gin.Context) {
-	user, code, msg := GetUser(c)
+	_, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
 		return
 	}
 	// 用户与租户解耦后 user.ID ≠ tenant_id：新建用户不再自动生成同名租户，
 	// 这里必须取用户实际所属的租户，否则活动流会是空的。
-	tenantID := resolveOverviewTenantID(c.Request.Context(), user.ID)
+	tenantID := CurrentTenantID(c)
 
 	// 两种调用方式：
 	//   - 总览页：?limit=8          → 取前 8 条
@@ -149,21 +147,3 @@ LIMIT ?`
 	}, "success")
 }
 
-// resolveOverviewTenantID 取用户实际所属的租户（owner 优先，其次按创建时间）。
-//
-// 用户与租户解耦后不能再拿 user.ID 当 tenant_id 用：新建的账号可能还没分配
-// 租户，此时回退到 user.ID 只是为了让查询不报错（结果必然为空）。
-func resolveOverviewTenantID(ctx context.Context, userID string) string {
-	var tenantID string
-	_ = dao.DB.WithContext(ctx).
-		Model(&entity.UserTenant{}).
-		Select("tenant_id").
-		Where("user_id = ? AND status = '1'", userID).
-		Order("CASE WHEN role = 'owner' THEN 0 ELSE 1 END, create_time ASC").
-		Limit(1).
-		Scan(&tenantID).Error
-	if strings.TrimSpace(tenantID) == "" {
-		return userID
-	}
-	return tenantID
-}

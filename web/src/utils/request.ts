@@ -19,6 +19,10 @@
 
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
+import {
+  getCurrentTenantId,
+  TENANT_HEADER,
+} from '@/utils/tenant-context';
 import { ResponseType } from '@/interfaces/database/base';
 import i18n from '@/locales/config';
 import authorizationUtil, {
@@ -121,6 +125,10 @@ request.interceptors.request.use((url: string, options: any) => {
         ...(options.skipToken
           ? undefined
           : { [Authorization]: getAuthorization() }),
+        // 当前租户：切换租户后所有请求都带上，后端据此覆盖默认租户
+        ...(getCurrentTenantId()
+          ? { [TENANT_HEADER]: getCurrentTenantId() }
+          : {}),
         ...options.headers,
       },
       interceptors: true,

@@ -95,7 +95,9 @@ func (s *TenantService) GetTenantInfo(ctx context.Context, userID string) (*Tena
 
 // TenantListItem tenant list item response
 type TenantListItem struct {
-	TenantID     string  `json:"tenant_id"`
+	TenantID string `json:"tenant_id"`
+	// TenantName 供顶栏租户切换器显示（原结构只有成员信息，没有租户名）
+	TenantName   string  `json:"tenant_name"`
 	Role         string  `json:"role"`
 	Nickname     string  `json:"nickname"`
 	Email        string  `json:"email"`
@@ -171,6 +173,29 @@ func (s *TenantService) GetTenantList(ctx context.Context, userID string) ([]*Te
 		return nil, err
 	}
 
+	// 批量取租户名：TenantListItem 原本只有成员信息（nickname/email 都是用户维度）
+	tenantIDs := make([]string, 0, len(tenants))
+	for _, t := range tenants {
+		tenantIDs = append(tenantIDs, t.TenantID)
+	}
+	tenantNames := make(map[string]string, len(tenantIDs))
+	if len(tenantIDs) > 0 {
+		type tenantNameRow struct {
+			ID   string
+			Name string
+		}
+		var nameRows []tenantNameRow
+		if err := dao.DB.WithContext(ctx).
+			Model(&entity.Tenant{}).
+			Select("id, IFNULL(name, '') AS name").
+			Where("id IN ?", tenantIDs).
+			Scan(&nameRows).Error; err == nil {
+			for _, row := range nameRows {
+				tenantNames[row.ID] = row.Name
+			}
+		}
+	}
+
 	result := make([]*TenantListItem, len(tenants))
 
 	for i, t := range tenants {
@@ -185,6 +210,7 @@ func (s *TenantService) GetTenantList(ctx context.Context, userID string) ([]*Te
 
 		result[i] = &TenantListItem{
 			TenantID:     t.TenantID,
+			TenantName:   tenantNames[t.TenantID],
 			Role:         t.Role,
 			Nickname:     t.Nickname,
 			Email:        t.Email,
