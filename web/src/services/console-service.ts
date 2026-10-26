@@ -117,6 +117,8 @@ export const updateConsoleMember = (
     position?: string;
     role_id?: string;
     status?: string;
+    /** 账号昵称；传空串表示清空，列表回落到邮箱显示 */
+    nickname?: string;
   },
 ) => request.put<ResponseData<{ user_id: string }>>(
   api.tenantConsoleMember(tenantId, userId),

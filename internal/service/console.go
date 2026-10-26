@@ -240,10 +240,15 @@ type MemberUpdate struct {
 	Position     *string `json:"position"`
 	RoleID       *string `json:"role_id"`
 	Status       *string `json:"status"`
+	// Nickname 是账号昵称（user.nickname），不是租户内别名。
+	// 允许传空串表示清空，此时列表回落到邮箱显示。
+	Nickname *string `json:"nickname"`
 }
 
-// UpdateMember edits org placement and role. Email/nickname live in the user
-// profile, not here — changing them has login implications and is out of scope.
+// UpdateMember edits org placement, role and nickname.
+//
+// 昵称可以在这里改（它是展示名，改它不影响任何人登录）；email 仍然不行 ——
+// 邮箱是登录标识，改动会让用户下次登不进来，必须走专门的换绑流程。
 func (s *ConsoleService) UpdateMember(ctx context.Context, tenantID, userID string, in MemberUpdate) error {
 	if in.DepartmentID != nil && *in.DepartmentID != "" {
 		if _, err := dao.NewDepartmentDAO().Get(ctx, dao.DB, tenantID, *in.DepartmentID); err != nil {
@@ -253,6 +258,15 @@ func (s *ConsoleService) UpdateMember(ctx context.Context, tenantID, userID stri
 	if in.RoleID != nil && *in.RoleID != "" {
 		if _, err := dao.NewRoleDAO().Get(ctx, dao.DB, tenantID, *in.RoleID); err != nil {
 			return errors.New("角色不存在")
+		}
+	}
+	// 昵称按字符数算：user.nickname 是 varchar(100)，100 个汉字占 300 字节，
+	// 按字节判会误拒中文名。空串是合法的（表示清空昵称，列表回落邮箱）。
+	var nickname string
+	if in.Nickname != nil {
+		nickname = strings.TrimSpace(*in.Nickname)
+		if len([]rune(nickname)) > 100 {
+			return errors.New("姓名不能超过 100 个字符")
 		}
 	}
 
@@ -277,6 +291,9 @@ func (s *ConsoleService) UpdateMember(ctx context.Context, tenantID, userID stri
 		}
 		if in.Status != nil && *in.Status != "" {
 			userFields["is_active"] = *in.Status
+		}
+		if in.Nickname != nil {
+			userFields["nickname"] = nickname
 		}
 		if len(userFields) > 0 {
 			if err := tx.Model(&entity.User{}).

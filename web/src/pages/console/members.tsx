@@ -60,6 +60,7 @@ export default function ConsoleMembers() {
 
   const [editing, setEditing] = useState<ConsoleMember | null>(null);
   const [form, setForm] = useState({
+    nickname: '',
     department_id: '',
     position: '',
     role_id: '',
@@ -140,6 +141,7 @@ export default function ConsoleMembers() {
   const openEdit = useCallback((m: ConsoleMember) => {
     setEditing(m);
     setForm({
+      nickname: m.nickname || '',
       department_id: m.department_id || '',
       position: m.position || '',
       role_id: m.role_id || '',
@@ -150,6 +152,7 @@ export default function ConsoleMembers() {
   const submit = useCallback(async () => {
     if (!tenantId || !editing) return;
     await updateConsoleMember(tenantId, editing.id, {
+      nickname: form.nickname,
       department_id: form.department_id,
       position: form.position,
       role_id: form.role_id,
@@ -395,7 +398,23 @@ export default function ConsoleMembers() {
           </DialogHeader>
           <div className="space-y-3">
             <div className="text-sm text-text-secondary">
-              {editing?.nickname} · {editing?.email}
+              {editing?.nickname || '未设置姓名'} · {editing?.email}
+            </div>
+            <div>
+              <div className="mb-1 text-sm text-text-secondary">姓名</div>
+              <Input
+                value={form.nickname}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, nickname: e.target.value }))
+                }
+                placeholder="留空则显示邮箱"
+                maxLength={100}
+              />
+              {editing?.nickname && form.nickname !== editing.nickname && (
+                <p className="mt-1 text-xs text-text-secondary">
+                  该昵称是账号级别的，改了之后此人在其它租户里的显示名也会一起变。
+                </p>
+              )}
             </div>
             <div>
               <div className="mb-1 text-sm text-text-secondary">所属部门</div>
