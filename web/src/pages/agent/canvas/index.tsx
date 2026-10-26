@@ -17,7 +17,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { NotebookPen } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatSheet } from '../chat/chat-sheet';
 import {
@@ -183,6 +183,7 @@ function AgentCanvas({
     addEventList,
     setCurrentMessageId,
     currentEventListWithoutMessageById,
+    currentEventListWithoutMessage,
     clearEventList,
     currentMessageId,
     latestTaskId,
@@ -212,6 +213,37 @@ function AgentCanvas({
   });
 
   const [lastSendLoading, setLastSendLoading] = useState(false);
+
+  // 当前执行到的节点：取本轮对话最后一条节点事件的 component_id。
+  // 换消息时 currentEventListWithoutMessage 会变，等于每轮对话重新开始。
+  const activeNodeId = useMemo(() => {
+    const list = currentEventListWithoutMessage ?? [];
+    const last = list[list.length - 1];
+    return (last as { data?: { component_id?: string } })?.data?.component_id ?? '';
+  }, [currentEventListWithoutMessage]);
+
+  // 高亮直接操作 react-flow 的节点 DOM。
+  // 节点组件有七八个（begin/agent/switch/retrieval/...），逐个加 prop 改动面太大，
+  // react-flow 给每个节点都渲染了 .react-flow__node[data-id=<节点id>]，从容器层统一处理。
+  useEffect(() => {
+    const nodes = document.querySelectorAll<HTMLElement>('.react-flow__node');
+    nodes.forEach((node) => {
+      node.style.boxShadow = '';
+      node.style.borderRadius = '';
+    });
+    if (!activeNodeId) {
+      return;
+    }
+    const target = document.querySelector<HTMLElement>(
+      `.react-flow__node[data-id="${activeNodeId}"]`,
+    );
+    if (target) {
+      target.style.boxShadow =
+        '0 0 0 2px #6366f1, 0 0 16px rgba(99, 102, 241, 0.55)';
+      target.style.borderRadius = '8px';
+      target.style.transition = 'box-shadow 0.2s ease';
+    }
+  }, [activeNodeId]);
 
   const [currentSendLoading, setCurrentSendLoading] = useState(false);
 
