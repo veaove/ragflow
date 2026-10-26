@@ -14,15 +14,30 @@ import (
 // the console's rows one-to-one; unknown modules arriving from the client are
 // dropped rather than persisted, so the matrix can never grow junk rows.
 var ConsoleModules = []string{
-	"dataset",  // 知识库
-	"agent",    // 智能体
-	"memory",   // 记忆
-	"file",     // 文件管理
-	"chat",     // 知识问答
-	"model",    // 模型配置
-	"member",   // 组织成员
-	"role",     // 角色管理
-	"apikey",   // API 密钥
+	// 顺序与左侧菜单一致，方便对照
+	"overview",     // 总览（报表统计 / 咨询日志 / artifacts）
+	"dataset",      // 知识库
+	"chat",         // 知识问答
+	"search",       // 知识搜索
+	"agent",        // 智能体
+	"studio",       // 工作室
+	"memory",       // 记忆
+	"qc_rule",      // 会话质检 - 质检规则
+	"qc_realtime",  // 会话质检 - 实时质检
+	"qc_hit",       // 会话质检 - 命中记录
+	"qc_config",    // 会话质检 - 系统配置
+	"file",         // 文件管理
+	"organization", // 租户中心 - 组织架构
+	"member",       // 租户中心 - 用户管理
+	"role",         // 租户中心 - 角色管理
+	"grant",        // 租户中心 - 资源授权
+	"model",        // 配置中心 - 模型配置
+	"datasource",   // 配置中心 - 数据源
+	"channel",      // 配置中心 - 聊天渠道
+	"mcp",          // 配置中心 - MCP
+	"apikey",       // 配置中心 - API
+	"team",         // 配置中心 - 团队管理
+	// 下面三个菜单上没有独立入口，但页面内仍在使用，保留矩阵行
 	"quota",    // 配额用量
 	"audit",    // 审计日志
 	"security", // 安全设置
