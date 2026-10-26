@@ -61,7 +61,7 @@ describe('EmbedDialog widget settings persistence', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'chat.dark' }));
     fireEvent.click(
-      screen.getByRole('button', { name: 'flow.save widget settings' }),
+      screen.getByRole('button', { name: 'chat.saveWidgetSettings' }),
     );
 
     await waitFor(() => expect(onSaveWidgetSettings).toHaveBeenCalledTimes(1));
