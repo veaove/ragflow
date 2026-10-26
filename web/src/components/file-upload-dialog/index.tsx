@@ -103,6 +103,15 @@ const SUPPORTED_FORMATS = [
   { key: 'fileManager.formatWord' },
   { key: 'fileManager.formatExcel' },
   { key: 'fileManager.formatPpt' },
+  // 下面这几类 internal/parser/parser 都有对应 parser，但标签一直没列出来：
+  // text / markdown / csv / html / json / epub / email
+  { key: 'fileManager.formatText' },
+  { key: 'fileManager.formatMarkdown' },
+  { key: 'fileManager.formatCsv' },
+  { key: 'fileManager.formatHtml' },
+  { key: 'fileManager.formatJson' },
+  { key: 'fileManager.formatEpub' },
+  { key: 'fileManager.formatEmail' },
   { key: 'fileManager.formatImage' },
   { key: 'fileManager.formatVideo' },
   { key: 'fileManager.formatAudio' },
