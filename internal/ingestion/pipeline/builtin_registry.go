@@ -326,9 +326,12 @@ func localizedText(v any) map[string]string {
 		if key == "" {
 			continue
 		}
-		// "en" is the canonical key: an explicit English entry always wins so
-		// TitleI18N["en"] agrees with Title.
-		if key == "en" || out[key] == "" {
+		// 优先级：key 本身就是规范形式（"zh"、"en"）> 需要归一化的（"zh-Hans"）。
+		// map 遍历无序，若两者都按"先到先得"，结果会随遍历顺序漂移 —— 先遇到
+		// "zh-Hans" 就会把显式的 "zh" 挤掉（中文标题从"通用"变成"通用变体"）。
+		// 规范形式总是覆盖，归一化形式只在空位时填，两种顺序都稳定。
+		// "en" 同理：显式英文条目必须赢，TitleI18N["en"] 才和 Title 一致。
+		if strings.EqualFold(strings.TrimSpace(lang), key) || out[key] == "" {
 			out[key] = s
 		}
 	}
