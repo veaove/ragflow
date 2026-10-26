@@ -108,7 +108,7 @@ func (e *evaluation) administeredDepartmentIDs(ctx context.Context, userID, tena
 	// owner is out of scope too: it already sees the whole tenant through
 	// Resource.OwnerUserID before visibility is evaluated at all.
 	membership, err := e.getMembership(ctx, userID, tenantID)
-	if err != nil || membership == nil || !membership.Active || membership.Role != RoleAdmin {
+	if err != nil || membership == nil || !membership.Active || !e.isDepartmentAdminMembership(ctx, membership) {
 		e.departmentScope[key] = nil
 		return nil, nil
 	}
@@ -118,6 +118,58 @@ func (e *evaluation) administeredDepartmentIDs(ctx context.Context, userID, tena
 		return nil, err
 	}
 	e.departmentScope[key] = ids
+	return ids, nil
+}
+
+// builtinDepartmentAdminRoleName is the seeded 部门管理员 role. Roles are
+// matched by name because that is the only stable key the three builtin rows
+// share across tenants — their ids are generated per tenant.
+const builtinDepartmentAdminRoleName = "部门管理员"
+
+// isDepartmentAdminMembership reports whether this tenant membership is the
+// builtin 部门管理员.
+//
+// Two keys have to be checked. `user_tenant.role='admin'` is what the invite
+// path writes, but the console's member editor only writes `role_id` and leaves
+// the enum at 'normal' — so a member given 部门管理员 through the UI looks like
+// a normal member to anything that reads the enum alone.
+func (e *evaluation) isDepartmentAdminMembership(ctx context.Context, membership *Membership) bool {
+	if membership == nil {
+		return false
+	}
+	if membership.Role == RoleAdmin {
+		return true
+	}
+	if membership.RoleID == "" {
+		return false
+	}
+	source, ok := e.source.(*databaseSource)
+	if !ok || source.db == nil {
+		return false
+	}
+	var count int64
+	err := source.db.WithContext(ctx).Model(&entity.Role{}).
+		Where("id = ? AND tenant_id = ? AND is_builtin = ? AND name = ?",
+			membership.RoleID, membership.TenantID, true, builtinDepartmentAdminRoleName).
+		Count(&count).Error
+	return err == nil && count > 0
+}
+
+// departmentAdminRoleIDs collects every seeded 部门管理员 role id so a list
+// query can accept the role_id key in one IN clause. Role ids are unique across
+// tenants, so a global set is safe: a match still has to line up with the
+// resource's own tenant through the role row it points at.
+func departmentAdminRoleIDs(ctx context.Context, db *gorm.DB) ([]string, error) {
+	if db == nil {
+		return nil, nil
+	}
+	var ids []string
+	err := db.WithContext(ctx).Model(&entity.Role{}).
+		Where("is_builtin = ? AND name = ?", true, builtinDepartmentAdminRoleName).
+		Pluck("id", &ids).Error
+	if err != nil {
+		return nil, err
+	}
 	return ids, nil
 }
 

@@ -231,10 +231,20 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 		// 角色按 knowledgebase.tenant_id 逐行匹配，而不是先在 Go 侧挑一个租户：
 		// 这条查询本身跨租户，同一个人可能在 A 租户是部门管理员、在 B 租户只是
 		// 普通成员，只有 A 的知识库能因此可见。
+		//
+		// 两个键都要认：邀请路径写 user_tenant.role='admin'，控制台编辑成员却
+		// 只写 role_id（枚举留在 'normal'），只认枚举会漏掉从界面上分配的人。
+		departmentAdminRoles, roleErr := departmentAdminRoleIDs(ctx, source.db)
+		departmentAdminKey := "(user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.user_id = ? AND user_tenant.status = ? AND (user_tenant.role = ?"
+		adminKeyArgs := []any{subject.UserID, string(entity.StatusValid), string(RoleAdmin)}
+		if roleErr == nil && len(departmentAdminRoles) > 0 {
+			departmentAdminKey += " OR user_tenant.role_id IN ?"
+			adminKeyArgs = append(adminKeyArgs, departmentAdminRoles)
+		}
+		departmentAdminKey += "))"
 		callerIsDepartmentAdmin := db.Model(&entity.UserTenant{}).
 			Select("1").
-			Where("user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.user_id = ? AND user_tenant.role = ? AND user_tenant.status = ?",
-				subject.UserID, string(RoleAdmin), string(entity.StatusValid))
+			Where(departmentAdminKey, adminKeyArgs...)
 		departmentSubtree, subtreeErr := DepartmentSubtree(ctx, source.db, deptID)
 		// 租户被停用后，库里的内容对**所有人**不可见（含 owner 与显式授权）。
 		// 停用的语义是整个租户暂停，不是某个成员被降权，所以这一条不能放进

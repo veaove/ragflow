@@ -121,7 +121,12 @@ type Membership struct {
 	UserID   string
 	TenantID string
 	Role     TenantRole
-	Active   bool
+	// RoleID is the tenant-scoped role row the console assigned (builtin or
+	// custom). It is the source of truth for the permission matrix, and the
+	// console writes it **without** rewriting Role, so `Role == RoleAdmin`
+	// alone misses members who were given 部门管理员 through the UI.
+	RoleID string
+	Active bool
 }
 
 // Visibility describes how a resource is exposed in the community edition.

@@ -46,12 +46,25 @@ func newDepartmentFixture(t *testing.T) departmentFixture {
 	}
 	if err := db.AutoMigrate(
 		&entity.Knowledgebase{}, &entity.UserTenant{}, &entity.ResourceGrant{},
-		&entity.User{}, &entity.Tenant{}, &entity.Department{},
+		&entity.User{}, &entity.Tenant{}, &entity.Department{}, &entity.Role{},
 	); err != nil {
 		t.Fatalf("migrate permission tables: %v", err)
 	}
 
 	valid := string(entity.StatusValid)
+	// 部门管理员 has two spellings in the data model: the enum (written by the
+	// invite path) and role_id (written by the console member editor). Both are
+	// seeded so each path is covered.
+	roles := []entity.Role{
+		{ID: "role-dept-admin", TenantID: "dept-tenant", Name: "部门管理员", IsBuiltin: true},
+		{ID: "role-normal", TenantID: "dept-tenant", Name: "普通成员", IsBuiltin: true},
+		{ID: "role-auditor", TenantID: "dept-tenant", Name: "质检员", IsBuiltin: false},
+	}
+	for i := range roles {
+		if err := db.Create(&roles[i]).Error; err != nil {
+			t.Fatalf("create role %q: %v", roles[i].ID, err)
+		}
+	}
 	departments := []entity.Department{
 		{ID: "dept-root", TenantID: "dept-tenant", Name: "研发部"},
 		{ID: "dept-child", TenantID: "dept-tenant", ParentID: "dept-root", Name: "后端组"},
@@ -65,6 +78,8 @@ func newDepartmentFixture(t *testing.T) departmentFixture {
 	}
 	users := []entity.User{
 		{ID: "dept-admin", Nickname: "部门管理员", Email: "dept-admin@example.com", DepartmentID: "dept-root"},
+		{ID: "role-dept-admin-user", Nickname: "界面分配的部门管理员", Email: "role-dept-admin@example.com", DepartmentID: "dept-root"},
+		{ID: "custom-role-user", Nickname: "自定义角色成员", Email: "custom-role@example.com", DepartmentID: "dept-root"},
 		{ID: "member-child", Nickname: "子部门成员", Email: "member-child@example.com", DepartmentID: "dept-child"},
 		{ID: "member-other", Nickname: "他部门成员", Email: "member-other@example.com", DepartmentID: "dept-other"},
 		{ID: "member-none", Nickname: "未分配成员", Email: "member-none@example.com"},
@@ -78,6 +93,9 @@ func newDepartmentFixture(t *testing.T) departmentFixture {
 	memberships := []entity.UserTenant{
 		{ID: "m-owner", UserID: "tenant-owner", TenantID: "dept-tenant", Role: string(RoleOwner), Status: &valid},
 		{ID: "m-admin", UserID: "dept-admin", TenantID: "dept-tenant", Role: string(RoleAdmin), Status: &valid},
+		// 控制台编辑成员只写 role_id，枚举留在 normal。
+		{ID: "m-role-admin", UserID: "role-dept-admin-user", TenantID: "dept-tenant", Role: string(RoleNormal), RoleID: "role-dept-admin", Status: &valid},
+		{ID: "m-custom", UserID: "custom-role-user", TenantID: "dept-tenant", Role: string(RoleNormal), RoleID: "role-auditor", Status: &valid},
 		{ID: "m-child", UserID: "member-child", TenantID: "dept-tenant", Role: string(RoleNormal), Status: &valid},
 		{ID: "m-other", UserID: "member-other", TenantID: "dept-tenant", Role: string(RoleNormal), Status: &valid},
 		{ID: "m-none", UserID: "member-none", TenantID: "dept-tenant", Role: string(RoleNormal), Status: &valid},
@@ -142,6 +160,41 @@ func TestDepartmentSubtreeIncludesDescendants(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDepartmentAdminAssignedByRoleIDAlsoSeesDepartmentContent(t *testing.T) {
+	fixture := newDepartmentFixture(t)
+
+	// 控制台只写 role_id：枚举仍是 normal，但角色是内置「部门管理员」。
+	if err := fixture.check(t, "role-dept-admin-user", "ds-child", OperationRead); err != nil {
+		t.Errorf("界面分配的部门管理员读本部门内容 error = %v, want nil", err)
+	}
+	if err := fixture.check(t, "role-dept-admin-user", "ds-child", OperationUpdate); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("界面分配的部门管理员改本部门内容 error = %v, want %v", err, ErrPermissionDenied)
+	}
+	if err := fixture.check(t, "role-dept-admin-user", "ds-other", OperationRead); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("界面分配的部门管理员读他部门内容 error = %v, want %v", err, ErrPermissionDenied)
+	}
+
+	// 自定义角色不放大数据可见性，即使在同一个部门、矩阵里有 view。
+	if err := fixture.check(t, "custom-role-user", "ds-child", OperationRead); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("自定义角色成员读同事私有内容 error = %v, want %v", err, ErrPermissionDenied)
+	}
+
+	scope, err := fixture.checker.QueryScope(context.Background(), Subject{UserID: "role-dept-admin-user"}, ScopeQuery{
+		Kind: ResourceKindDataset, Operation: OperationRead,
+	})
+	if err != nil {
+		t.Fatalf("QueryScope(datasets, role-based admin) error = %v", err)
+	}
+	var ids []string
+	if err := scope.Apply(fixture.db.Model(&entity.Knowledgebase{})).Order("knowledgebase.id").
+		Pluck("knowledgebase.id", &ids).Error; err != nil {
+		t.Fatalf("query authorized datasets: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "ds-child" {
+		t.Fatalf("QueryScope(datasets, role-based admin) = %v, want [ds-child]", ids)
 	}
 }
 

@@ -63,6 +63,7 @@ func (s *databaseSource) GetMembership(ctx context.Context, userID, tenantID str
 		UserID:   relation.UserID,
 		TenantID: relation.TenantID,
 		Role:     TenantRole(relation.Role),
+		RoleID:   strings.TrimSpace(relation.RoleID),
 		Active:   relation.Status != nil && *relation.Status == string(entity.StatusValid),
 	}, nil
 }
