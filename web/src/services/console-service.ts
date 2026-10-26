@@ -170,10 +170,19 @@ export const saveConsolePermissions = (
 // ── 资源授权 ────────────────────────────────────────────────────────────────
 
 /** 授权主体：全团队 / 某个部门 / 某个成员。 */
+/**
+ * 一次资源授权的授予对象。
+ *
+ * permission 是操作级别：
+ *   read —— 只能查看（内容不可编辑、不可删除、不可再授权）
+ *   edit —— 可以编辑、删除
+ * 后端对空值按 edit 处理，兼容这个字段出现之前已存在的授权。
+ */
 export interface GrantSubject {
   kind: 'team' | 'department' | 'user';
   id: string;
   name: string;
+  permission?: 'read' | 'edit';
 }
 
 /** 一行资源 + 它当前的授权规则。 */

@@ -71,6 +71,8 @@ export default function ConsoleGrants() {
   const [draft, setDraft] = useState<GrantSubject[]>([]);
   const [addKind, setAddKind] = useState<'department' | 'user'>('department');
   const [addId, setAddId] = useState('');
+  // 新添加的授权给什么级别。默认只读：给编辑权应当是显式动作。
+  const [addPermission, setAddPermission] = useState<'read' | 'edit'>('read');
 
   const { data: deptData } = useQuery({
     queryKey: ['console/departments', tenantId],
@@ -142,7 +144,7 @@ export default function ConsoleGrants() {
       setDraft((prev) =>
         prev.some((s) => s.kind === 'department' && s.id === dept.id)
           ? prev
-          : [...prev, { kind: 'department', id: dept.id, name: dept.name.trim() }],
+          : [...prev, { kind: 'department', id: dept.id, name: dept.name.trim(), permission: addPermission }],
       );
     } else {
       const member = members.find((m) => m.id === addId);
@@ -161,15 +163,15 @@ export default function ConsoleGrants() {
       );
     }
     setAddId('');
-  }, [addId, addKind, flatDepts, members]);
+  }, [addId, addKind, addPermission, flatDepts, members]);
 
   const addTeam = useCallback(() => {
     setDraft((prev) =>
       prev.some((s) => s.kind === 'team')
         ? prev
-        : [...prev, { kind: 'team', id: '', name: '全团队' }],
+        : [...prev, { kind: 'team', id: '', name: '全团队', permission: addPermission }],
     );
-  }, []);
+  }, [addPermission]);
 
   const save = useCallback(async () => {
     if (!tenantId || !editing) return;
@@ -301,7 +303,7 @@ export default function ConsoleGrants() {
       </div>
 
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>设置可见范围</DialogTitle>
           </DialogHeader>
@@ -330,6 +332,28 @@ export default function ConsoleGrants() {
                     className="flex items-center gap-1 rounded bg-accent-primary/10 px-2 py-0.5 text-xs text-accent-primary"
                   >
                     {g.name}
+                    {/* 点一下在「可查看 / 可编辑」之间切换：授权列表通常很短，
+                        为每次都开一个下拉不值当。 */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraft((prev) =>
+                          prev.map((item, i) =>
+                            i === idx
+                              ? {
+                                  ...item,
+                                  permission:
+                                    item.permission === 'edit' ? 'read' : 'edit',
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                      className="rounded bg-accent-primary/15 px-1 hover:bg-accent-primary/25"
+                      title="点击切换权限级别"
+                    >
+                      {g.permission === 'edit' ? '可编辑' : '可查看'}
+                    </button>
                     <LucideX
                       className="size-3 cursor-pointer"
                       onClick={() =>
@@ -376,11 +400,27 @@ export default function ConsoleGrants() {
                   </select>
                 </div>
               </div>
+              <select
+                value={addPermission}
+                onChange={(e) =>
+                  setAddPermission(e.target.value as 'read' | 'edit')
+                }
+                className="h-9 rounded-md border border-border-default bg-bg-base px-2 text-sm text-text-primary outline-none"
+                title="授予的权限级别"
+              >
+                <option value="read">可查看</option>
+                <option value="edit">可编辑</option>
+              </select>
               <Button variant="secondary" onClick={addSubject} disabled={!addId}>
                 <LucidePlus className="mr-1 size-4" />
                 添加
               </Button>
             </div>
+
+            <p className="text-xs text-text-secondary">
+              可查看：能看到并使用该资源，但不能修改内容、不能删除、不能再授权；
+              可编辑：可以修改内容、删除资源。
+            </p>
 
             <div>
               <Button

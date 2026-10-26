@@ -29,6 +29,33 @@ type GrantSubject struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// Permission 是这次授予的操作级别："read" 只能看，"edit" 可编辑删除。
+	// 空值按 "edit" 处理：老前端不传这个字段，保持它原来的行为（授权即编辑）。
+	Permission string `json:"permission,omitempty"`
+}
+
+// 授权级别白名单。不接受任意字符串，避免写进库里之后没人认得出是什么。
+const (
+	GrantPermissionRead = "read"
+	GrantPermissionEdit = "edit"
+)
+
+// strongerGrantPermission 返回两个级别里更强的那个（edit > read）。
+// 用于合并同一主体的多行历史授权，避免"部门只读 + 个人可编辑"被读成只读。
+func strongerGrantPermission(a, b string) string {
+	if normalizeGrantPermission(a) == GrantPermissionEdit ||
+		normalizeGrantPermission(b) == GrantPermissionEdit {
+		return GrantPermissionEdit
+	}
+	return GrantPermissionRead
+}
+
+// normalizeGrantPermission 把外部输入收敛成合法级别，空值按 edit 处理。
+func normalizeGrantPermission(v string) string {
+	if strings.EqualFold(strings.TrimSpace(v), GrantPermissionRead) {
+		return GrantPermissionRead
+	}
+	return GrantPermissionEdit
 }
 
 // GrantResourceView is one resource row of the authorization page.
@@ -287,14 +314,21 @@ func (s *ResourceGrantService) describeGrants(ctx context.Context, tenantID stri
 	deptIDs := make([]string, 0)
 	userIDs := make([]string, 0)
 	teamHit := false
+	// 同一个主体可能有多行（历史数据），取更强的那个级别。
+	teamPerm := ""
+	deptPerm := make(map[string]string, len(rows))
+	userPerm := make(map[string]string, len(rows))
 	for _, r := range rows {
 		switch r.SubjectKind {
 		case entity.GrantSubjectTeam:
 			teamHit = true
+			teamPerm = strongerGrantPermission(teamPerm, r.Permission)
 		case entity.GrantSubjectDepartment:
 			deptIDs = append(deptIDs, r.SubjectID)
+			deptPerm[r.SubjectID] = strongerGrantPermission(deptPerm[r.SubjectID], r.Permission)
 		case entity.GrantSubjectUser:
 			userIDs = append(userIDs, r.SubjectID)
+			userPerm[r.SubjectID] = strongerGrantPermission(userPerm[r.SubjectID], r.Permission)
 		}
 	}
 
@@ -319,21 +353,21 @@ func (s *ResourceGrantService) describeGrants(ctx context.Context, tenantID stri
 	userNames := s.ownerNames(ctx, userIDs)
 
 	if teamHit {
-		out = append(out, GrantSubject{Kind: entity.GrantSubjectTeam, Name: "全团队"})
+		out = append(out, GrantSubject{Kind: entity.GrantSubjectTeam, Name: "全团队", Permission: teamPerm})
 	}
 	for _, id := range deptIDs {
 		name := deptNames[id]
 		if name == "" {
 			name = "已删除部门"
 		}
-		out = append(out, GrantSubject{Kind: entity.GrantSubjectDepartment, ID: id, Name: name})
+		out = append(out, GrantSubject{Kind: entity.GrantSubjectDepartment, ID: id, Name: name, Permission: deptPerm[id]})
 	}
 	for _, id := range userIDs {
 		name := userNames[id]
 		if name == "" {
 			name = id
 		}
-		out = append(out, GrantSubject{Kind: entity.GrantSubjectUser, ID: id, Name: name})
+		out = append(out, GrantSubject{Kind: entity.GrantSubjectUser, ID: id, Name: name, Permission: userPerm[id]})
 	}
 	return out
 }
@@ -366,6 +400,7 @@ func (s *ResourceGrantService) SetGrants(ctx context.Context, tenantID, kind, re
 			ResourceID:   resourceID,
 			SubjectKind:  sub.Kind,
 			SubjectID:    sub.ID,
+			Permission:   normalizeGrantPermission(sub.Permission),
 			BaseModel:    entity.BaseModel{CreateTime: &now, UpdateTime: &now},
 		})
 	}

@@ -424,11 +424,36 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 		}
 	}
 
+	// resource_grant 只在 --migrate 分支的 dataModels 里收敛；若部署时只重启
+	// 服务而没跑 migrate，授权写入会因为缺列直接失败，所以这里也补一次。
+	if err := ensureResourceGrantPermissionColumn(ctx, db); err != nil {
+		return err
+	}
+
 	// tenant 不在上面的列表里（它的列历史上由 Python 侧迁移管理），
 	// 所以租户启停用这一列必须单独补，否则线上所有租户查询都会
 	// 报 Unknown column 'enabled'。
 	if err := ensureTenantEnabledColumn(ctx, db); err != nil {
 		return err
+	}
+	return nil
+}
+
+// ensureResourceGrantPermissionColumn 幂等地补上 resource_grant.permission。
+//
+// 存量行按 'edit' 回填：这个字段出现之前授权就是可编辑的，
+// 按 read 回填会让所有已授权的人一夜之间失去编辑权。
+func ensureResourceGrantPermissionColumn(ctx context.Context, db *gorm.DB) error {
+	if db.Migrator().HasColumn(&entity.ResourceGrant{}, "permission") {
+		return nil
+	}
+	if err := db.WithContext(ctx).Migrator().AddColumn(&entity.ResourceGrant{}, "Permission"); err != nil {
+		return fmt.Errorf("add resource_grant.permission: %w", err)
+	}
+	if err := db.WithContext(ctx).Exec(
+		"UPDATE resource_grant SET permission = 'edit' WHERE permission IS NULL OR permission = ''",
+	).Error; err != nil {
+		return fmt.Errorf("backfill resource_grant.permission: %w", err)
 	}
 	return nil
 }

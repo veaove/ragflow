@@ -384,20 +384,46 @@ func lookupDepartmentID(ctx context.Context, db *gorm.DB, userID string) string 
 	return row.DepartmentID
 }
 
-// grantAllows reports whether an explicit resource_grant row covers the subject.
+// readOnlyOperations 把一次授权收敛成「只能看」。
 //
-// This is the bridge between the console's "visible to: team / department /
-// user" setting and the engine: rows here override the legacy binary
-// `permission` column. Department membership is resolved with a subquery so the
-// check stays a single round trip.
-func (e *evaluation) grantAllows(ctx context.Context, subject Subject, resource Resource) (bool, error) {
+// 保留 read/run/use：run/use 是"拿这个库去检索、去问答"，属于查看的一种形态；
+// 剔除 create/update/delete/delete_content/share：能改内容、能再授权出去，
+// 都不算只读。
+func readOnlyOperations(ops []Operation) []Operation {
+	out := make([]Operation, 0, len(ops))
+	for _, op := range ops {
+		switch op {
+		case OperationRead, OperationRun, OperationUse:
+			out = append(out, op)
+		}
+	}
+	if len(out) == 0 {
+		out = []Operation{OperationRead}
+	}
+	return out
+}
+
+// grantLevel 返回该主体在这条资源上的最高授权级别。
+//
+// 返回值："edit" / "read" / ""（无授权）。
+// 多条授权可能同时命中（部门只读 + 个人可编辑、或全团队 + 个人），取最高的：
+// 被单独授予编辑权的人，不该被部门级的只读授权覆盖掉。
+// 取最高不能用 MAX(permission) —— 字符串比较里 'read' > 'edit'，会取反。
+func (e *evaluation) grantLevel(ctx context.Context, subject Subject, resource Resource) (string, error) {
+	// 这张表是控制台「可见范围：全团队 / 部门 / 用户」与权限引擎之间的桥：
+	// 命中即覆盖资源原本的二值可见性。部门归属在子查询里解析，保持一次往返。
 	source, ok := e.source.(*databaseSource)
 	if !ok || source.db == nil {
-		return false, nil
+		return "", nil
 	}
-	var count int64
+	var row struct {
+		Total int64
+		Edits int64
+	}
 	err := source.db.WithContext(ctx).
 		Model(&entity.ResourceGrant{}).
+		Select("COUNT(*) AS total, "+
+			"SUM(CASE WHEN resource_grant.permission = 'edit' THEN 1 ELSE 0 END) AS edits").
 		Where("resource_grant.tenant_id = ?", resource.TenantID).
 		Where("resource_grant.resource_kind = ?", string(resource.Ref.Kind)).
 		Where("resource_grant.resource_id = ?", resource.Ref.ID).
@@ -407,14 +433,20 @@ func (e *evaluation) grantAllows(ctx context.Context, subject Subject, resource 
 			entity.GrantSubjectTeam,
 			entity.GrantSubjectUser, subject.UserID,
 			entity.GrantSubjectDepartment, lookupDepartmentID(ctx, source.db, subject.UserID)).
-		Count(&count).Error
+		Scan(&row).Error
 	if err != nil {
 		// 授权是"额外放行"而不是"额外限制"：这张表不可用（老库未迁移、测试库
 		// 没建表）时降级回原有的二值可见性，private 资源仍然只有 owner 可见。
 		// 反过来把错误抛上去会让整次权限判定 500，等于一张附加表能拖垮全站。
-		return false, nil
+		return "", nil
 	}
-	return count > 0, nil
+	if row.Total == 0 {
+		return "", nil
+	}
+	if row.Edits > 0 {
+		return "edit", nil
+	}
+	return "read", nil
 }
 
 func (e *evaluation) resolveAccess(ctx context.Context, subject Subject, ref ResourceRef) (Access, error) {
@@ -457,12 +489,18 @@ func (e *evaluation) resolveResource(ctx context.Context, subject Subject, resou
 	case VisibilityPrivate:
 		// private 默认只有 owner 可见；resource_grant 是它的唯一例外。
 		// 只在这一支查授权表：tenant 可见性已经放行，没必要为它多一次查询。
-		if granted, err := e.grantAllows(ctx, subject, resource); err != nil {
+		level, err := e.grantLevel(ctx, subject, resource)
+		if err != nil {
 			return Access{}, err
-		} else if granted {
+		}
+		if level != "" {
 			operations := resource.TenantOperations
 			if operations == nil {
 				operations = resource.OwnerOperations
+			}
+			// 只读授权只放行「看 + 检索」，编辑/删除/再授权都不放行。
+			if level == "read" {
+				operations = readOnlyOperations(operations)
 			}
 			return resourceAccessWithOperations(resource, AccessSourceShared, operations), nil
 		}
