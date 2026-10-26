@@ -15,8 +15,8 @@ import crypto from 'node:crypto';
 
 const BASE_CANDIDATES = [
   process.env.RF_BASE,
-  'http://47.99.241.190:9380',
-  'http://47.99.241.190',
+  'http://172.30.20.51:9380',
+  'http://172.30.20.51',
 ].filter(Boolean);
 
 // 凭证一律走环境变量，不要硬编码到仓库里：

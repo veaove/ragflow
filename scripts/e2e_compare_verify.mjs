@@ -18,8 +18,8 @@ import crypto from 'node:crypto';
 // 安全组放行情况会变，写死任一个都会在改配置后突然跑不通。
 const BASE_CANDIDATES = [
   process.env.RF_BASE,
-  'http://47.99.241.190:9380',
-  'http://47.99.241.190',
+  'http://172.30.20.51:9380',
+  'http://172.30.20.51',
 ].filter(Boolean);
 
 async function resolveBase() {

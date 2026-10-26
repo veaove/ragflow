@@ -5,7 +5,7 @@
  */
 import crypto from 'node:crypto';
 
-const BASE = 'http://47.99.241.190:9380';
+const BASE = 'http://172.30.20.51:9380';
 // 凭证一律走环境变量，不要硬编码到仓库里：
 //   RF_EMAIL=... RF_PASSWORD=... node scripts/<this-file>
 const EMAIL = process.env.RF_EMAIL || '';

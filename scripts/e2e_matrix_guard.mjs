@@ -18,7 +18,7 @@
 
 import { chromium } from 'playwright';
 
-const BASE = process.env.BASE || 'http://42.121.119.90';
+const BASE = process.env.BASE || 'http://172.30.20.51';
 const TOKEN = process.env.TOKEN;
 const TOKEN_READER = process.env.TOKEN_READER;
 const READER_EMAIL = process.env.READER_EMAIL || 'e2e.reader@example.com';

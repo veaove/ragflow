@@ -11,7 +11,7 @@
  *
  * 用法：
  *   RAGFLOW_TOKEN=<登录返回的 access_token> node scripts/smoke_studio_workflow.mjs
- *   # 可选：RAGFLOW_BASE（默认 http://47.99.241.190:9380）
+ *   # 可选：RAGFLOW_BASE（默认 http://172.30.20.51:9380）
  *
  * 拿 token：
  *   curl -s -X POST $BASE/api/v1/auth/login -H 'Content-Type: application/json' \
@@ -21,7 +21,7 @@
  * 退出码：0 全通过；1 断言失败；2 环境不满足（缺 token）
  */
 
-const BASE = (process.env.RAGFLOW_BASE || 'http://47.99.241.190:9380').replace(/\/$/, '');
+const BASE = (process.env.RAGFLOW_BASE || 'http://172.30.20.51:9380').replace(/\/$/, '');
 const TOKEN = process.env.RAGFLOW_TOKEN;
 
 if (!TOKEN) {
