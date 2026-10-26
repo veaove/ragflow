@@ -14,7 +14,10 @@
  *  limitations under the License.
  */
 
-import { FormFieldType } from '@/components/dynamic-form';
+// 从 dynamic-form-types 取枚举，不要从 '@/components/dynamic-form' 取：
+// 后者会把整个表单组件链拉进来，而 provider 配置又被该链反向引用，形成循环，
+// 在 Jest 的 CommonJS 转换下 FormFieldType 会是 undefined。
+import { FormFieldType } from '@/components/dynamic-form-types';
 import { LLMFactory } from '@/constants/llm';
 import type { ProviderConfig } from '../types';
 

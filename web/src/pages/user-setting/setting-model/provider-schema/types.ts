@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { FormFieldType } from '@/components/dynamic-form';
+import { FormFieldType } from '@/components/dynamic-form-types';
 import type { IModelInfo } from '@/interfaces/request/llm';
 import type { ReactNode } from 'react';
 

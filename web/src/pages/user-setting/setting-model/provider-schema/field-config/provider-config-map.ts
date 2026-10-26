@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { FormFieldType } from '@/components/dynamic-form';
+import { FormFieldType } from '@/components/dynamic-form-types';
 import { LLMFactory } from '@/constants/llm';
 import type { ProviderConfig } from '../types';
 import { parseApiKeyAsObject } from './utils';

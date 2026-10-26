@@ -45,6 +45,7 @@ import { cn } from '@/lib/utils';
 import { t } from 'i18next';
 import { Loader } from 'lucide-react';
 import { MultiSelect, MultiSelectOptionType } from './ui/multi-select';
+import { FormFieldType } from './dynamic-form-types';
 import { Segmented } from './ui/segmented';
 import { Switch } from './ui/switch';
 
@@ -59,21 +60,11 @@ const getNestedValue = (obj: any, path: string) => {
  */
 export const FilterFormField = 'RAG_DY_STATIC';
 
-// Field type enumeration
-export enum FormFieldType {
-  Text = 'text',
-  Email = 'email',
-  Password = 'password',
-  Number = 'number',
-  Textarea = 'textarea',
-  Select = 'select',
-  MultiSelect = 'multi-select',
-  Checkbox = 'checkbox',
-  Switch = 'switch',
-  Tag = 'tag',
-  Segmented = 'segmented',
-  Custom = 'custom',
-}
+// Field type enumeration. Defined in ./dynamic-form-types so that the provider
+// schema configs can import it without pulling this component (and its whole
+// dependency chain) into a circular import. Re-exported here for existing
+// callers that already import it from this module.
+export { FormFieldType };
 
 // Field configuration interface
 export interface FormFieldConfig {

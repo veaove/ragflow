@@ -14,7 +14,10 @@
  *  limitations under the License.
  */
 
-import { FormFieldConfig, FormFieldType } from '@/components/dynamic-form';
+// FormFieldConfig 只是类型，import type 会在编译时被擦除，不会把组件链拉进运行时；
+// FormFieldType 是运行时枚举，必须从 dynamic-form-types 取，否则与组件构成循环。
+import type { FormFieldConfig } from '@/components/dynamic-form';
+import { FormFieldType } from '@/components/dynamic-form-types';
 import { Input } from '@/components/ui/input';
 import { InputSelect } from '@/components/ui/input-select';
 import { useTranslate } from '@/hooks/common-hooks';

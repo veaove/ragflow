@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { FormFieldType } from '@/components/dynamic-form';
+import { FormFieldType } from '@/components/dynamic-form-types';
 import { LLMFactory } from '@/constants/llm';
 import type { FieldConfig, ProviderConfig } from '../types';
 import { buildModelInfoFromValues } from './utils';
@@ -68,7 +68,9 @@ export const LocalLlmConfigs: Record<string, ProviderConfig> = {
         label: 'addLlmBaseUrl',
         type: 'inputSelect',
         required: true,
-        defaultValue: '',
+        // FunASR 本地服务的默认地址：8000 端口 + OpenAI 兼容的 /v1 前缀。
+        // 留空会让新建实例时必须手填，而绝大多数部署就是默认值。
+        defaultValue: 'http://localhost:8000/v1',
         autoComplete: 'new-password',
         placeholder: 'baseUrlNameMessage',
         shouldRender: 'hideWhenInstanceExists',
