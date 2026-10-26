@@ -773,7 +773,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 			v1.PUT("/compilation-template-groups/:group_id", r.compilationTemplateGroupHandler.Update)
 			v1.DELETE("/compilation-template-groups/:group_id", r.compilationTemplateGroupHandler.Delete)
 
-			connectors := v1.Group("/connectors")
+			// 数据源（connector）归「配置中心 - 数据源」矩阵管
+			connectors := v1.Group("/connectors", handler.ModulePermission("datasource"))
 			{
 				connectors.GET("", r.connectorHandler.ListConnectors)
 				connectors.POST("", r.connectorHandler.CreateConnector)

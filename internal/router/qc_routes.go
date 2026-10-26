@@ -18,6 +18,8 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
+
+	"ragflow/internal/handler"
 )
 
 // registerQcRoutes registers the quality-inspection routes under /api/v1/qc.
@@ -25,29 +27,35 @@ import (
 // parameterised siblings so they always win.
 func (r *Router) registerQcRoutes(v1 *gin.RouterGroup) {
 	qc := v1.Group("/qc")
+	// 三块内容属于不同的权限模块，各自挂中间件：
+	//   质检规则 / 命中记录 / 质检系统配置。
+	// 实时质检走 WebSocket，在 router.go 的 noAuth 组注册，这里不涉及。
+	rules := qc.Group("/rules", handler.ModulePermission("qc_rule"))
+	hits := qc.Group("/hits", handler.ModulePermission("qc_hit"))
+	qcConfig := qc.Group("/config", handler.ModulePermission("qc_config"))
 	{
-		qc.GET("/rules", r.getQcHandler().ListRules)
-		qc.POST("/rules", r.getQcHandler().CreateRule)
-		qc.POST("/rules/test", r.getQcHandler().TestRule)
+		rules.GET("", r.getQcHandler().ListRules)
+		rules.POST("", r.getQcHandler().CreateRule)
+		rules.POST("/test", r.getQcHandler().TestRule)
 		// App-level rule selection (the 「选用规则」 block in app settings).
 		// Must precede /rules/:id so "selection" is never read as an id.
-		qc.GET("/rules/selection", r.getQcHandler().GetRuleSelection)
-		qc.PUT("/rules/selection", r.getQcHandler().UpdateRuleSelection)
+		rules.GET("/selection", r.getQcHandler().GetRuleSelection)
+		rules.PUT("/selection", r.getQcHandler().UpdateRuleSelection)
 		// 引用关系：必须在 /rules/:id 之前注册，避免 "references" 被当成 id。
-		qc.GET("/rules/:id/references", r.getQcHandler().GetRuleReferences)
-		qc.GET("/rules/:id", r.getQcHandler().GetRule)
-		qc.PUT("/rules/:id", r.getQcHandler().UpdateRule)
-		qc.DELETE("/rules/:id", r.getQcHandler().DeleteRule)
-		qc.POST("/rules/:id/toggle", r.getQcHandler().ToggleRule)
+		rules.GET("/:id/references", r.getQcHandler().GetRuleReferences)
+		rules.GET("/:id", r.getQcHandler().GetRule)
+		rules.PUT("/:id", r.getQcHandler().UpdateRule)
+		rules.DELETE("/:id", r.getQcHandler().DeleteRule)
+		rules.POST("/:id/toggle", r.getQcHandler().ToggleRule)
 
-		qc.GET("/hits", r.getQcHandler().ListHits)
-		qc.GET("/hits/export", r.getQcHandler().ExportHits)
-		qc.GET("/hits/:id", r.getQcHandler().GetHit)
+		hits.GET("", r.getQcHandler().ListHits)
+		hits.GET("/export", r.getQcHandler().ExportHits)
+		hits.GET("/:id", r.getQcHandler().GetHit)
 
 		// The realtime WebSocket is registered outside the auth group (see
 		// router.go), because a browser WS handshake cannot carry the
 		// Authorization header.
-		qc.GET("/config", r.getQcHandler().GetConfig)
-		qc.PUT("/config", r.getQcHandler().UpdateConfig)
+		qcConfig.GET("", r.getQcHandler().GetConfig)
+		qcConfig.PUT("", r.getQcHandler().UpdateConfig)
 	}
 }
