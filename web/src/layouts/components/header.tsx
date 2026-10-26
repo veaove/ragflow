@@ -45,7 +45,7 @@ export function Header({
   const navigate = useNavigate();
 
   const {
-    data: { language = 'en', avatar, nickname },
+    data: { language = 'en', avatar, nickname, email },
   } = useFetchUserInfo();
 
   // 有团队邀请时给铃铛亮红点；消息中心本身常驻可见。
@@ -90,6 +90,16 @@ export function Header({
         className="flex shrink-0 items-center justify-end gap-0.5 text-text-badge sm:gap-1"
         data-testid="auth-status"
       >
+        {/* 当前登录邮箱：让用户一眼确认自己用的是哪个账号（多账号场景常见误操作）。
+            窄屏隐藏，宽屏超长截断 + hover 显示完整地址。 */}
+        {email && (
+          <span
+            className="hidden max-w-[220px] truncate text-sm text-text-secondary lg:inline"
+            title={email}
+          >
+            {email}
+          </span>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -121,7 +131,10 @@ export function Header({
         </DropdownMenu>
 
         {/* 租户切换：仅在用户属于多个租户时出现 */}
-        {tenantData && tenantData.length > 1 && currentTenant && (
+        {/* 只要用户有租户就显示当前租户名。
+            原来写的是 length > 1，导致单租户账号看不到自己属于哪个租户，
+            也找不到切换入口 —— 顶栏展示当前租户本来就是常驻信息。 */}
+        {tenantData && tenantData.length > 0 && currentTenant && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
