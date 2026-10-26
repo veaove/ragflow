@@ -3,6 +3,7 @@ import EmbedDialog from '@/components/embed-dialog';
 import { useShowEmbedModal } from '@/components/embed-dialog/use-show-embed-dialog';
 import { MoreButton } from '@/components/more-button';
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
+import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SearchInput } from '@/components/ui/input';
@@ -17,7 +18,9 @@ import {
   useFetchChat,
   useGetChatSearchParams,
   useRemoveSessions,
+  useUpdateSession,
 } from '@/hooks/use-chat-request';
+import { IConversation } from '@/interfaces/database/chat';
 import {
   LucideCopyX,
   LucideListChecks,
@@ -52,10 +55,36 @@ export function Sessions({ handleConversationCardClick }: SessionProps) {
   const { data } = useFetchChat();
   const { visible, switchVisible } = useSetModalState(true);
   const { removeSessions } = useRemoveSessions();
+  const { updateSession, loading: renaming } = useUpdateSession();
   const { setConversationBoth } = useChatUrlParams();
   const { conversationId } = useGetChatSearchParams();
   const removeStreamSessions = useChatStreamStore(
     (state) => state.removeSessions,
+  );
+
+  const { id } = useParams();
+  // The session being renamed; null closes the dialog.
+  const [renameTarget, setRenameTarget] = useState<IConversation | null>(null);
+
+  const handleRenameOk = useCallback(
+    async (name: string) => {
+      if (!id || !renameTarget) {
+        return false;
+      }
+      try {
+        const res = await updateSession({
+          chatId: id,
+          sessionId: renameTarget.id,
+          params: { name },
+        });
+        // RenameForm only closes the dialog when onOk resolves truthy, so a
+        // failed PATCH has to stay false rather than throw.
+        return res?.code === 0;
+      } catch {
+        return false;
+      }
+    },
+    [id, renameTarget, updateSession],
   );
 
   // Selection mode state
@@ -167,7 +196,6 @@ export function Sessions({ handleConversationCardClick }: SessionProps) {
 
   const selectedCount = visibleSelectedIds.length;
 
-  const { id } = useParams();
   const { showEmbedModal, hideEmbedModal, embedVisible, beta } =
     useShowEmbedModal();
 
@@ -371,6 +399,7 @@ export function Sessions({ handleConversationCardClick }: SessionProps) {
                   <ConversationDropdown
                     conversation={x}
                     removeTemporaryConversation={removeTemporaryConversation}
+                    onRename={setRenameTarget}
                   >
                     <MoreButton
                       data-testid="chat-detail-session-actions"
@@ -383,6 +412,15 @@ export function Sessions({ handleConversationCardClick }: SessionProps) {
           </nav>
         )}
       </div>
+
+      {renameTarget && (
+        <RenameDialog
+          initialName={renameTarget.name}
+          onOk={handleRenameOk}
+          hideModal={() => setRenameTarget(null)}
+          loading={renaming}
+        />
+      )}
     </aside>
   );
 }

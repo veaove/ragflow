@@ -10,7 +10,7 @@ import {
   useRemoveSessions,
 } from '@/hooks/use-chat-request';
 import { IConversation } from '@/interfaces/database/chat';
-import { Trash2 } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatStreamStore } from '../chat-stream/store';
@@ -20,9 +20,12 @@ export function ConversationDropdown({
   children,
   conversation,
   removeTemporaryConversation,
+  onRename,
 }: PropsWithChildren & {
   conversation: IConversation;
   removeTemporaryConversation?: (conversationId: string) => void;
+  /** Opens the rename dialog. Omitted for sessions that only exist locally. */
+  onRename?: (conversation: IConversation) => void;
 }) {
   const { t } = useTranslation();
   const { setConversationBoth } = useChatUrlParams();
@@ -61,6 +64,18 @@ export function ConversationDropdown({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent>
+        {/* A brand-new session has no row in the database yet, so there is
+            nothing to PATCH — it becomes renamable once the first message is
+            sent and the session is persisted. */}
+        {onRename && conversation.is_new !== true && (
+          <DropdownMenuItem
+            onSelect={() => onRename(conversation)}
+            data-testid="chat-detail-session-rename"
+            data-session-id={conversation.id}
+          >
+            {t('common.rename')} <Pencil />
+          </DropdownMenuItem>
+        )}
         <ConfirmDeleteDialog onOk={handleDelete}>
           <DropdownMenuItem
             className="text-state-error"
