@@ -15,7 +15,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { LucidePlus, LucideSearch } from 'lucide-react';
+import { LucidePencil, LucidePlus, LucideSearch } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -49,6 +49,7 @@ import {
   setTenantEnabled,
   setTenantOwner,
   type TenantAssetItem,
+  updateTenantName,
 } from '@/services/admin-service';
 
 type ResourceType = 'members' | 'kbs' | 'agents';
@@ -268,6 +269,30 @@ export default function Tenants() {
     },
   });
 
+  // 重命名租户：名称只有一处真值（后端 tenant.name），改完全站同步。
+  const [renameDialog, setRenameDialog] = useState<{
+    tenantId: string;
+    tenantName: string;
+  } | null>(null);
+  const [newName, setNewName] = useState('');
+  const [renameError, setRenameError] = useState('');
+
+  const renameMutation = useMutation({
+    mutationFn: async () =>
+      updateTenantName(renameDialog!.tenantId, newName.trim()),
+    onSuccess: ({ data }) => {
+      if (data.code === 0) {
+        setRenameDialog(null);
+        setNewName('');
+        setRenameError('');
+        queryClient.invalidateQueries({ queryKey: ['admin/tenants'] });
+      } else {
+        setRenameError(data.message ?? '重命名失败');
+      }
+    },
+    onError: (err: any) => setRenameError(err?.message ?? '重命名失败'),
+  });
+
   // 停用 / 启用确认
   const [toggleDialog, setToggleDialog] = useState<{
     tenantId: string;
@@ -372,9 +397,9 @@ export default function Tenants() {
               <TableHead>成员数</TableHead>
               <TableHead>知识库数</TableHead>
               <TableHead>智能体数</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>创建时间</TableHead>
-                <TableHead>操作</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>创建时间</TableHead>
+              <TableHead>操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -391,101 +416,124 @@ export default function Tenants() {
             {rows.map((row) => (
               <TableRow key={row.id}>
                 <TableCell className="font-medium text-text-primary">
-                  {row.name}
+                  <div className="flex items-center gap-1.5">
+                    <span className="min-w-0 truncate" title={row.name}>
+                      {row.name}
+                    </span>
+                    <button
+                      type="button"
+                      title="重命名"
+                      aria-label={`重命名租户 ${row.name}`}
+                      onClick={() => {
+                        setNewName(row.name);
+                        setRenameError('');
+                        setRenameDialog({
+                          tenantId: row.id,
+                          tenantName: row.name,
+                        });
+                      }}
+                      className="shrink-0 rounded p-1 text-text-secondary transition-colors hover:bg-bg-base hover:text-text-primary"
+                    >
+                      <LucidePencil className="size-3.5" />
+                    </button>
+                  </div>
                 </TableCell>
-                  <TableCell>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setResourceDialog({
-                          tenantId: row.id,
-                          tenantName: row.name,
-                          type: 'members',
-                        })
-                      }
-                      className="text-text-primary underline-offset-2 hover:underline"
-                    >
-                      {row.member_count}
-                    </button>
-                  </TableCell>
-                  <TableCell>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setResourceDialog({
-                          tenantId: row.id,
-                          tenantName: row.name,
-                          type: 'kbs',
-                        })
-                      }
-                      className="text-text-primary underline-offset-2 hover:underline"
-                    >
-                      {row.kb_count}
-                    </button>
-                  </TableCell>
-                  <TableCell>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setResourceDialog({
-                          tenantId: row.id,
-                          tenantName: row.name,
-                          type: 'agents',
-                        })
-                      }
-                      className="text-text-primary underline-offset-2 hover:underline"
-                    >
-                      {row.agent_count}
-                    </button>
-                  </TableCell>
+                <TableCell>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setResourceDialog({
+                        tenantId: row.id,
+                        tenantName: row.name,
+                        type: 'members',
+                      })
+                    }
+                    className="text-text-primary underline-offset-2 hover:underline"
+                  >
+                    {row.member_count}
+                  </button>
+                </TableCell>
+                <TableCell>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setResourceDialog({
+                        tenantId: row.id,
+                        tenantName: row.name,
+                        type: 'kbs',
+                      })
+                    }
+                    className="text-text-primary underline-offset-2 hover:underline"
+                  >
+                    {row.kb_count}
+                  </button>
+                </TableCell>
+                <TableCell>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setResourceDialog({
+                        tenantId: row.id,
+                        tenantName: row.name,
+                        type: 'agents',
+                      })
+                    }
+                    className="text-text-primary underline-offset-2 hover:underline"
+                  >
+                    {row.agent_count}
+                  </button>
+                </TableCell>
                 <TableCell>
                   <Badge variant={row.enabled ? 'success' : 'destructive'}>
                     {row.enabled ? '正常' : '已停用'}
                   </Badge>
                 </TableCell>
-                  <TableCell className="text-text-secondary">
-                    {formatDate(row.create_date)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1 whitespace-nowrap">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setOwnerDialog({
-                            tenantId: row.id,
-                            tenantName: row.name,
-                          })
-                        }
-                      >
-                        设置超管
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setToggleDialog({
-                            tenantId: row.id,
-                            tenantName: row.name,
-                            enabled: row.enabled,
-                          })
-                        }
-                      >
-                        {row.enabled ? '停用' : '启用'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setDeleteConfirmName('');
-                          setDeleteDialog({ tenantId: row.id, tenantName: row.name });
-                        }}
-                      >
-                        删除
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <TableCell className="text-text-secondary">
+                  {formatDate(row.create_date)}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setOwnerDialog({
+                          tenantId: row.id,
+                          tenantName: row.name,
+                        })
+                      }
+                    >
+                      设置超管
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setToggleDialog({
+                          tenantId: row.id,
+                          tenantName: row.name,
+                          enabled: row.enabled,
+                        })
+                      }
+                    >
+                      {row.enabled ? '停用' : '启用'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setDeleteConfirmName('');
+                        setDeleteDialog({
+                          tenantId: row.id,
+                          tenantName: row.name,
+                        });
+                      }}
+                    >
+                      删除
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
             ))}
           </TableBody>
         </Table>
@@ -540,9 +588,7 @@ export default function Tenants() {
                 不会自动创建账号。请先在「用户管理」里建好用户，再从这里选择。
               </p>
             </div>
-            {error && (
-              <p className="text-sm text-text-primary">{error}</p>
-            )}
+            {error && <p className="text-sm text-text-primary">{error}</p>}
           </div>
 
           <DialogFooter>
@@ -555,9 +601,7 @@ export default function Tenants() {
                 createMutation.mutate();
               }}
               disabled={
-                !name.trim() ||
-                !ownerEmail.trim() ||
-                createMutation.isPending
+                !name.trim() || !ownerEmail.trim() || createMutation.isPending
               }
             >
               {createMutation.isPending ? '创建中…' : '确定'}
@@ -579,7 +623,9 @@ export default function Tenants() {
                 : resourceDialog?.type === 'kbs'
                   ? '知识库列表'
                   : '智能体列表'}
-              {resourceDialog?.tenantName ? ` · ${resourceDialog.tenantName}` : ''}
+              {resourceDialog?.tenantName
+                ? ` · ${resourceDialog.tenantName}`
+                : ''}
             </DialogTitle>
           </DialogHeader>
 
@@ -594,59 +640,61 @@ export default function Tenants() {
             </p>
           )}
 
-          {!resourcesLoading && (resources?.length ?? 0) > 0 && resourceDialog && (
-            <div className="max-h-[420px] overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-bg-base">
-                  <tr className="border-b border-border-default text-left text-xs text-text-secondary">
-                    <th className="py-2 pr-4 font-normal">
-                      {resourceLayout?.firstColumn}
-                    </th>
-                    {resourceLayout?.columns.map((col) => (
-                      <th
-                        key={col.key}
-                        className="whitespace-nowrap py-2 pr-4 font-normal last:pr-0"
-                      >
-                        {col.label}
+          {!resourcesLoading &&
+            (resources?.length ?? 0) > 0 &&
+            resourceDialog && (
+              <div className="max-h-[420px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-bg-base">
+                    <tr className="border-b border-border-default text-left text-xs text-text-secondary">
+                      <th className="py-2 pr-4 font-normal">
+                        {resourceLayout?.firstColumn}
                       </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {resources?.map((item) => {
-                    // 昵称和邮箱都在时，邮箱降为副行；没有昵称时主行就是邮箱。
-                    const email = item.cells?.email ?? '';
-                    const subLine = email && email !== item.name ? email : '';
-                    return (
-                      <tr
-                        key={item.id}
-                        className="border-b border-border-default last:border-b-0"
-                      >
-                        <td className="py-2 pr-4">
-                          <div className="max-w-[240px] truncate text-text-primary">
-                            {item.name}
-                          </div>
-                          {subLine && (
-                            <div className="max-w-[240px] truncate text-xs text-text-secondary">
-                              {subLine}
+                      {resourceLayout?.columns.map((col) => (
+                        <th
+                          key={col.key}
+                          className="whitespace-nowrap py-2 pr-4 font-normal last:pr-0"
+                        >
+                          {col.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resources?.map((item) => {
+                      // 昵称和邮箱都在时，邮箱降为副行；没有昵称时主行就是邮箱。
+                      const email = item.cells?.email ?? '';
+                      const subLine = email && email !== item.name ? email : '';
+                      return (
+                        <tr
+                          key={item.id}
+                          className="border-b border-border-default last:border-b-0"
+                        >
+                          <td className="py-2 pr-4">
+                            <div className="max-w-[240px] truncate text-text-primary">
+                              {item.name}
                             </div>
-                          )}
-                        </td>
-                        {resourceLayout?.columns.map((col) => (
-                          <td
-                            key={col.key}
-                            className="whitespace-nowrap py-2 pr-4 text-text-secondary last:pr-0"
-                          >
-                            {resourceCellText(col.key, item.cells?.[col.key])}
+                            {subLine && (
+                              <div className="max-w-[240px] truncate text-xs text-text-secondary">
+                                {subLine}
+                              </div>
+                            )}
                           </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+                          {resourceLayout?.columns.map((col) => (
+                            <td
+                              key={col.key}
+                              className="whitespace-nowrap py-2 pr-4 text-text-secondary last:pr-0"
+                            >
+                              {resourceCellText(col.key, item.cells?.[col.key])}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
         </DialogContent>
       </Dialog>
 
@@ -663,7 +711,8 @@ export default function Tenants() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              设置超管{ownerDialog?.tenantName ? ` · ${ownerDialog.tenantName}` : ''}
+              设置超管
+              {ownerDialog?.tenantName ? ` · ${ownerDialog.tenantName}` : ''}
             </DialogTitle>
           </DialogHeader>
 
@@ -707,6 +756,70 @@ export default function Tenants() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* 重命名租户 */}
+      <Dialog
+        open={!!renameDialog}
+        onOpenChange={(next) => {
+          if (!next) {
+            setRenameDialog(null);
+            setNewName('');
+            setRenameError('');
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              重命名租户
+              {renameDialog?.tenantName ? ` · ${renameDialog.tenantName}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-2">
+            <Label>租户名称</Label>
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="例如：华夏基金"
+              maxLength={100}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newName.trim()) {
+                  setRenameError('');
+                  renameMutation.mutate();
+                }
+              }}
+            />
+            <p className="text-xs text-text-secondary">
+              改名后该租户下的所有成员看到的租户名称会同步变化，历史数据不受影响。
+            </p>
+            {renameError && (
+              <p className="text-sm text-text-primary">{renameError}</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRenameDialog(null);
+                setNewName('');
+                setRenameError('');
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={() => {
+                setRenameError('');
+                renameMutation.mutate();
+              }}
+              disabled={!newName.trim() || renameMutation.isPending}
+            >
+              {renameMutation.isPending ? '保存中…' : '确定'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* 停用 / 启用确认 */}
       <Dialog
         open={!!toggleDialog}
@@ -730,7 +843,9 @@ export default function Tenants() {
               ? '停用后该租户下所有用户都将无法访问该租户（含租户管理员），数据全部保留，重新启用即可恢复。'
               : '启用后该租户下的成员恢复正常访问。'}
           </p>
-          {actionError && <p className="text-sm text-text-primary">{actionError}</p>}
+          {actionError && (
+            <p className="text-sm text-text-primary">{actionError}</p>
+          )}
 
           <DialogFooter>
             <Button
@@ -808,8 +923,12 @@ export default function Tenants() {
                         key={item.key}
                         className="border-b border-border-default last:border-b-0"
                       >
-                        <td className="py-2 pr-4 text-text-primary">{item.label}</td>
-                        <td className="py-2 pr-4 text-text-primary">{item.count}</td>
+                        <td className="py-2 pr-4 text-text-primary">
+                          {item.label}
+                        </td>
+                        <td className="py-2 pr-4 text-text-primary">
+                          {item.count}
+                        </td>
                         <td className="py-2 text-text-secondary">
                           {item.count === 0
                             ? '无'
@@ -864,7 +983,8 @@ export default function Tenants() {
               disabled={
                 assetsLoading ||
                 blockingItems.length > 0 ||
-                deleteConfirmName.trim() !== (deleteDialog?.tenantName ?? '').trim() ||
+                deleteConfirmName.trim() !==
+                  (deleteDialog?.tenantName ?? '').trim() ||
                 deleteMutation.isPending
               }
             >

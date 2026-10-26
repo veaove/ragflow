@@ -16,6 +16,7 @@ package admin
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -325,5 +326,70 @@ func TestListTenantResourcesKBsShowsOperationalColumns(t *testing.T) {
 	}
 	if _, leaked := cellsByName["soft deleted kb"]; leaked {
 		t.Errorf("soft-deleted knowledge base leaked into the drill-down: %+v", items)
+	}
+}
+
+// TestUpdateTenantName covers the console's "rename a tenant" action.
+//
+// The name is the tenant's only display label — the platform list, the
+// member-facing tenant switcher and the audit trail all render it — so the
+// update has to land in tenant.name and nowhere else. Empty and over-long
+// names are rejected rather than written, since an empty label would leave
+// a hole in every one of those surfaces.
+func TestUpdateTenantName(t *testing.T) {
+	db := testutil.SetupTestDB(t, &entity.Tenant{})
+	t.Cleanup(testutil.ReplaceDBForTest(t, db))
+	ctx := context.Background()
+
+	const tenantID = "tenant-rename"
+	statusValid := string(entity.StatusValid)
+	oldName := "nick's Kingdom"
+	tenant := entity.Tenant{ID: tenantID, Name: &oldName, Status: &statusValid}
+	if err := db.Create(&tenant).Error; err != nil {
+		t.Fatalf("create tenant: %v", err)
+	}
+
+	svc := NewService()
+
+	// 首尾空格要剪掉：前端可能把用户输入原样传上来。
+	if err := svc.UpdateTenantName(ctx, tenantID, "  华夏基金  "); err != nil {
+		t.Fatalf("rename tenant: %v", err)
+	}
+
+	var got entity.Tenant
+	if err := db.Where("id = ?", tenantID).Take(&got).Error; err != nil {
+		t.Fatalf("reload tenant: %v", err)
+	}
+	if got.Name == nil || *got.Name != "华夏基金" {
+		t.Fatalf("name = %v, want 华夏基金", got.Name)
+	}
+
+	// 改名不影响租户本身的其他字段（not null 的模型配置不能被刷成零值）。
+	if got.ID != tenantID {
+		t.Errorf("id = %q, want %q", got.ID, tenantID)
+	}
+	if got.Status == nil || *got.Status != statusValid {
+		t.Errorf("status = %v, want %q", got.Status, statusValid)
+	}
+
+	// 空名拒绝。
+	if err := svc.UpdateTenantName(ctx, tenantID, "   "); err == nil {
+		t.Error("empty name should be rejected")
+	}
+	// 超长名拒绝（按 rune 计，101 个中文字符要挡住）。
+	if err := svc.UpdateTenantName(ctx, tenantID, strings.Repeat("租", 101)); err == nil {
+		t.Error("over-long name should be rejected")
+	}
+	// 租户不存在要报错，而不是静默成功。
+	if err := svc.UpdateTenantName(ctx, "missing-tenant", "别的名字"); err == nil {
+		t.Error("renaming a missing tenant should fail")
+	}
+
+	// 失败的调用不能把名字改掉。
+	if err := db.Where("id = ?", tenantID).Take(&got).Error; err != nil {
+		t.Fatalf("reload tenant: %v", err)
+	}
+	if got.Name == nil || *got.Name != "华夏基金" {
+		t.Fatalf("name = %v after failed updates, want 华夏基金", got.Name)
 	}
 }

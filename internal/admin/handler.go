@@ -1397,6 +1397,30 @@ func (h *Handler) SetTenantEnabled(c *gin.Context) {
 	common.SuccessWithData(c, gin.H{"id": tenantID, "enabled": *req.Enabled}, "Tenant updated")
 }
 
+// UpdateTenantName PUT /admin/tenants/:id/name
+// body: {"name": "新名称"}
+//
+// 租户名称只有一处真值（tenant.name），改完列表、用户信息、审计日志同步生效。
+func (h *Handler) UpdateTenantName(c *gin.Context) {
+	tenantID := strings.TrimSpace(c.Param("id"))
+
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
+
+	if err := h.service.UpdateTenantName(c.Request.Context(), tenantID, req.Name); err != nil {
+		// 名称非法（空、超长、租户不存在）属于业务校验失败，
+		// 前端直接把 message 弹出来。
+		common.ErrorWithCode(c, common.CodeArgumentError, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{"id": tenantID, "name": strings.TrimSpace(req.Name)}, "Tenant updated")
+}
+
 // DeleteTenant DELETE /admin/tenants/:id
 //
 // 有数据资产时拒绝删除，并把盘点结果放进 data，前端据此渲染「请先清理」清单。

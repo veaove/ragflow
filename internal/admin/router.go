@@ -82,6 +82,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 			protected.GET("/tenants/:id/resources", r.handler.ListTenantResources)
 			protected.GET("/tenants/:id/resource-summary", r.handler.GetTenantResourceSummary)
 			protected.PUT("/tenants/:id/enabled", r.handler.SetTenantEnabled)
+			protected.PUT("/tenants/:id/name", r.handler.UpdateTenantName)
 			protected.DELETE("/tenants/:id", r.handler.DeleteTenant)
 			protected.PUT("/tenants/:id/owner", r.handler.SetTenantOwner)
 			// 平台模型目录 + 各租户引用情况（「模型配置」页）

@@ -175,14 +175,13 @@ export const login = (params: {
   /** 图形验证码：captcha_id 由 GET /auth/captcha 下发，captcha 是用户输入的字符。 */
   captcha_id?: string;
   captcha?: string;
-}) =>
-  request.post<ResponseData<AdminService.LoginData>>(adminLogin, params);
+}) => request.post<ResponseData<AdminService.LoginData>>(adminLogin, params);
 
 /** 登录页图形验证码：一次性消费，60 秒有效。与前台登录页同一个接口。 */
 export const getCaptcha = () =>
-  request.get<
-    ResponseData<{ captcha_id: string; captcha_image: string }>
-  >('/api/v1/auth/captcha');
+  request.get<ResponseData<{ captcha_id: string; captcha_image: string }>>(
+    '/api/v1/auth/captcha',
+  );
 export const logout = () => request.post<ResponseData<boolean>>(adminLogout);
 export const listUsers = () =>
   request.get<ResponseData<AdminService.ListUsersItem[]>>(adminListUsers, {});
@@ -245,6 +244,17 @@ export const setTenantEnabled = (tenantId: string, enabled: boolean) =>
   request.put<ResponseData<{ id: string; enabled: boolean }>>(
     `${api.adminListTenants}/${tenantId}/enabled`,
     { enabled },
+  );
+
+/**
+ * 修改租户名称。
+ *
+ * 名称只有一处真值（后端 tenant.name），改完列表与成员侧看到的租户名同步生效。
+ */
+export const updateTenantName = (tenantId: string, name: string) =>
+  request.put<ResponseData<{ id: string; name: string }>>(
+    `${api.adminListTenants}/${tenantId}/name`,
+    { name },
   );
 
 /**
@@ -365,11 +375,7 @@ export const listPlatformModels = (params: {
     params,
   });
 
-export const createUser = (
-  email: string,
-  password: string,
-  tenantId: string,
-) =>
+export const createUser = (email: string, password: string, tenantId: string) =>
   request.post<ResponseData<boolean>>(adminCreateUser, {
     username: email,
     password,
