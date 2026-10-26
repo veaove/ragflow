@@ -50,6 +50,9 @@ type evaluation struct {
 	// lifetime of one evaluation; listing checks many resources written by the
 	// same few people.
 	creatorDepartments map[string]string
+	// tenantAdmins caches "does this user administer this tenant", keyed by
+	// "userID\x00tenantID". A listing touches the same tenant over and over.
+	tenantAdmins map[string]bool
 }
 
 func newPolicy(source Source) policy {
@@ -198,9 +201,21 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 		activeOwner := db.Model(&entity.UserTenant{}).
 			Select("1").
 			Where("user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.role = ? AND user_tenant.status = ?", string(RoleOwner), string(entity.StatusValid))
+		// 租户管理员：枚举 owner，或控制台分配的内置「租户管理员」角色
+		// （UpdateMember 只写 role_id，枚举留在 normal —— 线上真实存在这种
+		// 数据，zhangsan / 和君测试 都是）。两者都不认的话，被设成租户管理员
+		// 的人在控制台里是管理员、在数据面上是普通成员，什么都看不到。
+		tenantAdminRoles, tenantRoleErr := tenantAdminRoleIDs(ctx, source.db)
+		ownerKey := "user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.user_id = ? AND user_tenant.status = ? AND (user_tenant.role = ?"
+		ownerKeyArgs := []any{subject.UserID, string(entity.StatusValid), string(RoleOwner)}
+		if tenantRoleErr == nil && len(tenantAdminRoles) > 0 {
+			ownerKey += " OR user_tenant.role_id IN ?"
+			ownerKeyArgs = append(ownerKeyArgs, tenantAdminRoles)
+		}
+		ownerKey += ")"
 		callerIsOwner := db.Model(&entity.UserTenant{}).
 			Select("1").
-			Where("user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.user_id = ? AND user_tenant.role = ? AND user_tenant.status = ?", subject.UserID, string(RoleOwner), string(entity.StatusValid))
+			Where(ownerKey, ownerKeyArgs...)
 		// 只认 normal：`user_tenant.role='admin'` 与平台超管（user.is_superuser）
 		// 是两回事，且既有契约（见 database_source_test）明确 admin 不参与
 		// team 资源可见性。改可见性属于安全敏感变更，不能"顺手修"。
@@ -330,6 +345,7 @@ func newEvaluation(source Source) *evaluation {
 		resourceErr:        make(map[ResourceRef]error),
 		departmentScope:    make(map[string][]string),
 		creatorDepartments: make(map[string]string),
+		tenantAdmins:       make(map[string]bool),
 	}
 }
 
@@ -527,6 +543,13 @@ func (e *evaluation) resolveResource(ctx context.Context, subject Subject, resou
 		return Access{}, fmt.Errorf("%w: unknown resource visibility %q", ErrInvalidPermission, resource.Visibility)
 	}
 	if subject.UserID == resource.OwnerUserID {
+		return resourceAccess(resource, AccessSourceOwner), nil
+	}
+	// 租户管理员看得到本租户的一切。枚举 owner 由上面那条命中（知识库的
+	// OwnerUserID 就是租户 owner 的 user id），但控制台分配的「租户管理员」
+	// 只落在 role_id 上、枚举仍是 normal，这里补上。
+	// 跨租户不会误放：判定用的是 resource.TenantID 上的成员关系。
+	if e.isTenantAdmin(ctx, subject.UserID, resource.TenantID) {
 		return resourceAccess(resource, AccessSourceOwner), nil
 	}
 

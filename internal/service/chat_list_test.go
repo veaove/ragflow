@@ -112,11 +112,14 @@ func TestChatServiceListChatsDoesNotExposeAnotherTenantsChats(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("failed to create tenant user: %v", err)
 	}
+	// 只被邀请、还没接受（role=invite）不算成员：看不到该租户的应用。
+	// 注意不能再用 normal —— 知识问答是租户级资产，正式成员本来就该看到
+	// 同租户的应用（见 permission 包的 TestDatabaseCheckerSharesChatsAcrossTenant）。
 	if err := db.Create(&entity.UserTenant{
 		ID:        "rel-1",
 		UserID:    "user-1",
 		TenantID:  "tenant-2",
-		Role:      "normal",
+		Role:      "invite",
 		InvitedBy: "tenant-2",
 		Status:    sptr("1"),
 	}).Error; err != nil {

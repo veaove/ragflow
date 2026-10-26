@@ -222,19 +222,22 @@ func TestSearchServiceListSearchesUsesPermissionScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSearches failed: %v", err)
 	}
-	if result.Total != 1 || len(result.SearchApps) != 1 {
-		t.Fatalf("ListSearches returned total=%d rows=%d, want only the member-owned app", result.Total, len(result.SearchApps))
+	// 知识搜索是团队共用入口：member-1 能看到同租户的 team-search，加上自己
+	// 建的 member-search 共两条；外部租户的 unshared-search 仍然不可见。
+	if result.Total != 2 || len(result.SearchApps) != 2 {
+		t.Fatalf("ListSearches returned total=%d rows=%d, want shared + own", result.Total, len(result.SearchApps))
 	}
 	ids := map[string]bool{}
 	for _, app := range result.SearchApps {
 		ids[app["id"].(string)] = true
 	}
-	if ids["team-search"] || !ids["member-search"] || ids["unshared-search"] {
+	if !ids["team-search"] || !ids["member-search"] || ids["unshared-search"] {
 		t.Fatalf("ListSearches returned unauthorized scope: %v", ids)
 	}
 }
 
-func TestSearchServiceSeparatesSearchReadFromRunPermission(t *testing.T) {
+// 知识搜索是团队共用入口：成员能看详情、能发起检索，但改配置仍归创建者。
+func TestSearchServiceSharesReadAndRunWithTenantMembers(t *testing.T) {
 	setupSearchServiceTestDB(t)
 	valid := string(entity.StatusValid)
 	search := entity.Search{
@@ -260,11 +263,15 @@ func TestSearchServiceSeparatesSearchReadFromRunPermission(t *testing.T) {
 	}
 
 	service := NewSearchService()
-	if _, err := service.GetSearchDetail(t.Context(), "member-1", search.ID); !errors.Is(err, permission.ErrPermissionDenied) {
-		t.Fatalf("tenant member should not be able to read another user's Search App metadata, got %v", err)
+	if _, err := service.GetSearchDetail(t.Context(), "member-1", search.ID); err != nil {
+		t.Fatalf("tenant member should be able to read a shared Search App, got %v", err)
 	}
-	if _, err := service.GetDetail(t.Context(), "member-1", search.ID); !errors.Is(err, permission.ErrPermissionDenied) {
-		t.Fatalf("tenant member should not be able to run another user's Search App, got %v", err)
+	if _, err := service.GetDetail(t.Context(), "member-1", search.ID); err != nil {
+		t.Fatalf("tenant member should be able to run a shared Search App, got %v", err)
+	}
+	config := map[string]interface{}{}
+	if _, err := service.UpdateSearch(t.Context(), "member-1", search.ID, &UpdateSearchRequest{SearchConfig: config}); !errors.Is(err, permission.ErrPermissionDenied) {
+		t.Fatalf("tenant member should not be able to edit another user's Search App, got %v", err)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"sort"
 	"strings"
 	"testing"
 
@@ -635,7 +636,10 @@ func TestDatabaseCheckerScopesFilesAndFoldersToOwnedFolder(t *testing.T) {
 	}
 }
 
-func TestDatabaseCheckerKeepsChatsPrivateToTheirOwner(t *testing.T) {
+// 知识问答应用是租户级资产：dialog 表没有 created_by、没有 permission 列，
+// 表达不了"谁的私有应用"。原版一个用户一个租户，所以"同租户"就等于"自己"。
+// 多成员租户里若继续按 owner(=tenant_id) 判私有，除租户创建者外全员看不到。
+func TestDatabaseCheckerSharesChatsAcrossTenant(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
@@ -671,9 +675,11 @@ func TestDatabaseCheckerKeepsChatsPrivateToTheirOwner(t *testing.T) {
 	checker := NewDatabaseChecker(db)
 	teamChat := ResourceRef{Kind: ResourceKindChat, ID: "team-chat"}
 	member := Subject{UserID: membership.UserID}
-	for _, operation := range []Operation{OperationRead, OperationCreate, OperationRun, OperationUse} {
-		if err := checker.CheckResource(context.Background(), member, teamChat, operation); !errors.Is(err, ErrPermissionDenied) {
-			t.Errorf("team member CheckResource(chat, %s) error = %v, want permission denied", operation, err)
+	for _, operation := range []Operation{
+		OperationRead, OperationCreate, OperationUpdate, OperationDelete, OperationRun, OperationUse,
+	} {
+		if err := checker.CheckResource(context.Background(), member, teamChat, operation); err != nil {
+			t.Errorf("team member CheckResource(chat, %s) error = %v, want nil", operation, err)
 		}
 	}
 	if err := checker.CheckResource(context.Background(), Subject{UserID: "team-tenant"}, teamChat, OperationUpdate); err != nil {
@@ -689,8 +695,12 @@ func TestDatabaseCheckerKeepsChatsPrivateToTheirOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Scope(chats) error = %v", err)
 	}
-	if scope.Mode != ScopeNone || len(scope.ResourceIDs) != 0 {
-		t.Fatalf("team member Scope(chats) = %+v, want empty scope", scope)
+	if scope.Mode != ScopeIDs || len(scope.ResourceIDs) != 1 || scope.ResourceIDs[0] != "team-chat" {
+		t.Fatalf("team member Scope(chats) = %+v, want only team-chat", scope)
+	}
+	// 别的租户仍然看不见。
+	if err := checker.CheckResource(context.Background(), member, ResourceRef{Kind: ResourceKindChat, ID: "other-chat"}, OperationRead); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("team member CheckResource(other tenant chat) error = %v, want permission denied", err)
 	}
 
 	ownerScope, err := checker.Scope(context.Background(), Subject{UserID: "team-tenant"}, ScopeQuery{Kind: ResourceKindChat, Operation: OperationRead})
@@ -778,7 +788,10 @@ func TestDatabaseCheckerScopesChatSessionsAndRestrictsMutations(t *testing.T) {
 	}
 }
 
-func TestDatabaseCheckerKeepsSearchAppsPrivateToTheirCreator(t *testing.T) {
+// 知识搜索是团队共用的检索入口：同租户成员能看、能用来检索，但配置和删除
+// 仍归创建者。以前这里是"仅创建者可见"——那是"一个用户一个租户"时代的
+// 残留，团队租户里表现为"别人建的搜索应用我一条都看不到"。
+func TestDatabaseCheckerSharesSearchAppsAcrossTenantButKeepsEditingToCreator(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
@@ -813,10 +826,12 @@ func TestDatabaseCheckerKeepsSearchAppsPrivateToTheirCreator(t *testing.T) {
 	checker := NewDatabaseChecker(db)
 	teamSearch := ResourceRef{Kind: ResourceKindSearchApp, ID: "team-search"}
 	member := Subject{UserID: "member-1"}
-	if err := checker.CheckResource(context.Background(), member, teamSearch, OperationRead); !errors.Is(err, ErrPermissionDenied) {
-		t.Errorf("tenant member CheckResource(search read) error = %v, want permission denied", err)
+	for _, operation := range []Operation{OperationRead, OperationRun, OperationUse} {
+		if err := checker.CheckResource(context.Background(), member, teamSearch, operation); err != nil {
+			t.Errorf("tenant member CheckResource(search %s) error = %v, want nil", operation, err)
+		}
 	}
-	for _, operation := range []Operation{OperationUpdate, OperationDelete, OperationRun, OperationUse} {
+	for _, operation := range []Operation{OperationUpdate, OperationDelete} {
 		if err := checker.CheckResource(context.Background(), member, teamSearch, operation); !errors.Is(err, ErrPermissionDenied) {
 			t.Errorf("tenant member CheckResource(search %s) error = %v, want permission denied", operation, err)
 		}
@@ -851,15 +866,25 @@ func TestDatabaseCheckerKeepsSearchAppsPrivateToTheirCreator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Scope(search read) error = %v", err)
 	}
-	if readScope.Mode != ScopeIDs || len(readScope.ResourceIDs) != 1 || readScope.ResourceIDs[0] != "member-search" {
-		t.Fatalf("Scope(search read) = %+v, want only member-search", readScope)
+	sort.Strings(readScope.ResourceIDs)
+	if readScope.Mode != ScopeIDs || len(readScope.ResourceIDs) != 2 ||
+		readScope.ResourceIDs[0] != "member-search" || readScope.ResourceIDs[1] != "team-search" {
+		t.Fatalf("Scope(search read) = %+v, want member-search and team-search", readScope)
 	}
 	runScope, err := checker.Scope(context.Background(), member, ScopeQuery{Kind: ResourceKindSearchApp, Operation: OperationRun})
 	if err != nil {
 		t.Fatalf("Scope(search run) error = %v", err)
 	}
-	if runScope.Mode != ScopeIDs || len(runScope.ResourceIDs) != 1 || runScope.ResourceIDs[0] != "member-search" {
-		t.Fatalf("Scope(search run) = %+v, want only member-search", runScope)
+	if len(runScope.ResourceIDs) != 2 {
+		t.Fatalf("Scope(search run) = %+v, want both visible searches", runScope)
+	}
+	// 改配置只对创建者开放：列表按 update 收缩到自己的那一个。
+	updateScope, err := checker.Scope(context.Background(), member, ScopeQuery{Kind: ResourceKindSearchApp, Operation: OperationUpdate})
+	if err != nil {
+		t.Fatalf("Scope(search update) error = %v", err)
+	}
+	if updateScope.Mode != ScopeIDs || len(updateScope.ResourceIDs) != 1 || updateScope.ResourceIDs[0] != "member-search" {
+		t.Fatalf("Scope(search update) = %+v, want only member-search", updateScope)
 	}
 }
 

@@ -121,26 +121,22 @@ func (e *evaluation) administeredDepartmentIDs(ctx context.Context, userID, tena
 	return ids, nil
 }
 
-// builtinDepartmentAdminRoleName is the seeded 部门管理员 role. Roles are
-// matched by name because that is the only stable key the three builtin rows
-// share across tenants — their ids are generated per tenant.
-const builtinDepartmentAdminRoleName = "部门管理员"
+// The three seeded builtin roles. Role ids are generated per tenant, so roles
+// are matched by name — that is the only stable key they share.
+const (
+	builtinTenantAdminRoleName     = "租户管理员"
+	builtinDepartmentAdminRoleName = "部门管理员"
+)
 
-// isDepartmentAdminMembership reports whether this tenant membership is the
-// builtin 部门管理员.
+// hasBuiltinRole reports whether the membership's assigned role row is the
+// named builtin role of the same tenant.
 //
-// Two keys have to be checked. `user_tenant.role='admin'` is what the invite
-// path writes, but the console's member editor only writes `role_id` and leaves
-// the enum at 'normal' — so a member given 部门管理员 through the UI looks like
-// a normal member to anything that reads the enum alone.
-func (e *evaluation) isDepartmentAdminMembership(ctx context.Context, membership *Membership) bool {
-	if membership == nil {
-		return false
-	}
-	if membership.Role == RoleAdmin {
-		return true
-	}
-	if membership.RoleID == "" {
+// `user_tenant.role_id` matters because the console's member editor writes only
+// that column and leaves the `role` enum at 'normal' — a member given 租户管理员
+// or 部门管理员 through the UI therefore looks like a normal member to anything
+// that reads the enum alone.
+func (e *evaluation) hasBuiltinRole(ctx context.Context, membership *Membership, roleName string) bool {
+	if membership == nil || membership.RoleID == "" {
 		return false
 	}
 	source, ok := e.source.(*databaseSource)
@@ -150,9 +146,42 @@ func (e *evaluation) isDepartmentAdminMembership(ctx context.Context, membership
 	var count int64
 	err := source.db.WithContext(ctx).Model(&entity.Role{}).
 		Where("id = ? AND tenant_id = ? AND is_builtin = ? AND name = ?",
-			membership.RoleID, membership.TenantID, true, builtinDepartmentAdminRoleName).
+			membership.RoleID, membership.TenantID, true, roleName).
 		Count(&count).Error
 	return err == nil && count > 0
+}
+
+// isTenantAdmin reports whether the subject administers the tenant: either the
+// `owner` enum (which also drives `Resource.OwnerUserID` for datasets) or the
+// builtin 租户管理员 role assigned from the console.
+//
+// Both spellings appear in production — a tenant can have an owner whose enum
+// stayed 'normal' because the role was assigned through the member editor.
+func (e *evaluation) isTenantAdmin(ctx context.Context, userID, tenantID string) bool {
+	if strings.TrimSpace(userID) == "" || strings.TrimSpace(tenantID) == "" {
+		return false
+	}
+	key := userID + "\x00" + tenantID
+	if cached, ok := e.tenantAdmins[key]; ok {
+		return cached
+	}
+	membership, err := e.getMembership(ctx, userID, tenantID)
+	admin := err == nil && membership != nil && membership.Active &&
+		(membership.Role == RoleOwner || e.hasBuiltinRole(ctx, membership, builtinTenantAdminRoleName))
+	e.tenantAdmins[key] = admin
+	return admin
+}
+
+// isDepartmentAdminMembership reports whether this tenant membership is the
+// builtin 部门管理员.
+func (e *evaluation) isDepartmentAdminMembership(ctx context.Context, membership *Membership) bool {
+	if membership == nil {
+		return false
+	}
+	if membership.Role == RoleAdmin {
+		return true
+	}
+	return e.hasBuiltinRole(ctx, membership, builtinDepartmentAdminRoleName)
 }
 
 // departmentAdminRoleIDs collects every seeded 部门管理员 role id so a list
@@ -160,12 +189,21 @@ func (e *evaluation) isDepartmentAdminMembership(ctx context.Context, membership
 // tenants, so a global set is safe: a match still has to line up with the
 // resource's own tenant through the role row it points at.
 func departmentAdminRoleIDs(ctx context.Context, db *gorm.DB) ([]string, error) {
+	return builtinRoleIDs(ctx, db, builtinDepartmentAdminRoleName)
+}
+
+// tenantAdminRoleIDs is the same lookup for the seeded 租户管理员 role.
+func tenantAdminRoleIDs(ctx context.Context, db *gorm.DB) ([]string, error) {
+	return builtinRoleIDs(ctx, db, builtinTenantAdminRoleName)
+}
+
+func builtinRoleIDs(ctx context.Context, db *gorm.DB, roleName string) ([]string, error) {
 	if db == nil {
 		return nil, nil
 	}
 	var ids []string
 	err := db.WithContext(ctx).Model(&entity.Role{}).
-		Where("is_builtin = ? AND name = ?", true, builtinDepartmentAdminRoleName).
+		Where("is_builtin = ? AND name = ?", true, roleName).
 		Pluck("id", &ids).Error
 	if err != nil {
 		return nil, err

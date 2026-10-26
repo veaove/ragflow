@@ -471,8 +471,15 @@ func (s *databaseSource) ListResourceRefs(ctx context.Context, subject Subject, 
 		if parent.Kind != ResourceKindFolder || strings.TrimSpace(parent.ID) == "" {
 			return nil, fmt.Errorf("%w: files and folders require a folder parent scope", ErrInvalidPermission)
 		}
+		// 同 Chat：文件管理是租户级目录树，父目录的 tenant_id 是租户 id，
+		// 不能拿用户 id 去比。这里先按"用户所属租户"定位父目录，拿到它真正
+		// 的 tenant_id 之后再列子项。
+		fileTenantIDs, err := s.tenantIDsForSubject(ctx, subject)
+		if err != nil {
+			return nil, err
+		}
 		parentQuery := s.db.WithContext(ctx).Model(&entity.File{}).
-			Where("id = ? AND tenant_id = ? AND type = ?", parent.ID, subject.UserID, "folder")
+			Where("id = ? AND tenant_id IN ? AND type = ?", parent.ID, fileTenantIDs, "folder")
 		var parentFile entity.File
 		if err := parentQuery.First(&parentFile).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -495,8 +502,14 @@ func (s *databaseSource) ListResourceRefs(ctx context.Context, subject Subject, 
 		if parent.ID != "" || parent.Kind != "" {
 			return nil, fmt.Errorf("%w: search apps cannot have a parent scope", ErrInvalidPermission)
 		}
+		// 按"用户所属租户"取，不是按创建者：知识搜索是租户级资产，
+		// 团队里别人建的也要能看到（同 Chat / Memory / Canvas 的口径）。
+		tenantIDs, err := s.tenantIDsForSubject(ctx, subject)
+		if err != nil {
+			return nil, err
+		}
 		if err := s.db.WithContext(ctx).Model(&entity.Search{}).
-			Where("status = ? AND created_by = ?", string(entity.StatusValid), subject.UserID).
+			Where("status = ? AND tenant_id IN ?", string(entity.StatusValid), tenantIDs).
 			Pluck("id", &ids).Error; err != nil {
 			return nil, err
 		}
@@ -504,8 +517,15 @@ func (s *databaseSource) ListResourceRefs(ctx context.Context, subject Subject, 
 		if parent.ID != "" || parent.Kind != "" {
 			return nil, fmt.Errorf("%w: chats cannot have a parent scope", ErrInvalidPermission)
 		}
+		// 这里曾经写的是 `tenant_id = subject.UserID`：那是"一个用户一个租户"
+		// 时代的假设。团队租户里 dialog.tenant_id 是租户 id、不是成员 id，
+		// 成员查出来必然是空列表（知识问答页显示"尚未创建聊天应用"）。
+		tenantIDs, err := s.tenantIDsForSubject(ctx, subject)
+		if err != nil {
+			return nil, err
+		}
 		if err := s.db.WithContext(ctx).Model(&entity.Chat{}).
-			Where("tenant_id = ? AND status = ?", subject.UserID, string(entity.StatusValid)).
+			Where("tenant_id IN ? AND status = ?", tenantIDs, string(entity.StatusValid)).
 			Pluck("id", &ids).Error; err != nil {
 			return nil, err
 		}
@@ -1022,25 +1042,37 @@ func memoryResource(memory *entity.Memory) Resource {
 }
 
 func chatResource(chat *entity.Chat) Resource {
+	// 知识问答应用是租户级资产：dialog 表没有 created_by，也没有 permission
+	// 列，无法表达"谁的私有应用"。原版 RAGFlow 一个用户一个租户，同租户即
+	// 同一个人，所以"租户可见"就是当时的语义。多成员租户下继续按 owner
+	// （tenant_id）判私有，会让除租户创建者外的成员一条都看不到。
+	operations := []Operation{OperationRead, OperationCreate, OperationUpdate, OperationDelete, OperationRun, OperationUse}
 	return Resource{
-		Ref:             ResourceRef{Kind: ResourceKindChat, ID: chat.ID},
-		TenantID:        chat.TenantID,
-		OwnerUserID:     chat.TenantID,
-		Visibility:      VisibilityPrivate,
-		OwnerOperations: []Operation{OperationRead, OperationCreate, OperationUpdate, OperationDelete, OperationRun, OperationUse},
-		Active:          chat.Status != nil && *chat.Status == string(entity.StatusValid),
+		Ref:               ResourceRef{Kind: ResourceKindChat, ID: chat.ID},
+		TenantID:          chat.TenantID,
+		OwnerUserID:       chat.TenantID,
+		Visibility:        VisibilityTenant,
+		TenantRequirement: TenantNormalMember,
+		OwnerOperations:   operations,
+		TenantOperations:  operations,
+		Active:            chat.Status != nil && *chat.Status == string(entity.StatusValid),
 	}
 }
 
 func searchAppResource(searchApp *entity.Search) Resource {
+	// 同理：知识搜索是团队共用的检索入口。创建者保留完整操作，其他成员
+	// 能看、能用来检索，但不能改别人的配置。
 	return Resource{
-		Ref:             ResourceRef{Kind: ResourceKindSearchApp, ID: searchApp.ID},
-		TenantID:        searchApp.TenantID,
-		CreatedBy:       searchApp.CreatedBy,
-		OwnerUserID:     searchApp.CreatedBy,
-		Visibility:      VisibilityPrivate,
-		OwnerOperations: []Operation{OperationRead, OperationUpdate, OperationDelete, OperationRun, OperationUse},
-		Active:          searchApp.Status != nil && *searchApp.Status == string(entity.StatusValid),
+		Ref:               ResourceRef{Kind: ResourceKindSearchApp, ID: searchApp.ID},
+		TenantID:          searchApp.TenantID,
+		CreatedBy:         searchApp.CreatedBy,
+		OwnerUserID:       searchApp.CreatedBy,
+		Visibility:        VisibilityTenant,
+		TenantRequirement: TenantNormalMember,
+		OwnerOperations:   []Operation{OperationRead, OperationUpdate, OperationDelete, OperationRun, OperationUse},
+		TenantOperations:  []Operation{OperationRead, OperationRun, OperationUse},
+		CreatorOperations: []Operation{OperationRead, OperationUpdate, OperationDelete, OperationRun, OperationUse},
+		Active:            searchApp.Status != nil && *searchApp.Status == string(entity.StatusValid),
 	}
 }
 
@@ -1124,17 +1156,23 @@ func fileResource(kind ResourceKind, file *entity.File, datasetIDs []string, dat
 	}
 	sharedWithUserIDs = uniqueStringValues(sharedWithUserIDs)
 	sharedWithTenantIDs = uniqueStringValues(sharedWithTenantIDs)
-	visibility := VisibilityPrivate
+	// 没挂知识库的文件同样是租户级资产：文件管理页展示的就是整个租户的
+	// 目录树，原版"一个用户一个租户"时等价于"自己的文件"。多成员租户下
+	// 继续按 owner=tenant_id 判私有，成员会看到空目录。
+	visibility := VisibilityTenant
 	if len(sharedWithUserIDs) > 0 || len(sharedWithTenantIDs) > 0 {
 		visibility = VisibilityShared
 	}
+	operations := []Operation{OperationRead, OperationCreate, OperationUpdate, OperationDelete, OperationShare, OperationRun, OperationUse}
 	return Resource{
 		Ref:                 ResourceRef{Kind: kind, ID: file.ID},
 		TenantID:            file.TenantID,
 		CreatedBy:           file.CreatedBy,
 		OwnerUserID:         file.TenantID,
 		Visibility:          visibility,
-		OwnerOperations:     []Operation{OperationRead, OperationCreate, OperationUpdate, OperationDelete, OperationShare, OperationRun, OperationUse},
+		TenantRequirement:   TenantNormalMember,
+		OwnerOperations:     operations,
+		TenantOperations:    operations,
 		SharedWithUserIDs:   sharedWithUserIDs,
 		SharedWithTenantIDs: sharedWithTenantIDs,
 		Active:              true,
