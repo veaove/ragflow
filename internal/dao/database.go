@@ -444,6 +444,12 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 // 存量行按 'edit' 回填：这个字段出现之前授权就是可编辑的，
 // 按 read 回填会让所有已授权的人一夜之间失去编辑权。
 func ensureResourceGrantPermissionColumn(ctx context.Context, db *gorm.DB) error {
+	// 表还没建时无列可补：AutoMigrate 的主模型列表负责建 resource_grant，
+	// 而本函数挂在 runtime models 迁移里，只跑后者的场景（如单测）并不存在该表，
+	// 直接 ALTER 会报 "no such table"。表建好后本函数自然会在下次启动时补齐列。
+	if !db.Migrator().HasTable(&entity.ResourceGrant{}) {
+		return nil
+	}
 	if db.Migrator().HasColumn(&entity.ResourceGrant{}, "permission") {
 		return nil
 	}
