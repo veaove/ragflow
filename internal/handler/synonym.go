@@ -185,7 +185,17 @@ func (h *SynonymHandler) ImportSynonymGroups(c *gin.Context) {
 // respondSynonymError maps service errors onto the shared response codes.
 // A missing group and a cross-tenant group are reported identically so the
 // endpoint cannot be used to enumerate another tenant's vocabulary.
+//
+// The knowledge base and the group are reported apart on purpose. Folding both
+// into "synonym group not found" told a user whose request never resolved the
+// base — a member of the base's tenant, a base that was deleted, a base they
+// cannot see — that their vocabulary was empty. The two are distinct failures
+// with distinct fixes, so they get distinct messages.
 func respondSynonymError(c *gin.Context, err error) {
+	if errors.Is(err, service.ErrDatasetNotFound) {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, "dataset not found or access denied")
+		return
+	}
 	if errors.Is(err, service.ErrSynonymGroupNotFound) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, "synonym group not found")
 		return

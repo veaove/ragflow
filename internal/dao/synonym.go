@@ -65,6 +65,22 @@ func (dao *SynonymDAO) GetGroup(ctx context.Context, db *gorm.DB, tenantID, grou
 	return &group, nil
 }
 
+// GetGroupByID returns one group without a tenant filter.
+//
+// Group-level endpoints only carry a group id, so the owning knowledge base has
+// to be read off the row before the caller can be authorized against it. The
+// tenant-scoped GetGroup above cannot answer that question: it requires the
+// tenant the caller is about to be authorized for. Callers must therefore run a
+// resource-level check on group.DatasetID before returning the row — nothing
+// here is safe to expose on its own.
+func (dao *SynonymDAO) GetGroupByID(ctx context.Context, db *gorm.DB, groupID string) (*entity.SynonymGroup, error) {
+	var group entity.SynonymGroup
+	if err := db.WithContext(ctx).Where("id = ?", groupID).Take(&group).Error; err != nil {
+		return nil, err
+	}
+	return &group, nil
+}
+
 // ListWords returns the words of one group ordered so the primary surface form
 // comes first, keeping the manager table stable across reloads.
 func (dao *SynonymDAO) ListWords(ctx context.Context, db *gorm.DB, tenantID, groupID string) ([]*entity.SynonymWord, error) {

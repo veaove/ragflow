@@ -25,6 +25,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 	"ragflow/internal/service/nlp"
 
 	"gorm.io/gorm"
@@ -34,6 +35,15 @@ import (
 // caller's tenant. Ownership failures are deliberately indistinguishable from a
 // missing row so a caller cannot probe for another tenant's group ids.
 var ErrSynonymGroupNotFound = errors.New("synonym group not found")
+
+// ErrDatasetNotFound is returned when the knowledge base behind a vocabulary
+// request does not exist or is not visible to the caller.
+//
+// 这跟 ErrSynonymGroupNotFound 是两件事：前者是「知识库这层」不通，后者是
+// 「词组这层」不通。早期把前者也映射成 ErrSynonymGroupNotFound，页面上就显示
+// 「词组不存在」——而实际上词组可能一个都没少，是知识库没解析到。用户在词表页
+// 看到「暂无词组」加一句「synonym group not found」，既看不懂也查不下去。
+var ErrDatasetNotFound = errors.New("dataset not found")
 
 // ErrSynonymGroupArchived is returned when the caller edits a group that an
 // earlier publish replaced (status=disabled). Those rows are history: the
@@ -126,14 +136,7 @@ func (s *SynonymService) ListSynonymGroups(ctx context.Context, userID, datasetI
 
 // GetSynonymGroup returns one group with its words attached.
 func (s *SynonymService) GetSynonymGroup(ctx context.Context, userID, groupID string) (*entity.SynonymGroup, error) {
-	tenantID, err := requireOwnedTenantID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	group, err := s.synonymDAO.GetGroup(ctx, dao.DB, tenantID, groupID)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrSynonymGroupNotFound
-	}
+	group, tenantID, err := s.resolveGroup(ctx, userID, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -203,15 +206,7 @@ func (s *SynonymService) CreateSynonymGroup(ctx context.Context, userID, dataset
 // the stored word list is replaced wholesale inside one transaction, so a
 // failed write cannot leave the group half-updated.
 func (s *SynonymService) UpdateSynonymGroup(ctx context.Context, userID, groupID string, req UpdateSynonymGroupRequest) (*entity.SynonymGroup, error) {
-	tenantID, err := requireOwnedTenantID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	group, err := s.synonymDAO.GetGroup(ctx, dao.DB, tenantID, groupID)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrSynonymGroupNotFound
-	}
+	group, tenantID, err := s.resolveGroup(ctx, userID, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -287,15 +282,7 @@ func (s *SynonymService) UpdateSynonymGroup(ctx context.Context, userID, groupID
 
 // DeleteSynonymGroup removes a group and its words.
 func (s *SynonymService) DeleteSynonymGroup(ctx context.Context, userID, groupID string) error {
-	tenantID, err := requireOwnedTenantID(ctx, userID)
-	if err != nil {
-		return err
-	}
-
-	group, err := s.synonymDAO.GetGroup(ctx, dao.DB, tenantID, groupID)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return ErrSynonymGroupNotFound
-	}
+	group, tenantID, err := s.resolveGroup(ctx, userID, groupID)
 	if err != nil {
 		return err
 	}
@@ -386,26 +373,104 @@ type SynonymImportRow struct {
 	Remark  string   `json:"remark"`
 }
 
-// resolveTenant resolves the tenant and asserts the knowledge base belongs to
-// it, so a dataset id from another tenant cannot be used to create vocabulary.
+// resolveTenant returns the tenant that owns the knowledge base and asserts the
+// caller may manage its vocabulary. Every row this service writes carries that
+// tenant, which is also the tenant retrieval loads the dictionary with.
+//
+// The tenant must come from the knowledge base itself. Taking it from the
+// caller (the previous implementation used "the first tenant the user owns")
+// broke every collaborator who is a normal member of the base's tenant while
+// owning a tenant of their own: the base was looked up under that other tenant,
+// missed, and the miss was reported as "synonym group not found" — which the
+// vocabulary page renders as an empty list beside an English error nobody can
+// act on. Writing rows under the caller's tenant was wrong for the same reason:
+// retrieval asks with the base's tenant, so those words would never expand.
 func (s *SynonymService) resolveTenant(ctx context.Context, userID, datasetID string) (string, error) {
 	datasetID = strings.TrimSpace(datasetID)
 	if datasetID == "" {
 		return "", errors.New("dataset_id is required")
 	}
-	tenantID, err := requireOwnedTenantID(ctx, userID)
+	kb, err := dao.NewKnowledgebaseDAO().GetByID(ctx, dao.DB, datasetID)
 	if err != nil {
-		return "", err
-	}
-	// The tenant filter is pushed into the query so another tenant's dataset id
-	// simply does not resolve.
-	if _, err := dao.NewKnowledgebaseDAO().GetByIDAndTenantID(ctx, dao.DB, datasetID, tenantID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", ErrSynonymGroupNotFound
+			return "", ErrDatasetNotFound
 		}
 		return "", err
 	}
-	return tenantID, nil
+	// A base without a tenant cannot be authorized at all; report it as missing
+	// rather than letting the permission layer fail the request with a 500.
+	if strings.TrimSpace(kb.TenantID) == "" {
+		return "", ErrDatasetNotFound
+	}
+	subject := permission.Subject{UserID: userID}
+	checker := permission.NewDatabaseChecker(dao.DB)
+	// Membership of the base's tenant comes first. A resource_grant of kind
+	// "team" currently matches every caller — the grant lookup does not verify
+	// that the subject belongs to the tenant it grants to — so the dataset check
+	// on its own would let anyone who merely knows the base id rewrite its
+	// vocabulary. This surface is a writer, so it stays at "the base's tenant",
+	// which is never wider than what the read path already allows.
+	//
+	// A personal tenant is keyed by its owner's user id and needs no membership
+	// row; the same convention the model factory and the scope query follow.
+	if userID != kb.TenantID {
+		if err := checker.CheckTenant(ctx, subject, kb.TenantID, permission.TenantMember); err != nil {
+			if datasetAccessDenied(err) {
+				return "", ErrDatasetNotFound
+			}
+			return "", err
+		}
+	}
+	// Update rather than Read: this service exposes the vocabulary manager, which
+	// writes. The dataset policy grants Update to the same principals that may
+	// read it, so this does not narrow who can open the page — it keeps a
+	// read-only share from rewriting the words behind retrieval.
+	if err := checker.CheckResource(ctx, subject, permission.ResourceRef{Kind: permission.ResourceKindDataset, ID: kb.ID}, permission.OperationUpdate); err != nil {
+		if datasetAccessDenied(err) {
+			return "", ErrDatasetNotFound
+		}
+		return "", err
+	}
+	return kb.TenantID, nil
+}
+
+// resolveGroup loads a group by id and authorizes the caller against the
+// knowledge base that owns it, returning both the row and that base's tenant.
+//
+// Group-level endpoints only carry a group id, so the access check has to be
+// driven by the row itself. A group whose stored tenant disagrees with its
+// base's tenant is not addressable under the base's scope and is reported as
+// missing, so a stale row can never be rewritten across tenants.
+func (s *SynonymService) resolveGroup(ctx context.Context, userID, groupID string) (*entity.SynonymGroup, string, error) {
+	groupID = strings.TrimSpace(groupID)
+	if groupID == "" {
+		return nil, "", ErrSynonymGroupNotFound
+	}
+	group, err := s.synonymDAO.GetGroupByID(ctx, dao.DB, groupID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, "", ErrSynonymGroupNotFound
+		}
+		return nil, "", err
+	}
+	tenantID, err := s.resolveTenant(ctx, userID, group.DatasetID)
+	if err != nil {
+		return nil, "", err
+	}
+	if group.TenantID != tenantID {
+		return nil, "", ErrSynonymGroupNotFound
+	}
+	return group, tenantID, nil
+}
+
+// datasetAccessDenied reports whether err is a permission decision meaning "this
+// caller may not touch that knowledge base". They are folded into
+// ErrDatasetNotFound so a caller cannot tell a missing base from one it is not
+// allowed to see — the same rule ErrSynonymGroupNotFound follows.
+func datasetAccessDenied(err error) bool {
+	return errors.Is(err, permission.ErrPermissionDenied) ||
+		errors.Is(err, permission.ErrMembershipNotFound) ||
+		errors.Is(err, permission.ErrResourceNotFound)
 }
 
 // normalizeSynonymDomain validates the vocabulary domain, defaulting to the

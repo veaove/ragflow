@@ -96,6 +96,11 @@ export default function Vocab() {
   const [tab, setTab] = useState<TabKey>('synonym');
   const [groups, setGroups] = useState<ISynonymGroup[]>([]);
   const [loading, setLoading] = useState(false);
+  // 加载失败要单独留状态。请求封装在 code != 0 时不抛异常，只弹一条通知，
+  // 调用方拿到的是 {code, message, data: undefined}；原来这里无条件 `?? []`，
+  // 于是「知识库解析不到 / 无权访问」被渲染成「暂无词组」——用户看到空表加一句
+  // 英文报错，既判断不出是没数据还是没权限，也不知道该找谁。
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
   const [editor, setEditor] = useState<EditorState | null>(null);
@@ -105,14 +110,21 @@ export default function Vocab() {
   const reload = useCallback(async () => {
     if (!datasetId) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const response = await listSynonymGroups(datasetId);
+      if (response?.data?.code !== 0) {
+        setGroups([]);
+        setLoadError(response?.data?.message ?? '加载词表失败');
+        return;
+      }
       const all: ISynonymGroup[] = response?.data?.data ?? [];
       setGroups(
         all.filter((g: ISynonymGroup) => (g.group_type ?? 'synonym') === groupType),
       );
     } catch {
-      toast.error('加载词表失败');
+      setGroups([]);
+      setLoadError('加载词表失败');
     } finally {
       setLoading(false);
     }
@@ -326,7 +338,21 @@ export default function Vocab() {
             {paged.length === 0 && !loading ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-40 text-center text-text-secondary">
-                  暂无词组，点击右上角「新增词组」
+                  {loadError ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <span className="text-state-error">词表加载失败</span>
+                      <span className="max-w-xl text-xs text-text-secondary">
+                        后端返回：{loadError}
+                        <br />
+                        常见原因：该知识库已被删除，或当前账号不在该知识库所属租户内。
+                      </span>
+                      <Button size="sm" variant="outline" onClick={reload}>
+                        重试
+                      </Button>
+                    </div>
+                  ) : (
+                    '暂无词组，点击右上角「新增词组」'
+                  )}
                 </TableCell>
               </TableRow>
             ) : (

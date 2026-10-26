@@ -130,7 +130,12 @@ func (s *ChangeSetService) ListChangeSets(ctx context.Context, userID, datasetID
 }
 
 // resolveTenantID resolves the tenant that owns the dataset, reusing the same
-// ownership check as the synonym service.
+// knowledge-base-level access check as the synonym service.
+//
+// The change centre stages edits to one base's vocabulary and similar
+// questions, so it is scoped by that base's tenant rather than by a tenant the
+// caller happens to own — resolving it from the caller rejected every member of
+// the base's tenant who does not own it.
 func resolveTenantID(ctx context.Context, userID, datasetID string) (string, error) {
 	syn := NewSynonymService()
 	return syn.resolveTenant(ctx, userID, datasetID)
