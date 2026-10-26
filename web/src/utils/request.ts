@@ -200,6 +200,12 @@ request.interceptors.response.use(async (response: Response, options) => {
     }
     authorizationUtil.removeAll();
     redirectToLogin();
+  } else if (data?.code === 108) {
+    // 权限不足（CodePermissionError）。普通成员（role=normal）打开管理类页面、
+    // 或租户里没有某个资源时后端就会返回它 —— 这是预期结果，不是故障。
+    // 原来会走下面的通用分支，一次页面加载能弹好几个 "403 Permission denied"，
+    // 看着像系统坏了。这里静默，由页面自己决定显示空态还是「无权限」。
+    console.warn('[forbidden]', response?.url);
   } else if (data?.code !== 0 && !skipErrorCodes?.includes(data?.code)) {
     notification.error({
       message: `${i18n.t('message.hint')} : ${data?.code}`,
