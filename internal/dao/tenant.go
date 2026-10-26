@@ -90,6 +90,27 @@ func (dao *TenantDAO) GetInfoByUserID(ctx context.Context, db *gorm.DB, userID s
 	return results, err
 }
 
+// GetReadableInfoByUserID 取用户「能看到」的租户，owner 租户排第一，其次是
+// 最早加入的成员租户。**只用于只读场景**。
+//
+// 为什么需要它：GetInfoByUserID 把 role = 'owner' 写死在 SQL 里，而被邀请的
+// 普通成员（role = 'normal'）没有自己的 owner 租户，于是查不到任何行 ——
+// 调用方拿到空结果后返回 102 Tenant not found!，前端一进首页就弹这个错。
+// 写路径（SetTenantDefaultModels）仍然走 GetInfoByUserID，不能因为"能看见"
+// 就让成员改掉整个租户的默认模型。
+func (dao *TenantDAO) GetReadableInfoByUserID(ctx context.Context, db *gorm.DB, userID string) ([]*TenantInfo, error) {
+	var results []*TenantInfo
+
+	err := db.WithContext(ctx).Model(&entity.Tenant{}).
+		Select("tenant.id as tenant_id, tenant.name, tenant.llm_id, tenant.tenant_llm_id, tenant.embd_id, tenant.tenant_embd_id, tenant.rerank_id, tenant.tenant_rerank_id, tenant.asr_id, tenant.tenant_asr_id, tenant.img2txt_id, tenant.tenant_img2txt_id, tenant.tts_id, tenant.tenant_tts_id, tenant.ocr_id, tenant.tenant_ocr_id, tenant.parser_ids, user_tenant.role").
+		Joins("INNER JOIN user_tenant ON user_tenant.tenant_id = tenant.id").
+		Where("user_tenant.user_id = ? AND user_tenant.status = ? AND tenant.status = ?", userID, "1", "1").
+		Order("CASE WHEN user_tenant.role = 'owner' THEN 0 ELSE 1 END, user_tenant.create_date ASC").
+		Scan(&results).Error
+
+	return results, err
+}
+
 // GetByID gets tenant by ID
 func (dao *TenantDAO) GetByID(ctx context.Context, db *gorm.DB, id string) (*entity.Tenant, error) {
 	var tenant entity.Tenant

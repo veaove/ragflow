@@ -70,7 +70,9 @@ type TenantInfoResponse struct {
 
 // GetTenantInfo get tenant information for the current user (owner tenant)
 func (s *TenantService) GetTenantInfo(ctx context.Context, userID string) (*TenantInfoResponse, error) {
-	tenantInfos, err := s.tenantDAO.GetInfoByUserID(ctx, dao.DB, userID)
+	// 用可读租户而不是 owner 租户：被邀请的普通成员没有 owner 租户，
+	// 用 owner 版会返回空、进而在 handler 里变成 102 Tenant not found!。
+	tenantInfos, err := s.tenantDAO.GetReadableInfoByUserID(ctx, dao.DB, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -486,7 +488,8 @@ func rsplitN(s, sep string, n int) []string {
 
 func (s *TenantService) ListTenantDefaultModels(ctx context.Context, userID string) ([]ModelItem, error) {
 
-	tenantInfos, err := s.tenantDAO.GetInfoByUserID(ctx, dao.DB, userID)
+	// 只读：成员也需要看到所在租户的默认模型，否则页面拿不到模型配置。
+	tenantInfos, err := s.tenantDAO.GetReadableInfoByUserID(ctx, dao.DB, userID)
 	if err != nil {
 		return nil, err
 	}
