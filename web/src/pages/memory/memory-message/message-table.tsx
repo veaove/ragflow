@@ -83,6 +83,20 @@ type UpdateMessageStateFn = (
   enable: boolean,
 ) => Promise<boolean>;
 
+/**
+ * 「遗忘于」的空值统一渲染成破折号。
+ *
+ * 后端对「永不遗忘」有三种写法：null、空串、以及字符串 "None"
+ * （历史数据里引擎写回的就是字面量 None），直接输出会在表格里显示成空白或
+ * 莫名其妙的 "None"。
+ */
+function formatForgetAt(value: string | null | undefined) {
+  if (!value || value === 'None' || value === 'null') {
+    return '—';
+  }
+  return value;
+}
+
 function StatusSwitch({
   row,
   disabled,
@@ -170,6 +184,10 @@ export function MemoryTable({
     () => [
       {
         accessorKey: 'session_id',
+        meta: {
+          headerClassName: 'w-[1%] whitespace-nowrap',
+          cellClassName: 'w-[1%] whitespace-nowrap',
+        },
         header: ({ table }) => (
           <div className="flex items-center gap-1">
             <button
@@ -204,10 +222,13 @@ export function MemoryTable({
             ) : (
               ''
             )}
+            {/* UUID 有 32 位，整串铺开要占 250px+，把整张表挤到横向滚动。
+                这里截断显示，鼠标悬停用 title 给出完整 ID。 */}
             <div
-              className={cn('text-sm font-medium', {
+              className={cn('max-w-[170px] truncate text-sm font-medium', {
                 'pl-5': !row.getCanExpand(),
               })}
+              title={row.getValue('session_id') as string}
             >
               {row.getValue('session_id')}
             </div>
@@ -215,7 +236,35 @@ export function MemoryTable({
         ),
       },
       {
+        // 会话名称来自 conversation.name，后端随列表一次批量带回。
+        // 未命名会话给一个占位符，避免整列看起来是空的。
+        accessorKey: 'session_name',
+        header: () => <span>{t('memory.messages.session')}</span>,
+        meta: {
+          headerClassName: 'w-[1%] whitespace-nowrap',
+          cellClassName: 'w-[1%] max-w-[150px] whitespace-nowrap',
+        },
+        cell: ({ row }) => (
+          <div
+            className="max-w-[150px] truncate text-sm font-medium"
+            title={row.original.session_name || undefined}
+          >
+            {row.original.session_name || (
+              <span className="text-text-disabled">
+                {t('memory.messages.untitledSession')}
+              </span>
+            )}
+          </div>
+        ),
+      },
+      {
         accessorKey: 'session_question',
+        // 唯一一列不给 w-[1%]：让它吃掉剩余宽度。但必须给下限，
+        // 否则其余列 nowrap 后它会被压成一条缝。
+        meta: {
+          headerClassName: 'min-w-[150px]',
+          cellClassName: 'min-w-[150px]',
+        },
         header: () => <span>{t('memory.messages.sessionPreview')}</span>,
         cell: ({ row }) => (
           <SessionPreviewCell
@@ -227,8 +276,15 @@ export function MemoryTable({
       {
         accessorKey: 'agent_name',
         header: () => <span>{t('memory.messages.agent')}</span>,
+        meta: {
+          headerClassName: 'w-[1%] whitespace-nowrap',
+          cellClassName: 'w-[1%] max-w-[120px] whitespace-nowrap',
+        },
         cell: ({ row }) => (
-          <div className="text-sm font-medium ">
+          <div
+            className="max-w-[120px] truncate text-sm font-medium"
+            title={row.getValue('agent_name') as string}
+          >
             {row.getValue('agent_name')}
           </div>
         ),
@@ -236,8 +292,13 @@ export function MemoryTable({
       {
         accessorKey: 'message_type',
         header: () => <span>{t('memory.messages.type')}</span>,
+        // 列宽必须 nowrap：窄屏下「原始」会被压成竖排的「原 / 始」。
+        meta: {
+          headerClassName: 'w-[1%] whitespace-nowrap',
+          cellClassName: 'w-[1%] whitespace-nowrap',
+        },
         cell: ({ row }) => (
-          <div className="text-sm font-medium  capitalize">
+          <div className="text-sm font-medium capitalize">
             {row.getValue('message_type')
               ? MemoryOptions(t).find(
                   (item) =>
@@ -250,6 +311,10 @@ export function MemoryTable({
       {
         accessorKey: 'valid_at',
         header: () => <span>{t('memory.messages.validDate')}</span>,
+        meta: {
+          headerClassName: 'w-[1%] whitespace-nowrap',
+          cellClassName: 'w-[1%] whitespace-nowrap',
+        },
         cell: ({ row }) => (
           <div className="text-sm ">{row.getValue('valid_at')}</div>
         ),
@@ -257,20 +322,23 @@ export function MemoryTable({
       {
         accessorKey: 'forget_at',
         header: () => <span>{t('memory.messages.forgetAt')}</span>,
+        meta: {
+          headerClassName: 'w-[1%] whitespace-nowrap',
+          cellClassName: 'w-[1%] whitespace-nowrap',
+        },
         cell: ({ row }) => (
-          <div className="text-sm ">{row.getValue('forget_at')}</div>
+          <div className="text-sm">
+            {formatForgetAt(row.getValue('forget_at') as string)}
+          </div>
         ),
       },
-      // {
-      //   accessorKey: 'source_id',
-      //   header: () => <span>{t('memory.messages.source')}</span>,
-      //   cell: ({ row }) => (
-      //     <div className="text-sm ">{row.getValue('source_id')}</div>
-      //   ),
-      // },
       {
         accessorKey: 'status',
         header: () => <span>{t('memory.messages.enable')}</span>,
+        meta: {
+          headerClassName: 'w-[1%] whitespace-nowrap',
+          cellClassName: 'w-[1%] whitespace-nowrap',
+        },
         cell: ({ row }) => (
           <StatusSwitch
             row={row}
@@ -281,6 +349,10 @@ export function MemoryTable({
       },
       columnHelper.display({
         id: 'task_progress',
+        meta: {
+          headerClassName: 'w-[1%]',
+          cellClassName: 'w-[1%] whitespace-nowrap',
+        },
         cell: ({ row }) => {
           const { task } = row.original;
 
@@ -312,16 +384,19 @@ export function MemoryTable({
         },
       }),
       {
+        // 操作列默认常显：原先用 opacity-0 + group-hover 隐藏，
+        // 结果整列看起来是空的（尤其行没 hover 时），用户以为功能没了。
         accessorKey: 'action',
         header: () => <span>{t('memory.messages.action')}</span>,
         meta: {
-          cellClassName: 'w-12',
+          headerClassName: 'w-[1%] whitespace-nowrap',
+          cellClassName: 'w-[1%] whitespace-nowrap',
         },
         cell: ({ row }) => (
-          <div className=" flex opacity-0 group-hover:opacity-100">
+          <div className="flex items-center">
             <Button
               variant={'ghost'}
-              className="bg-transparent"
+              className="size-8 bg-transparent"
               onClick={() => {
                 handleClickMessageContentDialog(row.original);
               }}
@@ -331,7 +406,7 @@ export function MemoryTable({
             <Button
               variant={'delete'}
               disabled={disabledRowFunc(row)}
-              className="bg-transparent"
+              className="size-8 bg-transparent"
               aria-label="Edit"
               onClick={() => {
                 handleClickDeleteMessage(row.original);
@@ -343,7 +418,11 @@ export function MemoryTable({
         ),
       },
     ],
-    [handleClickDeleteMessage],
+    [
+      handleClickDeleteMessage,
+      handleClickUpdateMessageState,
+      handleClickMessageContentDialog,
+    ],
   );
 
   const currentPagination = useMemo(() => {
@@ -384,7 +463,10 @@ export function MemoryTable({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
+                <TableHead
+                  key={header.id}
+                  className={cn(header.column.columnDef.meta?.headerClassName)}
+                >
                   {header.isPlaceholder
                     ? null
                     : flexRender(
@@ -407,7 +489,10 @@ export function MemoryTable({
                 })}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
+                  <TableCell
+                    key={cell.id}
+                    className={cn(cell.column.columnDef.meta?.cellClassName)}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}

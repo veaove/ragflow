@@ -30,13 +30,19 @@ type LatestUserMessage struct {
 	Content        string `gorm:"column:content"`
 }
 
-// LatestSessionPreview is one conversation's most recent user question.
+// LatestSessionPreview is one conversation's most recent user question, plus
+// the conversation's own name.
+//
 // The list only needs this (truncated), so the answer is deliberately not
 // loaded here — see FetchSessionConversation for the hover payload.
 type LatestSessionPreview struct {
 	ConversationID string
-	Question       string
-	Position       int64
+	// Name is conversation.name. Memory rows only store session_id
+	// (= conversation.id), so the memory table's 「会话」 column has to come
+	// from here. Empty when the conversation was never renamed.
+	Name     string
+	Question string
+	Position int64
 }
 
 // FetchSessionPreviews returns the latest user question for each conversation.
@@ -79,6 +85,33 @@ func FetchSessionPreviews(
 			Position:       row.Position,
 		}
 	}
+
+	// 会话名称：第二条 IN 查询，仍然是整页一次，不是逐行。
+	//
+	// 名称取不到不影响预览，因此这里吞掉错误——缺名字只让「会话」列显示占位符，
+	// 不该把整张表变成空表。
+	var nameRows []struct {
+		ID   string `gorm:"column:id"`
+		Name string `gorm:"column:name"`
+	}
+	if err := db.WithContext(ctx).
+		Model(&entity.ChatSession{}).
+		Select("id, COALESCE(name, '') AS name").
+		Where("id IN ?", conversationIDs).
+		Find(&nameRows).Error; err == nil {
+		for _, row := range nameRows {
+			if preview, ok := out[row.ID]; ok {
+				preview.Name = row.Name
+				continue
+			}
+			// 只有 AI 回复、没有用户提问的会话，也要能显示名称。
+			out[row.ID] = &LatestSessionPreview{
+				ConversationID: row.ID,
+				Name:           row.Name,
+			}
+		}
+	}
+
 	return out, nil
 }
 

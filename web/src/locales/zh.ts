@@ -454,6 +454,8 @@ export default {
         delMessageWarn: `遗忘后，智能体将无法检索此消息。`,
         forgetMessage: '遗忘消息',
         sessionId: '会话ID',
+        session: '会话',
+        untitledSession: '未命名会话',
         sessionPreview: '会话预览',
         sessionQuestion: '用户提问',
         sessionAnswer: 'AI 回答',

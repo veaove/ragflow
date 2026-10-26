@@ -1790,9 +1790,11 @@ func (s *MemoryService) GetMemoryMessages(ctx context.Context, userID, memoryID 
 	for _, message := range rawMessages {
 		agentID, _ := message["agent_id"].(string)
 		message["session_question"] = ""
+		message["session_name"] = ""
 		if sid, ok := message["session_id"].(string); ok {
 			if preview, ok := sessionPreviews[sid]; ok && preview != nil {
 				message["session_question"] = preview.Question
+				message["session_name"] = preview.Name
 			}
 		}
 		message["agent_name"] = "Unknown"
