@@ -93,6 +93,27 @@ const (
 var moduleLabels = map[string]string{
 	moduleMember: "组织成员",
 	moduleRole:   "角色管理",
+	// 下列模块的拦截是后续按路由组接入的（ModulePermission 中间件），
+	// 补上中文名只影响报错文案的可读性。
+	"overview":     "总览",
+	"dataset":      "知识库",
+	"chat":         "知识问答",
+	"search":       "知识搜索",
+	"agent":        "智能体",
+	"studio":       "工作室",
+	"memory":       "记忆",
+	"qc_rule":      "质检规则",
+	"qc_realtime":  "实时质检",
+	"qc_hit":       "命中记录",
+	"qc_config":    "质检系统配置",
+	"file":         "文件管理",
+	"organization": "组织架构",
+	"grant":        "资源授权",
+	"model":        "模型配置",
+	"datasource":   "数据源",
+	"channel":      "聊天渠道",
+	"mcp":          "MCP",
+	"team":         "团队管理",
 }
 
 // inferModuleAction maps a console request onto one matrix cell.
@@ -109,8 +130,11 @@ func inferModuleAction(path, method string) (string, string) {
 	switch {
 	case strings.Contains(path, "/departments"), strings.Contains(path, "/console/members"):
 		module = moduleMember
-	case strings.Contains(path, "/roles"), strings.Contains(path, "/grants"):
+	case strings.Contains(path, "/roles"):
 		module = moduleRole
+	case strings.Contains(path, "/grants"):
+		// 资源授权是独立模块，和「角色管理」分开授权
+		module = "grant"
 	default:
 		return "", ""
 	}

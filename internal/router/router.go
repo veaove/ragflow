@@ -856,7 +856,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 			}
 
 			// Chat Channel
-			chatChannel := v1.Group("/chat-channels")
+			// 聊天渠道归「配置中心 - 聊天渠道」矩阵管；整组挂中间件，
+			// 后续加接口不用再逐个补检查。
+			chatChannel := v1.Group("/chat-channels", handler.ModulePermission("channel"))
 			{
 				chatChannel.POST("", r.chatChannelHandler.CreateChatChannel)
 				chatChannel.GET("", r.chatChannelHandler.ListChatChannel)
