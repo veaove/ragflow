@@ -93,6 +93,8 @@ export enum Routes {
   UserSetting = '/user-setting',
   DataSetOverview = '/logs',
   DataSetSetting = '/configuration',
+  /** 知识编译产物：Wiki / Tree / Graph / Mindmap / Timeline 详情页 */
+  DatasetCompilation = '/compilation',
   DataflowResult = '/dataflow-result',
   Admin = '/admin',
   AdminOverview = `${Admin}/overview`,
@@ -268,6 +270,11 @@ const routeConfigOptions = [
           {
             path: `${Routes.DatasetBase}${Routes.ChangeCenter}/:id`,
             Component: () => import('@/pages/dataset/change-center'),
+          },
+          {
+            // Artifacts 卡片点进来落到这里：?view=graph 直接打开对应产物视图
+            path: `${Routes.DatasetBase}${Routes.DatasetCompilation}/:id`,
+            Component: () => import('@/pages/dataset/compilation'),
           },
         ],
       },

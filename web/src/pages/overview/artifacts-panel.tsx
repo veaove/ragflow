@@ -27,6 +27,8 @@ import {
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 
+import { Routes } from '@/routes';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -171,7 +173,7 @@ export function ArtifactsPanel({ embedded }: { embedded?: boolean }) {
                 tabIndex={0}
                 onClick={() =>
                   navigate(
-                    `/dataset/${item.knowledge_base_id}?view=${
+                    `${Routes.DatasetBase}${Routes.DatasetCompilation}/${item.knowledge_base_id}?view=${
                       TYPE_TO_VIEW[item.type] ?? 'llm-wiki'
                     }`,
                   )
@@ -180,7 +182,7 @@ export function ArtifactsPanel({ embedded }: { embedded?: boolean }) {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     navigate(
-                      `/dataset/${item.knowledge_base_id}?view=${
+                      `${Routes.DatasetBase}${Routes.DatasetCompilation}/${item.knowledge_base_id}?view=${
                         TYPE_TO_VIEW[item.type] ?? 'llm-wiki'
                       }`,
                     );
