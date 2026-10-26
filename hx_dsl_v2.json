@@ -1,0 +1,1111 @@
+{
+  "components": {
+    "begin": {
+      "obj": {
+        "component_name": "Begin",
+        "params": {
+          "mode": "conversational",
+          "enablePrologue": true
+        }
+      },
+      "upstream": [],
+      "downstream": [
+        "Agent:Router"
+      ]
+    },
+    "Agent:Router": {
+      "obj": {
+        "component_name": "Agent",
+        "params": {
+          "llm_id": "qwen-flash@tongyi@Tongyi-Qianwen",
+          "sys_prompt": "你是华夏基金客服系统的意图分类器。\n阅读用户问题，把它归入下面四类中的一类，并**只输出类目名**（2-4 个汉字），不要输出解释、标点、引号或任何其他内容。\n\n分类标准：\n1. 法务 —— 法律法规、合规要求、合同条款、投资者适当性、反洗钱、信息披露义务、违规认定、投诉与纠纷处理；\n2. 企业信息 —— 公司成立时间、股东背景、组织架构、投研体系、企业文化、所获荣誉、社会责任、销售网点、联系方式；\n3. 业务政策 —— 基金申购赎回规则、费率费用、份额确认、分红方式、开放期安排、账户与交易限制；\n4. 其他 —— 寒暄闲聊、与基金业务无关、或索要投资建议/买卖时点/收益预测。\n\n只输出类目名。",
+          "prompts": [
+            {
+              "role": "user",
+              "content": "{sys.query}"
+            }
+          ],
+          "cite": false,
+          "temperature": 0.1,
+          "temperatureEnabled": true,
+          "top_p": 0.3,
+          "topPEnabled": true,
+          "presence_penalty": 0.4,
+          "presencePenaltyEnabled": true,
+          "frequency_penalty": 0.7,
+          "frequencyPenaltyEnabled": false,
+          "max_tokens": 32,
+          "maxTokensEnabled": false,
+          "max_rounds": 1,
+          "max_retries": 3,
+          "delay_after_error": 1,
+          "message_history_window_size": 6,
+          "description": "",
+          "exception_method": "",
+          "exception_goto": [],
+          "exception_default_value": "",
+          "tools": [],
+          "mcp": [],
+          "outputs": {
+            "content": {
+              "type": "string",
+              "value": ""
+            }
+          },
+          "visual_files_var": "",
+          "showStructuredOutput": false
+        }
+      },
+      "upstream": [
+        "begin"
+      ],
+      "downstream": [
+        "Switch:Route"
+      ]
+    },
+    "Switch:Route": {
+      "obj": {
+        "component_name": "Switch",
+        "params": {
+          "conditions": [
+            {
+              "items": [
+                {
+                  "cpn_id": "Agent:Router@content",
+                  "operator": "contains",
+                  "value": "法务"
+                }
+              ],
+              "logical_operator": "and",
+              "to": [
+                "Retrieval:Legal"
+              ]
+            },
+            {
+              "items": [
+                {
+                  "cpn_id": "Agent:Router@content",
+                  "operator": "contains",
+                  "value": "企业信息"
+                }
+              ],
+              "logical_operator": "and",
+              "to": [
+                "Retrieval:Corp"
+              ]
+            },
+            {
+              "items": [
+                {
+                  "cpn_id": "Agent:Router@content",
+                  "operator": "contains",
+                  "value": "业务政策"
+                }
+              ],
+              "logical_operator": "and",
+              "to": [
+                "Retrieval:Policy"
+              ]
+            }
+          ],
+          "end_cpn_ids": [
+            "Agent:General"
+          ]
+        }
+      },
+      "upstream": [
+        "Agent:Router"
+      ],
+      "downstream": [
+        "Retrieval:Legal",
+        "Retrieval:Corp",
+        "Retrieval:Policy",
+        "Agent:General"
+      ]
+    },
+    "Retrieval:Legal": {
+      "obj": {
+        "component_name": "Retrieval",
+        "params": {
+          "kb_ids": [
+            "ab87ed24c99f4dec92281414532f3bb1"
+          ],
+          "query": "{sys.query}",
+          "similarity_threshold": 0.2,
+          "keywords_similarity_weight": 0.7,
+          "top_k": 1024,
+          "top_n": 6,
+          "rerank_id": "",
+          "retrieval_from": "dataset",
+          "use_kg": false,
+          "toc_enhance": false,
+          "cross_languages": [],
+          "meta_data_filter": {},
+          "empty_response": "（法务知识库暂无相关内容）",
+          "outputs": {
+            "formalized_content": {
+              "type": "string",
+              "value": ""
+            },
+            "json": {
+              "type": "Array<Object>",
+              "value": []
+            }
+          }
+        }
+      },
+      "upstream": [
+        "Switch:Route"
+      ],
+      "downstream": [
+        "Agent:Legal"
+      ]
+    },
+    "Agent:Legal": {
+      "obj": {
+        "component_name": "Agent",
+        "params": {
+          "llm_id": "qwen-flash@tongyi@Tongyi-Qianwen",
+          "sys_prompt": "你是华夏基金的**法务合规专家**，负责解答法律法规、合规要求、合同条款、投资者适当性、反洗钱、信息披露义务、纠纷处理相关问题。\n要求：\n1. 先看【参考资料】，资料有明确规定就严格按资料口径表述，不要自行发挥；\n2. 涉及「能不能做」「是否违规」的判断，必须说明依据；\n3. 资料没有的内容，直接说「这一点需要合规部门确认」，不要编造条文或编号；\n4. 不做投资建议，不承诺收益，不评价具体产品好坏。\n用简体中文，条理清晰，300 字以内。",
+          "prompts": [
+            {
+              "role": "user",
+              "content": "【参考资料】\n{Retrieval:Legal@formalized_content}\n\n【用户问题】\n{sys.query}"
+            }
+          ],
+          "cite": true,
+          "temperature": 0.1,
+          "temperatureEnabled": true,
+          "top_p": 0.3,
+          "topPEnabled": true,
+          "presence_penalty": 0.4,
+          "presencePenaltyEnabled": true,
+          "frequency_penalty": 0.7,
+          "frequencyPenaltyEnabled": false,
+          "max_tokens": 2048,
+          "maxTokensEnabled": false,
+          "max_rounds": 1,
+          "max_retries": 3,
+          "delay_after_error": 1,
+          "message_history_window_size": 6,
+          "description": "",
+          "exception_method": "",
+          "exception_goto": [],
+          "exception_default_value": "",
+          "tools": [],
+          "mcp": [],
+          "outputs": {
+            "content": {
+              "type": "string",
+              "value": ""
+            }
+          },
+          "visual_files_var": "",
+          "showStructuredOutput": false
+        }
+      },
+      "upstream": [
+        "Retrieval:Legal"
+      ],
+      "downstream": [
+        "VariableAggregator:Pick"
+      ]
+    },
+    "Retrieval:Corp": {
+      "obj": {
+        "component_name": "Retrieval",
+        "params": {
+          "kb_ids": [
+            "33a59a209238432ea2c95a88393052ef"
+          ],
+          "query": "{sys.query}",
+          "similarity_threshold": 0.2,
+          "keywords_similarity_weight": 0.7,
+          "top_k": 1024,
+          "top_n": 6,
+          "rerank_id": "",
+          "retrieval_from": "dataset",
+          "use_kg": false,
+          "toc_enhance": false,
+          "cross_languages": [],
+          "meta_data_filter": {},
+          "empty_response": "（企业信息库暂无相关内容）",
+          "outputs": {
+            "formalized_content": {
+              "type": "string",
+              "value": ""
+            },
+            "json": {
+              "type": "Array<Object>",
+              "value": []
+            }
+          }
+        }
+      },
+      "upstream": [
+        "Switch:Route"
+      ],
+      "downstream": [
+        "Agent:Corp"
+      ]
+    },
+    "Agent:Corp": {
+      "obj": {
+        "component_name": "Agent",
+        "params": {
+          "llm_id": "qwen-flash@tongyi@Tongyi-Qianwen",
+          "sys_prompt": "你是华夏基金的**企业信息助手**，负责解答公司基本情况、股东背景、组织架构、投研体系、企业文化、所获荣誉、社会责任、销售网点、联系方式等问题。\n要求：\n1. 严格依据【参考资料】作答，数字、日期、名称必须与资料一致；\n2. 资料未覆盖的细节不要猜测，说明「该信息建议以官网或客服口径为准」；\n3. 不评价公司或同业，不涉及投资建议。\n用简体中文，简洁准确，300 字以内。",
+          "prompts": [
+            {
+              "role": "user",
+              "content": "【参考资料】\n{Retrieval:Corp@formalized_content}\n\n【用户问题】\n{sys.query}"
+            }
+          ],
+          "cite": true,
+          "temperature": 0.1,
+          "temperatureEnabled": true,
+          "top_p": 0.3,
+          "topPEnabled": true,
+          "presence_penalty": 0.4,
+          "presencePenaltyEnabled": true,
+          "frequency_penalty": 0.7,
+          "frequencyPenaltyEnabled": false,
+          "max_tokens": 2048,
+          "maxTokensEnabled": false,
+          "max_rounds": 1,
+          "max_retries": 3,
+          "delay_after_error": 1,
+          "message_history_window_size": 6,
+          "description": "",
+          "exception_method": "",
+          "exception_goto": [],
+          "exception_default_value": "",
+          "tools": [],
+          "mcp": [],
+          "outputs": {
+            "content": {
+              "type": "string",
+              "value": ""
+            }
+          },
+          "visual_files_var": "",
+          "showStructuredOutput": false
+        }
+      },
+      "upstream": [
+        "Retrieval:Corp"
+      ],
+      "downstream": [
+        "VariableAggregator:Pick"
+      ]
+    },
+    "Retrieval:Policy": {
+      "obj": {
+        "component_name": "Retrieval",
+        "params": {
+          "kb_ids": [
+            "6995fa4b2ad24d5f9270fcfe18d12d1d"
+          ],
+          "query": "{sys.query}",
+          "similarity_threshold": 0.2,
+          "keywords_similarity_weight": 0.7,
+          "top_k": 1024,
+          "top_n": 6,
+          "rerank_id": "",
+          "retrieval_from": "dataset",
+          "use_kg": false,
+          "toc_enhance": false,
+          "cross_languages": [],
+          "meta_data_filter": {},
+          "empty_response": "（业务政策库暂无相关内容）",
+          "outputs": {
+            "formalized_content": {
+              "type": "string",
+              "value": ""
+            },
+            "json": {
+              "type": "Array<Object>",
+              "value": []
+            }
+          }
+        }
+      },
+      "upstream": [
+        "Switch:Route"
+      ],
+      "downstream": [
+        "Agent:Policy"
+      ]
+    },
+    "Agent:Policy": {
+      "obj": {
+        "component_name": "Agent",
+        "params": {
+          "llm_id": "qwen-flash@tongyi@Tongyi-Qianwen",
+          "sys_prompt": "你是华夏基金的**业务政策专家**，负责解答基金产品规则、申购赎回规则、费率与费用、份额确认、分红方式、开放期安排、账户与交易限制等问题。\n要求：\n1. 严格依据【参考资料】作答，规则类问题必须说清适用条件；\n2. 涉及具体费率、时间、限额时，资料没有明确数值就说「以产品合同/公告为准」，不要给出估算数字；\n3. 不做投资建议，不预测收益。\n用简体中文，简洁准确，300 字以内。",
+          "prompts": [
+            {
+              "role": "user",
+              "content": "【参考资料】\n{Retrieval:Policy@formalized_content}\n\n【用户问题】\n{sys.query}"
+            }
+          ],
+          "cite": true,
+          "temperature": 0.1,
+          "temperatureEnabled": true,
+          "top_p": 0.3,
+          "topPEnabled": true,
+          "presence_penalty": 0.4,
+          "presencePenaltyEnabled": true,
+          "frequency_penalty": 0.7,
+          "frequencyPenaltyEnabled": false,
+          "max_tokens": 2048,
+          "maxTokensEnabled": false,
+          "max_rounds": 1,
+          "max_retries": 3,
+          "delay_after_error": 1,
+          "message_history_window_size": 6,
+          "description": "",
+          "exception_method": "",
+          "exception_goto": [],
+          "exception_default_value": "",
+          "tools": [],
+          "mcp": [],
+          "outputs": {
+            "content": {
+              "type": "string",
+              "value": ""
+            }
+          },
+          "visual_files_var": "",
+          "showStructuredOutput": false
+        }
+      },
+      "upstream": [
+        "Retrieval:Policy"
+      ],
+      "downstream": [
+        "VariableAggregator:Pick"
+      ]
+    },
+    "Agent:General": {
+      "obj": {
+        "component_name": "Agent",
+        "params": {
+          "llm_id": "qwen-flash@tongyi@Tongyi-Qianwen",
+          "sys_prompt": "你是华夏基金的**智能客服**。用户的问题不属于法务、企业信息、业务政策三类，请简短友好回应：\n1. 寒暄就礼貌回应，并说明你可以帮ta查法务合规、公司信息、业务政策；\n2. 涉及投资建议、买卖时点、收益预测的，明确说明不提供投资建议；\n3. 不要编造任何业务数据。\n用简体中文，不超过 150 字。",
+          "prompts": [
+            {
+              "role": "user",
+              "content": "{sys.query}"
+            }
+          ],
+          "cite": false,
+          "temperature": 0.1,
+          "temperatureEnabled": true,
+          "top_p": 0.3,
+          "topPEnabled": true,
+          "presence_penalty": 0.4,
+          "presencePenaltyEnabled": true,
+          "frequency_penalty": 0.7,
+          "frequencyPenaltyEnabled": false,
+          "max_tokens": 512,
+          "maxTokensEnabled": false,
+          "max_rounds": 1,
+          "max_retries": 3,
+          "delay_after_error": 1,
+          "message_history_window_size": 6,
+          "description": "",
+          "exception_method": "",
+          "exception_goto": [],
+          "exception_default_value": "",
+          "tools": [],
+          "mcp": [],
+          "outputs": {
+            "content": {
+              "type": "string",
+              "value": ""
+            }
+          },
+          "visual_files_var": "",
+          "showStructuredOutput": false
+        }
+      },
+      "upstream": [
+        "Switch:Route"
+      ],
+      "downstream": [
+        "VariableAggregator:Pick"
+      ]
+    },
+    "VariableAggregator:Pick": {
+      "obj": {
+        "component_name": "VariableAggregator",
+        "params": {
+          "groups": [
+            {
+              "group_name": "answer",
+              "type": "string",
+              "variables": [
+                {
+                  "value": "{Agent:Legal@content}"
+                },
+                {
+                  "value": "{Agent:Corp@content}"
+                },
+                {
+                  "value": "{Agent:Policy@content}"
+                },
+                {
+                  "value": "{Agent:General@content}"
+                }
+              ]
+            }
+          ],
+          "outputs": {
+            "answer": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "upstream": [
+        "Agent:Legal",
+        "Agent:Corp",
+        "Agent:Policy",
+        "Agent:General"
+      ],
+      "downstream": [
+        "Message:Reply"
+      ]
+    },
+    "Message:Reply": {
+      "obj": {
+        "component_name": "Message",
+        "params": {
+          "content": [
+            "{VariableAggregator:Pick@answer}"
+          ]
+        }
+      },
+      "upstream": [
+        "VariableAggregator:Pick"
+      ],
+      "downstream": []
+    }
+  },
+  "globals": {
+    "sys.conversation_turns": 0,
+    "sys.date": "",
+    "sys.files": [],
+    "sys.history": [],
+    "sys.query": "",
+    "sys.user_id": ""
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "begin",
+        "type": "beginNode",
+        "position": {
+          "x": -80,
+          "y": 300
+        },
+        "data": {
+          "label": "Begin",
+          "name": "begin",
+          "form": {
+            "mode": "conversational",
+            "enablePrologue": true
+          }
+        }
+      },
+      {
+        "id": "Agent:Router",
+        "type": "agentNode",
+        "position": {
+          "x": 40,
+          "y": 300
+        },
+        "data": {
+          "label": "Agent",
+          "name": "意图识别",
+          "form": {
+            "llm_id": "qwen-flash@tongyi@Tongyi-Qianwen",
+            "sys_prompt": "你是华夏基金客服系统的意图分类器。\n阅读用户问题，把它归入下面四类中的一类，并**只输出类目名**（2-4 个汉字），不要输出解释、标点、引号或任何其他内容。\n\n分类标准：\n1. 法务 —— 法律法规、合规要求、合同条款、投资者适当性、反洗钱、信息披露义务、违规认定、投诉与纠纷处理；\n2. 企业信息 —— 公司成立时间、股东背景、组织架构、投研体系、企业文化、所获荣誉、社会责任、销售网点、联系方式；\n3. 业务政策 —— 基金申购赎回规则、费率费用、份额确认、分红方式、开放期安排、账户与交易限制；\n4. 其他 —— 寒暄闲聊、与基金业务无关、或索要投资建议/买卖时点/收益预测。\n\n只输出类目名。",
+            "prompts": [
+              {
+                "role": "user",
+                "content": "{sys.query}"
+              }
+            ],
+            "cite": false,
+            "temperature": 0.1,
+            "temperatureEnabled": true,
+            "top_p": 0.3,
+            "topPEnabled": true,
+            "presence_penalty": 0.4,
+            "presencePenaltyEnabled": true,
+            "frequency_penalty": 0.7,
+            "frequencyPenaltyEnabled": false,
+            "max_tokens": 32,
+            "maxTokensEnabled": false,
+            "max_rounds": 1,
+            "max_retries": 3,
+            "delay_after_error": 1,
+            "message_history_window_size": 6,
+            "description": "",
+            "exception_method": "",
+            "exception_goto": [],
+            "exception_default_value": "",
+            "tools": [],
+            "mcp": [],
+            "outputs": {
+              "content": {
+                "type": "string",
+                "value": ""
+              }
+            },
+            "visual_files_var": "",
+            "showStructuredOutput": false
+          }
+        }
+      },
+      {
+        "id": "Switch:Route",
+        "type": "switchNode",
+        "position": {
+          "x": 260,
+          "y": 300
+        },
+        "data": {
+          "label": "Switch",
+          "name": "按意图分流",
+          "form": {
+            "conditions": [
+              {
+                "items": [
+                  {
+                    "cpn_id": "Agent:Router@content",
+                    "operator": "contains",
+                    "value": "法务"
+                  }
+                ],
+                "logical_operator": "and",
+                "to": [
+                  "Retrieval:Legal"
+                ]
+              },
+              {
+                "items": [
+                  {
+                    "cpn_id": "Agent:Router@content",
+                    "operator": "contains",
+                    "value": "企业信息"
+                  }
+                ],
+                "logical_operator": "and",
+                "to": [
+                  "Retrieval:Corp"
+                ]
+              },
+              {
+                "items": [
+                  {
+                    "cpn_id": "Agent:Router@content",
+                    "operator": "contains",
+                    "value": "业务政策"
+                  }
+                ],
+                "logical_operator": "and",
+                "to": [
+                  "Retrieval:Policy"
+                ]
+              }
+            ],
+            "end_cpn_ids": [
+              "Agent:General"
+            ]
+          }
+        }
+      },
+      {
+        "id": "Retrieval:Legal",
+        "type": "retrievalNode",
+        "position": {
+          "x": 480,
+          "y": 100
+        },
+        "data": {
+          "label": "Retrieval",
+          "name": "法务知识检索",
+          "form": {
+            "kb_ids": [
+              "ab87ed24c99f4dec92281414532f3bb1"
+            ],
+            "query": "{sys.query}",
+            "similarity_threshold": 0.2,
+            "keywords_similarity_weight": 0.7,
+            "top_k": 1024,
+            "top_n": 6,
+            "rerank_id": "",
+            "retrieval_from": "dataset",
+            "use_kg": false,
+            "toc_enhance": false,
+            "cross_languages": [],
+            "meta_data_filter": {},
+            "empty_response": "（法务知识库暂无相关内容）",
+            "outputs": {
+              "formalized_content": {
+                "type": "string",
+                "value": ""
+              },
+              "json": {
+                "type": "Array<Object>",
+                "value": []
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "Agent:Legal",
+        "type": "agentNode",
+        "position": {
+          "x": 720,
+          "y": 100
+        },
+        "data": {
+          "label": "Agent",
+          "name": "调用法务专家",
+          "form": {
+            "llm_id": "qwen-flash@tongyi@Tongyi-Qianwen",
+            "sys_prompt": "你是华夏基金的**法务合规专家**，负责解答法律法规、合规要求、合同条款、投资者适当性、反洗钱、信息披露义务、纠纷处理相关问题。\n要求：\n1. 先看【参考资料】，资料有明确规定就严格按资料口径表述，不要自行发挥；\n2. 涉及「能不能做」「是否违规」的判断，必须说明依据；\n3. 资料没有的内容，直接说「这一点需要合规部门确认」，不要编造条文或编号；\n4. 不做投资建议，不承诺收益，不评价具体产品好坏。\n用简体中文，条理清晰，300 字以内。",
+            "prompts": [
+              {
+                "role": "user",
+                "content": "【参考资料】\n{Retrieval:Legal@formalized_content}\n\n【用户问题】\n{sys.query}"
+              }
+            ],
+            "cite": true,
+            "temperature": 0.1,
+            "temperatureEnabled": true,
+            "top_p": 0.3,
+            "topPEnabled": true,
+            "presence_penalty": 0.4,
+            "presencePenaltyEnabled": true,
+            "frequency_penalty": 0.7,
+            "frequencyPenaltyEnabled": false,
+            "max_tokens": 2048,
+            "maxTokensEnabled": false,
+            "max_rounds": 1,
+            "max_retries": 3,
+            "delay_after_error": 1,
+            "message_history_window_size": 6,
+            "description": "",
+            "exception_method": "",
+            "exception_goto": [],
+            "exception_default_value": "",
+            "tools": [],
+            "mcp": [],
+            "outputs": {
+              "content": {
+                "type": "string",
+                "value": ""
+              }
+            },
+            "visual_files_var": "",
+            "showStructuredOutput": false
+          }
+        }
+      },
+      {
+        "id": "Retrieval:Corp",
+        "type": "retrievalNode",
+        "position": {
+          "x": 480,
+          "y": 300
+        },
+        "data": {
+          "label": "Retrieval",
+          "name": "企业信息检索",
+          "form": {
+            "kb_ids": [
+              "33a59a209238432ea2c95a88393052ef"
+            ],
+            "query": "{sys.query}",
+            "similarity_threshold": 0.2,
+            "keywords_similarity_weight": 0.7,
+            "top_k": 1024,
+            "top_n": 6,
+            "rerank_id": "",
+            "retrieval_from": "dataset",
+            "use_kg": false,
+            "toc_enhance": false,
+            "cross_languages": [],
+            "meta_data_filter": {},
+            "empty_response": "（企业信息库暂无相关内容）",
+            "outputs": {
+              "formalized_content": {
+                "type": "string",
+                "value": ""
+              },
+              "json": {
+                "type": "Array<Object>",
+                "value": []
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "Agent:Corp",
+        "type": "agentNode",
+        "position": {
+          "x": 720,
+          "y": 300
+        },
+        "data": {
+          "label": "Agent",
+          "name": "企业信息助手",
+          "form": {
+            "llm_id": "qwen-flash@tongyi@Tongyi-Qianwen",
+            "sys_prompt": "你是华夏基金的**企业信息助手**，负责解答公司基本情况、股东背景、组织架构、投研体系、企业文化、所获荣誉、社会责任、销售网点、联系方式等问题。\n要求：\n1. 严格依据【参考资料】作答，数字、日期、名称必须与资料一致；\n2. 资料未覆盖的细节不要猜测，说明「该信息建议以官网或客服口径为准」；\n3. 不评价公司或同业，不涉及投资建议。\n用简体中文，简洁准确，300 字以内。",
+            "prompts": [
+              {
+                "role": "user",
+                "content": "【参考资料】\n{Retrieval:Corp@formalized_content}\n\n【用户问题】\n{sys.query}"
+              }
+            ],
+            "cite": true,
+            "temperature": 0.1,
+            "temperatureEnabled": true,
+            "top_p": 0.3,
+            "topPEnabled": true,
+            "presence_penalty": 0.4,
+            "presencePenaltyEnabled": true,
+            "frequency_penalty": 0.7,
+            "frequencyPenaltyEnabled": false,
+            "max_tokens": 2048,
+            "maxTokensEnabled": false,
+            "max_rounds": 1,
+            "max_retries": 3,
+            "delay_after_error": 1,
+            "message_history_window_size": 6,
+            "description": "",
+            "exception_method": "",
+            "exception_goto": [],
+            "exception_default_value": "",
+            "tools": [],
+            "mcp": [],
+            "outputs": {
+              "content": {
+                "type": "string",
+                "value": ""
+              }
+            },
+            "visual_files_var": "",
+            "showStructuredOutput": false
+          }
+        }
+      },
+      {
+        "id": "Retrieval:Policy",
+        "type": "retrievalNode",
+        "position": {
+          "x": 480,
+          "y": 500
+        },
+        "data": {
+          "label": "Retrieval",
+          "name": "政策知识检索",
+          "form": {
+            "kb_ids": [
+              "6995fa4b2ad24d5f9270fcfe18d12d1d"
+            ],
+            "query": "{sys.query}",
+            "similarity_threshold": 0.2,
+            "keywords_similarity_weight": 0.7,
+            "top_k": 1024,
+            "top_n": 6,
+            "rerank_id": "",
+            "retrieval_from": "dataset",
+            "use_kg": false,
+            "toc_enhance": false,
+            "cross_languages": [],
+            "meta_data_filter": {},
+            "empty_response": "（业务政策库暂无相关内容）",
+            "outputs": {
+              "formalized_content": {
+                "type": "string",
+                "value": ""
+              },
+              "json": {
+                "type": "Array<Object>",
+                "value": []
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "Agent:Policy",
+        "type": "agentNode",
+        "position": {
+          "x": 720,
+          "y": 500
+        },
+        "data": {
+          "label": "Agent",
+          "name": "政策专家助手",
+          "form": {
+            "llm_id": "qwen-flash@tongyi@Tongyi-Qianwen",
+            "sys_prompt": "你是华夏基金的**业务政策专家**，负责解答基金产品规则、申购赎回规则、费率与费用、份额确认、分红方式、开放期安排、账户与交易限制等问题。\n要求：\n1. 严格依据【参考资料】作答，规则类问题必须说清适用条件；\n2. 涉及具体费率、时间、限额时，资料没有明确数值就说「以产品合同/公告为准」，不要给出估算数字；\n3. 不做投资建议，不预测收益。\n用简体中文，简洁准确，300 字以内。",
+            "prompts": [
+              {
+                "role": "user",
+                "content": "【参考资料】\n{Retrieval:Policy@formalized_content}\n\n【用户问题】\n{sys.query}"
+              }
+            ],
+            "cite": true,
+            "temperature": 0.1,
+            "temperatureEnabled": true,
+            "top_p": 0.3,
+            "topPEnabled": true,
+            "presence_penalty": 0.4,
+            "presencePenaltyEnabled": true,
+            "frequency_penalty": 0.7,
+            "frequencyPenaltyEnabled": false,
+            "max_tokens": 2048,
+            "maxTokensEnabled": false,
+            "max_rounds": 1,
+            "max_retries": 3,
+            "delay_after_error": 1,
+            "message_history_window_size": 6,
+            "description": "",
+            "exception_method": "",
+            "exception_goto": [],
+            "exception_default_value": "",
+            "tools": [],
+            "mcp": [],
+            "outputs": {
+              "content": {
+                "type": "string",
+                "value": ""
+              }
+            },
+            "visual_files_var": "",
+            "showStructuredOutput": false
+          }
+        }
+      },
+      {
+        "id": "Agent:General",
+        "type": "agentNode",
+        "position": {
+          "x": 720,
+          "y": 700
+        },
+        "data": {
+          "label": "Agent",
+          "name": "通用客服",
+          "form": {
+            "llm_id": "qwen-flash@tongyi@Tongyi-Qianwen",
+            "sys_prompt": "你是华夏基金的**智能客服**。用户的问题不属于法务、企业信息、业务政策三类，请简短友好回应：\n1. 寒暄就礼貌回应，并说明你可以帮ta查法务合规、公司信息、业务政策；\n2. 涉及投资建议、买卖时点、收益预测的，明确说明不提供投资建议；\n3. 不要编造任何业务数据。\n用简体中文，不超过 150 字。",
+            "prompts": [
+              {
+                "role": "user",
+                "content": "{sys.query}"
+              }
+            ],
+            "cite": false,
+            "temperature": 0.1,
+            "temperatureEnabled": true,
+            "top_p": 0.3,
+            "topPEnabled": true,
+            "presence_penalty": 0.4,
+            "presencePenaltyEnabled": true,
+            "frequency_penalty": 0.7,
+            "frequencyPenaltyEnabled": false,
+            "max_tokens": 512,
+            "maxTokensEnabled": false,
+            "max_rounds": 1,
+            "max_retries": 3,
+            "delay_after_error": 1,
+            "message_history_window_size": 6,
+            "description": "",
+            "exception_method": "",
+            "exception_goto": [],
+            "exception_default_value": "",
+            "tools": [],
+            "mcp": [],
+            "outputs": {
+              "content": {
+                "type": "string",
+                "value": ""
+              }
+            },
+            "visual_files_var": "",
+            "showStructuredOutput": false
+          }
+        }
+      },
+      {
+        "id": "VariableAggregator:Pick",
+        "type": "variableAggregatorNode",
+        "position": {
+          "x": 960,
+          "y": 360
+        },
+        "data": {
+          "label": "VariableAggregator",
+          "name": "取实际命中的回答",
+          "form": {
+            "groups": [
+              {
+                "group_name": "answer",
+                "type": "string",
+                "variables": [
+                  {
+                    "value": "{Agent:Legal@content}"
+                  },
+                  {
+                    "value": "{Agent:Corp@content}"
+                  },
+                  {
+                    "value": "{Agent:Policy@content}"
+                  },
+                  {
+                    "value": "{Agent:General@content}"
+                  }
+                ]
+              }
+            ],
+            "outputs": {
+              "answer": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "Message:Reply",
+        "type": "messageNode",
+        "position": {
+          "x": 1160,
+          "y": 360
+        },
+        "data": {
+          "label": "Message",
+          "name": "回复消息",
+          "form": {
+            "content": [
+              "{VariableAggregator:Pick@answer}"
+            ]
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "begin",
+        "sourceHandle": "start",
+        "target": "Agent:Router",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e2",
+        "source": "Agent:Router",
+        "sourceHandle": "start",
+        "target": "Switch:Route",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e3",
+        "source": "Switch:Route",
+        "sourceHandle": "Case 1",
+        "target": "Retrieval:Legal",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e4",
+        "source": "Switch:Route",
+        "sourceHandle": "Case 2",
+        "target": "Retrieval:Corp",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e5",
+        "source": "Switch:Route",
+        "sourceHandle": "Case 3",
+        "target": "Retrieval:Policy",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e6",
+        "source": "Switch:Route",
+        "sourceHandle": "end_cpn_ids",
+        "target": "Agent:General",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e7",
+        "source": "Retrieval:Legal",
+        "sourceHandle": "start",
+        "target": "Agent:Legal",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e8",
+        "source": "Retrieval:Corp",
+        "sourceHandle": "start",
+        "target": "Agent:Corp",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e9",
+        "source": "Retrieval:Policy",
+        "sourceHandle": "start",
+        "target": "Agent:Policy",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e10",
+        "source": "Agent:Legal",
+        "sourceHandle": "start",
+        "target": "VariableAggregator:Pick",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e11",
+        "source": "Agent:Corp",
+        "sourceHandle": "start",
+        "target": "VariableAggregator:Pick",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e12",
+        "source": "Agent:Policy",
+        "sourceHandle": "start",
+        "target": "VariableAggregator:Pick",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e13",
+        "source": "Agent:General",
+        "sourceHandle": "start",
+        "target": "VariableAggregator:Pick",
+        "targetHandle": "end"
+      },
+      {
+        "id": "e14",
+        "source": "VariableAggregator:Pick",
+        "sourceHandle": "start",
+        "target": "Message:Reply",
+        "targetHandle": "end"
+      }
+    ]
+  },
+  "variables": []
+}
