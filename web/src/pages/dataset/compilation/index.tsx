@@ -8,7 +8,7 @@ import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchKnowledgeBaseConfiguration } from '@/hooks/use-knowledge-request';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams } from 'react-router';
+import { useParams, useSearchParams } from 'react-router';
 
 import {
   StructureKinds,
@@ -26,7 +26,14 @@ export default function Compilation() {
   const { id } = useParams();
   const { navigateToDataFile } = useNavigatePage();
   const { data: knowledgeBase } = useFetchKnowledgeBaseConfiguration();
-  const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.LlmWiki);
+  // 支持 ?view=graph 直接打开对应视图（从 Artifacts 卡片点进来时用）
+  const [searchParams] = useSearchParams();
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const requested = searchParams.get('view') ?? '';
+    return (VisibleViewModes as string[]).includes(requested)
+      ? (requested as ViewMode)
+      : ViewMode.LlmWiki;
+  });
 
   const viewOptions = useMemo<SelectWithSearchFlagOptionType[]>(() => {
     return VisibleViewModes.map((mode) => ({

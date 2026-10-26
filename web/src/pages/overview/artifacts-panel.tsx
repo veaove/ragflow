@@ -25,6 +25,7 @@ import {
   LucideWaypoints,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -58,6 +59,15 @@ const TYPE_META: Record<
   timeline: { label: 'Timeline', icon: LucideWaypoints, variant: 'secondary' },
 };
 
+// artifact 类型 → 知识库「知识编译」页的视图参数
+const TYPE_TO_VIEW: Record<ArtifactType, string> = {
+  wiki: 'llm-wiki',
+  tree: 'tree',
+  graph: 'graph',
+  mindmap: 'mindmap',
+  timeline: 'timeline',
+};
+
 const TYPE_FILTERS: Array<{ value: '' | ArtifactType; label: string }> = [
   { value: '', label: '全部' },
   { value: 'wiki', label: 'Wiki' },
@@ -85,6 +95,7 @@ function formatTime(ms: number) {
  * xxx_task_id / xxx_task_finish_at 展开成「一行一个产物」。
  */
 export function ArtifactsPanel({ embedded }: { embedded?: boolean }) {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
   const [typeFilter, setTypeFilter] = useState<'' | ArtifactType>('');
@@ -154,7 +165,29 @@ export function ArtifactsPanel({ embedded }: { embedded?: boolean }) {
             const meta = TYPE_META[item.type] ?? TYPE_META.wiki;
             const Icon = meta.icon;
             return (
-              <Card key={item.id} className="transition-shadow hover:shadow-md">
+              <Card
+                key={item.id}
+                role="button"
+                tabIndex={0}
+                onClick={() =>
+                  navigate(
+                    `/dataset/${item.knowledge_base_id}?view=${
+                      TYPE_TO_VIEW[item.type] ?? 'llm-wiki'
+                    }`,
+                  )
+                }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(
+                      `/dataset/${item.knowledge_base_id}?view=${
+                        TYPE_TO_VIEW[item.type] ?? 'llm-wiki'
+                      }`,
+                    );
+                  }
+                }}
+                className="cursor-pointer transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-accent-primary/40"
+              >
                 <CardContent className="flex flex-col gap-3 p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2">
