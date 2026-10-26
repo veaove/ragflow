@@ -39,10 +39,18 @@ function TokenizerNode({
         <NodeHeader id={id} name={data.name} label={data.label}></NodeHeader>
         <LabelCard className="text-text-primary flex justify-between flex-col gap-1">
           <span className="text-text-secondary">{t('flow.searchMethod')}</span>
-          <ul className="space-y-1">
-            {data.form?.search_method.map((x) => (
-              <li key={x}>{t(`flow.tokenizerSearchMethodOptions.${x}`)}</li>
-            ))}
+          {/* 节点宽度固定，标签一长就会溢出到节点外：
+              min-w-0 让 flex 子项可以被压缩，truncate 出省略号，
+              title 保留完整文案供悬浮查看。 */}
+          <ul className="min-w-0 space-y-1 overflow-hidden">
+            {data.form?.search_method.map((x) => {
+              const label = t(`flow.tokenizerSearchMethodOptions.${x}`);
+              return (
+                <li key={x} className="truncate" title={label}>
+                  {label}
+                </li>
+              );
+            })}
           </ul>
         </LabelCard>
       </NodeWrapper>

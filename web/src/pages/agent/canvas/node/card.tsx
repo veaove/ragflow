@@ -77,7 +77,10 @@ export function LabelCard({ children, className, ...props }: LabelCardProps) {
   return (
     <div
       className={cn(
-        'bg-bg-card rounded-sm p-1 text-text-secondary text-xs',
+        // overflow-hidden + min-w-0：节点宽度是固定的，参数值一长（比如中文
+        // 翻译后的标签）就会顶出节点边界。这两个类保证内容被裁在卡片内，
+        // 具体要省略还是换行由调用方自己决定（truncate / line-clamp）。
+        'bg-bg-card rounded-sm p-1 text-text-secondary text-xs overflow-hidden min-w-0',
         className,
       )}
       {...props}

@@ -3599,6 +3599,10 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       },
       cancel: '取消',
       filenameEmbeddingWeight: '文件名 Embedding 权重',
+      tokenizerSearchMethodOptions: {
+        full_text: '全文',
+        embedding: '向量',
+      },
       switchPromptMessage: '提示词将发生变化，请确认是否放弃已有提示词？',
       structuredOutput: {
         configuration: '配置',
