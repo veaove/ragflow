@@ -128,7 +128,10 @@ func inferModuleAction(path, method string) (string, string) {
 
 	var module string
 	switch {
-	case strings.Contains(path, "/departments"), strings.Contains(path, "/console/members"):
+	case strings.Contains(path, "/departments"):
+		// 组织架构独立于「用户管理」，分开授权
+		module = "organization"
+	case strings.Contains(path, "/console/members"):
 		module = moduleMember
 	case strings.Contains(path, "/roles"):
 		module = moduleRole

@@ -700,7 +700,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 				command.POST("/file/parse", r.providerHandler.ParseFile)
 			}
 
-			model := v1.Group("/models")
+			// 模型配置（含 API Key、默认模型选择）归「配置中心 - 模型配置」矩阵管
+			model := v1.Group("/models", handler.ModulePermission("model"))
 			{
 				// GET /models returns the tenant's added models across
 				// all instances. Front-end useFetchAllAddedModels consumes this.
