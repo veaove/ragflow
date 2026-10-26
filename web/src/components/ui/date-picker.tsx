@@ -22,6 +22,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useDateLocale } from '@/hooks/use-date-locale';
 import { Button } from './button';
 import { TimePicker } from './time-picker';
 
@@ -61,11 +62,16 @@ const DatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
       minYear = 1900,
       maxYear = 2100,
       placeholder,
+      locale: localeProp,
       ...props
     },
     ref,
   ) => {
     const { t } = useTranslation();
+    // 输入框文本走 dayjs（locales/config 已在语言切换时全局设置 locale），
+    // 日历面板走 react-day-picker，默认 en-US，这里按界面语言补上。
+    // 外部显式传 locale 时优先用外部的。
+    const locale = localeProp ?? useDateLocale();
     const [open, setOpen] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [currentYear, setCurrentYear] = useState(() => {
@@ -352,6 +358,7 @@ const DatePicker = forwardRef<HTMLInputElement, DatePickerProps>(
               setOpen(false);
             }
           }}
+          locale={locale}
           classNames={{
             month_caption:
               'relative mx-10 mb-1 flex h-9 items-center justify-center z-20 [&>span]:cursor-pointer',

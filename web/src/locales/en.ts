@@ -69,6 +69,8 @@ export default {
       loggingOut: 'Signing out…',
       noResults: 'No results found',
       selectPlaceholder: 'Select value',
+      pickDate: 'Pick a date',
+      pickDateRange: 'Pick a date range',
       selectAll: 'Select all',
       delete: 'Delete',
       deleteModalTitle: 'Are you sure to delete it ?',
@@ -1385,8 +1387,7 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       floatingWidget: 'Floating widget (Intercom-style)',
       embedSetup: 'Embed Setup',
       widgetCustomization: 'Widget Customization',
-      widgetSettingsHint:
-        'These settings apply to the floating widget embed.',
+      widgetSettingsHint: 'These settings apply to the floating widget embed.',
       widgetTitle: 'Widget title',
       widgetTitlePlaceholder: 'Chat Support',
       widgetSubtitle: 'Subtitle',

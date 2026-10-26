@@ -20,6 +20,8 @@ import {
 } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useDateLocale } from '@/hooks/use-date-locale';
 
 const CalendarComp = ({
   selectDateRange,
@@ -27,6 +29,7 @@ const CalendarComp = ({
   ...props
 }: ITimeRangePickerProps) => {
   const today = new Date();
+  const locale = useDateLocale();
   const yesterday = {
     from: startOfDay(subDays(today, 1)),
     to: endOfDay(subDays(today, 1)),
@@ -125,6 +128,7 @@ const CalendarComp = ({
             month={month}
             onMonthChange={setMonth}
             className="p-2"
+            locale={locale}
             {...props}
             // disabled={[
             //   { after: today }, // Dates before today
@@ -148,6 +152,10 @@ const TimeRangePicker = ({
 }: ITimeRangePickerProps) => {
   const id = useId();
   const today = new Date();
+  // 与 DatePickerWithRange 同理：date-fns 与 react-day-picker 默认 en-US，
+  // 按界面语言喂 locale，中文界面下不出现英文日期。
+  const locale = useDateLocale();
+  const { t } = useTranslation();
 
   // Initialize without timezone conversion
   const [date, setDate] = useState<DateRange | undefined>(
@@ -200,14 +208,14 @@ const TimeRangePicker = ({
             {date?.from ? (
               date.to ? (
                 <>
-                  {format(date.from, 'LLL dd, y')} -{' '}
-                  {format(date.to, 'LLL dd, y')}
+                  {format(date.from, 'LLL dd, y', { locale })} -{' '}
+                  {format(date.to, 'LLL dd, y', { locale })}
                 </>
               ) : (
-                format(date.from, 'LLL dd, y')
+                format(date.from, 'LLL dd, y', { locale })
               )
             ) : (
-              'Pick a date range'
+              t('common.pickDateRange')
             )}
           </span>
           <CalendarIcon

@@ -63,6 +63,8 @@ export default {
       loggingOut: '正在退出登录…',
       noResults: '未查到结果',
       selectPlaceholder: '请选择',
+      pickDate: '选择日期',
+      pickDateRange: '选择日期范围',
       selectAll: '全选',
       delete: '删除',
       deleteModalTitle: '确定删除吗?',

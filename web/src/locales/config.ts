@@ -70,7 +70,13 @@ const resources = {
 const updateDocumentLocale = (lng: string) => {
   document.documentElement.lang = lng;
   document.documentElement.dir = 'ltr';
-  dayjs.locale(lng === 'zh' ? 'zh-cn' : lng);
+  // 语言码是 zh-Hans / zh-Hant（constants/common 的 LanguageAbbreviation），
+  // 而 dayjs 只认 zh-cn。原来写死 `lng === 'zh'` 永远不成立，
+  // dayjs.locale() 收到不认识的码会静默保持原值（默认 en），
+  // 于是中文界面下的日期全成了英文。这里按前缀归一化，
+  // 繁简都落 zh-cn——日期格式上两者一致，且 dayjs 没有加载 zh-tw，
+  // 传了反而会静默失败。
+  dayjs.locale(lng.startsWith('zh') ? 'zh-cn' : lng);
 };
 
 i18n
