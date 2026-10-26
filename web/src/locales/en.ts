@@ -2,7 +2,8 @@ export default {
   translation: {
     analytics: {
       consultationLog: 'Consultation log',
-      consultationLogHint: 'Per-turn customer conversations, drill down for the full transcript',
+      consultationLogHint:
+        'Per-turn customer conversations, drill down for the full transcript',
       report: 'Reports',
       export: 'Export CSV',
       keywordPlaceholder: 'Customer ID / content keyword',
@@ -31,23 +32,31 @@ export default {
       metricCustomers: 'Customers',
       metricCustomersHint: 'Distinct customer IDs',
       metricResponse: 'Response time',
-      metricResponseHint: 'Average first-token latency; canvas runs report total duration',
+      metricResponseHint:
+        'Average first-token latency; canvas runs report total duration',
       metricGoodRate: 'Positive rate',
-      metricGoodRateHint: 'Positive ratings / rated answers (proxy for accuracy, not semantic accuracy)',
+      metricGoodRateHint:
+        'Positive ratings / rated answers (proxy for accuracy, not semantic accuracy)',
       metricSuccessRate: 'Success rate',
       metricSuccessRateHint: 'Succeeded runs / total runs (canvas chain only)',
       metricRounds: 'Avg turns',
       metricRoundsHint: 'Total turns / sessions',
       metricBadCount: 'Negative ratings',
-      metricBadCountHint: 'Answers rated down; each usually marks one off-target reply',
+      metricBadCountHint:
+        'Answers rated down; each usually marks one off-target reply',
       trendTitle: 'Consultation trend',
       appBreakdown: 'By app',
       caliberTitle: 'Metric definitions',
-      caliberConsultations: 'Consultations: distinct conversation sessions in the period',
-      caliberCustomers: 'Customers: distinct customer IDs, deduplicated across both chains',
-      caliberResponse: 'Response time: chat reports first-token latency, canvas reports total run duration; never blended',
-      caliberGoodRate: 'Positive rate: positive ratings / rated answers; a proxy for accuracy, not semantic accuracy',
-      caliberSuccessRate: 'Success rate: succeeded runs / total runs; canvas chain only',
+      caliberConsultations:
+        'Consultations: distinct conversation sessions in the period',
+      caliberCustomers:
+        'Customers: distinct customer IDs, deduplicated across both chains',
+      caliberResponse:
+        'Response time: chat reports first-token latency, canvas reports total run duration; never blended',
+      caliberGoodRate:
+        'Positive rate: positive ratings / rated answers; a proxy for accuracy, not semantic accuracy',
+      caliberSuccessRate:
+        'Success rate: succeeded runs / total runs; canvas chain only',
     },
     common: {
       all: 'All',
@@ -232,7 +241,8 @@ export default {
       review: 'from 500+ reviews',
       seeAll: 'See all',
       productName: 'Hejun Knowledge Base',
-      productTagline: 'Unified knowledge · Smart retrieval · Efficient collaboration',
+      productTagline:
+        'Unified knowledge · Smart retrieval · Efficient collaboration',
       brandName: 'Hejun Zongda',
       envLabel: 'Development',
       helpCenter: 'Help Center',
@@ -252,7 +262,8 @@ export default {
       highlightIngest: 'Unified document ingestion',
       highlightIngestDesc: 'Full parsing for PDF / Word / Excel / PPT',
       highlightSearch: 'Smart retrieval & Q&A',
-      highlightSearchDesc: 'Hybrid recall · Semantic understanding · Traceable citations',
+      highlightSearchDesc:
+        'Hybrid recall · Semantic understanding · Traceable citations',
       highlightSecurity: 'Permission audit & security',
       highlightSecurityDesc: 'Tenant isolation · Audit trail · Data encryption',
     },
@@ -2538,7 +2549,8 @@ Example: Virtual Hosted Style`,
       candidateInvited: 'Invitation pending acceptance',
       candidateOwner: 'This user is the team owner',
       candidateNotFound: 'This email is not registered',
-      candidateNotFoundHint: 'Use "Invite member" to send an invitation instead',
+      candidateNotFoundHint:
+        'Use "Invite member" to send an invitation instead',
       roleNormal: 'Member',
       roleAdmin: 'Admin',
       addNow: 'Add',
@@ -2859,7 +2871,8 @@ Example: Virtual Hosted Style`,
         'V3.0 now supports audio formats · Current department: {{department}}',
       dataIngestionDepartment: 'Customer Service',
       fileUploadSection: 'File Upload',
-      fileUploadFormatHint: 'Drag & drop or click to upload. Formats: {{formats}}',
+      fileUploadFormatHint:
+        'Drag & drop or click to upload. Formats: {{formats}}',
       dropToUpload: 'Drag files here, or click to select files',
       dropToUploadHint: 'Up to 500MB per file · Batch upload supported',
       dataIngestionFlow: 'Ingestion Flow',
@@ -2900,12 +2913,14 @@ Example: Virtual Hosted Style`,
       createWorkflow: 'Create workflow',
       chatflowDesc:
         'Conversational workflow: carries session and memory, streams messages',
-      workflowDesc: 'Non-conversational workflow: single run, structured output',
+      workflowDesc:
+        'Non-conversational workflow: single run, structured output',
       chatflowShape: 'Graph: Start → Retrieval/Tools → Answer',
       workflowShape: 'Graph: Start → Process → End',
       chatflowWhat: 'Conversational workflow (Chatflow)',
       workflowWhat: 'Non-conversational workflow (Workflow)',
-      chatflowOutput: 'Output: streamed message + references + conversation variables',
+      chatflowOutput:
+        'Output: streamed message + references + conversation variables',
       workflowOutput: 'Output: structured JSON (defined by the End node)',
       chatflowFit: 'Good for: customer support, knowledge Q&A, guided flows',
       workflowFit: 'Good for: batch jobs, data processing, system integration',
@@ -3098,9 +3113,11 @@ Best for: Documents with flowing, contextually connected content — such as boo
       audioDialogueSplitTip:
         'For stereo dual-track recordings (one speaker per channel), transcribe each channel and merge the results by timeline into question-and-answer turns. Mono or compressed audio is still transcribed whole, so no content is lost.',
       audioLeftSpeaker: 'Left channel role',
-      audioLeftSpeakerTip: 'How the left-channel speaker is named in the transcript.',
+      audioLeftSpeakerTip:
+        'How the left-channel speaker is named in the transcript.',
       audioRightSpeaker: 'Right channel role',
-      audioRightSpeakerTip: 'How the right-channel speaker is named in the transcript.',
+      audioRightSpeakerTip:
+        'How the right-channel speaker is named in the transcript.',
       visionEnhancementPromptTip:
         'Custom instruction for the vision model. Leave empty to use the built-in prompt.',
       enableChildrenDelimiters: 'Child chunk are used for retrieval',
@@ -3231,20 +3248,25 @@ Best for: Documents with flowing, contextually connected content — such as boo
       versionRemarkPh: 'What changed in this version (optional)',
 
       errorStrategy: 'Error handling',
-      errorStrategyTip: 'What to do on failure: none (abort) or default value (emit fallback and continue).',
+      errorStrategyTip:
+        'What to do on failure: none (abort) or default value (emit fallback and continue).',
       errorStrategyNone: 'None',
       errorStrategyDefault: 'Default value',
       errorDefaultValue: 'Default value',
       errorDefaultValuePh: 'Fallback value on failure',
 
       end: 'End',
-      endDescription: 'The terminal node of a workflow. Output fields defined here form the API response body.',
+      endDescription:
+        'The terminal node of a workflow. Output fields defined here form the API response body.',
       answerNode: 'Answer',
-      answerNodeDescription: 'Outputs the reply in a chatflow, with streaming and citations.',
+      answerNodeDescription:
+        'Outputs the reply in a chatflow, with streaming and citations.',
       parameterExtractor: 'Parameter Extractor',
-      parameterExtractorDescription: 'Extract structured parameters from text with an LLM.',
+      parameterExtractorDescription:
+        'Extract structured parameters from text with an LLM.',
       templateTransform: 'Template Transform',
-      templateTransformDescription: 'Compose variables into text with a template for downstream nodes.',
+      templateTransformDescription:
+        'Compose variables into text with a template for downstream nodes.',
       message: 'Message',
       blank: 'Blank',
       createFromNothing: 'Create your agent from scratch',
@@ -4351,7 +4373,8 @@ Important structured information may include: names, dates, locations, events, k
 
     admin: {
       loginTitle: 'Admin console',
-      loginTagline: 'Platform operations · Users & permissions · Service monitoring',
+      loginTagline:
+        'Platform operations · Users & permissions · Service monitoring',
       loginCardTitle: 'Administrator sign-in',
       loginCardSubtitle: 'Super administrators only',
       loginSecurityNote:
@@ -4481,14 +4504,16 @@ Important structured information may include: names, dates, locations, events, k
         methodPassword: 'Email and password',
         methodPasswordDesc: 'Sign in with an email address and password',
         methodSSO: 'SSO',
-        methodSSODesc: 'Requires an enterprise identity provider; not provisioned here',
+        methodSSODesc:
+          'Requires an enterprise identity provider; not provisioned here',
         methodLDAP: 'LDAP directory',
         methodLDAPDesc: 'Requires an LDAP server; not provisioned here',
         enterpriseOnly: 'Enterprise',
         atLeastOneMethod: 'At least one sign-in method must stay enabled',
 
         passwordPolicy: 'Password policy',
-        passwordPolicyDesc: 'Applies to newly set passwords only; existing passwords stay valid.',
+        passwordPolicyDesc:
+          'Applies to newly set passwords only; existing passwords stay valid.',
         minLength: 'Minimum length',
         minLengthUnit: 'characters',
         complexity: 'Require complexity',
@@ -4507,11 +4532,13 @@ Important structured information may include: names, dates, locations, events, k
 
         minutes: 'minutes',
         lockEnabled: 'Lockout after failed sign-ins',
-        lockEnabledDesc: 'Temporarily lock the account after the threshold is reached',
+        lockEnabledDesc:
+          'Temporarily lock the account after the threshold is reached',
         lockThreshold: 'Failure threshold',
         lockThresholdUnit: 'attempts',
         lockMinutes: 'Lock duration',
-        lockHint: 'A locked account cannot sign in until the window passes or an admin unlocks it.',
+        lockHint:
+          'A locked account cannot sign in until the window passes or an admin unlocks it.',
       },
       auditSearchPlaceholder: 'Search operator or tenant',
       auditAllModules: 'All modules',

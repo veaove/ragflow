@@ -45,9 +45,12 @@ export default {
       caliberTitle: '指标口径说明',
       caliberConsultations: '咨询量：统计周期内对话会话数（去重）',
       caliberCustomers: '咨询客户数：去重客户 ID 数，跨聊天与对话流合并去重',
-      caliberResponse: '响应速度：聊天为首包延迟，对话流/工作流为运行总耗时，口径不同不混算',
-      caliberGoodRate: '好评率：好评数 ÷ 有评价的回答数，为近似准确率，非语义准确率',
-      caliberSuccessRate: '成功率：成功运行数 ÷ 总运行数，仅对话流/工作流有该指标',
+      caliberResponse:
+        '响应速度：聊天为首包延迟，对话流/工作流为运行总耗时，口径不同不混算',
+      caliberGoodRate:
+        '好评率：好评数 ÷ 有评价的回答数，为近似准确率，非语义准确率',
+      caliberSuccessRate:
+        '成功率：成功运行数 ÷ 总运行数，仅对话流/工作流有该指标',
     },
     common: {
       all: '全部',
@@ -184,7 +187,8 @@ export default {
         trendTitle: '近{{days}}日检索趋势',
         trendApi: 'API 检索',
         trendWeb: '网页手工检索',
-        trendEmptyHint: '两条曲线分别统计 API Key 调用与网页端在知识库中的提问检索，目前两者都还没有记录。',
+        trendEmptyHint:
+          '两条曲线分别统计 API Key 调用与网页端在知识库中的提问检索，目前两者都还没有记录。',
       },
     },
     login: {
@@ -2116,7 +2120,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       providerDriver: '协议类型',
       providerDriverHint: '决定用哪套协议与服务通信，需与服务端实际接口一致',
       providerBaseUrl: '服务地址',
-      providerBaseUrlHint: '支持内网与回环地址，需包含版本路径，如 http://10.0.1.20:8000/v1',
+      providerBaseUrlHint:
+        '支持内网与回环地址，需包含版本路径，如 http://10.0.1.20:8000/v1',
       providerApiKey: 'API Key',
       providerApiKeyPlaceholder: '服务无鉴权时可留空',
       providerModels: '模型清单',
@@ -2125,7 +2130,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       providerModelNamePlaceholder: '模型名，如 qwen2.5-72b-instruct',
 
       addExistingMember: '新增成员',
-      addExistingMemberHint: '输入已注册用户的完整邮箱进行查询。已在团队中的用户会被标记。',
+      addExistingMemberHint:
+        '输入已注册用户的完整邮箱进行查询。已在团队中的用户会被标记。',
       queryCandidate: '查询',
       candidateMember: '该用户已是团队成员',
       candidateInvited: '已发送邀请，等待对方接受',
@@ -2449,7 +2455,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       dropToUpload: '将文件拖拽到此处，或点击选择文件',
       dropToUploadHint: '单个文件最大 500MB · 支持批量上传',
       dataIngestionFlow: '数据接入流程',
-      dataIngestionFlowSubtitle: '上传 → 解析 → 生成 → 审核 → 入库，全流程自动化',
+      dataIngestionFlowSubtitle:
+        '上传 → 解析 → 生成 → 审核 → 入库，全流程自动化',
       flowStepUpload: '上传文档',
       flowStepParse: '智能解析',
       flowStepGenerate: '生成问答',
@@ -2477,7 +2484,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       pleaseUploadAtLeastOneFile: '请上传至少一个文件',
     },
     studio: {
-      subtitle: '对话流与任务流：面向用户的对话式应用，以及面向系统的数据加工与集成',
+      subtitle:
+        '对话流与任务流：面向用户的对话式应用，以及面向系统的数据加工与集成',
       createApp: '创建应用',
       createAppTitle: '创建应用',
       createChatflow: '创建对话流',
@@ -2499,7 +2507,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       sortNameAsc: '名称 A-Z',
       sortNameDesc: '名称 Z-A',
       runLog: '运行日志',
-      runLogSubtitle: '所有应用的运行记录：可按 run_id、应用、触发方式与状态筛选',
+      runLogSubtitle:
+        '所有应用的运行记录：可按 run_id、应用、触发方式与状态筛选',
       runSearchPlaceholder: '搜索 run_id 或应用名称',
       runTriggerAll: '全部触发方式',
       runSortRecent: '最近开始',
@@ -2545,7 +2554,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       versionN: 'v{{n}}',
       typeImmutable:
         '类型决定可用节点、是否有会话、以及发布契约，创建后不可更改。',
-      belongHint: '需要多轮对话或子智能体请到「智能体」；文档解析入库请到「智能体 → 知识提取」。',
+      belongHint:
+        '需要多轮对话或子智能体请到「智能体」；文档解析入库请到「智能体 → 知识提取」。',
     },
     flow: {
       exportCurrentPage: '导出当页',
@@ -2832,7 +2842,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       versionRemarkPh: '这个版本改了什么（可选）',
 
       errorStrategy: '异常处理',
-      errorStrategyTip: '节点失败时的处理方式：无（中断流程）或默认值（输出兜底值继续跑）。',
+      errorStrategyTip:
+        '节点失败时的处理方式：无（中断流程）或默认值（输出兜底值继续跑）。',
       errorStrategyNone: '无',
       errorStrategyDefault: '默认值',
       errorDefaultValue: '默认值',
@@ -2843,9 +2854,11 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       answerNode: '回答',
       answerNodeDescription: '对话流中输出回答的节点，支持流式输出并携带引用。',
       parameterExtractor: '参数提取',
-      parameterExtractorDescription: '用大模型从文本中抽取结构化参数，按定义的字段输出。',
+      parameterExtractorDescription:
+        '用大模型从文本中抽取结构化参数，按定义的字段输出。',
       templateTransform: '模板转换',
-      templateTransformDescription: '用模板把多个变量拼成一段文本，供下游节点使用。',
+      templateTransformDescription:
+        '用模板把多个变量拼成一段文本，供下游节点使用。',
       message: '回复消息',
       blank: '空',
       createFromNothing: '从无到有',
@@ -4109,7 +4122,8 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
           },
           ucloud_agent_sandbox: {
             name: 'UCloud Agent Sandbox',
-            description: 'UCloud Agent Sandbox · 面向智能体代码执行的一次性云沙箱',
+            description:
+              'UCloud Agent Sandbox · 面向智能体代码执行的一次性云沙箱',
           },
         },
 
