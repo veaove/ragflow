@@ -9,7 +9,6 @@ import {
   Settings,
   ShieldCheck,
   Users,
-  Workflow,
 } from 'lucide-react';
 import {
   filterMenuItems,
@@ -88,12 +87,6 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
     icon: MenuItemsIcon,
     icon_name: 'agents',
     'data-testid': 'nav-agent',
-  } as SidebarMenuItem,
-  {
-    path: Routes.Studio,
-    name: 'header.studio',
-    icon: Workflow,
-    'data-testid': 'nav-studio',
   } as SidebarMenuItem,
   {
     path: Routes.Memories,
