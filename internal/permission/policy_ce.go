@@ -42,6 +42,14 @@ type evaluation struct {
 	memberships map[string]membershipResult
 	resources   map[ResourceRef]Resource
 	resourceErr map[ResourceRef]error
+	// departmentScope caches the department subtree a 部门管理员 manages, keyed
+	// by "userID\x00tenantID". A nil value means "not a department admin", which
+	// is the common case and must not re-query per resource.
+	departmentScope map[string][]string
+	// creatorDepartments caches the department of a resource creator for the
+	// lifetime of one evaluation; listing checks many resources written by the
+	// same few people.
+	creatorDepartments map[string]string
 }
 
 func newPolicy(source Source) policy {
@@ -215,6 +223,19 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 				entity.GrantSubjectTeam,
 				entity.GrantSubjectUser, subject.UserID,
 				entity.GrantSubjectDepartment, deptID)
+		// 部门管理员看得到本部门（含子部门）成员建的知识库，即使它仍是
+		// permission=me —— 与 resolveResource 里的 departmentAdminCovers 同一条
+		// 规则。资源表没有部门列，只能反查创建者的 user.department_id，所以
+		// 子树在 Go 侧先算成 id 列表，SQL 里只做一次 IN。
+		//
+		// 角色按 knowledgebase.tenant_id 逐行匹配，而不是先在 Go 侧挑一个租户：
+		// 这条查询本身跨租户，同一个人可能在 A 租户是部门管理员、在 B 租户只是
+		// 普通成员，只有 A 的知识库能因此可见。
+		callerIsDepartmentAdmin := db.Model(&entity.UserTenant{}).
+			Select("1").
+			Where("user_tenant.tenant_id = knowledgebase.tenant_id AND user_tenant.user_id = ? AND user_tenant.role = ? AND user_tenant.status = ?",
+				subject.UserID, string(RoleAdmin), string(entity.StatusValid))
+		departmentSubtree, subtreeErr := DepartmentSubtree(ctx, source.db, deptID)
 		// 租户被停用后，库里的内容对**所有人**不可见（含 owner 与显式授权）。
 		// 停用的语义是整个租户暂停，不是某个成员被降权，所以这一条不能放进
 		// 上面那个「owner / team / 授权」的 OR 分支里。
@@ -227,12 +248,24 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 			Where("tenant.id = knowledgebase.tenant_id").
 			Where("IFNULL(tenant.enabled, 1) = 0")
 
+		visible := "(EXISTS (?) OR (knowledgebase.permission = ? AND EXISTS (?)) OR EXISTS (?))"
+		args := []any{callerIsOwner, string(entity.TenantPermissionTeam), callerIsMember, granted}
+		// 子树为空（不是部门管理员，或没被分配部门）时不接这一段：既省一次
+		// 判断，也避免拼出 `IN ()` 这种依赖 MySQL 容错性的语法。
+		if subtreeErr == nil && len(departmentSubtree) > 0 {
+			creatorInDepartment := db.Model(&entity.User{}).
+				Select("1").
+				Where("user.id = knowledgebase.created_by").
+				Where("user.department_id IN ?", departmentSubtree)
+			visible += " OR (EXISTS (?) AND EXISTS (?))"
+			args = append(args, callerIsDepartmentAdmin, creatorInDepartment)
+		}
+
 		accessibleDatasets := db.Model(&entity.Knowledgebase{}).
 			Select("knowledgebase.id").
 			Where("knowledgebase.status = ?", string(entity.StatusValid)).
 			Where("EXISTS (?)", activeOwner).
-			Where("(EXISTS (?) OR (knowledgebase.permission = ? AND EXISTS (?)) OR EXISTS (?))",
-				callerIsOwner, string(entity.TenantPermissionTeam), callerIsMember, granted).
+			Where(visible, args...).
 			Where("NOT EXISTS (?)", tenantDisabled)
 		return query.Where("knowledgebase.id IN (?)", accessibleDatasets)
 	}}, true, nil
@@ -281,10 +314,12 @@ func (p *communityPolicy) FilterResources(ctx context.Context, subject Subject, 
 
 func newEvaluation(source Source) *evaluation {
 	return &evaluation{
-		source:      source,
-		memberships: make(map[string]membershipResult),
-		resources:   make(map[ResourceRef]Resource),
-		resourceErr: make(map[ResourceRef]error),
+		source:             source,
+		memberships:        make(map[string]membershipResult),
+		resources:          make(map[ResourceRef]Resource),
+		resourceErr:        make(map[ResourceRef]error),
+		departmentScope:    make(map[string][]string),
+		creatorDepartments: make(map[string]string),
 	}
 }
 
@@ -503,6 +538,22 @@ func (e *evaluation) resolveResource(ctx context.Context, subject Subject, resou
 				operations = readOnlyOperations(operations)
 			}
 			return resourceAccessWithOperations(resource, AccessSourceShared, operations), nil
+		}
+		// 部门管理员看得到本部门（含子部门）成员创建的内容，即使它仍是
+		// `permission=me`。资源表没有部门列，只能按创建者的部门归属判断：
+		// 不这样做，「部门管理员」的角色名就和实际可见范围对不上 —— 部门成员
+		// 各建各的私有内容，管理员一条也看不到。
+		//
+		// 只给「看 + 用」：能看到、能在检索与对话里引用，但改/删/再授权仍归
+		// 创建者和租户管理员。需求是"可以看到本部门建的所有内容"，不是代管。
+		if covered, err := e.departmentAdminCovers(ctx, subject, resource); err != nil {
+			return Access{}, err
+		} else if covered {
+			operations := resource.TenantOperations
+			if operations == nil {
+				operations = resource.OwnerOperations
+			}
+			return resourceAccessWithOperations(resource, AccessSourceShared, readOnlyOperations(operations)), nil
 		}
 		return Access{}, ErrPermissionDenied
 	case VisibilityTenant:
