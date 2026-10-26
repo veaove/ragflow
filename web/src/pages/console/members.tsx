@@ -507,16 +507,14 @@ export default function ConsoleMembers() {
                 className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
               >
                 <option value="">普通成员（默认）</option>
-                {roles
-                  .filter((r) => r.name !== '租户管理员')
-                  .map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
               </select>
               <div className="mt-1 text-xs text-text-secondary">
-                「租户管理员」等同于租户所有者，不能通过邀请授予。
+                租户管理员拥有租户内全部功能权限，但不转移租户所有权（所有权仍归创建者，不随角色变化）。
               </div>
             </div>
             {inviteError && (
