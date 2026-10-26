@@ -50,9 +50,11 @@ func TestTenantMemberCanBrowseTagFiles(t *testing.T) {
 	if len(ancestors) != 2 {
 		t.Fatalf("ancestor count = %d, want 2", len(ancestors))
 	}
-	if _, err := svc.GetFileContent(ctx, "reader", "tags"); !errors.Is(err, permission.ErrPermissionDenied) {
-		t.Fatalf("read file contents error = %v, want permission denied", err)
+	// 文件是租户级资产：成员能读内容（否则知识问答与检索里点开引用文件会失败）。
+	if _, err := svc.GetFileContent(ctx, "reader", "tags"); err != nil {
+		t.Fatalf("read file contents error = %v, want allowed", err)
 	}
+	// 但改名/删除仍归所有者，成员不能动别人的文件。
 	if err := svc.MoveFiles(ctx, "reader", []string{"tags"}, "", "new-tags.txt"); !errors.Is(err, permission.ErrPermissionDenied) {
 		t.Fatalf("rename file error = %v, want permission denied", err)
 	}

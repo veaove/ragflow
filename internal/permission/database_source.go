@@ -1172,7 +1172,10 @@ func fileResource(kind ResourceKind, file *entity.File, datasetIDs []string, dat
 		Visibility:          visibility,
 		TenantRequirement:   TenantNormalMember,
 		OwnerOperations:     operations,
-		TenantOperations:    operations,
+		// 文件是租户级资产，成员可以查看、上传、在问答与检索里使用；
+		// 但改名/删除/分享仍只归所有者 —— 否则租户里任意普通成员都能把
+		// 别人（乃至全租户）的文件删掉。做法与 searchAppResource 一致。
+		TenantOperations:    []Operation{OperationRead, OperationCreate, OperationRun, OperationUse},
 		SharedWithUserIDs:   sharedWithUserIDs,
 		SharedWithTenantIDs: sharedWithTenantIDs,
 		Active:              true,
