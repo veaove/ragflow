@@ -58,7 +58,11 @@ func (dao *QcHitDAO) GetByID(ctx context.Context, db *gorm.DB, id string) (*enti
 	if err != nil {
 		return nil, err
 	}
-	return &hit, nil
+	// Same read-time enrichment as the list path, so the detail dialog shows
+	// the session name instead of the bare ID.
+	one := []entity.QcHit{hit}
+	dao.fillSessionNames(ctx, db, one)
+	return &one[0], nil
 }
 
 // List lists QC hit records with filters and pagination.
@@ -101,6 +105,7 @@ func (dao *QcHitDAO) List(ctx context.Context, db *gorm.DB, filter QcHitListFilt
 		return nil, 0, err
 	}
 	dao.fillAppNames(ctx, db, hits)
+	dao.fillSessionNames(ctx, db, hits)
 	return hits, total, nil
 }
 
@@ -140,6 +145,7 @@ func (dao *QcHitDAO) ListAll(ctx context.Context, db *gorm.DB, filter QcHitListF
 		return nil, err
 	}
 	dao.fillAppNames(ctx, db, hits)
+	dao.fillSessionNames(ctx, db, hits)
 	return hits, nil
 }
 
@@ -220,5 +226,53 @@ func (dao *QcHitDAO) fillAppNames(ctx context.Context, db *gorm.DB, hits []entit
 
 	for i := range hits {
 		hits[i].AppName = names[hits[i].AppID]
+	}
+}
+
+// fillSessionNames resolves the display name of the conversation behind each
+// hit.
+//
+// Hits only store session_id, and the two runtimes keep their sessions in
+// different tables (chat -> conversation, canvas -> api_4_conversation), so
+// both are queried. A name may legitimately be missing (session deleted, or
+// never renamed); that leaves the field empty and the UI renders a dash, but
+// the hit itself must still be listed.
+func (dao *QcHitDAO) fillSessionNames(ctx context.Context, db *gorm.DB, hits []entity.QcHit) {
+	if len(hits) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(hits))
+	seen := map[string]bool{}
+	for _, h := range hits {
+		if h.SessionID == "" || seen[h.SessionID] {
+			continue
+		}
+		seen[h.SessionID] = true
+		ids = append(ids, h.SessionID)
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	type nameRow struct {
+		ID   string
+		Name string
+	}
+	names := map[string]string{}
+	for _, table := range []string{"conversation", "api_4_conversation"} {
+		var rows []nameRow
+		if err := db.WithContext(ctx).Table(table).
+			Select("id, COALESCE(name, '') AS name").
+			Where("id IN ?", ids).Scan(&rows).Error; err == nil {
+			for _, r := range rows {
+				if r.Name != "" {
+					names[r.ID] = r.Name
+				}
+			}
+		}
+	}
+
+	for i := range hits {
+		hits[i].SessionName = names[hits[i].SessionID]
 	}
 }

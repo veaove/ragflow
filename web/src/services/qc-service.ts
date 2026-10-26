@@ -79,6 +79,11 @@ export interface IQcHit {
   rule_id: string;
   rule_name: string;
   session_id: string;
+  /**
+   * Resolved server-side: conversation.name for chat, api_4_conversation.name
+   * for canvas. Empty when the session was deleted or never renamed.
+   */
+  session_name?: string;
   chat_id: string;
   app_type: QcAppType;
   app_id: string;

@@ -77,8 +77,7 @@ const severityTone: Record<string, string> = {
   block: 'bg-red-100 text-red-600',
 };
 
-const formatTime = (ms?: number) =>
-  ms ? new Date(ms).toLocaleString() : '-';
+const formatTime = (ms?: number) => (ms ? new Date(ms).toLocaleString() : '-');
 
 type TabKey = 'rules' | 'realtime' | 'hits' | 'config';
 
@@ -414,6 +413,7 @@ function HitsPanel() {
               <TableRow>
                 <TableHead className="h-10 text-text-title">时间</TableHead>
                 <TableHead className="h-10 text-text-title">应用</TableHead>
+                <TableHead className="h-10 text-text-title">会话ID</TableHead>
                 <TableHead className="h-10 text-text-title">会话</TableHead>
                 <TableHead className="h-10 text-text-title">规则</TableHead>
                 <TableHead className="h-10 text-text-title">命中文本</TableHead>
@@ -440,6 +440,14 @@ function HitsPanel() {
                   </TableCell>
                   <TableCell className="max-w-[180px] truncate font-mono text-xs text-text-secondary">
                     {hit.session_id}
+                  </TableCell>
+                  <TableCell
+                    className="max-w-[180px] truncate text-text-title"
+                    title={hit.session_name || undefined}
+                  >
+                    {hit.session_name || (
+                      <span className="text-text-disabled">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-text-title">
                     {hit.rule_name}
@@ -495,13 +503,11 @@ function HitsPanel() {
           {detail && (
             <div className="flex flex-col gap-2 text-sm">
               <Row label="规则" value={detail.rule_name} />
-              <Row
-                label="严重级"
-                value={severityLabel[detail.severity]}
-              />
+              <Row label="严重级" value={severityLabel[detail.severity]} />
               <Row label="动作" value={actionLabel[detail.action_taken]} />
               <Row label="范围" value={scopeLabel[detail.scope]} />
-              <Row label="会话" value={detail.session_id} mono />
+              <Row label="会话" value={detail.session_name || '—'} />
+              <Row label="会话ID" value={detail.session_id} mono />
               <Row label="时间" value={formatTime(detail.create_time)} />
               <div>
                 <div className="text-xs text-text-sub-title">命中文本</div>
@@ -594,9 +600,7 @@ function ConfigPanel() {
           <input
             type="checkbox"
             checked={draft.enabled}
-            onChange={(e) =>
-              setDraft({ ...draft, enabled: e.target.checked })
-            }
+            onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
           />
         </label>
         <div>
