@@ -85,6 +85,14 @@ const errorHandler = (error: {
     });
   } else {
     if (response && response.status) {
+      // 403 = 权限不足。普通成员（role=normal）打开管理类页面、或租户里没有
+      // 某个资源时后端就会返回它 —— 这是预期结果，不是故障。原来会给每个
+      // 失败请求弹一个「请求错误 403: Permission denied」，一次页面加载能弹好几个。
+      // 这里直接放行，让调用方按业务码走（code=108 也会静默）。
+      if (response.status === 403) {
+        console.warn('[forbidden]', response.url);
+        return response;
+      }
       const errorText =
         RetcodeMessage[response.status as ResultCode] || response.statusText;
       const { status, url } = response;

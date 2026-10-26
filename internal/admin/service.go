@@ -298,7 +298,7 @@ func (s *Service) CreateUser(ctx context.Context, username, password, role, tena
 		ID:        common.GenerateUUID(),
 		UserID:    userID,
 		TenantID:  tenantID,
-		Role:      "member",
+		Role:      "normal",
 		InvitedBy: userID,
 		Status:    &memberStatus,
 		JoinType:  "direct",
@@ -1596,6 +1596,43 @@ func (s *Service) isPlatformAdminTenant(ctx context.Context, tenantID string) (b
 	return count > 0, nil
 }
 
+// UpdateTenantName 修改租户名称。
+//
+// 名称只有一处真值：tenant.name。租户列表读它、用户信息里的 tenant_name
+// 也读它（user_tenant 是纯关联表，没有名称列），所以改这一列即可，
+// 不需要同步别的表。
+//
+// 允许与现名相同（不改就是不改），但不允许空名和超长名——
+// 名称会出现在面包屑、审计日志和导出里，空值会让这些地方出现空洞。
+func (s *Service) UpdateTenantName(ctx context.Context, tenantID, name string) error {
+	tenantID = strings.TrimSpace(tenantID)
+	name = strings.TrimSpace(name)
+	if tenantID == "" {
+		return fmt.Errorf("tenant id is required")
+	}
+	if name == "" {
+		return fmt.Errorf("租户名称不能为空")
+	}
+	// 按 rune 计长度：中文一个字符占 3 字节，按字节限会误伤中文名。
+	if len([]rune(name)) > 100 {
+		return fmt.Errorf("租户名称不能超过 100 个字符")
+	}
+
+	var tenant entity.Tenant
+	if err := dao.DB.WithContext(ctx).Where("id = ?", tenantID).Take(&tenant).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("tenant not found")
+		}
+		return err
+	}
+
+	// 用显式 Update 而不是 Save：Tenant 有大量 not null 的模型字段，
+	// Save 会把没加载全的字段零值刷回库里。
+	return dao.DB.WithContext(ctx).Model(&entity.Tenant{}).
+		Where("id = ?", tenantID).
+		Update("name", name).Error
+}
+
 // SetTenantEnabled 启用 / 停用租户。
 //
 // 停用只改开关，不动任何数据：恢复后成员和业务数据都还在。
@@ -2118,7 +2155,7 @@ func (s *Service) SetTenantOwner(ctx context.Context, tenantID, userEmail string
 	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&entity.UserTenant{}).
 			Where("tenant_id = ? AND role = ?", tenantID, "owner").
-			Update("role", "member").Error; err != nil {
+			Update("role", "normal").Error; err != nil {
 			return err
 		}
 
