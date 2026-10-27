@@ -19,6 +19,12 @@ const MENU_MODULE: Record<string, string> = {
   'console.members': 'member',
   'console.roles': 'role',
   'console.grants': 'grant',
+  'setting.model': 'model',
+  'setting.dataSources': 'datasource',
+  'setting.chatChannels': 'channel',
+  'setting.mcp': 'mcp',
+  'setting.api': 'apikey',
+  'setting.team': 'team',
 };
 
 /**
