@@ -46,8 +46,10 @@ export function useConsolePermissions() {
     enabled: !!tenantId && !isOwner,
     staleTime: 60_000,
     queryFn: async () => {
-      const res = await fetchMyPermissions(tenantId as string);
-      return res?.data ?? null;
+      // request 库返回三层: { data: { code, data, message }, response }
+      const { data: envelope } = await fetchMyPermissions(tenantId as string);
+      // envelope = { code:0, data: MyPermissions, message:"success" }
+      return envelope?.data ?? null;
     },
   });
 
