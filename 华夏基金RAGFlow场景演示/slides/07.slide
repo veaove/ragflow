@@ -1,0 +1,45 @@
+<Slide padding={60} style={{ fontFamily: 'Microsoft YaHei' }}>
+  <Box style={{ height: '100%', flexDirection: 'column' }}>
+    <Box style={{ marginBottom: 16 }}>
+      <Text style={{ fontSize: 14, color: '#B08D57', fontWeight: 'bold', letterSpacing: 2 }}>场景 04 · 投研提效</Text>
+      <Text style={{ fontSize: 34, fontWeight: 'bold', color: '#1E3A5F', marginTop: 6 }}>合同解读：长文档秒级精读</Text>
+      <Box style={{ height: 3, background: '#B08D57', width: '100%', marginTop: 12, borderRadius: 2 }} />
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'column', gap: 20 }}>
+      <Box style={{ background: '#FBF6EE', borderLeft: '5px solid #B08D57', borderRadius: 8, padding: 16 }}>
+        <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1E3A5F' }}>长合同海量公告快速精读，解放投研</Text>
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'row', gap: 28 }}>
+        <Box style={{ width: 300, background: '#1E3A5F', borderRadius: 16, padding: 24, justifyContent: 'center' }}>
+          <Text style={{ fontSize: 72, fontWeight: 'bold', color: '#FFFFFF', lineHeight: 1 }}>04</Text>
+          <Text style={{ fontSize: 18, color: '#9FB2C8', marginTop: 8, letterSpacing: 2 }}>投研&合同解读助手</Text>
+        </Box>
+        <Box style={{ flex: 1, flexDirection: 'column', justifyContent: 'space-between' }}>
+          <Box>
+            <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#1E3A5F', marginBottom: 12 }}>演示看点</Text>
+            <Box style={{ flexDirection: 'column', gap: 12 }}>
+              {[
+                '长文档条款秒级定位',
+                '多文档并排对比差异',
+                '抽取费率封闭期等关键要素',
+                '自动标注原文出处可溯源',
+              ].map((t, i) => (
+                <Box key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <FAIcon name='check-circle' style={{ fill: '#1E3A5F', width: 22, height: 22 }} />
+                  <Text style={{ fontSize: 19, color: '#1A1A1A' }}>{t}</Text>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+          <Box style={{ background: '#F1F5F9', borderRadius: 8, padding: 14 }}>
+            <Text style={{ fontSize: 17, color: '#475569', lineHeight: 1.5 }}>一句话总结：长合同、海量公告快速精读，解放投研文档查找时间</Text>
+          </Box>
+        </Box>
+      </Box>
+    </Box>
+    <Box style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #E2E8F0', flexDirection: 'row', justifyContent: 'space-between' }}>
+      <Text style={{ fontSize: 13, color: '#94A3B8' }}>RAGFlow · 基金行业知识大模型落地演示</Text>
+      <Text style={{ fontSize: 13, color: '#94A3B8' }}>07 / 12</Text>
+    </Box>
+  </Box>
+</Slide>

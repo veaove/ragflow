@@ -1463,6 +1463,32 @@ func (h *Handler) SetTenantOwner(c *gin.Context) {
 	common.SuccessWithData(c, result, "Set tenant owner")
 }
 
+// TransferTenantOwner POST /v1/tenant/owner/transfer
+// 租户侧：当前 owner 把权限移交给本租户里的另一个 normal 成员。
+//
+// 从 session 里取 caller 的 user_id / tenant_id —— 前端不传，避免伪造。
+// body: {"target_user_id": "..."}
+func (h *Handler) TransferTenantOwner(c *gin.Context) {
+	callerUserID, _ := c.Get("user_id")
+	tenantID, _ := c.Get("tenant_id")
+	callerStr, tenantStr := fmt.Sprint(callerUserID), fmt.Sprint(tenantID)
+
+	var req struct {
+		TargetUserID string `json:"target_user_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
+
+	result, err := h.service.TransferTenantOwner(c.Request.Context(), tenantStr, callerStr, req.TargetUserID)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeServerError, err.Error())
+		return
+	}
+	common.SuccessWithData(c, result, "Owner transferred")
+}
+
 // ListPlatformModels GET /admin/models
 // 平台模型目录（conf/models 全集）+ 各租户的引用情况。
 // 支持 keyword / model_type / factory / referenced 四个筛选，page 从 1 开始。

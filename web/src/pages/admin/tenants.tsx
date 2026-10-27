@@ -394,6 +394,7 @@ export default function Tenants() {
           <TableHeader>
             <TableRow>
               <TableHead>租户名称</TableHead>
+              <TableHead>Owner</TableHead>
               <TableHead>成员数</TableHead>
               <TableHead>知识库数</TableHead>
               <TableHead>智能体数</TableHead>
@@ -406,7 +407,7 @@ export default function Tenants() {
             {rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={8}
                   className="py-10 text-center text-sm text-text-secondary"
                 >
                   {isFetching ? '加载中…' : '暂无租户'}
@@ -436,6 +437,18 @@ export default function Tenants() {
                     >
                       <LucidePencil className="size-3.5" />
                     </button>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-col">
+                    <span className="text-text-primary">
+                      {row.owner_name || '—'}
+                    </span>
+                    {row.owner_email && (
+                      <span className="truncate text-xs text-text-secondary">
+                        {row.owner_email}
+                      </span>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell>

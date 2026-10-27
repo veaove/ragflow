@@ -1,0 +1,31 @@
+<Slide padding={0} style={{ fontFamily: 'Microsoft YaHei' }}>
+  <Box style={{ width: '100%', height: '100%', background: '#1E3A5F', flexDirection: 'column', justifyContent: 'center', padding: 70 }}>
+    <Text style={{ fontSize: 14, color: '#B08D57', fontWeight: 'bold', letterSpacing: 3 }}>价值总结 / SUMMARY</Text>
+    <Text style={{ fontSize: 46, fontWeight: 'bold', color: '#FFFFFF', marginTop: 14, lineHeight: 1.2 }}>一套知识底座，三类确定价值</Text>
+    <Box style={{ flexDirection: 'row', gap: 24, marginTop: 30 }}>
+      <Box style={{ flex: 1, background: '#284B73', borderRadius: 14, padding: 24 }}>
+        <FAIcon name='shield' style={{ fill: '#B08D57', width: 36, height: 36 }} />
+        <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#FFFFFF', marginTop: 14 }}>守底线</Text>
+        <Text style={{ fontSize: 16, color: '#D7E0EC', marginTop: 8, lineHeight: 1.5 }}>智能对练 + 质检 + 投教，让合规可量化、可巡检</Text>
+      </Box>
+      <Box style={{ flex: 1, background: '#284B73', borderRadius: 14, padding: 24 }}>
+        <FAIcon name='file-text' style={{ fill: '#B08D57', width: 36, height: 36 }} />
+        <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#FFFFFF', marginTop: 14 }}>提效率</Text>
+        <Text style={{ fontSize: 16, color: '#D7E0EC', marginTop: 8, lineHeight: 1.5 }}>合同 / 公告 / 表格秒级读懂，释放投研与运营人力</Text>
+      </Box>
+      <Box style={{ flex: 1, background: '#284B73', borderRadius: 14, padding: 24 }}>
+        <FAIcon name='comments' style={{ fill: '#B08D57', width: 36, height: 36 }} />
+        <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#FFFFFF', marginTop: 14 }}>强体验</Text>
+        <Text style={{ fontSize: 16, color: '#D7E0EC', marginTop: 8, lineHeight: 1.5 }}>对内统一入口、对外标准投教，服务更稳更快</Text>
+      </Box>
+    </Box>
+    <Box style={{ marginTop: 30, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+      <Box style={{ width: 4, height: 44, background: '#B08D57', borderRadius: 2 }} />
+      <Text style={{ fontSize: 20, color: '#D7E0EC', lineHeight: 1.5 }}>下一步建议：先选 1–2 个高优先场景（建议对练 / 质检）做 PoC 试点，两周内可见效果</Text>
+    </Box>
+    <Box style={{ marginTop: 'auto', flexDirection: 'row', justifyContent: 'space-between' }}>
+      <Text style={{ fontSize: 15, color: '#9FB2C8' }}>RAGFlow · 基金行业知识大模型落地演示</Text>
+      <Text style={{ fontSize: 15, color: '#9FB2C8' }}>汇报人：______　|　日期：______</Text>
+    </Box>
+  </Box>
+</Slide>

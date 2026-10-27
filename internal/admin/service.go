@@ -1723,9 +1723,10 @@ func (s *Service) DeleteTenant(ctx context.Context, tenantID, operatorUserID str
 	return summary, nil
 }
 
-// CreateTenant creates a tenant owned by an existing user.
+// CreateTenant creates a tenant WITHOUT auto-binding an owner.
 //
-// 不自动创建用户：平台必须先有账号，再把它指定为这个租户的管理员。
+// 新流程：只传 name → 建一个空租户；owner 由平台 admin 后续在「租户管理」
+// 列表点「设置 Owner」来绑定。ownerUserID / ownerEmail 参数保留向后兼容。
 func (s *Service) CreateTenant(ctx context.Context, name, ownerUserID, ownerEmail string) (map[string]interface{}, error) {
 	name = strings.TrimSpace(name)
 	ownerUserID = strings.TrimSpace(ownerUserID)
@@ -1736,28 +1737,8 @@ func (s *Service) CreateTenant(ctx context.Context, name, ownerUserID, ownerEmai
 	if len([]rune(name)) > 100 {
 		return nil, fmt.Errorf("tenant name must be at most 100 characters")
 	}
-	if ownerUserID == "" && ownerEmail == "" {
-		return nil, fmt.Errorf("owner user is required")
-	}
 
-	// 平台指定已有用户作为管理员：优先用 id，其次按邮箱查。
-	var owner entity.User
-	q := dao.DB.WithContext(ctx)
-	if ownerUserID != "" {
-		q = q.Where("id = ?", ownerUserID)
-	} else {
-		q = q.Where("email = ?", ownerEmail)
-	}
-	if err := q.First(&owner).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("owner user not found (email: %s)", ownerEmail)
-		}
-		return nil, err
-	}
-	ownerUserID = owner.ID
-
-	// 模型配置沿用平台已有租户的默认值：tenant 表的 llm_id / embd_id 等
-	// 都是 not null，新租户必须带上，否则后续检索和对话直接报错。
+	// 模型配置沿用平台已有租户的默认值
 	var tmpl entity.Tenant
 	if err := dao.DB.WithContext(ctx).Order("create_date ASC").First(&tmpl).Error; err != nil {
 		return nil, fmt.Errorf("no tenant template available: %w", err)
@@ -1782,24 +1763,39 @@ func (s *Service) CreateTenant(ctx context.Context, name, ownerUserID, ownerEmai
 		if err := tx.Create(tenant).Error; err != nil {
 			return err
 		}
-		member := &entity.UserTenant{
-			ID:        common.GenerateUUID(),
-			UserID:    ownerUserID,
-			TenantID:  tenantID,
-			Role:      "owner",
-			InvitedBy: ownerUserID,
-			Status:    &status,
+		// 可选兼容：传了 owner 参数才建 user_tenant(role=owner)
+		if ownerUserID != "" || ownerEmail != "" {
+			var owner entity.User
+			q := tx.WithContext(ctx)
+			if ownerUserID != "" {
+				q = q.Where("id = ?", ownerUserID)
+			} else {
+				q = q.Where("email = ?", ownerEmail)
+			}
+			if err := q.First(&owner).Error; err != nil {
+				return fmt.Errorf("owner user not found: %w", err)
+			}
+			member := &entity.UserTenant{
+				ID:        common.GenerateUUID(),
+				UserID:    owner.ID,
+				TenantID:  tenantID,
+				Role:      "owner",
+				InvitedBy: owner.ID,
+				Status:    &status,
+			}
+			if err := tx.Create(member).Error; err != nil {
+				return err
+			}
 		}
-		return tx.Create(member).Error
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	return map[string]interface{}{
-		"id":          tenantID,
-		"name":        name,
-		"owner_email": owner.Email,
+		"id":   tenantID,
+		"name": name,
 	}, nil
 }
 
@@ -2195,5 +2191,100 @@ func (s *Service) SetTenantOwner(ctx context.Context, tenantID, userEmail string
 	return map[string]interface{}{
 		"tenant_id":   tenantID,
 		"owner_email": user.Email,
+	}, nil
+}
+
+// TransferTenantOwner lets a tenant's current owner hand ownership to another
+// normal member of the same tenant.
+//
+// Unlike SetTenantOwner (platform admin → any email), this one:
+//   - is called from the tenant console (not the platform admin area);
+//   - requires the caller to BE the current owner of this tenant;
+//   - only targets a user that is ALREADY a member of this tenant;
+//   - on transfer: old owner → role=normal + automatically assigned
+//     「租户管理员」builtin role (so they keep the full permission matrix
+//     while losing the hardcoded owner privilege).
+func (s *Service) TransferTenantOwner(ctx context.Context, tenantID, callerUserID, targetUserID string) (map[string]interface{}, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	callerUserID = strings.TrimSpace(callerUserID)
+	targetUserID = strings.TrimSpace(targetUserID)
+	if tenantID == "" || callerUserID == "" || targetUserID == "" {
+		return nil, fmt.Errorf("tenant_id, caller_user_id and target_user_id are required")
+	}
+	if callerUserID == targetUserID {
+		return nil, fmt.Errorf("cannot transfer ownership to yourself")
+	}
+
+	var tenant entity.Tenant
+	if err := dao.DB.WithContext(ctx).Where("id = ?", tenantID).First(&tenant).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("tenant not found")
+		}
+		return nil, err
+	}
+
+	// 1. Caller must be the current owner of this tenant
+	var caller entity.UserTenant
+	if err := dao.DB.WithContext(ctx).
+		Where("tenant_id = ? AND user_id = ?", tenantID, callerUserID).
+		First(&caller).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("caller is not a member of this tenant")
+		}
+		return nil, err
+	}
+	if caller.Role != "owner" {
+		return nil, fmt.Errorf("only the current owner can transfer ownership")
+	}
+
+	// 2. Target must be a normal member of this tenant (can't transfer to owner)
+	var target entity.UserTenant
+	if err := dao.DB.WithContext(ctx).
+		Where("tenant_id = ? AND user_id = ?", tenantID, targetUserID).
+		First(&target).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("target user is not a member of this tenant")
+		}
+		return nil, err
+	}
+
+	// 3. Resolve the 「租户管理员」builtin role for this tenant (auto-create if missing)
+	adminRole, err := dao.RoleDAO{}.EnsureTenantAdminRole(ctx, dao.DB, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve tenant admin role: %w", err)
+	}
+
+	// 4. Transaction: downgrade old owner + upgrade target
+	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Downgrade caller: role → normal, grant 租户管理员 builtin role
+		if err := tx.Model(&entity.UserTenant{}).Where("id = ?", caller.ID).
+			Updates(map[string]interface{}{
+				"role":    "normal",
+				"role_id": adminRole.ID,
+				"status":  "1",
+			}).Error; err != nil {
+			return err
+		}
+		// Upgrade target: role → owner, clear role_id (owner is a hardcoded privilege)
+		clearRoleID := ""
+		if err := tx.Model(&entity.UserTenant{}).Where("id = ?", target.ID).
+			Updates(map[string]interface{}{
+				"role":    "owner",
+				"role_id": clearRoleID,
+				"status":  "1",
+			}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"tenant_id":      tenantID,
+		"new_owner_id":   targetUserID,
+		"old_owner_id":   callerUserID,
+		"old_owner_role": "tenant_admin",
 	}, nil
 }

@@ -715,3 +715,36 @@ func auditConsoleChange(c *gin.Context, operator *entity.User, tenantID, action,
 	}
 	_ = dao.DB.WithContext(c.Request.Context()).Create(entry).Error
 }
+
+// TransferTenantOwner handles POST /tenants/:tenant_id/console/owner/transfer.
+// Current owner transfers ownership to another member; caller becomes 租户管理员.
+func (h *ConsoleHandler) TransferTenantOwner(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	tenantID := consoleTenantID(c)
+	if err := requireTenantAccess(c, user.ID, tenantID, true); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
+		return
+	}
+
+	var req struct {
+		TargetUserID string json:"target_user_id" binding:"required"
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
+
+	result, err := service.NewConsoleService().TransferTenantOwner(
+		c.Request.Context(), tenantID, user.ID, req.TargetUserID,
+	)
+	if err != nil {
+		common.ErrorWithCode(c, common.CodeDataError, err.Error())
+		return
+	}
+	auditConsoleChange(c, user, tenantID, "transfer", "owner", req.TargetUserID, nil, nil)
+	common.SuccessWithData(c, result, "success")
+}

@@ -38,6 +38,8 @@ services:
       - ./service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template
       - ./entrypoint.sh:/ragflow/entrypoint.sh
       # - ${RAGFLOW_SSH_KNOWN_HOSTS:-${HOME}/.ssh/known_hosts}:${SSH_KNOWN_HOSTS:-/etc/ragflow/ssh_known_hosts}:ro
+    tmpfs:
+      - /tmp:mode=1777,size=4g
     env_file: .env
     # Route the Go services' cache/queue backend to the separate Kvrocks service.
     # The Python services use the Valkey `redis` service, which the Go deployment

@@ -1,0 +1,50 @@
+<Slide padding={60} style={{ fontFamily: 'Microsoft YaHei' }}>
+  <Box style={{ height: '100%', flexDirection: 'column' }}>
+    <Box style={{ marginBottom: 16 }}>
+      <Text style={{ fontSize: 14, color: '#B08D57', fontWeight: 'bold', letterSpacing: 2 }}>场景 02 · 风控合规最关心</Text>
+      <Text style={{ fontSize: 34, fontWeight: 'bold', color: '#1E3A5F', marginTop: 6 }}>智能质检：AI 守住合规底线</Text>
+      <Box style={{ height: 3, background: '#B08D57', width: '100%', marginTop: 12, borderRadius: 2 }} />
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'column', gap: 20 }}>
+      <Box style={{ background: '#FBF6EE', borderLeft: '5px solid #B08D57', borderRadius: 8, padding: 16 }}>
+        <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1E3A5F' }}>自动巡检销售话术，拦截监管风险</Text>
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'row', gap: 28 }}>
+        <Box style={{ width: 300, background: '#1E3A5F', borderRadius: 16, padding: 24, justifyContent: 'center' }}>
+          <Text style={{ fontSize: 72, fontWeight: 'bold', color: '#FFFFFF', lineHeight: 1 }}>02</Text>
+          <Text style={{ fontSize: 18, color: '#9FB2C8', marginTop: 8, letterSpacing: 2 }}>通话/会话智能质检</Text>
+          <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 18 }}>
+            <FAIcon name='star' style={{ fill: '#B08D57', width: 22, height: 22 }} />
+            <Text style={{ fontSize: 16, color: '#B08D57', fontWeight: 'bold' }}>风控最关心</Text>
+          </Box>
+        </Box>
+        <Box style={{ flex: 1, flexDirection: 'column', justifyContent: 'space-between' }}>
+          <Box>
+            <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#1E3A5F', marginBottom: 12 }}>演示看点</Text>
+            <Box style={{ flexDirection: 'column', gap: 12 }}>
+              {[
+                '录音自动转写并实时分析',
+                '识别违规与误导性红线话术',
+                '正向核查风险揭示完整性',
+                '输出质检工单与风险等级',
+                '精准定位违规原文片段',
+              ].map((t, i) => (
+                <Box key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <FAIcon name='check-circle' style={{ fill: '#1E3A5F', width: 22, height: 22 }} />
+                  <Text style={{ fontSize: 19, color: '#1A1A1A' }}>{t}</Text>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+          <Box style={{ background: '#F1F5F9', borderRadius: 8, padding: 14 }}>
+            <Text style={{ fontSize: 17, color: '#475569', lineHeight: 1.5 }}>一句话总结：AI 自动巡检销售话术，守住基金业务合规底线</Text>
+          </Box>
+        </Box>
+      </Box>
+    </Box>
+    <Box style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid #E2E8F0', flexDirection: 'row', justifyContent: 'space-between' }}>
+      <Text style={{ fontSize: 13, color: '#94A3B8' }}>RAGFlow · 基金行业知识大模型落地演示</Text>
+      <Text style={{ fontSize: 13, color: '#94A3B8' }}>05 / 12</Text>
+    </Box>
+  </Box>
+</Slide>

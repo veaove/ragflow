@@ -29,14 +29,24 @@ func (Department) TableName() string {
 // (owner/admin/normal/invite) that the permission engine reads directly. A
 // member is linked to a custom role through `user_tenant.role_id`; when that is
 // empty the engine falls back to the enum, so existing rows keep working.
+//
+// Four builtin roles are seeded per tenant:
+//   - Owner        (IsBuiltin + IsSystem) 全权限，不可编辑不可删除
+//   - 租户管理员    (IsBuiltin)          全权限，内置不可删但矩阵可改
+//   - 部门管理员    (IsBuiltin)          部分权限
+//   - 普通成员      (IsBuiltin)          基础权限
 type Role struct {
 	ID          string `gorm:"column:id;primaryKey;size:32" json:"id"`
 	TenantID    string `gorm:"column:tenant_id;size:32;not null;index" json:"tenant_id"`
 	Name        string `gorm:"column:name;size:64;not null" json:"name"`
 	Description string `gorm:"column:description;size:255" json:"description"`
-	// IsBuiltin marks the three seeded roles (租户管理员 / 部门管理员 /
-	// 普通成员). Their permissions are fixed and the API refuses edits.
+	// IsBuiltin marks seeded roles vs. custom ones. Builtin roles cannot be
+	// deleted and some APIs refuse to modify their permission matrix.
 	IsBuiltin bool `gorm:"column:is_builtin;not null" json:"is_builtin"`
+	// IsSystem marks system-level builtin roles (Owner) that cannot be edited
+	// AT ALL — no rename, no permission tweaks, no deactivate. Only the
+	// platform engine itself assigns it. IsSystem implies IsBuiltin.
+	IsSystem bool `gorm:"column:is_system;not null;default:false" json:"is_system"`
 	BaseModel
 }
 

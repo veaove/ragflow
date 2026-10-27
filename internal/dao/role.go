@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -49,14 +50,24 @@ type builtinRoleSpec struct {
 	description string
 	// grant maps a module to its allowed actions. "all" grants every action.
 	grant map[string]string
+	// isSystem marks system-level roles (Owner) that are fully locked down.
+	isSystem bool
 }
 
 // builtinRoles are created lazily per tenant on first read.
 //
-// Their permissions are intentionally NOT editable (see Update/Delete): the
-// permission engine still keys off `user_tenant.role` for owner/normal, and
-// letting these drift would make the two models disagree.
+// Owner is marked isSystem=true: it represents the hardcoded user_tenant.role
+// enum value, is fully locked (no rename, no permission tweaks, no delete),
+// and exists so the role UI can show "Owner" next to owner-member rows.
+// 租户管理员 / 部门管理员 / 普通成员 are the editable builtin roles that
+// normal members are assigned to via user_tenant.role_id.
 var builtinRoles = []builtinRoleSpec{
+	{
+		name:        "Owner",
+		description: "租户所有者（全权限，不可编辑）",
+		grant:       map[string]string{"*": "all"},
+		isSystem:    true,
+	},
 	{
 		name:        "租户管理员",
 		description: "拥有租户内全部权限",
@@ -125,6 +136,7 @@ func (dao *RoleDAO) EnsureBuiltinRoles(ctx context.Context, db *gorm.DB, tenantI
 				Name:        spec.name,
 				Description: spec.description,
 				IsBuiltin:   true,
+				IsSystem:    spec.isSystem,
 				BaseModel:   entity.BaseModel{CreateTime: ptrInt64(time.Now().UnixMilli())},
 			}
 			if err := tx.Create(&role).Error; err != nil {
@@ -246,6 +258,43 @@ func buildPermissionRows(roleID string, grant map[string]string) []*entity.RoleP
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// EnsureTenantAdminRole returns this tenant's 「租户管理员」builtin role,
+// creating it (and its full-matrix rows) if it doesn't exist yet.
+// Used by TransferTenantOwner to automatically downgrade the previous owner
+// into a regular 租户管理员 member instead of a hardcoded owner.
+func (dao *RoleDAO) EnsureTenantAdminRole(ctx context.Context, db *gorm.DB, tenantID string) (*entity.Role, error) {
+	var role entity.Role
+	err := db.WithContext(ctx).
+		Where("tenant_id = ? AND name = ? AND is_builtin = true AND is_system = false", tenantID, "租户管理员").
+		First(&role).Error
+	if err == nil {
+		return &role, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	// Lazy-create — mirror what EnsureBuiltinRoles does
+	role = entity.Role{
+		ID:          common.GenerateUUID(),
+		TenantID:    tenantID,
+		Name:        "租户管理员",
+		Description: "拥有租户内全部权限",
+		IsBuiltin:   true,
+		IsSystem:    false,
+	}
+	if err := db.WithContext(ctx).Create(&role).Error; err != nil {
+		return nil, err
+	}
+	rows := buildBuiltinPermissionRows(role.ID, map[string]string{"*": "all"})
+	for i := range rows {
+		if err := db.WithContext(ctx).Create(&rows[i]).Error; err != nil {
+			return nil, err
+		}
+	}
+	return &role, nil
 }
 
 // ListByTenant returns roles plus their matrices.

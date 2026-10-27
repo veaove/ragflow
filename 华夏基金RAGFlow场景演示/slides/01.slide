@@ -1,0 +1,12 @@
+<Slide padding={0} style={{ fontFamily: 'Microsoft YaHei' }}>
+  <Box style={{ width: '100%', height: '100%', background: '#1E3A5F', flexDirection: 'column', justifyContent: 'center', padding: 72 }}>
+    <Text style={{ fontSize: 14, color: '#B08D57', fontWeight: 'bold', letterSpacing: 3 }}>RAGFLOW · 基金行业知识大模型</Text>
+    <Text style={{ fontSize: 62, fontWeight: 'bold', color: '#FFFFFF', marginTop: 18, lineHeight: 1.15 }}>让基金知识，触手可及</Text>
+    <Box style={{ height: 3, width: 120, background: '#B08D57', marginVertical: 26, borderRadius: 2 }} />
+    <Text style={{ fontSize: 24, color: '#D7E0EC', lineHeight: 1.5 }}>基于RAGFlow的基金行业知识大模型落地场景演示</Text>
+    <Box style={{ marginTop: 'auto', flexDirection: 'row', justifyContent: 'space-between' }}>
+      <Text style={{ fontSize: 15, color: '#9FB2C8' }}>汇报人：______　|　日期：______</Text>
+      <Text style={{ fontSize: 15, color: '#9FB2C8' }}>面向：华夏基金</Text>
+    </Box>
+  </Box>
+</Slide>

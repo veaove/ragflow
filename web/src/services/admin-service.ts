@@ -189,6 +189,8 @@ export const listUsers = () =>
 export interface TenantListItem {
   id: string;
   name: string;
+  owner_name: string;
+  owner_email: string;
   member_count: number;
   kb_count: number;
   agent_count: number;

@@ -601,3 +601,78 @@ func (s *ConsoleService) EffectivePermissions(ctx context.Context, tenantID, use
 	}
 	return out, nil
 }
+
+// TransferTenantOwner lets this tenant's current owner hand ownership to
+// another normal member of the same tenant. On success:
+//   - caller (old owner) → role=normal + role_id=<租户管理员 builtin>
+//   - target (new owner) → role=owner, role_id=""
+// Only the current owner of this tenant may call.
+func (s *ConsoleService) TransferTenantOwner(ctx context.Context, tenantID, callerUserID, targetUserID string) (map[string]any, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	callerUserID = strings.TrimSpace(callerUserID)
+	targetUserID = strings.TrimSpace(targetUserID)
+	if tenantID == "" || callerUserID == "" || targetUserID == "" {
+		return nil, errors.New("tenant_id, caller_user_id and target_user_id are required")
+	}
+	if callerUserID == targetUserID {
+		return nil, errors.New("cannot transfer ownership to yourself")
+	}
+
+	var caller entity.UserTenant
+	if err := dao.DB.WithContext(ctx).
+		Where("tenant_id = ? AND user_id = ?", tenantID, callerUserID).
+		First(&caller).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("caller is not a member of this tenant")
+		}
+		return nil, err
+	}
+	if caller.Role != "owner" {
+		return nil, errors.New("only the current owner can transfer ownership")
+	}
+
+	var target entity.UserTenant
+	if err := dao.DB.WithContext(ctx).
+		Where("tenant_id = ? AND user_id = ?", tenantID, targetUserID).
+		First(&target).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("target user is not a member of this tenant")
+		}
+		return nil, err
+	}
+
+	adminRole, err := dao.RoleDAO{}.EnsureTenantAdminRole(ctx, dao.DB, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	err = dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&entity.UserTenant{}).Where("id = ?", caller.ID).
+			Updates(map[string]any{
+				"role":    "normal",
+				"role_id": adminRole.ID,
+				"status":  "1",
+			}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&entity.UserTenant{}).Where("id = ?", target.ID).
+			Updates(map[string]any{
+				"role":    "owner",
+				"role_id": "",
+				"status":  "1",
+			}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"tenant_id":      tenantID,
+		"new_owner_id":   targetUserID,
+		"old_owner_id":   callerUserID,
+		"old_owner_role": "tenant_admin",
+	}, nil
+}

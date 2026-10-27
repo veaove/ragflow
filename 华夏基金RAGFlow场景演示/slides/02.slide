@@ -1,0 +1,75 @@
+<Slide padding={60} style={{ fontFamily: 'Microsoft YaHei' }}>
+  <Box style={{ height: '100%', flexDirection: 'column' }}>
+    <Box style={{ marginBottom: 16 }}>
+      <Text style={{ fontSize: 14, color: '#B08D57', fontWeight: 'bold', letterSpacing: 2 }}>场景全景 / OVERVIEW</Text>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#1E3A5F', marginTop: 6 }}>八大智能场景，覆盖合规·投研·服务全链路</Text>
+      <Box style={{ height: 3, background: '#B08D57', width: '100%', marginTop: 12, borderRadius: 2 }} />
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'row', gap: 24 }}>
+      <Box style={{ flex: 1, background: '#F1F5F9', borderRadius: 14, padding: 22, justifyContent: 'space-between' }}>
+        <Box>
+          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#1E3A5F' }}>守底线 · 合规风控</Text>
+          <Text style={{ fontSize: 15, color: '#64748B', marginTop: 4 }}>3 个场景</Text>
+          <Box style={{ height: 1, background: '#E2E8F0', marginVertical: 14 }} />
+          <Box style={{ flexDirection: 'column', gap: 14 }}>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Box style={{ width: 30, height: 30, borderRadius: 8, background: '#1E3A5F', justifyContent: 'center', alignItems: 'center' }}><Text style={{ fontSize: 15, fontWeight: 'bold', color: '#FFFFFF' }}>01</Text></Box>
+              <Text style={{ fontSize: 18, color: '#1A1A1A' }}>智能对练系统</Text>
+              <FAIcon name='star' style={{ fill: '#B08D57', width: 18, height: 18 }} />
+            </Box>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Box style={{ width: 30, height: 30, borderRadius: 8, background: '#1E3A5F', justifyContent: 'center', alignItems: 'center' }}><Text style={{ fontSize: 15, fontWeight: 'bold', color: '#FFFFFF' }}>02</Text></Box>
+              <Text style={{ fontSize: 18, color: '#1A1A1A' }}>通话/会话智能质检</Text>
+              <FAIcon name='star' style={{ fill: '#B08D57', width: 18, height: 18 }} />
+            </Box>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Box style={{ width: 30, height: 30, borderRadius: 8, background: '#1E3A5F', justifyContent: 'center', alignItems: 'center' }}><Text style={{ fontSize: 15, fontWeight: 'bold', color: '#FFFFFF' }}>05</Text></Box>
+              <Text style={{ fontSize: 18, color: '#1A1A1A' }}>投资者投教助手</Text>
+            </Box>
+          </Box>
+        </Box>
+        <Text style={{ fontSize: 15, color: '#64748B', lineHeight: 1.5 }}>合规与风控，是基金业务的生命线</Text>
+      </Box>
+      <Box style={{ flex: 1, background: '#F1F5F9', borderRadius: 14, padding: 22, justifyContent: 'space-between' }}>
+        <Box>
+          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#1E3A5F' }}>提效率 · 投研文档</Text>
+          <Text style={{ fontSize: 15, color: '#64748B', marginTop: 4 }}>2 个场景</Text>
+          <Box style={{ height: 1, background: '#E2E8F0', marginVertical: 14 }} />
+          <Box style={{ flexDirection: 'column', gap: 14 }}>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Box style={{ width: 30, height: 30, borderRadius: 8, background: '#1E3A5F', justifyContent: 'center', alignItems: 'center' }}><Text style={{ fontSize: 15, fontWeight: 'bold', color: '#FFFFFF' }}>04</Text></Box>
+              <Text style={{ fontSize: 18, color: '#1A1A1A' }}>投研&合同解读助手</Text>
+            </Box>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Box style={{ width: 30, height: 30, borderRadius: 8, background: '#1E3A5F', justifyContent: 'center', alignItems: 'center' }}><Text style={{ fontSize: 15, fontWeight: 'bold', color: '#FFFFFF' }}>07</Text></Box>
+              <Text style={{ fontSize: 18, color: '#1A1A1A' }}>公告摘要&文档提炼</Text>
+            </Box>
+          </Box>
+        </Box>
+        <Text style={{ fontSize: 15, color: '#64748B', lineHeight: 1.5 }}>让投研与运营从读文档中解放</Text>
+      </Box>
+      <Box style={{ flex: 1, background: '#F1F5F9', borderRadius: 14, padding: 22, justifyContent: 'space-between' }}>
+        <Box>
+          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#1E3A5F' }}>强体验 · 全员&客户</Text>
+          <Text style={{ fontSize: 15, color: '#64748B', marginTop: 4 }}>3 个场景</Text>
+          <Box style={{ height: 1, background: '#E2E8F0', marginVertical: 14 }} />
+          <Box style={{ flexDirection: 'column', gap: 14 }}>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Box style={{ width: 30, height: 30, borderRadius: 8, background: '#1E3A5F', justifyContent: 'center', alignItems: 'center' }}><Text style={{ fontSize: 15, fontWeight: 'bold', color: '#FFFFFF' }}>03</Text></Box>
+              <Text style={{ fontSize: 18, color: '#1A1A1A' }}>表格自然语言问答</Text>
+            </Box>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Box style={{ width: 30, height: 30, borderRadius: 8, background: '#1E3A5F', justifyContent: 'center', alignItems: 'center' }}><Text style={{ fontSize: 15, fontWeight: 'bold', color: '#FFFFFF' }}>06</Text></Box>
+              <Text style={{ fontSize: 18, color: '#1A1A1A' }}>内部员工知识库助手</Text>
+            </Box>
+            <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Box style={{ width: 30, height: 30, borderRadius: 8, background: '#1E3A5F', justifyContent: 'center', alignItems: 'center' }}><Text style={{ fontSize: 15, fontWeight: 'bold', color: '#FFFFFF' }}>08</Text></Box>
+              <Text style={{ fontSize: 18, color: '#1A1A1A' }}>客服前置转人工辅助</Text>
+            </Box>
+          </Box>
+        </Box>
+        <Text style={{ fontSize: 15, color: '#64748B', lineHeight: 1.5 }}>对内提效、对外优体验</Text>
+      </Box>
+    </Box>
+  </Box>
+</Slide>
