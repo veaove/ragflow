@@ -110,11 +110,15 @@ export function filterMenuItems<T extends { name: string; children?: T[] }>(
   if (isOwner) return items;
   if (!perms) return [];  // 非 owner 且没拿到权限数据 → 不显示任何菜单
 
-  const allowed = (name: string) => {
+  const allowed = (name: string): boolean => {
     const module = MENU_MODULE[name];
-    if (!module) return false;  // 没映射 → 不显示
+    // eslint-disable-next-line no-console
+    console.info('[filterMenuItems] item=', name, '→ module=', module);
+    if (!module) return false;
     const row = perms.modules?.[module];
-    if (!row) return false;    // 模块未配置 → 不显示
+    // eslint-disable-next-line no-console
+    console.info('[filterMenuItems]   perms.modules[', module, ']=', row, ' → can_view=', !!row?.can_view);
+    if (!row) return false;
     return !!row.can_view;
   };
 
