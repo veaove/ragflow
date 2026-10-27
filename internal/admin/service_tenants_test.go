@@ -34,6 +34,7 @@ import (
 func TestListTenantsCountsOwnedResources(t *testing.T) {
 	db := testutil.SetupTestDB(t,
 		&entity.Tenant{},
+		&entity.User{},
 		&entity.UserTenant{},
 		&entity.Knowledgebase{},
 		&entity.UserCanvas{},
