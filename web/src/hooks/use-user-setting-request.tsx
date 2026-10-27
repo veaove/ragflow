@@ -91,14 +91,15 @@ export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
 export const useFetchTenantData = (): ResponseGetType<ITenantInfo> => {
   const { data, isFetching: loading } = useQuery({
     queryKey: [UserSettingApiAction.TenantInfo],
-    initialData: {},
     gcTime: 0,
     queryFn: async () => {
       const { data: res } = await userService.getTenantInfo();
       if (res.code === 0) {
+        console.info('[useFetchTenantData] SUCCESS res.data=', JSON.stringify(res.data));
         return res.data ?? {};
       }
 
+      console.info('[useFetchTenantData] FAIL res=', JSON.stringify(res));
       return res;
     },
   });
