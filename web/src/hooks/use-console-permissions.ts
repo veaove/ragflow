@@ -10,18 +10,18 @@ import { MyPermissions, fetchMyPermissions } from '@/services/console-service';
  * 功能范围。
  */
 const MENU_MODULE: Record<string, string> = {
+  'header.home': 'overview',
   'header.dataset': 'dataset',
   'header.chat': 'chat',
-  'header.knowledgeSearch': 'chat',
+  'header.knowledgeSearch': 'search',
   'header.flow': 'agent',
-  'header.studio': 'agent',
   'header.memories': 'memory',
+  'header.qc': 'qc_rule',
   'header.fileManager': 'file',
-  'header.qc': 'audit',
-  'console.organization': 'member',
+  'console.organization': 'organization',
   'console.members': 'member',
   'console.roles': 'role',
-  'console.grants': 'role',
+  'console.grants': 'grant',
 };
 
 /**
