@@ -54,16 +54,49 @@ function resolveGroupPath(p: string): string {
  *   - 当前路径有权限 → return <Outlet /> 放行
  *
  * owner 直接放行，和原来的行为一致。
+ *
+ * 重要：所有 Hook 必须无条件放在组件顶层，不能在 if 分支里调用！
  */
 function PermissionGate() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { perms, isOwner } = useConsolePermissions();
 
-  // owner 永远放行
-  if (isOwner) return <Outlet />;
+  // --- 所有 Hook 必须在任何条件 return 之前声明 ---
+  // 计算是否需要 redirect（返回 null 表示不需要）
+  const redirectTarget = useMemo<string | null>(() => {
+    // owner 或权限未加载 → 不 redirect
+    if (isOwner || !perms) return null;
 
-  // 权限接口还没返回 → 显示 loading，不 render Outlet
+    const allLeafPaths = collectLeafPaths(sidebarMenuItems);
+    const allowedLeafPaths = collectLeafPaths(
+      filterMenuItems(sidebarMenuItems, perms, { isOwner: false }),
+    );
+
+    const isOverview = pathname === '/' || pathname === '/overview';
+    const inMenu = allLeafPaths.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`),
+    );
+    const hasPermissionHere = allowedLeafPaths.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`),
+    );
+
+    if (isOverview || (inMenu && !hasPermissionHere)) {
+      const visible = filterMenuItems(sidebarMenuItems, perms, { isOwner: false });
+      return resolveGroupPath(firstVisiblePath(visible));
+    }
+    return null;
+  }, [pathname, perms, isOwner]);
+
+  // 无条件 useEffect：只有当 redirectTarget 非空时才执行 navigate
+  useEffect(() => {
+    if (redirectTarget) {
+      navigate(redirectTarget, { replace: true });
+    }
+  }, [redirectTarget, navigate]);
+
+  // --- 条件 render ---
+  if (isOwner) return <Outlet />;
   if (!perms) {
     return (
       <div className="flex size-full items-center justify-center text-text-secondary">
@@ -74,30 +107,8 @@ function PermissionGate() {
       </div>
     );
   }
-
-  // perms 已返回：算当前路径是否在「菜单覆盖范围」内，以及是否有权限
-  const allLeafPaths = collectLeafPaths(sidebarMenuItems);
-  const allowedLeafPaths = collectLeafPaths(
-    filterMenuItems(sidebarMenuItems, perms, { isOwner: false }),
-  );
-  const inMenu = allLeafPaths.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
-  );
-
-  // 根路径 / 和 /overview 一律重定向到第一个有权限的菜单
-  const isOverview = pathname === '/' || pathname === '/overview';
-
-  if (isOverview || (inMenu && !allowedLeafPaths.some(
-    (p) => pathname === p || pathname.startsWith(`${p}/`),
-  ))) {
-    const visible = filterMenuItems(sidebarMenuItems, perms, { isOwner: false });
-    const target = resolveGroupPath(firstVisiblePath(visible));
-    // navigate 后不 render Outlet，避免旧页面短暂闪烁
-    useEffect(() => {
-      navigate(target, { replace: true });
-    }, [target, navigate]);
-    return null;
-  }
+  // redirect 进行中 → 不渲染 Outlet，避免旧页面短暂闪烁
+  if (redirectTarget) return null;
 
   return <Outlet />;
 }
