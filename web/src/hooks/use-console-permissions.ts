@@ -5,9 +5,6 @@ import { MyPermissions, fetchMyPermissions } from '@/services/console-service';
 
 /**
  * 菜单项 → 权限模块。
- *
- * 未列出的菜单（首页、配置中心等）不参与过滤 —— 它们不属于租户可配置的
- * 功能范围。
  */
 const MENU_MODULE: Record<string, string> = {
   'header.home': 'overview',
@@ -27,9 +24,9 @@ const MENU_MODULE: Record<string, string> = {
 /**
  * 当前用户在租户内的有效权限。
  *
- * 三处「放行」默认值都是刻意的：权限接口未返回、某模块未配置、请求失败时一律
- * 视为可见。反过来（默认拒绝）会让一次接口抖动把所有菜单清空，比越权更伤可用性；
- * 真正的数据访问仍然由后端权限引擎把关。
+ * 菜单过滤只在「成功拿到后端返回」时才生效。loading/error/disabled 一律
+ * 显示完整菜单 —— 后端 ModulePermission 中间件会拦截真正的越权请求，
+ * 前端只做视觉裁剪，不做安全闸。
  */
 export function useConsolePermissions() {
   const { data: tenantInfo } = useFetchTenantInfo();
@@ -48,10 +45,13 @@ export function useConsolePermissions() {
   // eslint-disable-next-line no-console
   console.info('[perms] status=', status, 'tenantId=', tenantId, 'data=', data);
 
+  // 明确拿到权限数据时才过滤。其他状态（loading/error/disabled）返回 null → 不过滤
+  const permsForFilter = status === 'success' && data ? data : null;
+
   const canView = (module: string): boolean => {
-    if (!data) return false;             // ← 改：无数据=拒绝（不再默认放行）
-    const row = data.modules?.[module];
-    if (!row) return false;              // ← 改：模块未配置=拒绝
+    if (!permsForFilter) return true;      // 没拿到数据 → 不做判断
+    const row = permsForFilter.modules?.[module];
+    if (!row) return true;                 // 模块不在矩阵里 → 不拦截
     return !!row.can_view;
   };
 
@@ -62,7 +62,7 @@ export function useConsolePermissions() {
   };
 
   return {
-    perms: data ?? null,
+    perms: permsForFilter,
     tenantId,
     roleName: data?.role_name ?? '',
     canView,
@@ -73,8 +73,11 @@ export function useConsolePermissions() {
 /**
  * 按权限过滤菜单树。
  *
- * 泛型约束刻意只要求 `{ name, children }`，而不是 import `SidebarMenuItem` ——
- * 后者会形成 sidebar-nav ↔ hook 的循环依赖。
+ * perms=null（loading/error/disabled）时返回完整 items —— 前端不做安全闸，
+ * 真正的数据访问由后端 ModulePermission 中间件拦截。
+ *
+ * perms 存在但模块不在矩阵里 → 默认可见（新模块向后兼容）。
+ * perms 存在且模块 can_view=0 → 隐藏。
  */
 export function filterMenuItems<T extends { name: string; children?: T[] }>(
   items: T[],
@@ -82,18 +85,18 @@ export function filterMenuItems<T extends { name: string; children?: T[] }>(
 ): T[] {
   // eslint-disable-next-line no-console
   console.info('[filterMenuItems] perms=', perms, 'items=', items.map((i) => i.name));
-  if (!perms) return [];  // ← 改：无权限数据=全部隐藏（安全默认）
+  if (!perms) return items;  // 没拿到权限数据 → 显示全量（后端会拦）
 
   const allowed = (name: string) => {
     const module = MENU_MODULE[name];
     if (!module) return true;
     const row = perms.modules?.[module];
-    return row ? !!row.can_view : false;  // ← 改：模块未配置=拒绝
+    if (!row) return true;  // 模块未配置 → 可见（向后兼容）
+    return !!row.can_view;
   };
 
   const out: T[] = [];
   for (const item of items) {
-    // 分组本身没有独立页面（config-center / console），子项全被挡住就整组隐藏。
     if (item.children?.length) {
       const children = item.children.filter((child) => allowed(child.name));
       if (children.length === 0) continue;
