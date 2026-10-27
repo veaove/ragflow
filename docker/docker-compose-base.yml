@@ -98,7 +98,7 @@ services:
     # get, and on a 2-core box that starved the API and SSH until the machine
     # looked hung. One core keeps ingestion moving while leaving a core for the
     # API/ingestor/admin processes. Raise this if the host is scaled up.
-    cpus: "1.0"
+    cpus: "2.0"
     ulimits:
       nofile:
         soft: 500000
