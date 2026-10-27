@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { userService } from '@/services/user-service';
+import userService from '@/services/user-service';
 import { MyPermissions, fetchMyPermissions } from '@/services/console-service';
 
 /**
