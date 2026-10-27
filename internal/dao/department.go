@@ -13,9 +13,6 @@ import (
 // members; the console surfaces it as a hint to move them first.
 var ErrDepartmentNotEmpty = errors.New("department still has children or members")
 
-// ErrBuiltinRoleImmutable blocks editing the seeded roles.
-var ErrBuiltinRoleImmutable = errors.New("builtin role cannot be modified")
-
 // DepartmentDAO reads and writes the tenant organisation tree.
 type DepartmentDAO struct{}
 

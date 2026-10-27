@@ -61,8 +61,11 @@ func TestListRolesSeedsBuiltin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListRoles: %v", err)
 	}
-	if len(roles) != 3 {
-		t.Fatalf("roles = %d, want 3 builtin", len(roles))
+	// 数量从 dao 的内置角色清单派生，不要写字面量：Owner 变成内置角色时
+	// 这份清单从 3 变成 4，写死的断言会静默过期。
+	want := len(dao.BuiltinRoleNames())
+	if len(roles) != want {
+		t.Fatalf("roles = %d, want %d builtin", len(roles), want)
 	}
 	for _, r := range roles {
 		if !r.IsBuiltin {
@@ -89,8 +92,9 @@ func TestListRolesIncludesCustomRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(roles) != 4 {
-		t.Fatalf("roles = %d, want 3 builtin + 1 custom", len(roles))
+	want := len(dao.BuiltinRoleNames()) + 1
+	if len(roles) != want {
+		t.Fatalf("roles = %d, want %d builtin + 1 custom", len(roles), want-1)
 	}
 }
 
@@ -256,6 +260,45 @@ func TestDeleteRoleClearsMemberRoleID(t *testing.T) {
 	db.Where("id = ?", "ut-del").Take(&ut)
 	if ut.RoleID != "" {
 		t.Fatalf("member role_id should be cleared, got %q", ut.RoleID)
+	}
+}
+
+// 删内置角色必须整条链路都失败，而且失败得「干净」：DeleteRole 在删成功之后
+// 会把成员的 role_id 置空，这个副作用一旦发生就没法回滚（角色会被重建，但拿到
+// 新 id）。所以断言的重点不是「报错了」，而是「成员还挂着原来的角色」。
+func TestDeleteRoleRejectsBuiltinRole(t *testing.T) {
+	db := setupConsoleRoleDB(t)
+	svc := NewConsoleService()
+
+	// ListRoles 会触发 EnsureBuiltinRoles，先把它跑出来。
+	if _, err := svc.ListRoles(context.Background(), "tenant-1"); err != nil {
+		t.Fatalf("ListRoles: %v", err)
+	}
+	var admin entity.Role
+	if err := db.Where("tenant_id = ? AND name = ?", "tenant-1", "租户管理员").Take(&admin).Error; err != nil {
+		t.Fatalf("load builtin tenant admin role: %v", err)
+	}
+
+	valid := string(entity.StatusValid)
+	db.Create(&entity.UserTenant{
+		ID: "ut-keep", UserID: "u-keep", TenantID: "tenant-1",
+		Role: "normal", RoleID: admin.ID, Status: &valid, InvitedBy: "owner",
+	})
+
+	if err := svc.DeleteRole(context.Background(), "tenant-1", admin.ID); err == nil {
+		t.Fatal("DeleteRole should refuse a builtin role")
+	}
+
+	var rc int64
+	db.Model(&entity.Role{}).Where("id = ?", admin.ID).Count(&rc)
+	if rc != 1 {
+		t.Fatal("builtin role must survive a refused delete")
+	}
+
+	var ut entity.UserTenant
+	db.Where("id = ?", "ut-keep").Take(&ut)
+	if ut.RoleID != admin.ID {
+		t.Fatalf("member role_id must stay %q on a refused delete, got %q", admin.ID, ut.RoleID)
 	}
 }
 

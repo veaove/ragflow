@@ -91,6 +91,18 @@ var builtinRoles = []builtinRoleSpec{
 	},
 }
 
+// BuiltinRoleNames returns the canonical names of the builtin roles, in seed
+// order. Callers that need "how many builtin roles should a tenant have" must
+// derive it from here instead of hardcoding a number: the list grew from 3 to 4
+// when Owner became a builtin role, and every hardcoded 3 went stale silently.
+func BuiltinRoleNames() []string {
+	names := make([]string, 0, len(builtinRoles))
+	for _, spec := range builtinRoles {
+		names = append(names, spec.name)
+	}
+	return names
+}
+
 // RoleDAO reads and writes tenant-scoped roles and their matrices.
 type RoleDAO struct{}
 
@@ -98,7 +110,7 @@ func NewRoleDAO() *RoleDAO {
 	return &RoleDAO{}
 }
 
-// EnsureBuiltinRoles seeds the three builtin roles for a tenant that has none.
+// EnsureBuiltinRoles seeds the builtin roles for a tenant that has none.
 // It is idempotent and cheap (one count query on the happy path).
 func (dao *RoleDAO) EnsureBuiltinRoles(ctx context.Context, db *gorm.DB, tenantID string) error {
 	var existing int64
@@ -368,12 +380,26 @@ func (dao *RoleDAO) Update(ctx context.Context, db *gorm.DB, tenantID, id string
 	})
 }
 
-// Delete removes a role and its matrix, whether builtin or custom.
+// ErrBuiltinRoleImmutable blocks deleting a seeded role. Callers can test for it
+// with errors.Is and surface the message as-is.
+var ErrBuiltinRoleImmutable = errors.New("内置角色不可删除，如需限制权限请修改权限矩阵")
+
+// Delete removes a custom role and its matrix.
+//
+// Builtin roles are refused. They are not user data: EnsureBuiltinRoles
+// re-creates any missing one on the next read, so deleting one only changes its
+// id — every member still pointing at the old id gets silently detached by the
+// caller's role_id cleanup, and any name-based lookup (tenant admin detection,
+// owner transfer) keeps working against a role nobody holds. Refusing keeps the
+// seed idempotent instead of destructive.
 func (dao *RoleDAO) Delete(ctx context.Context, db *gorm.DB, tenantID, id string) error {
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		_, err := dao.Get(ctx, tx, tenantID, id)
+		role, err := dao.Get(ctx, tx, tenantID, id)
 		if err != nil {
 			return err
+		}
+		if role.IsBuiltin {
+			return ErrBuiltinRoleImmutable
 		}
 		if err := tx.Where("role_id = ?", id).Delete(&entity.RolePermission{}).Error; err != nil {
 			return err

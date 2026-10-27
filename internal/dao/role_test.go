@@ -18,6 +18,7 @@ package dao
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -130,7 +131,7 @@ func TestBuildPermissionRowsUnknownModuleIgnored(t *testing.T) {
 		"not_a_mod": "all",
 	})
 	if len(rows) != len(ConsoleModules) {
-		t.Fatalf("rows = %d, want exactly ConsoleModules count (unknown key should be ignored)", len(rows), len(ConsoleModules))
+		t.Fatalf("rows = %d, want %d (unknown key should be ignored)", len(rows), len(ConsoleModules))
 	}
 }
 
@@ -153,9 +154,9 @@ func TestBuildPermissionRowsUnknownActionDefault(t *testing.T) {
 
 func TestBuiltinRoleNameForEnum(t *testing.T) {
 	cases := []struct {
-		enum    string
-		want    string
-		wantOK  bool
+		enum   string
+		want   string
+		wantOK bool
 	}{
 		{"owner", "租户管理员", true},
 		{"admin", "部门管理员", true},
@@ -175,7 +176,8 @@ func TestBuiltinRoleNameForEnum(t *testing.T) {
 
 // ─── EnsureBuiltinRoles ───────────────────────────────────────────────────────
 
-func TestEnsureBuiltinRolesCreatesThreeRoles(t *testing.T) {
+// want := len(BuiltinRoleNames()) —— 内置角色的数量以种子清单为准，不写字面量。
+func TestEnsureBuiltinRolesCreatesAllBuiltinRoles(t *testing.T) {
 	db := setupRoleDB(t)
 	dao := NewRoleDAO()
 	ctx := context.Background()
@@ -188,8 +190,8 @@ func TestEnsureBuiltinRolesCreatesThreeRoles(t *testing.T) {
 	if err := db.Where("tenant_id = ?", "tenant-1").Find(&roles).Error; err != nil {
 		t.Fatalf("list roles: %v", err)
 	}
-	if len(roles) != 3 {
-		t.Fatalf("roles count = %d, want 3", len(roles))
+	if want := len(BuiltinRoleNames()); len(roles) != want {
+		t.Fatalf("roles count = %d, want %d", len(roles), want)
 	}
 	for _, r := range roles {
 		if !r.IsBuiltin {
@@ -239,8 +241,8 @@ func TestEnsureBuiltinRolesIdempotent(t *testing.T) {
 	if err := db.Where("tenant_id = ? AND is_builtin = ?", "tenant-1", true).Find(&roles).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(roles) != 3 {
-		t.Fatalf("roles after double ensure = %d, still want 3", len(roles))
+	if want := len(BuiltinRoleNames()); len(roles) != want {
+		t.Fatalf("roles after double ensure = %d, still want %d", len(roles), want)
 	}
 }
 
@@ -258,8 +260,8 @@ func TestEnsureBuiltinRolesPerTenant(t *testing.T) {
 
 	var count int64
 	db.Model(&entity.Role{}).Where("tenant_id IN ? AND is_builtin = ?", []string{"tenant-1", "tenant-2"}, true).Count(&count)
-	if count != 6 {
-		t.Fatalf("total builtin roles = %d, want 6 (3 per tenant)", count)
+	if want := int64(len(BuiltinRoleNames())) * 2; count != want {
+		t.Fatalf("total builtin roles = %d, want %d (%d per tenant)", count, want, want/2)
 	}
 }
 
@@ -428,6 +430,38 @@ func TestRoleDAODeleteRemovesRoleAndPermissions(t *testing.T) {
 	}
 }
 
+// 内置角色不可删。删掉并不能真的清掉：EnsureBuiltinRoles 会在下一次读时把它
+// 重新种回来，只是换了个 id —— 而删之前调用方已经把成员的 role_id 置空了，
+// 等于静默降权。所以宁可在 DAO 这一层直接拒绝。
+func TestRoleDAODeleteRejectsBuiltinRole(t *testing.T) {
+	db := setupRoleDB(t)
+	dao := NewRoleDAO()
+	ctx := context.Background()
+
+	if err := dao.EnsureBuiltinRoles(ctx, db, "tenant-1"); err != nil {
+		t.Fatalf("EnsureBuiltinRoles: %v", err)
+	}
+
+	// 普通内置角色 + Owner（is_system，同样带 is_builtin 标记）都要挡住。
+	for _, name := range []string{"租户管理员", "Owner"} {
+		var role entity.Role
+		if err := db.Where("tenant_id = ? AND name = ?", "tenant-1", name).Take(&role).Error; err != nil {
+			t.Fatalf("load builtin role %q: %v", name, err)
+		}
+
+		err := dao.Delete(ctx, db, "tenant-1", role.ID)
+		if !errors.Is(err, ErrBuiltinRoleImmutable) {
+			t.Fatalf("Delete(%q) = %v, want ErrBuiltinRoleImmutable", name, err)
+		}
+
+		var rc int64
+		db.Model(&entity.Role{}).Where("id = ?", role.ID).Count(&rc)
+		if rc != 1 {
+			t.Fatalf("builtin role %q must survive a refused delete", name)
+		}
+	}
+}
+
 // ─── ListByTenant / Get ───────────────────────────────────────────────────────
 
 func TestRoleDAOListByTenant(t *testing.T) {
@@ -439,16 +473,20 @@ func TestRoleDAOListByTenant(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 再加一个自定义角色
+	// 再加一个自定义角色，并给它一行权限 —— matrix 只收录「有权限行」的角色，
+	// 裸建一个没有权限行的角色是查不到 key 的，那是预期行为而不是 bug。
 	custom := &entity.Role{ID: common.GenerateUUID(), TenantID: "tenant-1", Name: "自定义"}
 	db.Create(custom)
+	rows := buildPermissionRows(custom.ID, map[string]string{"dataset": "view"})
+	db.Create(&rows)
 
 	roles, matrix, err := dao.ListByTenant(ctx, db, "tenant-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(roles) != 4 {
-		t.Fatalf("roles = %d, want 4 (3 builtin + 1 custom)", len(roles))
+	want := len(BuiltinRoleNames()) + 1
+	if len(roles) != want {
+		t.Fatalf("roles = %d, want %d (%d builtin + 1 custom)", len(roles), want, want-1)
 	}
 	// 排序：builtin DESC, name ASC → builtin 先
 	if !roles[0].IsBuiltin {
@@ -544,7 +582,7 @@ func TestRoleDAOReplacePermissionsOverwrites(t *testing.T) {
 	byMod := map[string]*entity.RolePermission{}
 	for _, r := range after {
 		r := r
-		byMod[r.Module] = r
+		byMod[r.Module] = &r
 	}
 	if !byMod["dataset"].CanCreate {
 		t.Fatal("dataset.CanCreate should be true after replace")

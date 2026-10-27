@@ -168,11 +168,22 @@ echo ""
 echo "[C] 角色权限"
 
 ROLES=$(req "$TOK" "$BASE/tenants/$TENANT/roles")
-ck "C1 内置角色 3 个" "3" "$(echo "$ROLES" | jq '[.data.roles[] | select(.is_builtin==true)] | length')"
+# 校验四个内置角色都在，而不是数个数：内置清单从 3 个变 4 个（Owner 变成内置
+# 角色）时，写死数字的断言会静默过期；这里关心的是「该有的都在」。
+for _bn in Owner 租户管理员 部门管理员 普通成员; do
+  ck "C1 内置角色存在：$_bn" "1" \
+    "$(echo "$ROLES" | jq --arg n "$_bn" '[.data.roles[] | select(.is_builtin==true and .name==$n)] | length')"
+done
 
 BUILTIN_ID=$(echo "$ROLES" | jq -r '[.data.roles[] | select(.name=="普通成员")][0].id')
 DEL_BUILTIN=$(req "$TOK" -X DELETE "$BASE/tenants/$TENANT/roles/$BUILTIN_ID")
 ckn "C2 内置角色不可删除" "0" "$(echo "$DEL_BUILTIN" | jq -r '.code')"
+
+# 只判错误码不够：删成功也会被 EnsureBuiltinRoles 在下次列表时重建，返回的
+# 还是一个「看起来正常」的列表。真正能区分的是 id —— 被删过就一定会变。
+BUILTIN_ID_AFTER=$(req "$TOK" "$BASE/tenants/$TENANT/roles" \
+  | jq -r '[.data.roles[] | select(.name=="普通成员")][0].id')
+ck "C2b 内置角色 id 未变（非删后重建）" "$BUILTIN_ID" "$BUILTIN_ID_AFTER"
 
 NEW_ROLE=$(req "$TOK" -X POST "$BASE/tenants/$TENANT/roles" -d '{"name":"E2E自定义角色","description":"端到端测试"}')
 NEW_ROLE_ID=$(echo "$NEW_ROLE" | jq -r '.data.id // empty')
