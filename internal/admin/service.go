@@ -227,16 +227,6 @@ func (s *Service) CreateUser(ctx context.Context, username, password, role, tena
 	}
 
 	tenantID = strings.TrimSpace(tenantID)
-	if tenantID == "" {
-		return nil, fmt.Errorf("tenant_id is required")
-	}
-	var tenant entity.Tenant
-	if err := dao.DB.WithContext(ctx).Where("id = ?", tenantID).First(&tenant).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("tenant not found")
-		}
-		return nil, err
-	}
 
 	existUser, _ := s.userDAO.GetByEmail(ctx, dao.DB, username)
 	if existUser != nil {
@@ -292,20 +282,32 @@ func (s *Service) CreateUser(ctx context.Context, username, password, role, tena
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
-	// 绑定到调用方选定的租户，角色固定为普通成员（超管通过「设置超管」单独指定）。
-	memberStatus := "1"
-	member := &entity.UserTenant{
-		ID:        common.GenerateUUID(),
-		UserID:    userID,
-		TenantID:  tenantID,
-		Role:      "normal",
-		InvitedBy: userID,
-		Status:    &memberStatus,
-		JoinType:  "direct",
-	}
-	if err = tx.Create(member).Error; err != nil {
-		rollbackTx()
-		return nil, fmt.Errorf("failed to bind user to tenant: %w", err)
+	// 绑定到调用方选定的租户，角色固定为普通成员。
+	// 若 tenantID 为空（用户未分配租户），则只创建 user 记录、跳过 user_tenant 关联。
+	if tenantID != "" {
+		var tenant entity.Tenant
+		if err := dao.DB.WithContext(ctx).Where("id = ?", tenantID).First(&tenant).Error; err != nil {
+			rollbackTx()
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, fmt.Errorf("tenant not found")
+			}
+			return nil, err
+		}
+
+		memberStatus := "1"
+		member := &entity.UserTenant{
+			ID:        common.GenerateUUID(),
+			UserID:    userID,
+			TenantID:  tenantID,
+			Role:      "normal",
+			InvitedBy: userID,
+			Status:    &memberStatus,
+			JoinType:  "direct",
+		}
+		if err = tx.Create(member).Error; err != nil {
+			rollbackTx()
+			return nil, fmt.Errorf("failed to bind user to tenant: %w", err)
+		}
 	}
 
 	// Commit transaction

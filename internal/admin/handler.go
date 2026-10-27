@@ -265,10 +265,6 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	if req.Role == "" {
 		req.Role = "user"
 	}
-	if strings.TrimSpace(req.TenantID) == "" {
-		common.ErrorWithCode(c, common.CodeBadRequest, "tenant_id is required")
-		return
-	}
 	ctx := c.Request.Context()
 
 	userInfo, err := h.service.CreateUser(ctx, req.Username, req.Password, req.Role, req.TenantID)

@@ -233,7 +233,7 @@ function useCreateUserForm(props?: {
           .string()
           .min(1, { message: t('admin.confirmPasswordRequired') }),
         role: z.string().optional(),
-        tenantId: z.string().min(1, { message: '请选择所属租户' }),
+        tenantId: z.string().optional(),
       })
       .refine((data) => data.password === data.confirmPassword, {
         message: t('admin.confirmPasswordDoNotMatch'),
