@@ -77,7 +77,7 @@ export const AssistantGroupButton = ({
     showModal: showPromptModal,
   } = useSetModalState();
   const { t } = useTranslation();
-  const { handleRead, ref, isPlaying } = useSpeech(content, audioBinary);
+  const { handleRead, isPlaying } = useSpeech(content, audioBinary);
 
   const copyText = useMemo(() => removeThinkSection(content), [content]);
 
@@ -143,8 +143,6 @@ export const AssistantGroupButton = ({
               </TooltipTrigger>
               <TooltipContent>{t('chat.read')}</TooltipContent>
             </Tooltip>
-
-            <audio src="" ref={ref}></audio>
           </>
         )}
         {showLikeButton && (

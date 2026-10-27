@@ -35,8 +35,12 @@ export function setCurrentTenantId(tenantId: string) {
   try {
     if (tenantId) {
       localStorage.setItem(STORAGE_KEY, tenantId);
+      // 换了租户，原来选的部门属于旧租户，必须清掉
+      localStorage.removeItem(DEPARTMENT_KEY);
     } else {
       localStorage.removeItem(STORAGE_KEY);
+      // 清租户也要清部门 —— 部门是租户下的二级上下文
+      localStorage.removeItem(DEPARTMENT_KEY);
     }
   } catch {
     // localStorage 不可用（隐私模式）时降级为「不切换」
@@ -45,6 +49,30 @@ export function setCurrentTenantId(tenantId: string) {
 
 export function clearCurrentTenantId() {
   setCurrentTenantId('');
+}
+
+// ── 当前部门 ────────────────────────────────────────────────────────────────
+// 部门是租户下的二级上下文，跟着租户一起切换：换租户时必须清掉旧租户的部门。
+const DEPARTMENT_KEY = 'ragflow.current_department_id';
+
+export function getCurrentDepartmentId(): string {
+  try {
+    return localStorage.getItem(DEPARTMENT_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function setCurrentDepartmentId(departmentId: string) {
+  try {
+    if (departmentId) {
+      localStorage.setItem(DEPARTMENT_KEY, departmentId);
+    } else {
+      localStorage.removeItem(DEPARTMENT_KEY);
+    }
+  } catch {
+    // localStorage 不可用时降级为「不选部门」
+  }
 }
 
 /** 请求头名称，与后端 handler.TenantHeader 保持一致。 */

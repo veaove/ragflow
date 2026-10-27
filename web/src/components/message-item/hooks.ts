@@ -19,7 +19,6 @@ import { IRemoveMessageById, useSpeechWithSse } from '@/hooks/logic-hooks';
 import { useDeleteMessage, useFeedback } from '@/hooks/use-chat-request';
 import { IFeedbackRequestBody } from '@/interfaces/request/chat';
 import { hexStringToUint8Array } from '@/utils/common-util';
-import { SpeechPlayer } from 'openai-speech-stream-player';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const useSendFeedback = (messageId: string) => {
@@ -70,65 +69,113 @@ export const useRemoveMessage = (
 };
 
 export const useSpeech = (content: string, audioBinary?: string) => {
-  const ref = useRef<HTMLAudioElement>(null);
   const { read } = useSpeechWithSse();
-  const player = useRef<SpeechPlayer>();
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
 
-  const initialize = useCallback(async () => {
-    player.current = new SpeechPlayer({
-      audio: ref.current!,
-      onPlaying: () => {
-        setIsPlaying(true);
-      },
-      onPause: () => {
-        setIsPlaying(false);
-      },
-      onChunkEnd: () => {},
-      mimeType: MediaSource.isTypeSupported('audio/mpeg')
-        ? 'audio/mpeg'
-        : 'audio/mp4; codecs="mp4a.40.2"', // https://stackoverflow.com/questions/64079424/cannot-replay-mp3-in-firefox-using-mediasource-even-though-it-works-in-chrome
-    });
-    await player.current.init();
+  /**
+   * 每次播放都用独立的 `new Audio(url)`。
+   *
+   * 原方案把 TTS 返回的 audio/wav 喂给 MediaSource → mp4 SourceBuffer
+   * 被静默丢弃（表现是按钮变暂停但没声音）。WorkBuddy 换成了
+   * 原生 <audio src=blob URL> 方向对了，但还卡在两个坑上：
+   *
+   * 1. useEffect 空依赖 + ref.current=null 时跳过绑 ended/pause
+   *    listener，按钮状态卡「播放中」。
+   * 2. 历史消息 audio_binary 在 audio 元素渲染到 DOM 之前就设置 src，
+   *    ref.current=null 直接 return，二进制音频被丢弃。
+   *
+   * 跟 next-message-item 统一：不渲染 JSX <audio>，每次 play 创建
+   * 独立 Audio 实例，天然隔离，不用 useEffect 绑事件，也不怕 showLoudspeaker
+   * 条件下 audio 元素不存在。
+   */
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+
+  const stopCurrent = useCallback(() => {
+    const el = audioRef.current;
+    if (el) {
+      el.onended = null;
+      el.pause();
+      audioRef.current = null;
+    }
+    setIsPlaying(false);
   }, []);
 
-  const pause = useCallback(() => {
-    player.current?.pause();
-  }, []);
+  const playUrl = useCallback(
+    async (url: string) => {
+      stopCurrent();
+      const el = new Audio(url);
+      audioRef.current = el;
+      el.onended = () => {
+        if (audioRef.current === el) {
+          audioRef.current = null;
+          setIsPlaying(false);
+        }
+      };
+      el.onerror = () => {
+        if (audioRef.current === el) {
+          audioRef.current = null;
+          setIsPlaying(false);
+        }
+      };
+      try {
+        await el.play();
+        setIsPlaying(true);
+      } catch {
+        setIsPlaying(false);
+      }
+    },
+    [stopCurrent],
+  );
 
   const speech = useCallback(async () => {
-    const response = await read({ text: content });
-    if (response) {
-      player?.current?.feedWithResponse(response);
+    // 历史消息 audioBinary 预创建的 URL 已存在就直接用；否则走 SSE。
+    if (objectUrlRef.current) {
+      await playUrl(objectUrlRef.current);
+      return;
     }
-  }, [read, content]);
+    const response = await read({ text: content });
+    if (!response) return;
+    const blob = await response.blob();
+    if (blob.size === 0) return;
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+    }
+    const url = URL.createObjectURL(blob);
+    objectUrlRef.current = url;
+    await playUrl(url);
+  }, [read, content, playUrl]);
 
-  const handleRead = useCallback(async () => {
+  const handleRead = useCallback(() => {
     if (isPlaying) {
-      setIsPlaying(false);
-      pause();
+      stopCurrent();
     } else {
-      setIsPlaying(true);
       speech();
     }
-  }, [setIsPlaying, speech, isPlaying, pause]);
+  }, [isPlaying, stopCurrent, speech]);
 
+  // 组件卸载时停掉正在播的音频并释放 object URL。
   useEffect(() => {
-    if (audioBinary) {
-      const units = hexStringToUint8Array(audioBinary);
-      if (units) {
-        try {
-          player.current?.feed(units);
-        } catch (error) {
-          console.warn(error);
-        }
+    return () => {
+      stopCurrent();
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
       }
+    };
+  }, [stopCurrent]);
+
+  // 历史消息若带十六进制音频，预创建 object URL。
+  useEffect(() => {
+    if (!audioBinary) return;
+    const units = hexStringToUint8Array(audioBinary);
+    if (!units) return;
+    const blob = new Blob([units], { type: 'audio/wav' });
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
     }
+    objectUrlRef.current = URL.createObjectURL(blob);
+    // 不自动播放，等用户点 handleRead 触发 playUrl。
   }, [audioBinary]);
 
-  useEffect(() => {
-    initialize();
-  }, [initialize]);
-
-  return { ref, handleRead, isPlaying };
+  return { isPlaying, handleRead };
 };
