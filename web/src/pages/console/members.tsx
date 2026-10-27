@@ -53,15 +53,18 @@ export default function ConsoleMembers() {
   const tenantId = tenantInfo?.tenant_id as string | undefined;
   const isOwner = tenantInfo?.role === 'owner';
 
-  // Owner 移交：owner 把权限转给本租户里的另一个成员
-  const [transferTarget, setTransferTarget] = useState<ConsoleMember | null>(null);
+  // Owner 移交：owner 把权限转给本租户里的另一个成员。
+  // null = 弹窗关闭；'' = 弹窗已打开但还没选人（点自己那一行的「移交 Owner」
+  // 进来，需要在弹窗里挑一个）；非空 = 已指定目标（点目标成员行上的按钮进来）。
+  // 只存 id 不存对象：members 会随筛选/翻页重取，存对象容易拿到过期的一份。
+  const [transferTargetId, setTransferTargetId] = useState<string | null>(null);
   const transferMutation = useMutation({
     mutationFn: async () => {
-      if (!tenantId || !transferTarget) throw new Error('missing tenant or target');
-      return transferTenantOwner(tenantId, transferTarget.id);
+      if (!tenantId || !transferTargetId) throw new Error('missing tenant or target');
+      return transferTenantOwner(tenantId, transferTargetId);
     },
     onSuccess: () => {
-      setTransferTarget(null);
+      setTransferTargetId(null);
       // 关键：tenantInfo 也变了（当前用户 role 从 owner → normal + role_id），
       // 所以除了 members 列表，还要让 useFetchTenantInfo 重新拉。
       queryClient.invalidateQueries({ queryKey: ['tenantInfo'] });
@@ -157,6 +160,31 @@ export default function ConsoleMembers() {
   });
   const members: ConsoleMember[] = data?.members ?? [];
   const total = data?.total ?? 0;
+
+  // 交接候选人单独拉一份全量在职成员，不复用表格数据：表格带筛选和分页，
+  // 用户筛了「研发部」时不该只能移交给研发部的人。
+  const { data: transferCandidates = [], isFetching: loadingCandidates } =
+    useQuery({
+      queryKey: ['console/transfer-candidates', tenantId],
+      enabled: !!tenantId && transferTargetId === '',
+      queryFn: async () => {
+        const res = await fetchConsoleMembers(tenantId as string, {
+          page: 1,
+          page_size: 200,
+          status: '1',
+        });
+        const list: ConsoleMember[] = res?.data?.data?.members ?? [];
+        // 已经是 owner 的人不能再被移交一次
+        return list.filter((m) => m.role !== 'owner');
+      },
+    });
+
+  const transferTarget =
+    !transferTargetId
+      ? null
+      : (members.find((m) => m.id === transferTargetId) ??
+        transferCandidates.find((m) => m.id === transferTargetId) ??
+        null);
 
   const openEdit = useCallback((m: ConsoleMember) => {
     setEditing(m);
@@ -378,7 +406,18 @@ export default function ConsoleMembers() {
                     <button
                       type="button"
                       className="mr-3 text-state-warning hover:underline"
-                      onClick={() => setTransferTarget(m)}
+                      onClick={() => setTransferTargetId(m.id)}
+                    >
+                      移交 Owner
+                    </button>
+                  )}
+                  {/* owner 自己那一行也要有入口：租户只有一个人时，
+                      上面那条永远渲染不出来，等于没有移交能力。 */}
+                  {isOwner && m.role === 'owner' && (
+                    <button
+                      type="button"
+                      className="mr-3 text-state-warning hover:underline"
+                      onClick={() => setTransferTargetId('')}
                     >
                       移交 Owner
                     </button>
@@ -597,23 +636,50 @@ export default function ConsoleMembers() {
         </DialogContent>
       </Dialog>
 
-      {/* Owner 移交确认 */}
+      {/* Owner 移交：两种入口共用一个弹窗 —— 从目标成员行进来是「确认」，
+          从自己那一行进来先是「挑人」。 */}
       <Dialog
-        open={!!transferTarget}
-        onOpenChange={(open) => !open && setTransferTarget(null)}
+        open={transferTargetId !== null}
+        onOpenChange={(open) => !open && setTransferTargetId(null)}
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>移交 Owner 权限</DialogTitle>
           </DialogHeader>
           <div className="py-4 text-sm">
-            <p>
-              您将把 Owner 权限移交给{' '}
-              <span className="font-medium text-text-primary">
-                {transferTarget?.nickname || transferTarget?.email}
-              </span>
-              。
-            </p>
+            {transferTarget ? (
+              <p>
+                您将把 Owner 权限移交给{' '}
+                <span className="font-medium text-text-primary">
+                  {transferTarget.nickname || transferTarget.email}
+                </span>
+                。
+              </p>
+            ) : (
+              <>
+                <p>选择接任 Owner 的成员：</p>
+                <select
+                  value=""
+                  onChange={(e) => setTransferTargetId(e.target.value)}
+                  disabled={loadingCandidates || transferCandidates.length === 0}
+                  className="mt-2 h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none disabled:opacity-60"
+                >
+                  <option value="">
+                    {loadingCandidates ? '加载成员…' : '请选择成员'}
+                  </option>
+                  {transferCandidates.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nickname || c.email}
+                    </option>
+                  ))}
+                </select>
+                {!loadingCandidates && transferCandidates.length === 0 && (
+                  <p className="mt-2 text-xs text-state-warning">
+                    本租户只有你一位在职成员，先邀请成员后才能移交。
+                  </p>
+                )}
+              </>
+            )}
             <p className="mt-2 text-text-secondary">
               移交后：您将变成「租户管理员」（全权限矩阵但非硬编码 owner），
               该成员将成为新的 Owner。
@@ -622,18 +688,32 @@ export default function ConsoleMembers() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setTransferTarget(null)}
+              onClick={() => setTransferTargetId(null)}
               disabled={transferMutation.isPending}
             >
               取消
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => transferMutation.mutate()}
-              disabled={transferMutation.isPending}
-            >
-              {transferMutation.isPending ? '移交中…' : '确认移交'}
-            </Button>
+            {!transferTarget &&
+            !loadingCandidates &&
+            transferCandidates.length === 0 ? (
+              // 没人可交时不要留一个点不动的「确认移交」，直接给出下一步
+              <Button
+                onClick={() => {
+                  setTransferTargetId(null);
+                  setInviteOpen(true);
+                }}
+              >
+                去邀请成员
+              </Button>
+            ) : (
+              <Button
+                variant="destructive"
+                onClick={() => transferMutation.mutate()}
+                disabled={transferMutation.isPending || !transferTarget}
+              >
+                {transferMutation.isPending ? '移交中…' : '确认移交'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
