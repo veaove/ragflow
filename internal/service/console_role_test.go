@@ -306,7 +306,7 @@ func TestSavePermissionsClearsMatrix(t *testing.T) {
 	role := &entity.Role{ID: "r-sp2", TenantID: "tenant-1", Name: "清空测试"}
 	db.Create(role)
 	db.Create(&[]*entity.RolePermission{
-		{RoleID: role.ID, Module: "dataset", CanView: true},
+		{ID: "rp-r-sp2-1", RoleID: role.ID, Module: "dataset", CanView: true},
 	})
 
 	// 空输入 → 清空全部
@@ -391,8 +391,8 @@ func TestEffectivePermissionsExplicitRoleID(t *testing.T) {
 	}
 	db.Create(role)
 	db.Create(&[]*entity.RolePermission{
-		{RoleID: role.ID, Module: "dataset", CanView: true, CanCreate: true, CanEdit: true, CanDelete: true, CanManage: true},
-		{RoleID: role.ID, Module: "chat", CanView: true},
+		{ID: "rp-r-custom-1", RoleID: role.ID, Module: "dataset", CanView: true, CanCreate: true, CanEdit: true, CanDelete: true, CanManage: true},
+		{ID: "rp-r-custom-2", RoleID: role.ID, Module: "chat", CanView: true},
 	})
 
 	valid := string(entity.StatusValid)
