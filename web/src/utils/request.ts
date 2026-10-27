@@ -79,8 +79,27 @@ function moduleNameFor(url: string): string {
   return match?.moduleName ?? '该功能';
 }
 
-// 后端自己拼好的中文权限提示（包含「」书名号或 "没有" 关键字）→ 直接用后端 message。
-const BACKEND_PERMISSION_HINT = /[「"].*[」"]|没有.*权限|无.*权限|forbidden|permission denied/i;
+// 后端权限相关 message 的特征（中英文全覆盖）。
+// 后端有时把权限不足打 103/107 等 OperatingError 而不是 108/403，
+// 所以不能只靠 code 判断，必须也看 message 文本。
+const PERMISSION_HINT_PATTERNS = [
+  /[「"][^」"]+[」"]/,            // 中文「模块名」书名号
+  /没有[^，。]*权限/,              // "没有 XX 权限"
+  /无[^，。]*权限/,                // "无 XX 权限"
+  /权限不足/,                     // 直白中文
+  /permission denied/i,
+  /no permission/i,
+  /make sure you have permission/i,  // agent_upload 里的英文硬编码
+  /access (to )?(agent|resource|canvas)/i,
+  /forbidden/i,
+];
+
+/** 后端 message 是否表达了「权限不足」语义。 */
+function isPermissionMessage(code: number, message?: string): boolean {
+  if (code === 108 || code === 403) return true;
+  if (!message) return false;
+  return PERMISSION_HINT_PATTERNS.some((p) => p.test(message));
+}
 
 // 5 秒内同一模块只弹一次权限提示，避免页面加载时 N 个 403 刷屏。
 const permissionToastCooldown = new Map<string, number>();
@@ -91,8 +110,8 @@ function notifyPermissionDenied(url: string, backendMessage?: string) {
   if (now - last < 5000) return;
   permissionToastCooldown.set(mod, now);
 
-  // 后端已经返回了友好中文提示 → 直接用，不要再加一层
-  if (backendMessage && BACKEND_PERMISSION_HINT.test(backendMessage)) {
+  // 后端已经返回了清晰的权限提示 → 直接用，不要再加一层
+  if (backendMessage && PERMISSION_HINT_PATTERNS.some((p) => p.test(backendMessage))) {
     notification.warning({
       message: '权限不足',
       description: backendMessage,
@@ -288,9 +307,9 @@ request.interceptors.response.use(async (response: Response, options) => {
     }
     authorizationUtil.removeAll();
     redirectToLogin();
-  } else if (data?.code === 108 || data?.code === 403) {
-    // 权限不足：后端有两个业务码 —— 108（PermissionError）和 403（Forbidden）。
-    // 弹友好的中文提示，5 秒内同一模块只弹一次。
+  } else if (isPermissionMessage(data?.code, data?.message)) {
+    // 权限不足——后端可能打 108/403，也可能误打 103（OperatingError），
+    // 所以统一用 message 文本识别。弹友好的中文提示，5 秒内同一模块只弹一次。
     notifyPermissionDenied(response?.url, data?.message);
   } else if (data?.code !== 0 && !skipErrorCodes?.includes(data?.code)) {
     notification.error({
