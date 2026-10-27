@@ -404,12 +404,13 @@ func (s *SynonymService) resolveTenant(ctx context.Context, userID, datasetID st
 	}
 	subject := permission.Subject{UserID: userID}
 	checker := permission.NewDatabaseChecker(dao.DB)
-	// Membership of the base's tenant comes first. A resource_grant of kind
-	// "team" currently matches every caller — the grant lookup does not verify
-	// that the subject belongs to the tenant it grants to — so the dataset check
-	// on its own would let anyone who merely knows the base id rewrite its
-	// vocabulary. This surface is a writer, so it stays at "the base's tenant",
-	// which is never wider than what the read path already allows.
+	// Membership of the base's tenant comes first. It used to be the only real
+	// defence: the grant lookup matched subject_kind='team' for every caller
+	// without checking that the caller belongs to the tenant it grants to, so
+	// anyone who merely knew the base id could rewrite its vocabulary. The
+	// engine now binds a team grant to tenant membership, but this surface is a
+	// writer, so it stays at "the base's tenant" — never wider than what the
+	// read path allows.
 	//
 	// A personal tenant is keyed by its owner's user id and needs no membership
 	// row; the same convention the model factory and the scope query follow.

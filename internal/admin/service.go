@@ -2262,9 +2262,10 @@ func (s *Service) SetTenantOwner(ctx context.Context, tenantID, userEmail string
 	}
 
 	err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 先把当前所有 owner 降级为 normal（GORM Updates + map 才是最稳的写法）
 		if err := tx.Model(&entity.UserTenant{}).
 			Where("tenant_id = ? AND role = ?", tenantID, "owner").
-			Update("role", "normal").Error; err != nil {
+			Updates(map[string]interface{}{"role": "normal"}).Error; err != nil {
 			return err
 		}
 

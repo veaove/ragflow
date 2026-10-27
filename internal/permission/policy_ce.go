@@ -227,17 +227,13 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 		// 部门在 Go 侧先解析成 id，而不是在 SQL 里嵌套 user 表 —— 少一次子查询，
 		// 也让本包能在只迁移了部分表的测试库上跑通。
 		deptID := lookupDepartmentID(ctx, source.db, subject.UserID)
+		grantWhere, grantArgs := grantSubjectCondition(db, subject.UserID, deptID)
 		granted := db.Model(&entity.ResourceGrant{}).
 			Select("1").
 			Where("resource_grant.tenant_id = knowledgebase.tenant_id").
 			Where("resource_grant.resource_kind = ?", string(ResourceKindDataset)).
 			Where("resource_grant.resource_id = knowledgebase.id").
-			Where(`resource_grant.subject_kind = ?
-				OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)
-				OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)`,
-				entity.GrantSubjectTeam,
-				entity.GrantSubjectUser, subject.UserID,
-				entity.GrantSubjectDepartment, deptID)
+			Where(grantWhere, grantArgs...)
 		// 部门管理员看得到本部门（含子部门）成员建的知识库，即使它仍是
 		// permission=me —— 与 resolveResource 里的 departmentAdminCovers 同一条
 		// 规则。资源表没有部门列，只能反查创建者的 user.department_id，所以
@@ -464,6 +460,33 @@ func readOnlyOperations(ops []Operation) []Operation {
 	return out
 }
 
+// grantSubjectCondition 构造「这条授权是否落在此主体身上」的 SQL 片段。
+//
+// QueryScope 的批量过滤与 grantLevel 的单条判定必须用同一份条件。两份各写
+// 一遍时，任何一边漏了限制都会变成「列表里看得到、点进去 404」，或者更糟的
+// 「列表里看不到、直连 id 能读」——所以这里只有一份。
+func grantSubjectCondition(db *gorm.DB, userID, deptID string) (string, []any) {
+	// 「全团队」的语义是「本租户成员可见」，不是「任何人可见」。grant 表只
+	// 记了被授权的租户，成员关系得回查 user_tenant —— 少了这一层，别的租户
+	// 的库只要挂了一条 team 授权，全站每个登录用户都会在列表里看到它。
+	member := db.Model(&entity.UserTenant{}).
+		Select("1").
+		Where("user_tenant.tenant_id = resource_grant.tenant_id").
+		Where("user_tenant.user_id = ? AND user_tenant.status = ?", userID, string(entity.StatusValid))
+
+	conditions := []string{"(resource_grant.subject_kind = ? AND EXISTS (?))"}
+	args := []any{entity.GrantSubjectTeam, member}
+	// 点名到人的授权不需要成员关系：它本身就是例外，按 id 精确匹配即可。
+	conditions = append(conditions, "(resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)")
+	args = append(args, entity.GrantSubjectUser, userID)
+	// 没有部门时不接这一段：deptID 为空串会匹配到 subject_id 同样为空的脏行。
+	if deptID != "" {
+		conditions = append(conditions, "(resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)")
+		args = append(args, entity.GrantSubjectDepartment, deptID)
+	}
+	return "(" + strings.Join(conditions, " OR ") + ")", args
+}
+
 // grantLevel 返回该主体在这条资源上的最高授权级别。
 //
 // 返回值："edit" / "read" / ""（无授权）。
@@ -481,6 +504,7 @@ func (e *evaluation) grantLevel(ctx context.Context, subject Subject, resource R
 		Total int64
 		Edits int64
 	}
+	grantWhere, grantArgs := grantSubjectCondition(source.db.WithContext(ctx), subject.UserID, lookupDepartmentID(ctx, source.db, subject.UserID))
 	err := source.db.WithContext(ctx).
 		Model(&entity.ResourceGrant{}).
 		Select("COUNT(*) AS total, "+
@@ -488,12 +512,7 @@ func (e *evaluation) grantLevel(ctx context.Context, subject Subject, resource R
 		Where("resource_grant.tenant_id = ?", resource.TenantID).
 		Where("resource_grant.resource_kind = ?", string(resource.Ref.Kind)).
 		Where("resource_grant.resource_id = ?", resource.Ref.ID).
-		Where(`resource_grant.subject_kind = ?
-			OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)
-			OR (resource_grant.subject_kind = ? AND resource_grant.subject_id = ?)`,
-			entity.GrantSubjectTeam,
-			entity.GrantSubjectUser, subject.UserID,
-			entity.GrantSubjectDepartment, lookupDepartmentID(ctx, source.db, subject.UserID)).
+		Where(grantWhere, grantArgs...).
 		Scan(&row).Error
 	if err != nil {
 		// 授权是"额外放行"而不是"额外限制"：这张表不可用（老库未迁移、测试库
