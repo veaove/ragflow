@@ -682,6 +682,9 @@ func (h *ConsoleHandler) MyConsolePermissions(c *gin.Context) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "[PERMS-DEBUG] OK role=%s modules=%d\n", perms.RoleEnum, len(perms.Modules))
+	for mod, row := range perms.Modules {
+		fmt.Fprintf(os.Stderr, "[PERMS-DEBUG]   module=%s can_view=%v\n", mod, row.CanView)
+	}
 	common.SuccessWithData(c, perms, "success")
 }
 
