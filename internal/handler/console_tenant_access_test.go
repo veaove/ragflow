@@ -35,7 +35,8 @@ func setupConsoleAccessDB(t *testing.T) *gorm.DB {
 		t.Fatalf("migrate tenant: %v", err)
 	}
 	enabled := true
-	if err := db.Create(&entity.Tenant{ID: "tenant-1", Name: "测试租户", Enabled: &enabled}).Error; err != nil {
+	name := "测试租户"
+	if err := db.Create(&entity.Tenant{ID: "tenant-1", Name: &name, Enabled: &enabled}).Error; err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}
 	return db
