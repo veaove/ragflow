@@ -37,6 +37,63 @@ import { addTenantParams } from './llm-util';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
+/**
+ * API URL path → 中文模块名映射。
+ *
+ * 后端返回 403 / code=108 时，前端把请求 URL 丢进这张表匹配一下，
+ * 给用户弹一条「您当前角色没有「XX」的操作权限」而不是干巴巴的 403。
+ *
+ * 加新模块时记得同步 MENU_MODULE（use-console-permissions.ts）和这里。
+ */
+const API_PATH_TO_MODULE: Array<{ test: RegExp; moduleName: string }> = [
+  { test: /\/overview\/|\/analytics\//, moduleName: '总览' },
+  { test: /\/analytics\//, moduleName: '报表统计' },
+  { test: /\/tenant\/[^/]+\/departments/, moduleName: '组织架构' },
+  { test: /\/tenant\/[^/]+\/console\/members/, moduleName: '成员管理' },
+  { test: /\/tenant\/[^/]+\/console\/roles/, moduleName: '角色权限' },
+  { test: /\/tenant\/[^/]+\/console\/grants/, moduleName: '资源授权' },
+  { test: /\/tenant\/[^/]+\/team/, moduleName: '团队' },
+  { test: /\/datasets?\/[^/]+\/documents/, moduleName: '知识库文件' },
+  { test: /\/datasets?\/[^/]+\/parsed/, moduleName: '知识库解析结果' },
+  { test: /\/datasets?\/[^/]+\/chunk/, moduleName: '知识库分块' },
+  { test: /\/(datasets?|knowledge)/, moduleName: '知识库' },
+  { test: /\/chats?(\/|$)/, moduleName: '对话' },
+  { test: /\/searches?(\/|$)|\/search(\/|$)/, moduleName: '知识检索' },
+  { test: /\/agents?(\/|$)|\/flow(\/|$)|\/studio(\/|$)|\/pipeline/, moduleName: '智能体' },
+  { test: /\/memor(y|ies)/, moduleName: '记忆' },
+  { test: /\/qc(\/|$)/, moduleName: 'QC 规则' },
+  { test: /\/files\/?(\?|$)|\/file-manager/, moduleName: '文件管理' },
+  { test: /\/compilation/, moduleName: '知识编译产物' },
+  { test: /\/vocab/, moduleName: '词表' },
+  { test: /\/similar-question/, moduleName: '相似问管理' },
+  { test: /\/(model|llm|provider|models\/instances)/, moduleName: '模型' },
+  { test: /\/datasource|\/data-source/, moduleName: '数据源' },
+  { test: /\/chat-channel|\/channel/, moduleName: '应用渠道' },
+  { test: /\/mcp(\/|$)/, moduleName: 'MCP 服务' },
+  { test: /\/api-key|\/apikey/, moduleName: 'API 密钥' },
+  { test: /\/sandbox/, moduleName: '沙箱' },
+];
+
+function moduleNameFor(url: string): string {
+  const match = API_PATH_TO_MODULE.find(({ test }) => test.test(url));
+  return match?.moduleName ?? '该功能';
+}
+
+// 5 秒内同一模块只弹一次权限提示，避免页面加载时 N 个 403 刷屏。
+const permissionToastCooldown = new Map<string, number>();
+function notifyPermissionDenied(url: string) {
+  const mod = moduleNameFor(url);
+  const now = Date.now();
+  const last = permissionToastCooldown.get(mod) ?? 0;
+  if (now - last < 5000) return;
+  permissionToastCooldown.set(mod, now);
+  notification.warning({
+    message: '权限不足',
+    description: `您当前角色没有「${mod}」的操作权限，请联系管理员在「角色权限」中为您授予相应权限。`,
+    duration: 5,
+  });
+}
+
 export const RetcodeMessage = {
   200: i18n.t('message.200'),
   201: i18n.t('message.201'),
@@ -86,11 +143,10 @@ const errorHandler = (error: {
   } else {
     if (response && response.status) {
       // 403 = 权限不足。普通成员（role=normal）打开管理类页面、或租户里没有
-      // 某个资源时后端就会返回它 —— 这是预期结果，不是故障。原来会给每个
-      // 失败请求弹一个「请求错误 403: Permission denied」，一次页面加载能弹好几个。
-      // 这里直接放行，让调用方按业务码走（code=108 也会静默）。
+      // 某个资源时后端就会返回它 —— 这是预期结果，不是故障。
+      // 弹一条友好的中文提示，5 秒内同一模块只弹一次避免刷屏。
       if (response.status === 403) {
-        console.warn('[forbidden]', response.url);
+        notifyPermissionDenied(response.url);
         return response;
       }
       const errorText =
@@ -209,11 +265,8 @@ request.interceptors.response.use(async (response: Response, options) => {
     authorizationUtil.removeAll();
     redirectToLogin();
   } else if (data?.code === 108) {
-    // 权限不足（CodePermissionError）。普通成员（role=normal）打开管理类页面、
-    // 或租户里没有某个资源时后端就会返回它 —— 这是预期结果，不是故障。
-    // 原来会走下面的通用分支，一次页面加载能弹好几个 "403 Permission denied"，
-    // 看着像系统坏了。这里静默，由页面自己决定显示空态还是「无权限」。
-    console.warn('[forbidden]', response?.url);
+    // 权限不足（CodePermissionError）。弹友好的中文提示，5 秒内同一模块只弹一次。
+    notifyPermissionDenied(response?.url);
   } else if (data?.code !== 0 && !skipErrorCodes?.includes(data?.code)) {
     notification.error({
       message: `${i18n.t('message.hint')} : ${data?.code}`,
