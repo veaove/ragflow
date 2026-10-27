@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
+import { userService } from '@/services/user-service';
 import { MyPermissions, fetchMyPermissions } from '@/services/console-service';
 
 /**
@@ -27,35 +27,29 @@ const MENU_MODULE: Record<string, string> = {
   'setting.team': 'team',
 };
 
-/**
- * 当前用户在租户内的有效权限。
- *
- * 菜单过滤只在「成功拿到后端返回」时才生效。loading/error/disabled 一律
- * 显示完整菜单 —— 后端 ModulePermission 中间件会拦截真正的越权请求，
- * 前端只做视觉裁剪，不做安全闸。
- */
 export function useConsolePermissions() {
-  const { data: tenantInfo } = useFetchTenantInfo();
+  // 自己拿 tenantInfo，不依赖 external hook
+  const { data: tenantInfo, status: tiStatus } = useQuery({
+    queryKey: ['console/tenant-info'],
+    queryFn: async () => {
+      const { data: axiosRes } = await userService.getTenantInfo();
+      return (axiosRes.code === 0 ? axiosRes.data : {}) as { tenant_id?: string; role?: string };
+    },
+    staleTime: 60_000,
+  });
+
   const tenantId = tenantInfo?.tenant_id as string | undefined;
   const isOwner = tenantInfo?.role === 'owner';
 
-  // eslint-disable-next-line no-console
-  console.info('[perms] tenantInfo=', JSON.stringify(tenantInfo), '→ tenantId=', tenantId, 'role=', tenantInfo?.role, 'isOwner=', isOwner);
-
-  const { data, status } = useQuery({
+  const { data: perms, status } = useQuery({
     queryKey: ['console/my-permissions', tenantId],
-    enabled: !!tenantId && !isOwner,  // owner 不需要查权限接口
+    enabled: !!tenantId && !isOwner,
     staleTime: 60_000,
     queryFn: async () => {
       const res = await fetchMyPermissions(tenantId as string);
-      // eslint-disable-next-line no-console
-      console.info('[perms] fetchMyPermissions raw=', JSON.stringify(res));
       return res?.data ?? null;
     },
   });
-
-  // eslint-disable-next-line no-console
-  console.info('[perms] query status=', status, 'enabled=', !!tenantId && !isOwner, 'data=', JSON.stringify(data));
 
   // owner → 直接全显示
   if (isOwner) {
@@ -70,7 +64,7 @@ export function useConsolePermissions() {
   }
 
   // 非 owner：必须等权限接口返回
-  const permsForFilter = status === 'success' && data ? data : null;
+  const permsForFilter = status === 'success' && perms ? perms : null;
   const canView = (module: string): boolean => {
     if (!permsForFilter) return false;     // 没拿到数据 → 不显示
     const row = permsForFilter.modules?.[module];
@@ -86,7 +80,7 @@ export function useConsolePermissions() {
   return {
     perms: permsForFilter,
     tenantId,
-    roleName: data?.role_name ?? '',
+    roleName: perms?.role_name ?? '',
     isOwner: false,
     canView,
     menuAllowed,
