@@ -91,16 +91,18 @@ export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
 export const useFetchTenantData = (): ResponseGetType<ITenantInfo> => {
   const { data, isFetching: loading } = useQuery({
     queryKey: [UserSettingApiAction.TenantInfo],
+    initialData: {} as ITenantInfo,
     gcTime: 0,
     queryFn: async () => {
-      const { data: res } = await userService.getTenantInfo();
-      if (res.code === 0) {
-        console.info('[useFetchTenantData] SUCCESS res.data=', JSON.stringify(res.data));
-        return res.data ?? {};
+      const raw = await userService.getTenantInfo();
+      // raw 应该是 { code: 0, data: {...}, message: "success" }
+      console.info('[useFetchTenantData] raw=', JSON.stringify(raw));
+      if (raw.code === 0) {
+        console.info('[useFetchTenantData] raw.data=', JSON.stringify(raw.data));
+        return (raw.data ?? {}) as ITenantInfo;
       }
-
-      console.info('[useFetchTenantData] FAIL res=', JSON.stringify(res));
-      return res;
+      console.info('[useFetchTenantData] FAIL raw=', JSON.stringify(raw));
+      return raw as unknown as ITenantInfo;
     },
   });
   return { data, loading };
