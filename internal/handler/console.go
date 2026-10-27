@@ -731,7 +731,7 @@ func (h *ConsoleHandler) TransferTenantOwner(c *gin.Context) {
 	}
 
 	var req struct {
-		TargetUserID string json:"target_user_id" binding:"required"
+		TargetUserID string `json:"target_user_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
