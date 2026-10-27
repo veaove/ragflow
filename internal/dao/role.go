@@ -288,7 +288,7 @@ func (dao *RoleDAO) EnsureTenantAdminRole(ctx context.Context, db *gorm.DB, tena
 	if err := db.WithContext(ctx).Create(&role).Error; err != nil {
 		return nil, err
 	}
-	rows := buildBuiltinPermissionRows(role.ID, map[string]string{"*": "all"})
+	rows := buildPermissionRows(role.ID, map[string]string{"*": "all"})
 	for i := range rows {
 		if err := db.WithContext(ctx).Create(&rows[i]).Error; err != nil {
 			return nil, err
