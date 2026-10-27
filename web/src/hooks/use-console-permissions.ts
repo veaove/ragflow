@@ -35,7 +35,7 @@ export function useConsolePermissions() {
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id as string | undefined;
 
-  const { data } = useQuery({
+  const { data, status } = useQuery({
     queryKey: ['console/my-permissions', tenantId],
     enabled: !!tenantId,
     staleTime: 60_000,
@@ -45,10 +45,13 @@ export function useConsolePermissions() {
     },
   });
 
+  // eslint-disable-next-line no-console
+  console.info('[perms] status=', status, 'tenantId=', tenantId, 'data=', data);
+
   const canView = (module: string): boolean => {
-    if (!data) return true;
+    if (!data) return false;             // ← 改：无数据=拒绝（不再默认放行）
     const row = data.modules?.[module];
-    if (!row) return true;
+    if (!row) return false;              // ← 改：模块未配置=拒绝
     return !!row.can_view;
   };
 
@@ -77,13 +80,15 @@ export function filterMenuItems<T extends { name: string; children?: T[] }>(
   items: T[],
   perms: MyPermissions | null,
 ): T[] {
-  if (!perms) return items;
+  // eslint-disable-next-line no-console
+  console.info('[filterMenuItems] perms=', perms, 'items=', items.map((i) => i.name));
+  if (!perms) return [];  // ← 改：无权限数据=全部隐藏（安全默认）
 
   const allowed = (name: string) => {
     const module = MENU_MODULE[name];
     if (!module) return true;
     const row = perms.modules?.[module];
-    return row ? !!row.can_view : true;
+    return row ? !!row.can_view : false;  // ← 改：模块未配置=拒绝
   };
 
   const out: T[] = [];
