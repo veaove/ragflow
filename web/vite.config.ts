@@ -202,9 +202,9 @@ export default defineConfig(({ mode }) => {
       minify: resolveMinify(env.VITE_MINIFY),
       terserOptions: {
         compress: {
-          drop_console: true, // delete console
-          drop_debugger: true, // delete debugger
-          pure_funcs: ['console.log'],
+          drop_console: false, // DEBUG: temporarily disabled to inspect perms flow
+          drop_debugger: true,
+          pure_funcs: [],
         },
         mangle: {
           // properties: {
