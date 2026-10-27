@@ -725,9 +725,39 @@ build_cpp_test() {
     echo -e "${GREEN}✓ C++ test executable built successfully: $BUILD_DIR/rag_analyzer_c_test${NC}"
 }
 
+# Go 编译/链接/测试的中间文件默认写在 $TMPDIR（通常是 /tmp）。容器和云主机上
+# /tmp 往往是容量很小的 tmpfs（这里只有 3.9G），而 tmpfs 占用的正是物理内存：
+# 并发编译多个包时几秒就能写满，随后出现两类假故障 ——
+#   1) 内嵌 NATS 等需要写临时目录的测试报 "insufficient storage resources"，
+#      看起来像存储后端坏了，实际磁盘还剩 150G+；
+#   2) free 里的 used 冲到 90%+，被误判成某个服务内存泄漏。
+# 这里在用户没显式指定 TMPDIR、且 /tmp 是小容量 tmpfs 时，把构建临时目录挪到磁盘。
+ensure_build_tmpdir() {
+    if [ -n "${TMPDIR:-}" ]; then
+        return 0
+    fi
+    local fstype avail target
+    fstype=$(findmnt -no FSTYPE /tmp 2>/dev/null || echo "")
+    if [ "$fstype" != "tmpfs" ]; then
+        return 0
+    fi
+    avail=$(df -m /tmp 2>/dev/null | tail -1 | awk '{print $4}')
+    if [ "${avail:-0}" -gt 8192 ]; then
+        return 0
+    fi
+    target="${TMPDIR_FALLBACK:-/var/tmp/ragflow-build}"
+    if ! mkdir -p "$target" 2>/dev/null; then
+        return 0
+    fi
+    export TMPDIR="$target"
+    echo -e "${YELLOW}/tmp is a ${avail}MB tmpfs; using $target for build temporaries${NC}"
+}
+
 # Build Go server
 build_go() {
     print_section "Building RAGFlow go"
+
+    ensure_build_tmpdir
 
     cd "$PROJECT_ROOT"
 
@@ -1004,6 +1034,8 @@ setup_cgo_env() {
 run_go_tests() {
     print_section "Running Go tests"
 
+    ensure_build_tmpdir
+
     # The tokenizer panics instead of counting 0 when the cl100k table is
     # missing, so provision it before the tests, as CI does. Non-fatal: without
     # it only the token-counting tests fail, and they say why.
@@ -1097,6 +1129,8 @@ run_native_integration_tests() {
 run_go_tests_tagged() {
     local tags="$1"; shift
     print_section "Running Go tests (tags: ${tags})"
+
+    ensure_build_tmpdir
 
     # Same cl100k table requirement as the unit tier (integration/e2e runs count
     # tokens too); non-fatal, see _ensure_cl100k_table.
