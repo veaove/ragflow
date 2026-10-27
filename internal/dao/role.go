@@ -99,7 +99,11 @@ func (dao *RoleDAO) EnsureBuiltinRoles(ctx context.Context, db *gorm.DB, tenantI
 		return err
 	}
 	if existing >= int64(len(builtinRoles)) {
-		return nil
+		// Roles already created, but the permission matrix may be missing rows
+		// for modules added after the tenant was seeded (e.g. qc_*). Fill them
+		// in so ModulePermission middleware does not silently fall through to
+		// "default allow" on a brand-new module.
+		return dao.backfillBuiltinRolePermissions(ctx, db, tenantID)
 	}
 
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -136,6 +140,86 @@ func (dao *RoleDAO) EnsureBuiltinRoles(ctx context.Context, db *gorm.DB, tenantI
 		}
 		return nil
 	})
+}
+
+// backfillBuiltinRolePermissions inserts missing role_permission rows for a
+// tenant's built-in roles. It catches the case where ConsoleModules grew after
+// the roles were seeded (e.g. qc_* modules added mid-2026).
+//
+// It is deliberately permissive: if a builtin role cannot be matched to a
+// builtinRoleSpec by name (admin may have renamed it via the console), we
+// skip that role rather than overwriting a deliberate customisation.
+func (dao *RoleDAO) backfillBuiltinRolePermissions(ctx context.Context, db *gorm.DB, tenantID string) error {
+	var roles []*entity.Role
+	if err := db.WithContext(ctx).
+		Model(&entity.Role{}).
+		Where("tenant_id = ?", tenantID).
+		Where("is_builtin = ?", true).
+		Find(&roles).Error; err != nil {
+		return err
+	}
+	if len(roles) == 0 {
+		return nil
+	}
+
+	for _, role := range roles {
+		var spec *builtinRoleSpec
+		for i := range builtinRoles {
+			if builtinRoles[i].name == role.Name {
+				spec = &builtinRoles[i]
+				break
+			}
+		}
+		if spec == nil {
+			continue
+		}
+
+		var existingModules []string
+		if err := db.WithContext(ctx).
+			Model(&entity.RolePermission{}).
+			Where("role_id = ?", role.ID).
+			Pluck("module", &existingModules).Error; err != nil {
+			return err
+		}
+		have := make(map[string]bool, len(existingModules))
+		for _, m := range existingModules {
+			have[m] = true
+		}
+
+		var missing []*entity.RolePermission
+		for _, module := range ConsoleModules {
+			if have[module] {
+				continue
+			}
+			action, ok := spec.grant[module]
+			if !ok {
+				action = spec.grant["*"]
+			}
+			if action == "" {
+				continue
+			}
+			row := &entity.RolePermission{
+				ID:     common.GenerateUUID(),
+				RoleID: role.ID,
+				Module: module,
+			}
+			switch action {
+			case "all":
+				row.CanView, row.CanCreate, row.CanEdit, row.CanDelete, row.CanManage = true, true, true, true, true
+			case "manage":
+				row.CanView, row.CanManage = true, true
+			case "view":
+				row.CanView = true
+			}
+			missing = append(missing, row)
+		}
+		if len(missing) > 0 {
+			if err := db.WithContext(ctx).Create(&missing).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // buildPermissionRows expands a grant map into one row per module.

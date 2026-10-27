@@ -794,14 +794,12 @@ func qcHitFilterFromQuery(c *gin.Context) dao.QcHitListFilter {
 }
 
 // GetConfig handles GET /qc/config.
+// ModulePermission("qc_config") gates this endpoint. No handler-level
+// tenant-owner hardcode — the permission matrix is the single source of truth.
 func (h *QcHandler) GetConfig(c *gin.Context) {
-	user, code, msg := GetUser(c)
+	_, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
-		return
-	}
-	if !isTenantOwner(c.Request.Context(), user.ID) {
-		common.ErrorWithCode(c, common.CodeForbidden, "no permission")
 		return
 	}
 	cfg := service.GetQcConfig()
@@ -813,14 +811,12 @@ func (h *QcHandler) GetConfig(c *gin.Context) {
 }
 
 // UpdateConfig handles PUT /qc/config.
+// ModulePermission("qc_config") gates this endpoint. No handler-level
+// tenant-owner hardcode — the permission matrix is the single source of truth.
 func (h *QcHandler) UpdateConfig(c *gin.Context) {
-	user, code, msg := GetUser(c)
+	_, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
-		return
-	}
-	if !isTenantOwner(c.Request.Context(), user.ID) {
-		common.ErrorWithCode(c, common.CodeForbidden, "no permission")
 		return
 	}
 	var body struct {
@@ -853,19 +849,6 @@ func (h *QcHandler) UpdateConfig(c *gin.Context) {
 	}
 	service.ReloadQcConfig()
 	common.SuccessWithData(c, nil, "success")
-}
-
-// isTenantOwner reports whether userID owns a tenant (i.e. is a tenant admin),
-// used to gate the system-config endpoints.
-func isTenantOwner(ctx context.Context, userID string) bool {
-	if userID == "" || dao.DB == nil {
-		return false
-	}
-	rows, err := dao.NewUserTenantDAO().GetByUserIDAndRole(ctx, dao.DB, userID, "owner")
-	if err != nil {
-		return false
-	}
-	return len(rows) > 0
 }
 
 var qcWebsocketUpgrader = websocket.Upgrader{
