@@ -154,7 +154,7 @@ export const CreateUserForm = ({
                     <SelectValue placeholder="请选择租户（可留空）" />
                   </SelectTrigger>
                   <SelectContent className="bg-bg-base">
-                    <SelectItem value="">— 不分配 —</SelectItem>
+                    <SelectItem value="__empty__">— 不分配 —</SelectItem>
                     {tenantList?.map((item) => (
                       <SelectItem key={item.id} value={item.id}>
                         {item.name}

@@ -198,7 +198,8 @@ function AdminUserManagement() {
       role?: string;
       tenantId: string;
     }) => {
-      await createUser(email, rsaPsw(password) as string, tenantId);
+      const realTenantId = tenantId === '__empty__' ? '' : tenantId;
+      await createUser(email, rsaPsw(password) as string, realTenantId);
 
       if (IS_ENTERPRISE && role) {
         await updateUserRoleMutation.mutateAsync({ email, role });
