@@ -180,8 +180,11 @@ export default function ConsoleRoles() {
     }
   }, [modules, selected]);
 
+  const isSystemRole = selected?.is_system === true;
+
   const toggleCell = useCallback(
     (module: string, key: keyof RolePermissionRow) => {
+      if (selected?.is_system) return;
       setDraft((rows) =>
         rows.map((row) =>
           row.module === module ? { ...row, [key]: !row[key] } : row,
@@ -194,6 +197,7 @@ export default function ConsoleRoles() {
 
   const toggleRow = useCallback(
     (module: string) => {
+      if (selected?.is_system) return;
       setDraft((rows) => rows.map((row) => {
         if (row.module !== module) return row;
         const allOn = ACTION_COLUMNS.every((c) => row[c.key] === true);
@@ -214,6 +218,7 @@ export default function ConsoleRoles() {
 
   const save = useCallback(async () => {
     if (!tenantId || !selected) return;
+    if (selected.is_system) return;
     await saveConsolePermissions(tenantId, selected.id, draft);
     setDirty(false);
     queryClient.invalidateQueries({ queryKey: ['console/roles'] });
@@ -269,7 +274,12 @@ export default function ConsoleRoles() {
         <span className="text-sm font-medium text-text-primary">
           {role.name}
         </span>
-        {role.is_builtin && (
+        {role.is_system && (
+          <span className="rounded bg-state-warning/10 px-1 text-[10px] text-state-warning">
+            系统
+          </span>
+        )}
+        {!role.is_system && role.is_builtin && (
           <span className="rounded bg-background-second px-1 text-[10px] text-text-secondary">
             内置
           </span>
@@ -342,12 +352,17 @@ export default function ConsoleRoles() {
             <span className="text-sm font-medium text-text-primary">
               权限配置 - {selected?.name ?? '未选择'}
             </span>
-            {selected?.is_builtin && (
+            {selected?.is_system && (
+              <span className="rounded bg-state-warning/10 px-1.5 py-0.5 text-[10px] text-state-warning">
+                系统（不可编辑）
+              </span>
+            )}
+            {selected && !selected.is_system && selected.is_builtin && (
               <span className="rounded bg-background-second px-1.5 py-0.5 text-[10px] text-text-secondary">
                 内置
               </span>
             )}
-            {selected && !selected.is_builtin && (
+            {selected && !selected.is_system && !selected.is_builtin && (
               <button
                 type="button"
                 className="ml-auto text-xs text-state-error hover:underline"
@@ -356,7 +371,7 @@ export default function ConsoleRoles() {
                 删除角色
               </button>
             )}
-            {dirty && (
+            {dirty && !selected?.is_system && (
               <Button className="ml-2 h-8" onClick={save}>
                 保存
               </Button>
@@ -388,6 +403,7 @@ export default function ConsoleRoles() {
                         <input
                           type="checkbox"
                           checked={allOn}
+                          disabled={isSystemRole}
                           onChange={() => toggleRow(row.module)}
                         />
                       </TableCell>
@@ -396,6 +412,7 @@ export default function ConsoleRoles() {
                           <input
                             type="checkbox"
                             checked={row[c.key] === true}
+                            disabled={isSystemRole}
                             onChange={() => toggleCell(row.module, c.key)}
                           />
                         </TableCell>

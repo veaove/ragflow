@@ -509,6 +509,9 @@ export default {
   /** 直接添加成员（无需接受邀请） */
   tenantAddMember: (tenantId: string) =>
     `${restAPIv1}/tenants/${tenantId}/members`,
+  /** Owner 移交给本租户里另一个成员 */
+  tenantTransferOwner: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/console/owner/transfer`,
   tenantConsoleRoles: (tenantId: string) =>
     `${restAPIv1}/tenants/${tenantId}/roles`,
   tenantConsoleRole: (tenantId: string, id: string) =>

@@ -59,6 +59,8 @@ export interface ConsoleRole {
   name: string;
   description: string;
   is_builtin: boolean;
+  /** 系统级内置角色（Owner）：完全不可编辑不可删除。is_system implies is_builtin。 */
+  is_system?: boolean;
   member_count: number;
   permissions: RolePermissionRow[];
 }
@@ -247,6 +249,19 @@ export const addTenantMember = (
   tenantId: string,
   body: { email: string; role?: string; role_id?: string },
 ) => request.post<ResponseData<unknown>>(api.tenantAddMember(tenantId), { data: body });
+
+// ── Owner 移交 ──────────────────────────────────────────────────────────────
+
+/** 当前 owner 把权限移交给本租户内另一个成员。 */
+export const transferTenantOwner = (
+  tenantId: string,
+  targetUserId: string,
+) => request.post<ResponseData<{
+  tenant_id: string;
+  new_owner_id: string;
+  old_owner_id: string;
+  old_owner_role: string;
+}>>(api.tenantTransferOwner(tenantId), { target_user_id: targetUserId });
 
 // ── 当前用户权限 ────────────────────────────────────────────────────────────
 

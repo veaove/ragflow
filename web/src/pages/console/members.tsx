@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LucidePlus, LucideSearch } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -33,6 +33,7 @@ import {
   fetchDepartments,
   removeConsoleMember,
   resetMemberPassword,
+  transferTenantOwner,
   updateConsoleMember,
 } from '@/services/console-service';
 import { rsaPsw } from '@/utils/index';
@@ -50,6 +51,25 @@ export default function ConsoleMembers() {
   const queryClient = useQueryClient();
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id as string | undefined;
+  const isOwner = tenantInfo?.role === 'owner';
+
+  // Owner 移交：owner 把权限转给本租户里的另一个成员
+  const [transferTarget, setTransferTarget] = useState<ConsoleMember | null>(null);
+  const transferMutation = useMutation({
+    mutationFn: async () => {
+      if (!tenantId || !transferTarget) throw new Error('missing tenant or target');
+      return transferTenantOwner(tenantId, transferTarget.id);
+    },
+    onSuccess: () => {
+      setTransferTarget(null);
+      // 关键：tenantInfo 也变了（当前用户 role 从 owner → normal + role_id），
+      // 所以除了 members 列表，还要让 useFetchTenantInfo 重新拉。
+      queryClient.invalidateQueries({ queryKey: ['tenantInfo'] });
+      queryClient.invalidateQueries({ queryKey: ['console/members', tenantId] });
+      queryClient.invalidateQueries({ queryKey: ['console/my-permissions', tenantId] });
+      window.location.reload();
+    },
+  });
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
@@ -354,6 +374,15 @@ export default function ConsoleMembers() {
                   >
                     编辑
                   </button>
+                  {isOwner && m.role !== 'owner' && (
+                    <button
+                      type="button"
+                      className="mr-3 text-state-warning hover:underline"
+                      onClick={() => setTransferTarget(m)}
+                    >
+                      移交 Owner
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="mr-3 text-text-primary hover:underline"
@@ -564,6 +593,47 @@ export default function ConsoleMembers() {
               取消
             </Button>
             <Button onClick={submitPw}>确定</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Owner 移交确认 */}
+      <Dialog
+        open={!!transferTarget}
+        onOpenChange={(open) => !open && setTransferTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>移交 Owner 权限</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 text-sm">
+            <p>
+              您将把 Owner 权限移交给{' '}
+              <span className="font-medium text-text-primary">
+                {transferTarget?.nickname || transferTarget?.email}
+              </span>
+              。
+            </p>
+            <p className="mt-2 text-text-secondary">
+              移交后：您将变成「租户管理员」（全权限矩阵但非硬编码 owner），
+              该成员将成为新的 Owner。
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setTransferTarget(null)}
+              disabled={transferMutation.isPending}
+            >
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => transferMutation.mutate()}
+              disabled={transferMutation.isPending}
+            >
+              {transferMutation.isPending ? '移交中…' : '确认移交'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
