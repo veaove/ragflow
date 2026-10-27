@@ -348,13 +348,14 @@ func (dao *RoleDAO) Delete(ctx context.Context, db *gorm.DB, tenantID, id string
 // console's save button means.
 func (dao *RoleDAO) ReplacePermissions(ctx context.Context, db *gorm.DB, tenantID, roleID string, rows []*entity.RolePermission) error {
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		role, err := dao.Get(ctx, tx, tenantID, roleID)
+		_, err := dao.Get(ctx, tx, tenantID, roleID)
 		if err != nil {
 			return err
 		}
-		if role.IsBuiltin {
-			return ErrBuiltinRoleImmutable
-		}
+		// NOTE: builtin roles no longer block ReplacePermissions. Owners may
+		// fine-tune the permission matrix of builtin roles (e.g. revoke overview
+		// from "普通成员") without having to create a custom role first.
+		// The role name/description remain protected elsewhere.
 		if err := tx.Where("role_id = ?", roleID).Delete(&entity.RolePermission{}).Error; err != nil {
 			return err
 		}

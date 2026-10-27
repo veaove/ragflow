@@ -542,7 +542,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 			}
 
 			// 总览页的跨模块聚合（最近动态：文档/知识库/应用/质检拦截）。
-			overview := v1.Group("/overview")
+			overview := v1.Group("/overview", handler.ModulePermission("overview"))
 			{
 				overview.GET("/activities", r.overviewHandler.GetRecentActivities)
 				// 各知识库的编译产物（wiki/tree/graph/mindmap/timeline）汇总
@@ -550,7 +550,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 			}
 
 			// Search routes
-			searches := v1.Group("/searches")
+			searches := v1.Group("/searches", handler.ModulePermission("search"))
 			{
 				searches.GET("", r.searchHandler.ListSearches)
 				searches.POST("", r.searchHandler.CreateSearch)
@@ -560,7 +560,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 				searches.POST("/:search_id/completions", r.searchHandler.Completion)
 			}
 
-			files := v1.Group("/files")
+			files := v1.Group("/files", handler.ModulePermission("file"))
 			{
 				files.POST("", r.fileHandler.UploadFile)
 				files.GET("", r.fileHandler.ListFiles)
@@ -618,7 +618,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 			}
 
 			// Memory routes
-			memory := v1.Group("/memories")
+			memory := v1.Group("/memories", handler.ModulePermission("memory"))
 			{
 				memory.POST("", r.memoryHandler.CreateMemory)
 				memory.PUT("/:memory_id", r.memoryHandler.UpdateMemory)
@@ -745,7 +745,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 				runs.GET("/:run_id", runHandler.GetRun)
 				runs.GET("/:run_id/nodes", runHandler.ListRunNodes)
 			}
-			audits := v1.Group("/audits")
+			audits := v1.Group("/audits", handler.ModulePermission("audit"))
 			{
 				audits.GET("", handler.NewAuditHandler().ListAudits)
 			}
@@ -794,7 +794,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 			}
 
 			// MCP server routes.
-			mcp := v1.Group("/mcp")
+			mcp := v1.Group("/mcp", handler.ModulePermission("mcp"))
 			{
 				mcp.POST("/servers", r.mcpHandler.CreateMCPServer)
 				mcp.GET("/servers", r.mcpHandler.ListMCPServers)
@@ -837,7 +837,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 					tokens.DELETE("/:key", r.systemHandler.DeleteKey)
 				}
 
-				keys := system.Group("/keys")
+				keys := system.Group("/keys", handler.ModulePermission("apikey"))
 				{
 					// list keys /api/v1/system/keys GET
 					keys.GET("", r.systemHandler.ListAPIKeys)
