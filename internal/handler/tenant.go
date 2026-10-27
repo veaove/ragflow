@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"net/mail"
 	"net/smtp"
-	"os"
 	"ragflow/internal/server"
 	"strings"
 
@@ -143,18 +142,15 @@ func (h *TenantHandler) TenantInfo(c *gin.Context) {
 
 	tenantInfo, err := h.tenantService.GetTenantInfo(ctx, user.ID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[PERMS-DEBUG] TenantInfo FAIL user=%s err=%v\n", user.ID, err)
 		common.ResponseWithCodeData(c, common.CodeExceptionError, false, err.Error())
 		return
 	}
 
 	if tenantInfo == nil {
-		fmt.Fprintf(os.Stderr, "[PERMS-DEBUG] TenantInfo NIL user=%s\n", user.ID)
 		common.ResponseWithCodeData(c, common.CodeDataError, false, "Tenant not found!")
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "[PERMS-DEBUG] TenantInfo user=%s tenant=%s role=%s\n", user.ID, tenantInfo.TenantID, tenantInfo.Role)
 	common.SuccessWithData(c, tenantInfo, "success")
 }
 

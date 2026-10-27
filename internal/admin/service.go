@@ -1445,6 +1445,8 @@ func (s *Service) GetModelByModelName(modelName string) (*modelModule.Model, err
 type TenantListItem struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
+	OwnerName   string `json:"owner_name"`
+	OwnerEmail  string `json:"owner_email"`
 	MemberCount int64  `json:"member_count"`
 	KbCount     int64  `json:"kb_count"`
 	AgentCount  int64  `json:"agent_count"`
@@ -1485,6 +1487,12 @@ func (s *Service) ListTenants(ctx context.Context, pageIndex, pageSize int, keyw
 	err := base.
 		Select(`t.id,
 			t.name,
+			(SELECT u.nickname FROM user_tenant ut JOIN user u ON u.id = ut.user_id
+			 WHERE ut.tenant_id = t.id AND ut.role = 'owner' AND ut.status = '1'
+			 LIMIT 1) AS owner_name,
+			(SELECT u.email FROM user_tenant ut JOIN user u ON u.id = ut.user_id
+			 WHERE ut.tenant_id = t.id AND ut.role = 'owner' AND ut.status = '1'
+			 LIMIT 1) AS owner_email,
 			(SELECT COUNT(*) FROM user_tenant ut WHERE ut.tenant_id = t.id AND ut.status = '1') AS member_count,
 			(SELECT COUNT(*) FROM knowledgebase k WHERE k.tenant_id = t.id AND k.status = '1') AS kb_count,
 			(SELECT COUNT(*) FROM user_canvas c WHERE c.user_id = t.id) AS agent_count,

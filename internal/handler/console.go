@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -666,9 +665,7 @@ func (h *ConsoleHandler) MyConsolePermissions(c *gin.Context) {
 		return
 	}
 	tenantID := consoleTenantID(c)
-	fmt.Fprintf(os.Stderr, "[PERMS-DEBUG] MyConsolePermissions user=%s tenant=%s\n", user.ID, tenantID)
 	if err := requireTenantAccess(c, user.ID, tenantID, false); err != nil {
-		fmt.Fprintf(os.Stderr, "[PERMS-DEBUG] requireTenantAccess FAIL: %v\n", err)
 		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
 		return
 	}
@@ -677,13 +674,8 @@ func (h *ConsoleHandler) MyConsolePermissions(c *gin.Context) {
 		c.Request.Context(), tenantID, user.ID,
 	)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[PERMS-DEBUG] EffectivePermissions FAIL: %v\n", err)
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
 		return
-	}
-	fmt.Fprintf(os.Stderr, "[PERMS-DEBUG] OK role=%s modules=%d\n", perms.RoleEnum, len(perms.Modules))
-	for mod, row := range perms.Modules {
-		fmt.Fprintf(os.Stderr, "[PERMS-DEBUG]   module=%s can_view=%v\n", mod, row.CanView)
 	}
 	common.SuccessWithData(c, perms, "success")
 }
