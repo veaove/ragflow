@@ -21,6 +21,7 @@ import {
   UserInfo,
 } from '@/constants/authorization';
 import { getSearchValue } from './common-util';
+import { clearCurrentTenantId } from './tenant-context';
 const KeySet = [Authorization, Token, UserInfo];
 
 const storage = {
@@ -59,6 +60,11 @@ const storage = {
     KeySet.forEach((x) => {
       localStorage.removeItem(x);
     });
+    // 当前租户属于「上一个人」的上下文，不能留给下一个登录者：
+    // 它会被请求拦截器塞进 X-Tenant-ID，指向一个此人未必属于的租户。
+    // 后端会校验成员关系并回退到默认租户，所以不构成越权，但请求头、
+    // 服务端日志、以及顶栏的「当前租户」都会被这个残留值误导。
+    clearCurrentTenantId();
   },
   setLanguage: (lng: string) => {
     localStorage.setItem('lng', lng);
