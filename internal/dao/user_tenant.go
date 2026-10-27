@@ -146,15 +146,38 @@ func (dao *UserTenantDAO) GetMembersByTenantID(ctx context.Context, db *gorm.DB,
 	return results, err
 }
 
-// GetTenantsByUserID get tenants by user ID with user details
+// GetTenantsByUserID 取用户加入的全部租户，附带「租户 owner」的身份字段。
+//
+// nickname/email/avatar 来自租户 owner：个人租户时代 tenant_id 就等于创建者的
+// user_id，那时 JOIN user ON user_tenant.tenant_id = user.id 恰好成立。租户从用户
+// 表里独立出来之后（控制台新建的租户 id 是随机 uuid），这条 JOIN 一行都匹配不上，
+// 于是新租户的成员在 /tenant/list 里拿到空数组 —— 顶栏连当前租户名都显示不出来。
+//
+// 改为按 owner 成员关系反查用户，并对「没有 owner 行」的存量租户用 tenant_id 本身
+// 兜底（那正是个人租户的 user id）。
 func (dao *UserTenantDAO) GetTenantsByUserID(ctx context.Context, db *gorm.DB, userID string) ([]*TenantInfoByUserID, error) {
 	var results []*TenantInfoByUserID
-	err := db.WithContext(ctx).Table("user_tenant").
-		Select("user_tenant.tenant_id, user_tenant.role, user.nickname, user.email, user.avatar, user.update_date").
-		Joins("JOIN user ON user_tenant.tenant_id = user.id AND user_tenant.user_id = ? AND user_tenant.status = ?", userID, "1").
-		Where("user_tenant.status = ?", "1").
+	err := db.WithContext(ctx).Table("user_tenant AS ut").
+		Select("ut.tenant_id, ut.role, u.nickname, u.email, u.avatar, u.update_date").
+		Joins("LEFT JOIN user_tenant AS tenant_owner ON tenant_owner.tenant_id = ut.tenant_id AND tenant_owner.role = ? AND tenant_owner.status = ?", "owner", "1").
+		Joins("LEFT JOIN user AS u ON u.id = COALESCE(tenant_owner.user_id, ut.tenant_id)").
+		Where("ut.user_id = ? AND ut.status = ?", userID, "1").
 		Scan(&results).Error
-	return results, err
+	if err != nil {
+		return nil, err
+	}
+	// 一个租户理论上只有一个 owner；真出现两行时按租户去重，宁可少一条
+	// 也不能让顶栏的租户下拉出现两个同名项、点了互相跳。
+	seen := make(map[string]struct{}, len(results))
+	deduped := results[:0]
+	for _, item := range results {
+		if _, ok := seen[item.TenantID]; ok {
+			continue
+		}
+		seen[item.TenantID] = struct{}{}
+		deduped = append(deduped, item)
+	}
+	return deduped, nil
 }
 
 // DeleteByUserID delete user tenant relationships by user ID (hard delete)
