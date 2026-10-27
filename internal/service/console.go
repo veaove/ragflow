@@ -535,6 +535,29 @@ func (s *ConsoleService) EffectivePermissions(ctx context.Context, tenantID, use
 		Modules:  map[string]*entity.RolePermission{},
 	}
 
+	// owner 永远全量权限，不依赖 role_permission 种子（老租户 builtin
+	// owner 的 role_permission 行可能是早期错误种子，不能作为真相源）。
+	if membership.Role == "owner" {
+		for _, module := range dao.ConsoleModules {
+			out.Modules[module] = &entity.RolePermission{
+				Module:    module,
+				CanView:   true,
+				CanCreate: true,
+				CanEdit:   true,
+				CanDelete: true,
+				CanManage: true,
+			}
+		}
+		// 尝试拿 owner builtin 的名字（有就填，没有也不影响 modules）
+		if membership.RoleID != "" {
+			out.RoleID = membership.RoleID
+			if role, err := dao.NewRoleDAO().Get(ctx, dao.DB, tenantID, membership.RoleID); err == nil {
+				out.RoleName = role.Name
+			}
+		}
+		return out, nil
+	}
+
 	roleDAO := dao.NewRoleDAO()
 	var role *entity.Role
 	if membership.RoleID != "" {
