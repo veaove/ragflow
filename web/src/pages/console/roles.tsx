@@ -110,8 +110,8 @@ function normalizeMatrix(
 /**
  * 角色权限：左侧角色列表，右侧模块 × 动作矩阵。
  *
- * 内置角色（租户管理员 / 部门管理员 / 普通成员）不可编辑 —— 权限引擎仍以
- * `user_tenant.role` 枚举为准，放任内置矩阵漂移会让两套模型对不上。
+ * 三个内置角色（租户管理员 / 部门管理员 / 普通成员）可编辑，与自定义角色
+ * 共用同一套权限引擎。is_builtin 仅用于 UI 分类显示，不影响可编辑性。
  */
 export default function ConsoleRoles() {
   const { t } = useTranslation();
@@ -182,7 +182,6 @@ export default function ConsoleRoles() {
 
   const toggleCell = useCallback(
     (module: string, key: keyof RolePermissionRow) => {
-      if (selected?.is_builtin) return;
       setDraft((rows) =>
         rows.map((row) =>
           row.module === module ? { ...row, [key]: !row[key] } : row,
@@ -195,22 +194,19 @@ export default function ConsoleRoles() {
 
   const toggleRow = useCallback(
     (module: string) => {
-      if (selected?.is_builtin) return;
-      setDraft((rows) =>
-        rows.map((row) => {
-          if (row.module !== module) return row;
-          const allOn = ACTION_COLUMNS.every((c) => row[c.key] === true);
-          const next = allOn ? false : true;
-          return {
-            ...row,
-            can_view: next,
-            can_create: next,
-            can_edit: next,
-            can_delete: next,
-            can_manage: next,
-          };
-        }),
-      );
+      setDraft((rows) => rows.map((row) => {
+        if (row.module !== module) return row;
+        const allOn = ACTION_COLUMNS.every((c) => row[c.key] === true);
+        const next = allOn ? false : true;
+        return {
+          ...row,
+          can_view: next,
+          can_create: next,
+          can_edit: next,
+          can_delete: next,
+          can_manage: next,
+        };
+      }));
       setDirty(true);
     },
     [selected],
@@ -241,7 +237,7 @@ export default function ConsoleRoles() {
 
   const removeRole = useCallback(
     async (role: ConsoleRole) => {
-      if (!tenantId || role.is_builtin) return;
+      if (!tenantId) return;
       if (!window.confirm(`确定删除角色「${role.name}」？成员会回退为默认角色`))
         return;
       await deleteConsoleRole(tenantId, role.id);
@@ -367,12 +363,6 @@ export default function ConsoleRoles() {
             )}
           </div>
 
-          {selected?.is_builtin && (
-            <div className="mx-4 mt-3 rounded border border-accent-primary/20 bg-accent-primary/5 px-3 py-2 text-xs text-accent-primary">
-              该角色为系统内置，权限固定不可修改。
-            </div>
-          )}
-
           <div className="min-h-0 flex-1 overflow-auto">
             <Table>
               <TableHeader>
@@ -398,7 +388,6 @@ export default function ConsoleRoles() {
                         <input
                           type="checkbox"
                           checked={allOn}
-                          disabled={selected?.is_builtin}
                           onChange={() => toggleRow(row.module)}
                         />
                       </TableCell>
@@ -407,7 +396,6 @@ export default function ConsoleRoles() {
                           <input
                             type="checkbox"
                             checked={row[c.key] === true}
-                            disabled={selected?.is_builtin}
                             onChange={() => toggleCell(row.module, c.key)}
                           />
                         </TableCell>

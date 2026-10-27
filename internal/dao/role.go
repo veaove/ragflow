@@ -304,15 +304,13 @@ func (dao *RoleDAO) Create(ctx context.Context, db *gorm.DB, role *entity.Role, 
 	})
 }
 
-// Update refuses builtin roles so the seeded matrix stays honest.
+// Update allows builtin roles to be renamed/described. The permission matrix
+// is updated via ReplacePermissions which has no builtin gate.
 func (dao *RoleDAO) Update(ctx context.Context, db *gorm.DB, tenantID, id string, fields map[string]any) error {
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		role, err := dao.Get(ctx, tx, tenantID, id)
+		_, err := dao.Get(ctx, tx, tenantID, id)
 		if err != nil {
 			return err
-		}
-		if role.IsBuiltin {
-			return ErrBuiltinRoleImmutable
 		}
 		return tx.Model(&entity.Role{}).
 			Where("tenant_id = ?", tenantID).
@@ -321,16 +319,12 @@ func (dao *RoleDAO) Update(ctx context.Context, db *gorm.DB, tenantID, id string
 	})
 }
 
-// Delete removes a custom role and its matrix. Members referencing it have
-// role_id cleared by the caller's service layer.
+// Delete removes a role and its matrix, whether builtin or custom.
 func (dao *RoleDAO) Delete(ctx context.Context, db *gorm.DB, tenantID, id string) error {
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		role, err := dao.Get(ctx, tx, tenantID, id)
+		_, err := dao.Get(ctx, tx, tenantID, id)
 		if err != nil {
 			return err
-		}
-		if role.IsBuiltin {
-			return ErrBuiltinRoleImmutable
 		}
 		if err := tx.Where("role_id = ?", id).Delete(&entity.RolePermission{}).Error; err != nil {
 			return err
