@@ -197,12 +197,12 @@ export function useActivePath() {
 export function SidebarNav({ className }: { className?: string }) {
   const { t } = useTranslation();
   const activePath = useActivePath();
-  // 角色矩阵的模块可见性：没有权限或接口未返回时 filterMenuItems 返回全量，
-  // 避免首屏闪一下空菜单，也避免权限接口抖动把导航清空。
-  const { perms } = useConsolePermissions();
+  // 角色矩阵的模块可见性：owner 直接全显示；非 owner 必须等权限接口返回，
+  // 没拿到权限数据时 filterMenuItems 返回空数组（不显示任何菜单）。
+  const { perms, isOwner } = useConsolePermissions();
   const visibleMenuItems = useMemo(
-    () => filterMenuItems(sidebarMenuItems, perms),
-    [perms],
+    () => filterMenuItems(sidebarMenuItems, perms, { isOwner }),
+    [perms, isOwner],
   );
   // 默认只展开「包含当前路由子项」的分组，其余分组折叠。
   // 进入分组内页面时 useEffect 会把它展开，折叠/展开之后完全由用户手动控制。
