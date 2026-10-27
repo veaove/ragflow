@@ -146,14 +146,15 @@ export const CreateUserForm = ({
           render={({ field }) => (
             <FormItem>
               <FormLabel className="text-sm font-medium">
-                所属租户 <span className="text-text-disabled">（必选）</span>
+                所属租户 <span className="text-text-disabled">（可选）</span>
               </FormLabel>
               <FormControl>
                 <Select onValueChange={field.onChange} value={field.value}>
                   <SelectTrigger className="w-full h-10">
-                    <SelectValue placeholder="请选择租户" />
+                    <SelectValue placeholder="请选择租户（可留空）" />
                   </SelectTrigger>
                   <SelectContent className="bg-bg-base">
+                    <SelectItem value="">— 不分配 —</SelectItem>
                     {tenantList?.map((item) => (
                       <SelectItem key={item.id} value={item.id}>
                         {item.name}

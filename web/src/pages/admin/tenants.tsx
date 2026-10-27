@@ -214,7 +214,7 @@ export default function Tenants() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async () => createTenant(name.trim(), ownerEmail.trim()),
+    mutationFn: async () => createTenant(name.trim()),
     onSuccess: ({ data }) => {
       if (data.code === 0) {
         setOpen(false);
@@ -236,14 +236,14 @@ export default function Tenants() {
     setPage(1);
   }, []);
 
-  // 设置超管：从用户列表里选一个
+  // 设置 Owner：从用户列表里选一个
   const [ownerDialog, setOwnerDialog] = useState<{
     tenantId: string;
     tenantName: string;
   } | null>(null);
   const [newOwnerEmail, setNewOwnerEmail] = useState('');
 
-  // 新建租户（选管理员）和设置超管都要选用户，所以常驻查询
+  // 设置 Owner 要选用户，所以常驻查询
   const { data: allUsers } = useQuery({
     queryKey: ['admin/users'],
     queryFn: async () => {
@@ -516,7 +516,7 @@ export default function Tenants() {
                         })
                       }
                     >
-                      设置超管
+                      设置 Owner
                     </Button>
                     <Button
                       variant="ghost"
@@ -564,7 +564,7 @@ export default function Tenants() {
         </div>
       </div>
 
-      {/* 新建租户：不自动建账号，必须指定一个已有用户作为管理员 */}
+      {/* 新建租户：只建空租户，owner 由平台 admin 后续在列表点「设置 Owner」绑定 */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -581,26 +581,9 @@ export default function Tenants() {
                 maxLength={100}
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <Label>管理员账户</Label>
-              <select
-                value={ownerEmail}
-                onChange={(e) => setOwnerEmail(e.target.value)}
-                className="h-9 rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
-              >
-                <option value="">请选择用户</option>
-                {(allUsers ?? []).map((user) => (
-                  <option key={user.email} value={user.email}>
-                    {user.email} · {user.nickname || '无昵称'} ·{' '}
-                    {user.is_superuser ? '平台超管' : '普通用户'} ·{' '}
-                    {user.tenant_name || '未分配租户'}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-text-secondary">
-                不会自动创建账号。请先在「用户管理」里建好用户，再从这里选择。
-              </p>
-            </div>
+            <p className="text-xs text-text-secondary">
+              创建后是空租户。在租户列表里点「设置 Owner」为它绑定 owner。
+            </p>
             {error && <p className="text-sm text-text-primary">{error}</p>}
           </div>
 
@@ -614,7 +597,7 @@ export default function Tenants() {
                 createMutation.mutate();
               }}
               disabled={
-                !name.trim() || !ownerEmail.trim() || createMutation.isPending
+                !name.trim() || createMutation.isPending
               }
             >
               {createMutation.isPending ? '创建中…' : '确定'}

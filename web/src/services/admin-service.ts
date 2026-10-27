@@ -214,11 +214,11 @@ export const listTenants = (params: {
     { params },
   );
 
-/** 新建租户，并把指定邮箱的用户设为管理员（不自动建账号）。 */
-export const createTenant = (name: string, ownerEmail: string) =>
-  request.post<ResponseData<{ id: string; name: string; owner_email: string }>>(
+/** 新建空租户（owner 由平台 admin 后续在「租户管理」列表点「设置 Owner」绑定）。 */
+export const createTenant = (name: string) =>
+  request.post<ResponseData<{ id: string; name: string }>>(
     api.adminCreateTenant,
-    { name, owner_email: ownerEmail },
+    { name },
   );
 
 /** 删除前置检查：租户名下的数据资产盘点。blocking 为真且 count>0 时禁止删除。 */
