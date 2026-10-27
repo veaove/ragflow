@@ -16,9 +16,9 @@ export function ConsoleGuard({
   children: React.ReactNode;
 }) {
   const { t } = useTranslation();
-  const { perms, canView } = useConsolePermissions();
+  const { isOwner, canView } = useConsolePermissions();
 
-  if (perms && !canView(module)) {
+  if (!isOwner && !canView(module)) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
         <h2 className="text-lg font-medium text-text-primary">

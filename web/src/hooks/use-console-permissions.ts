@@ -37,33 +37,49 @@ const MENU_MODULE: Record<string, string> = {
 export function useConsolePermissions() {
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id as string | undefined;
+  const isOwner = tenantInfo?.role === 'owner';
+
+  // eslint-disable-next-line no-console
+  console.info('[perms] tenantInfo=', JSON.stringify(tenantInfo), '→ tenantId=', tenantId, 'role=', tenantInfo?.role, 'isOwner=', isOwner);
 
   const { data, status } = useQuery({
     queryKey: ['console/my-permissions', tenantId],
-    enabled: !!tenantId,
+    enabled: !!tenantId && !isOwner,  // owner 不需要查权限接口
     staleTime: 60_000,
     queryFn: async () => {
       const res = await fetchMyPermissions(tenantId as string);
+      // eslint-disable-next-line no-console
+      console.info('[perms] fetchMyPermissions raw=', JSON.stringify(res));
       return res?.data ?? null;
     },
   });
 
   // eslint-disable-next-line no-console
-  console.info('[perms] status=', status, 'tenantId=', tenantId, 'data=', data);
+  console.info('[perms] query status=', status, 'enabled=', !!tenantId && !isOwner, 'data=', JSON.stringify(data));
 
-  // 明确拿到权限数据时才过滤。其他状态（loading/error/disabled）返回 null → 不过滤
+  // owner → 直接全显示
+  if (isOwner) {
+    return {
+      perms: null as MyPermissions | null,
+      tenantId,
+      roleName: '',
+      isOwner: true,
+      canView: () => true,
+      menuAllowed: () => true,
+    };
+  }
+
+  // 非 owner：必须等权限接口返回
   const permsForFilter = status === 'success' && data ? data : null;
-
   const canView = (module: string): boolean => {
-    if (!permsForFilter) return true;      // 没拿到数据 → 不做判断
+    if (!permsForFilter) return false;     // 没拿到数据 → 不显示
     const row = permsForFilter.modules?.[module];
-    if (!row) return true;                 // 模块不在矩阵里 → 不拦截
+    if (!row) return false;               // 模块不在矩阵 → 没权限
     return !!row.can_view;
   };
-
   const menuAllowed = (name: string): boolean => {
     const mod = MENU_MODULE[name];
-    if (!mod) return true;
+    if (!mod) return false;
     return canView(mod);
   };
 
@@ -71,6 +87,7 @@ export function useConsolePermissions() {
     perms: permsForFilter,
     tenantId,
     roleName: data?.role_name ?? '',
+    isOwner: false,
     canView,
     menuAllowed,
   };
@@ -79,25 +96,25 @@ export function useConsolePermissions() {
 /**
  * 按权限过滤菜单树。
  *
- * perms=null（loading/error/disabled）时返回完整 items —— 前端不做安全闸，
- * 真正的数据访问由后端 ModulePermission 中间件拦截。
- *
- * perms 存在但模块不在矩阵里 → 默认可见（新模块向后兼容）。
- * perms 存在且模块 can_view=0 → 隐藏。
+ * owner 调用方直接传 null perms + isOwner=true → 返回全量。
+ * 非 owner 调用方必须拿到权限数据，否则返回空数组。
  */
 export function filterMenuItems<T extends { name: string; children?: T[] }>(
   items: T[],
   perms: MyPermissions | null,
+  options?: { isOwner?: boolean },
 ): T[] {
+  const isOwner = options?.isOwner ?? false;
   // eslint-disable-next-line no-console
-  console.info('[filterMenuItems] perms=', perms, 'items=', items.map((i) => i.name));
-  if (!perms) return items;  // 没拿到权限数据 → 显示全量（后端会拦）
+  console.info('[filterMenuItems] perms=', !!perms, 'isOwner=', isOwner);
+  if (isOwner) return items;
+  if (!perms) return [];  // 非 owner 且没拿到权限数据 → 不显示任何菜单
 
   const allowed = (name: string) => {
     const module = MENU_MODULE[name];
-    if (!module) return true;
+    if (!module) return false;  // 没映射 → 不显示
     const row = perms.modules?.[module];
-    if (!row) return true;  // 模块未配置 → 可见（向后兼容）
+    if (!row) return false;    // 模块未配置 → 不显示
     return !!row.can_view;
   };
 
