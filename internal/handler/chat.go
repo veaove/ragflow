@@ -167,7 +167,12 @@ func (h *ChatHandler) Create(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	result, code, err := h.chatService.Create(ctx, user.ID, req)
+	tenantID := CurrentTenantID(c)
+	if tenantID == "" {
+		common.ErrorWithCode(c, common.CodeForbidden, "无法确定当前租户")
+		return
+	}
+	result, code, err := h.chatService.Create(ctx, tenantID, user.ID, req)
 	if err != nil {
 		common.ErrorWithCode(c, code, err.Error())
 		return

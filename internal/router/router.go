@@ -403,7 +403,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 			}
 
 			// Chat routes
-			chats := v1.Group("/chats")
+			chats := v1.Group("/chats", handler.ModulePermission("chat"))
 			{
 				chats.GET("", r.chatHandler.ListChats)
 				chats.POST("", r.chatHandler.Create)

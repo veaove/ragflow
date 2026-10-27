@@ -171,8 +171,8 @@ type CreateChatRequest struct {
 	TenantID               *string `json:"tenant_id"`
 }
 
-func (s *ChatService) Create(ctx context.Context, userID string, req map[string]interface{}) (map[string]interface{}, common.ErrorCode, error) {
-	tenant, err := s.tenantDAO.GetByID(ctx, dao.DB, userID)
+func (s *ChatService) Create(ctx context.Context, tenantID, userID string, req map[string]interface{}) (map[string]interface{}, common.ErrorCode, error) {
+	tenant, err := s.tenantDAO.GetByID(ctx, dao.DB, tenantID)
 	if err != nil {
 		return nil, common.CodeDataError, errors.New("tenant not found")
 	}
