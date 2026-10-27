@@ -281,6 +281,22 @@ func (s *ConsoleService) UpdateMember(ctx context.Context, tenantID, userID stri
 		return err
 	}
 
+	// owner 的身份来自「谁是租户所有者」，不是可以分配的角色：允许在这里给他
+	// 写 role_id，会让「谁是 owner」出现两套说法（枚举 owner + 另一个角色），
+	// 界面上也会显得 owner 的权限可以被改。停用更狠 —— owner 被停用等于整个
+	// 租户没人能管。
+	//
+	// 只拦真正要改的请求：前端保存时会带上全部字段，owner 的 role_id 本来就是
+	// 空串、状态本来就 1，若按「字段存在即拒绝」处理，给 owner 改个姓名都会失败。
+	if membership.Role == "owner" {
+		if in.RoleID != nil && strings.TrimSpace(*in.RoleID) != "" {
+			return errors.New("Owner 的权限由租户所有权决定，不能分配角色；需要换人请先移交 Owner")
+		}
+		if in.Status != nil && strings.TrimSpace(*in.Status) != "1" {
+			return errors.New("不能停用租户的 Owner")
+		}
+	}
+
 	return dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		userFields := map[string]any{}
 		if in.DepartmentID != nil {

@@ -122,3 +122,90 @@ func TestUpdateMemberAcceptsMaxRuneNickname(t *testing.T) {
 		t.Fatalf("nickname length = %d runes, want 100", len([]rune(got)))
 	}
 }
+
+// setupOwnerMemberDB 建一个「只有一个 owner」的租户，用于验证 owner 的保护。
+func setupOwnerMemberDB(t *testing.T) {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{TranslateError: true})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err = db.AutoMigrate(&entity.User{}, &entity.UserTenant{}, &entity.Role{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	orig := dao.DB
+	dao.DB = db
+	t.Cleanup(func() { dao.DB = orig })
+
+	if err = db.Create(&entity.User{ID: "owner-1", Email: "owner@qq.com", Nickname: "原主人"}).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	// UpdateMember 会先校验角色存在，再判 owner：用例里得给一个真实角色，
+	// 否则会停在「角色不存在」，测不到 owner 那道闸。
+	if err = db.Create(&entity.Role{ID: "role-x", TenantID: "tenant-1", Name: "质检员"}).Error; err != nil {
+		t.Fatalf("seed role: %v", err)
+	}
+	valid := string(entity.StatusValid)
+	if err = db.Create(&entity.UserTenant{
+		ID: "ut-owner", UserID: "owner-1", TenantID: "tenant-1",
+		Role: "owner", Status: &valid,
+	}).Error; err != nil {
+		t.Fatalf("seed membership: %v", err)
+	}
+}
+
+// owner 的身份来自租户所有权，不是可以分配的角色：编辑成员不能给他挂角色，
+// 否则「谁是 owner」会出现两套说法。
+func TestUpdateMemberRejectsRoleAssignmentOnOwner(t *testing.T) {
+	setupOwnerMemberDB(t)
+	roleID := "role-x"
+
+	err := NewConsoleService().UpdateMember(context.Background(), "tenant-1", "owner-1",
+		MemberUpdate{RoleID: &roleID})
+	if err == nil {
+		t.Fatal("给 owner 分配角色应当被拒绝")
+	}
+	if !strings.Contains(err.Error(), "移交 Owner") {
+		t.Fatalf("error = %v, want 提示改用移交 Owner", err)
+	}
+}
+
+// 停用 owner 等于让整个租户没人能管。
+func TestUpdateMemberRejectsDisablingOwner(t *testing.T) {
+	setupOwnerMemberDB(t)
+	off := "0"
+
+	err := NewConsoleService().UpdateMember(context.Background(), "tenant-1", "owner-1",
+		MemberUpdate{Status: &off})
+	if err == nil {
+		t.Fatal("停用 owner 应当被拒绝")
+	}
+	if !strings.Contains(err.Error(), "不能停用") {
+		t.Fatalf("error = %v, want 不能停用", err)
+	}
+}
+
+// 只是改姓名不能被误拦：前端保存时会带上空的 role_id 和 status=1，
+// 若按「字段存在即拒绝」处理，给 owner 改个名字都会失败。
+func TestUpdateMemberAllowsProfileEditOnOwner(t *testing.T) {
+	setupOwnerMemberDB(t)
+	name := "新名"
+	emptyRole := ""
+	on := "1"
+
+	err := NewConsoleService().UpdateMember(context.Background(), "tenant-1", "owner-1",
+		MemberUpdate{Nickname: &name, RoleID: &emptyRole, Status: &on})
+	if err != nil {
+		t.Fatalf("owner 只改资料不应被拒，got %v", err)
+	}
+
+	var u entity.User
+	if err = dao.DB.Where("id = ?", "owner-1").Take(&u).Error; err != nil {
+		t.Fatalf("load user: %v", err)
+	}
+	if u.Nickname != name {
+		t.Fatalf("nickname = %q, want %q", u.Nickname, name)
+	}
+}

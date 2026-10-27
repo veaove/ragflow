@@ -513,20 +513,33 @@ export default function ConsoleMembers() {
             </div>
             <div>
               <div className="mb-1 text-sm text-text-secondary">角色</div>
-              <select
-                value={form.role_id}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, role_id: e.target.value }))
-                }
-                className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
-              >
-                <option value="">跟随成员类型（默认）</option>
-                {roles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
+              {editing?.role === 'owner' ? (
+                // Owner 不是「一个角色」，是租户所有权的持有者。给他留一个下拉
+                // 会让人以为能把 owner 的权限改小，实际改了也只是多一层无效设定。
+                <>
+                  <div className="flex h-9 items-center rounded-md border border-border-default bg-background-second px-3 text-sm text-text-secondary">
+                    Owner（租户所有者）
+                  </div>
+                  <p className="mt-1 text-xs text-text-secondary">
+                    Owner 的权限由租户所有权决定，不能在这里分配角色；需要换人请用「移交 Owner」。
+                  </p>
+                </>
+              ) : (
+                <select
+                  value={form.role_id}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, role_id: e.target.value }))
+                  }
+                  className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
+                >
+                  <option value="">跟随成员类型（默认）</option>
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             <div>
               <div className="mb-1 text-sm text-text-secondary">状态</div>
@@ -535,11 +548,17 @@ export default function ConsoleMembers() {
                 onChange={(e) =>
                   setForm((f) => ({ ...f, status: e.target.value }))
                 }
-                className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
+                disabled={editing?.role === 'owner'}
+                className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none disabled:opacity-60"
               >
                 <option value="1">在职</option>
                 <option value="0">停用</option>
               </select>
+              {editing?.role === 'owner' && (
+                <p className="mt-1 text-xs text-text-secondary">
+                  停用 Owner 会让整个租户无人管理，所以这里不能改。
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
