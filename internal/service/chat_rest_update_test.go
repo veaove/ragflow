@@ -128,7 +128,7 @@ func TestChatServiceCreateDefaultsMetaDataFilter(t *testing.T) {
 
 	svc := NewChatService()
 	ctx := t.Context()
-	resp, code, err := svc.Create(ctx, "user-1", map[string]interface{}{
+	resp, code, err := svc.Create(ctx, "user-1", "user-1", map[string]interface{}{
 		"name": "created chat",
 	})
 	if err != nil {
@@ -158,7 +158,7 @@ func TestChatServiceCreateAcceptsNilMetaDataFilter(t *testing.T) {
 
 	svc := NewChatService()
 	ctx := t.Context()
-	resp, code, err := svc.Create(ctx, "user-1", map[string]interface{}{
+	resp, code, err := svc.Create(ctx, "user-1", "user-1", map[string]interface{}{
 		"name":             "created chat",
 		"meta_data_filter": nil,
 	})
@@ -176,7 +176,7 @@ func TestChatServiceCreateRejectsInvalidMetaDataFilter(t *testing.T) {
 
 	svc := NewChatService()
 	ctx := t.Context()
-	_, code, err := svc.Create(ctx, "user-1", map[string]interface{}{
+	_, code, err := svc.Create(ctx, "user-1", "user-1", map[string]interface{}{
 		"name":             "created chat",
 		"meta_data_filter": []interface{}{"invalid"},
 	})
@@ -408,7 +408,7 @@ func TestChatServiceCreateValidatesName(t *testing.T) {
 
 	svc := NewChatService()
 	ctx := t.Context()
-	_, code, err := svc.Create(ctx, "user-1", map[string]interface{}{"name": "   "})
+	_, code, err := svc.Create(ctx, "user-1", "user-1", map[string]interface{}{"name": "   "})
 	if err == nil {
 		t.Fatal("expected name validation error")
 	}
@@ -426,7 +426,7 @@ func TestChatServiceCreateDedupesDuplicateName(t *testing.T) {
 
 	svc := NewChatService()
 	ctx := t.Context()
-	_, code, err := svc.Create(ctx, "user-1", map[string]interface{}{"name": "chat-chat-1"})
+	_, code, err := svc.Create(ctx, "user-1", "user-1", map[string]interface{}{"name": "chat-chat-1"})
 	if err != nil {
 		t.Fatalf("expected deduped create to succeed, got %v", err)
 	}
@@ -528,7 +528,7 @@ func TestChatServiceCreateRejectsTenantID(t *testing.T) {
 
 	svc := NewChatService()
 	ctx := t.Context()
-	_, code, err := svc.Create(ctx, "user-1", map[string]interface{}{
+	_, code, err := svc.Create(ctx, "user-1", "user-1", map[string]interface{}{
 		"name":      "valid chat",
 		"tenant_id": "other-tenant",
 	})
@@ -545,7 +545,7 @@ func TestChatServiceCreateRejectsInvalidPromptConfig(t *testing.T) {
 
 	svc := NewChatService()
 	ctx := t.Context()
-	_, code, err := svc.Create(ctx, "user-1", map[string]interface{}{
+	_, code, err := svc.Create(ctx, "user-1", "user-1", map[string]interface{}{
 		"name":          "valid chat",
 		"prompt_config": "invalid",
 	})
@@ -580,7 +580,7 @@ func TestChatServiceCreatePromptDefaultsContract(t *testing.T) {
 
 	svc := NewChatService()
 	ctx := t.Context()
-	resp, code, err := svc.Create(ctx, "user-1", map[string]interface{}{
+	resp, code, err := svc.Create(ctx, "user-1", "user-1", map[string]interface{}{
 		"name": "prompt defaults chat",
 	})
 	if err != nil {
@@ -621,7 +621,7 @@ func TestChatServiceCreateWithDatasetSeedsDatasetSystemPrompt(t *testing.T) {
 
 	svc := NewChatService()
 	ctx := t.Context()
-	resp, code, err := svc.Create(ctx, "user-1", map[string]interface{}{
+	resp, code, err := svc.Create(ctx, "user-1", "user-1", map[string]interface{}{
 		"name":   "prompt defaults chat with dataset",
 		"kb_ids": []interface{}{"kb-1"},
 	})
