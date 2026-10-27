@@ -526,6 +526,8 @@ export default {
     `${restAPIv1}/tenants/${tenantId}/grants/${kind}/${resourceId}`,
   adminCreateTenant: `${restAPIv1}/admin/tenants`,
   adminCreateUser: `${restAPIv1}/admin/users`,
+  adminUpdateUser: (username: string) =>
+    `${restAPIv1}/admin/users/${username}`,
   adminSetSuperuser: (username: string) =>
     `${restAPIv1}/admin/users/${username}/admin`,
   adminGetUserDetails: (username: string) =>

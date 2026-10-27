@@ -180,11 +180,12 @@ func (s *Service) ListUsers(ctx context.Context, pageIndex, pageSize int, name, 
 	// 用户与租户解耦后（创建用户不再自动建租户），未分配租户的用户这里是空串。
 	type userTenantRow struct {
 		UserID     string
+		TenantID   string
 		TenantName string
 	}
 	var utRows []userTenantRow
 	if err := dao.DB.WithContext(ctx).Raw(`
-		SELECT ut.user_id, MIN(IFNULL(t.name, '')) AS tenant_name
+		SELECT ut.user_id, MIN(ut.tenant_id) AS tenant_id, MIN(IFNULL(t.name, '')) AS tenant_name
 		FROM user_tenant ut
 		JOIN tenant t ON t.id = ut.tenant_id
 		WHERE ut.status = '1'
@@ -192,9 +193,11 @@ func (s *Service) ListUsers(ctx context.Context, pageIndex, pageSize int, name, 
 	`).Scan(&utRows).Error; err != nil {
 		return nil, err
 	}
-	tenantByUser := make(map[string]string, len(utRows))
+	tenantNameByUser := make(map[string]string, len(utRows))
+	tenantIDByUser := make(map[string]string, len(utRows))
 	for _, row := range utRows {
-		tenantByUser[row.UserID] = row.TenantName
+		tenantNameByUser[row.UserID] = row.TenantName
+		tenantIDByUser[row.UserID] = row.TenantID
 	}
 
 	result := make([]map[string]interface{}, 0, len(users))
@@ -205,7 +208,8 @@ func (s *Service) ListUsers(ctx context.Context, pageIndex, pageSize int, name, 
 			"create_date":  user.CreateTime,
 			"is_active":    user.IsActive,
 			"is_superuser": user.IsSuperuser,
-			"tenant_name":  tenantByUser[user.ID],
+			"tenant_id":    tenantIDByUser[user.ID],
+			"tenant_name":  tenantNameByUser[user.ID],
 		})
 	}
 	return result, nil
@@ -334,7 +338,7 @@ func (s *Service) CreateUser(ctx context.Context, username, password, nickname, 
 
 // UpdateUserRequest fields that can be patched by platform admin.
 type UpdateUserRequest struct {
-	Nickname string  `json:"nickname"`
+	Nickname *string `json:"nickname"`  // nil = 不改; ptr("") = 清空; ptr("xxx") = 改到 xxx
 	TenantID *string `json:"tenant_id"` // nil = 不改; ptr("") = 清空分配; ptr("xxx") = 改到 xxx
 }
 
@@ -350,8 +354,8 @@ func (s *Service) UpdateUser(ctx context.Context, email string, req UpdateUserRe
 	}
 
 	updates := map[string]interface{}{}
-	if strings.TrimSpace(req.Nickname) != "" {
-		updates["nickname"] = strings.TrimSpace(req.Nickname)
+	if req.Nickname != nil {
+		updates["nickname"] = strings.TrimSpace(*req.Nickname)
 	}
 
 	// tenant_id 变更：空串=清除; 非空=改到新租户

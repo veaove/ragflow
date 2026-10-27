@@ -22,6 +22,7 @@ import {
 import {
   LucideClipboardList,
   LucideDot,
+  LucidePencil,
   LucideTrash2,
   LucideUserLock,
   LucideUserPlus,
@@ -83,8 +84,10 @@ import {
   deleteUser,
   grantSuperuser,
   listRoles,
+  listTenants,
   listUsers,
   revokeSuperuser,
+  updateUser,
   updateUserPassword,
   updateUserRole,
   updateUserStatus,
@@ -130,7 +133,12 @@ function AdminUserManagement() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editNickname, setEditNickname] = useState('');
+  const [editTenantId, setEditTenantId] = useState('');
   const [userToMakeAction, setUserToMakeAction] =
+    useState<AdminService.ListUsersItem | null>(null);
+  const [editTarget, setEditTarget] =
     useState<AdminService.ListUsersItem | null>(null);
 
   const changePasswordForm = useChangePasswordForm();
@@ -140,6 +148,16 @@ function AdminUserManagement() {
     queryKey: ['admin/listRoles'],
     queryFn: async () => (await listRoles()).data.data.roles,
     enabled: IS_ENTERPRISE,
+    retry: false,
+    placeholderData: keepPreviousData,
+  });
+
+  const { data: tenantList } = useQuery({
+    queryKey: ['admin/tenants-all'],
+    queryFn: async () => {
+      const { data } = await listTenants({ page: 1, page_size: 100 });
+      return data?.data?.list ?? [];
+    },
     retry: false,
     placeholderData: keepPreviousData,
   });
@@ -189,17 +207,19 @@ function AdminUserManagement() {
   const createUserMutation = useMutation({
     mutationFn: async ({
       email,
+      nickname,
       password,
       role,
       tenantId,
     }: {
       email: string;
+      nickname: string;
       password: string;
       role?: string;
       tenantId: string;
     }) => {
       const realTenantId = tenantId === '__empty__' ? '' : tenantId;
-      await createUser(email, rsaPsw(password) as string, realTenantId);
+      await createUser(email, rsaPsw(password) as string, nickname, realTenantId);
 
       if (IS_ENTERPRISE && role) {
         await updateUserRoleMutation.mutateAsync({ email, role });
@@ -210,6 +230,28 @@ function AdminUserManagement() {
       queryClient.invalidateQueries({ queryKey: ['admin/listUsers'] });
       setCreateUserModalOpen(false);
       createUserForm.form.reset();
+    },
+    retry: false,
+  });
+
+  // Edit user mutation
+  const editUserMutation = useMutation({
+    mutationFn: async ({
+      email,
+      nickname,
+      tenantId,
+    }: {
+      email: string;
+      nickname: string;
+      tenantId: string;
+    }) => {
+      const realTenantId = tenantId === '__empty__' ? '' : tenantId;
+      return updateUser(email, nickname, realTenantId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin/listUsers'] });
+      setEditModalOpen(false);
+      setEditTarget(null);
     },
     retry: false,
   });
@@ -421,6 +463,24 @@ function AdminUserManagement() {
                 }
               >
                 <LucideClipboardList />
+              </Button>
+
+              <Button
+                variant="transparent"
+                size="icon"
+                className="border-0"
+                title="编辑"
+                onClick={() => {
+                  setEditTarget(row.original);
+                  setEditNickname(row.original.nickname ?? '');
+                  // 后端 ListUsers 现在返回 tenant_id；空串或 undefined → 选「不分配」
+                  const tid = (row.original as unknown as { tenant_id?: string })
+                    .tenant_id;
+                  setEditTenantId(tid && tid.trim() !== '' ? tid : '__empty__');
+                  setEditModalOpen(true);
+                }}
+              >
+                <LucidePencil />
               </Button>
 
               {!isMe && (
@@ -695,6 +755,71 @@ function AdminUserManagement() {
           </CardFooter>
         </ScrollArea>
       </Card>
+
+      {/* Edit User Modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>编辑用户</DialogTitle>
+            <DialogDescription>
+              {editTarget?.email}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">昵称</Label>
+              <Input
+                value={editNickname}
+                onChange={(e) => setEditNickname(e.target.value)}
+                placeholder="显示昵称"
+                className="h-10"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                所属租户 <span className="text-text-disabled">（选「不分配」可解除）</span>
+              </Label>
+              <Select value={editTenantId} onValueChange={setEditTenantId}>
+                <SelectTrigger className="w-full h-10">
+                  <SelectValue placeholder="请选择租户" />
+                </SelectTrigger>
+                <SelectContent className="bg-bg-base">
+                  <SelectItem value="__empty__">— 不分配 —</SelectItem>
+                  {tenantList?.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditModalOpen(false);
+                setEditTarget(null);
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              disabled={editUserMutation.isPending || !editTarget}
+              onClick={() => {
+                if (!editTarget) return;
+                editUserMutation.mutate({
+                  email: editTarget.email,
+                  nickname: editNickname.trim(),
+                  tenantId: editTenantId,
+                });
+              }}
+            >
+              {editUserMutation.isPending ? '保存中…' : '保存'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Modal */}
       <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>

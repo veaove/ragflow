@@ -30,6 +30,7 @@ import { IS_ENTERPRISE } from '../utils';
 
 interface CreateUserFormData {
   email: string;
+  nickname: string;
   password: string;
   confirmPassword: string;
   role?: string;
@@ -85,6 +86,27 @@ export const CreateUserForm = ({
                 <Input
                   placeholder={t('admin.email')}
                   autoComplete="username"
+                  className="mt-2 px-3 h-10 bg-bg-input border-border-button"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {/* Nickname field */}
+        <FormField
+          control={form.control}
+          name="nickname"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium">
+                昵称 <span className="text-text-disabled">（可选，默认同邮箱）</span>
+              </FormLabel>
+              <FormControl>
+                <Input
+                  placeholder="显示昵称"
                   className="mt-2 px-3 h-10 bg-bg-input border-border-button"
                   {...field}
                 />
@@ -228,6 +250,7 @@ function useCreateUserForm(props?: {
     return z
       .object({
         email: z.string().email({ message: t('admin.invalidEmail') }),
+        nickname: z.string().optional(),
         password: z.string().min(6, { message: t('admin.passwordMinLength') }),
         confirmPassword: z
           .string()
@@ -244,6 +267,7 @@ function useCreateUserForm(props?: {
   const form = useForm<CreateUserFormData>({
     defaultValues: {
       email: '',
+      nickname: '',
       password: '',
       confirmPassword: '',
       tenantId: '',

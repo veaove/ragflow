@@ -377,12 +377,32 @@ export const listPlatformModels = (params: {
     params,
   });
 
-export const createUser = (email: string, password: string, tenantId: string) =>
+export const createUser = (
+  email: string,
+  password: string,
+  nickname: string,
+  tenantId: string,
+) =>
   request.post<ResponseData<boolean>>(adminCreateUser, {
     username: email,
     password,
+    nickname,
     tenant_id: tenantId,
   });
+
+export const updateUser = (
+  email: string,
+  nickname?: string,
+  tenantId?: string | null,
+) => {
+  const body: Record<string, unknown> = {};
+  if (nickname !== undefined) body.nickname = nickname;
+  if (tenantId !== undefined) body.tenant_id = tenantId ?? '';
+  return request.patch<ResponseData<{ nickname: string }>>(
+    api.adminUpdateUser(email),
+    body,
+  );
+};
 
 export const grantSuperuser = (email: string) =>
   request.put<ResponseData<void>>(api.adminSetSuperuser(email));
