@@ -79,14 +79,28 @@ function moduleNameFor(url: string): string {
   return match?.moduleName ?? '该功能';
 }
 
+// 后端自己拼好的中文权限提示（包含「」书名号或 "没有" 关键字）→ 直接用后端 message。
+const BACKEND_PERMISSION_HINT = /[「"].*[」"]|没有.*权限|无.*权限|forbidden|permission denied/i;
+
 // 5 秒内同一模块只弹一次权限提示，避免页面加载时 N 个 403 刷屏。
 const permissionToastCooldown = new Map<string, number>();
-function notifyPermissionDenied(url: string) {
+function notifyPermissionDenied(url: string, backendMessage?: string) {
   const mod = moduleNameFor(url);
   const now = Date.now();
   const last = permissionToastCooldown.get(mod) ?? 0;
   if (now - last < 5000) return;
   permissionToastCooldown.set(mod, now);
+
+  // 后端已经返回了友好中文提示 → 直接用，不要再加一层
+  if (backendMessage && BACKEND_PERMISSION_HINT.test(backendMessage)) {
+    notification.warning({
+      message: '权限不足',
+      description: backendMessage,
+      duration: 5,
+    });
+    return;
+  }
+
   notification.warning({
     message: '权限不足',
     description: `您当前角色没有「${mod}」的操作权限，请联系管理员在「角色权限」中为您授予相应权限。`,
@@ -146,7 +160,17 @@ const errorHandler = (error: {
       // 某个资源时后端就会返回它 —— 这是预期结果，不是故障。
       // 弹一条友好的中文提示，5 秒内同一模块只弹一次避免刷屏。
       if (response.status === 403) {
-        notifyPermissionDenied(response.url);
+        // 后端 body 里可能已经有友好中文提示（如 "当前角色没有「数据源」模块的操作权限"）
+        // 尝试读出来，如果读不到就用我们自己拼的
+        response
+          .clone()
+          .json()
+          .then((body) => {
+            notifyPermissionDenied(response.url, body?.message);
+          })
+          .catch(() => {
+            notifyPermissionDenied(response.url);
+          });
         return response;
       }
       const errorText =
@@ -264,9 +288,10 @@ request.interceptors.response.use(async (response: Response, options) => {
     }
     authorizationUtil.removeAll();
     redirectToLogin();
-  } else if (data?.code === 108) {
-    // 权限不足（CodePermissionError）。弹友好的中文提示，5 秒内同一模块只弹一次。
-    notifyPermissionDenied(response?.url);
+  } else if (data?.code === 108 || data?.code === 403) {
+    // 权限不足：后端有两个业务码 —— 108（PermissionError）和 403（Forbidden）。
+    // 弹友好的中文提示，5 秒内同一模块只弹一次。
+    notifyPermissionDenied(response?.url, data?.message);
   } else if (data?.code !== 0 && !skipErrorCodes?.includes(data?.code)) {
     notification.error({
       message: `${i18n.t('message.hint')} : ${data?.code}`,
