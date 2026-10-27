@@ -94,15 +94,12 @@ export const useFetchTenantData = (): ResponseGetType<ITenantInfo> => {
     initialData: {} as ITenantInfo,
     gcTime: 0,
     queryFn: async () => {
-      const raw = await userService.getTenantInfo();
-      // raw 应该是 { code: 0, data: {...}, message: "success" }
-      console.info('[useFetchTenantData] raw=', JSON.stringify(raw));
-      if (raw.code === 0) {
-        console.info('[useFetchTenantData] raw.data=', JSON.stringify(raw.data));
-        return (raw.data ?? {}) as ITenantInfo;
+      // request 库返回三层: { data: { code:0, data:{tenant_id, role, ...}, message:"success" }, response: {...} }
+      const { data: axiosRes } = await userService.getTenantInfo();
+      if (axiosRes.code === 0) {
+        return (axiosRes.data ?? {}) as ITenantInfo;
       }
-      console.info('[useFetchTenantData] FAIL raw=', JSON.stringify(raw));
-      return raw as unknown as ITenantInfo;
+      return {} as ITenantInfo;
     },
   });
   return { data, loading };
