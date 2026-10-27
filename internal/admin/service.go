@@ -2249,7 +2249,7 @@ func (s *Service) TransferTenantOwner(ctx context.Context, tenantID, callerUserI
 	}
 
 	// 3. Resolve the 「租户管理员」builtin role for this tenant (auto-create if missing)
-	adminRole, err := dao.RoleDAO{}.EnsureTenantAdminRole(ctx, dao.DB, tenantID)
+	adminRole, err := dao.NewRoleDAO().EnsureTenantAdminRole(ctx, dao.DB, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve tenant admin role: %w", err)
 	}

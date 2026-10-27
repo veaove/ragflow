@@ -641,7 +641,7 @@ func (s *ConsoleService) TransferTenantOwner(ctx context.Context, tenantID, call
 		return nil, err
 	}
 
-	adminRole, err := dao.RoleDAO{}.EnsureTenantAdminRole(ctx, dao.DB, tenantID)
+	adminRole, err := dao.NewRoleDAO().EnsureTenantAdminRole(ctx, dao.DB, tenantID)
 	if err != nil {
 		return nil, err
 	}
