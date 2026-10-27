@@ -89,6 +89,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 			protected.GET("/models", r.handler.ListPlatformModels)
 			protected.POST("/users", r.handler.CreateUser)
 			protected.GET("/users/:username", r.handler.GetUser)
+			protected.PATCH("/users/:username", r.handler.UpdateUser)
 			protected.DELETE("/users/:username", r.handler.DeleteUser)
 			protected.PUT("/users/:username/password", r.handler.ChangePassword)
 			protected.PUT("/users/:username/activate", r.handler.UpdateUserActivateStatus)

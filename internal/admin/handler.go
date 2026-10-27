@@ -248,6 +248,7 @@ func (h *Handler) ListUsers(c *gin.Context) {
 type CreateUserHTTPRequest struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
+	Nickname string `json:"nickname"`
 	Role     string `json:"role"`
 	// TenantID 必填：用户与租户解耦后，建用户时就要明确他归属哪个租户，
 	// 否则新建的账号登录后没有可用空间。
@@ -267,7 +268,7 @@ func (h *Handler) CreateUser(c *gin.Context) {
 	}
 	ctx := c.Request.Context()
 
-	userInfo, err := h.service.CreateUser(ctx, req.Username, req.Password, req.Role, req.TenantID)
+	userInfo, err := h.service.CreateUser(ctx, req.Username, req.Password, req.Nickname, req.Role, req.TenantID)
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeServerError, err.Error())
 		return
@@ -304,6 +305,29 @@ func (h *Handler) GetUser(c *gin.Context) {
 	}
 
 	common.SuccessWithData(c, []map[string]interface{}{userDetails}, "")
+}
+
+// UpdateUser handle PATCH /admin/users/:username — patch nickname + tenant_id
+func (h *Handler) UpdateUser(c *gin.Context) {
+	username, err := getUserName(c)
+	if err != nil {
+		return
+	}
+	var req UpdateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
+	result, err := h.service.UpdateUser(c.Request.Context(), username, req)
+	if err != nil {
+		if errors.Is(err, common.ErrUserNotFound) {
+			common.ErrorWithCode(c, common.CodeNotFound, "User not found")
+			return
+		}
+		common.ErrorWithCode(c, common.CodeBadRequest, err.Error())
+		return
+	}
+	common.SuccessWithData(c, result, "User updated successfully")
 }
 
 // DeleteUser handle delete user

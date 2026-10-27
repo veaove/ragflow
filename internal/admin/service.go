@@ -220,10 +220,15 @@ func (s *Service) ListUsers(ctx context.Context, pageIndex, pageSize int, name, 
 // Returns:
 //   - map[string]interface{}: user information without password
 //   - error: error message
-func (s *Service) CreateUser(ctx context.Context, username, password, role, tenantID string) (map[string]interface{}, error) {
+func (s *Service) CreateUser(ctx context.Context, username, password, nickname, role, tenantID string) (map[string]interface{}, error) {
 	emailRegex := regexp.MustCompile(`^[\w\._-]+@([\w_-]+\.)+[\w-]{2,}$`)
 	if !emailRegex.MatchString(username) {
 		return nil, fmt.Errorf("invalid email address: %s", username)
+	}
+
+	nickname = strings.TrimSpace(nickname)
+	if nickname == "" {
+		nickname = username
 	}
 
 	tenantID = strings.TrimSpace(tenantID)
@@ -253,7 +258,7 @@ func (s *Service) CreateUser(ctx context.Context, username, password, role, tena
 		ID:              userID,
 		AccessToken:     &accessToken,
 		Email:           username,
-		Nickname:        "",
+		Nickname:        nickname,
 		Password:        &hashedPassword,
 		Status:          &status,
 		IsActive:        "1",
@@ -324,6 +329,100 @@ func (s *Service) CreateUser(ctx context.Context, username, password, role, tena
 		"is_active":    user.IsActive,
 		"is_superuser": isSuperuser,
 		"create_date":  user.CreateDate,
+	}, nil
+}
+
+// UpdateUserRequest fields that can be patched by platform admin.
+type UpdateUserRequest struct {
+	Nickname string  `json:"nickname"`
+	TenantID *string `json:"tenant_id"` // nil = 不改; ptr("") = 清空分配; ptr("xxx") = 改到 xxx
+}
+
+// UpdateUser patches nickname and/or tenant membership for a platform user.
+// Email cannot be patched — it is the login key and URL identifier.
+func (s *Service) UpdateUser(ctx context.Context, email string, req UpdateUserRequest) (map[string]interface{}, error) {
+	var user entity.User
+	if err := dao.DB.WithContext(ctx).Where("email = ?", email).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, err
+	}
+
+	updates := map[string]interface{}{}
+	if strings.TrimSpace(req.Nickname) != "" {
+		updates["nickname"] = strings.TrimSpace(req.Nickname)
+	}
+
+	// tenant_id 变更：空串=清除; 非空=改到新租户
+	if req.TenantID != nil {
+		newTenantID := strings.TrimSpace(*req.TenantID)
+
+		// 查现有 user_tenant，若有 owner → 拒绝改 tenant_id
+		var existing []entity.UserTenant
+		if err := dao.DB.WithContext(ctx).Where("user_id = ?", user.ID).Find(&existing).Error; err != nil {
+			return nil, err
+		}
+		for _, ut := range existing {
+			if ut.Role == "owner" {
+				return nil, fmt.Errorf("cannot change tenant for owner; transfer ownership first")
+			}
+		}
+
+		if newTenantID != "" {
+			// 确认目标租户存在
+			var tenant entity.Tenant
+			if err := dao.DB.WithContext(ctx).Where("id = ?", newTenantID).First(&tenant).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return nil, fmt.Errorf("tenant not found")
+				}
+				return nil, err
+			}
+		}
+
+		tx := dao.DB.WithContext(ctx).Begin()
+		if tx.Error != nil {
+			return nil, tx.Error
+		}
+		if err := tx.Where("user_id = ?", user.ID).Delete(&entity.UserTenant{}).Error; err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if newTenantID != "" {
+			memberStatus := "1"
+			member := &entity.UserTenant{
+				ID:        common.GenerateUUID(),
+				UserID:    user.ID,
+				TenantID:  newTenantID,
+				Role:      "normal",
+				InvitedBy: user.ID,
+				Status:    &memberStatus,
+				JoinType:  "direct",
+			}
+			if err := tx.Create(member).Error; err != nil {
+				tx.Rollback()
+				return nil, err
+			}
+		}
+		if err := tx.Commit().Error; err != nil {
+			return nil, err
+		}
+	}
+
+	if len(updates) > 0 {
+		if err := dao.DB.WithContext(ctx).Model(&user).Updates(updates).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	// 读最新数据返回
+	if err := dao.DB.WithContext(ctx).Where("email = ?", email).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"id":       user.ID,
+		"email":    user.Email,
+		"nickname": user.Nickname,
 	}, nil
 }
 
