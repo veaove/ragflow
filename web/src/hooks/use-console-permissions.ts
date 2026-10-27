@@ -101,19 +101,15 @@ export function filterMenuItems<T extends { name: string; children?: T[] }>(
   options?: { isOwner?: boolean },
 ): T[] {
   const isOwner = options?.isOwner ?? false;
-  // eslint-disable-next-line no-console
-  console.info('[filterMenuItems] perms=', !!perms, 'isOwner=', isOwner, 'items=', items.length);
-  if (isOwner) { console.info('[filterMenuItems] OWNER → full items'); return items; }
-  if (!perms) { console.info('[filterMenuItems] NO PERMS → empty'); return []; }
+  if (isOwner) return items;
+  if (!perms) return [];
 
   const allowed = (name: string): boolean => {
     const module = MENU_MODULE[name];
-    if (!module) { console.info('[filterMenuItems] HIDE (no mapping):', name); return false; }
+    if (!module) return false;
     const row = perms.modules?.[module];
-    if (!row) { console.info('[filterMenuItems] HIDE (no perm row):', name, 'module=', module); return false; }
-    const result = !!row.can_view;
-    console.info('[filterMenuItems]', result ? 'SHOW' : 'HIDE', 'item=', name, 'module=', module, 'can_view=', row.can_view);
-    return result;
+    if (!row) return false;
+    return !!row.can_view;
   };
 
   const out: T[] = [];
