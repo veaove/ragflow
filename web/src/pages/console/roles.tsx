@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LucidePlus, LucideShield, LucideShieldCheck } from 'lucide-react';
+import { LucidePencil, LucidePlus, LucideShield, LucideShieldCheck } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -31,6 +31,7 @@ import {
   fetchConsoleAudits,
   fetchConsoleRoles,
   saveConsolePermissions,
+  updateConsoleRole,
 } from '@/services/console-service';
 
 /** 矩阵行的中文名。后端只回 module key，文案在前端维护。 */
@@ -125,6 +126,9 @@ export default function ConsoleRoles() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  // inline 重命名：哪个 role 处于编辑态 + 当前输入值
+  const [renamingId, setRenamingId] = useState<string>('');
+  const [renameValue, setRenameValue] = useState('');
   // 变更记录：点开才请求，避免每次进页面都拉审计。
   const [auditOpen, setAuditOpen] = useState(false);
 
@@ -240,6 +244,25 @@ export default function ConsoleRoles() {
     }
   }, [newDesc, newName, queryClient, tenantId]);
 
+  const renameRole = useCallback(
+    async (role: ConsoleRole, newName: string) => {
+      if (!tenantId) return;
+      const trimmed = newName.trim();
+      if (!trimmed || trimmed === role.name) {
+        setRenamingId('');
+        return;
+      }
+      try {
+        await updateConsoleRole(tenantId, role.id, { name: trimmed });
+        setRenamingId('');
+        queryClient.invalidateQueries({ queryKey: ['console/roles'] });
+      } catch {
+        window.alert('重命名失败：角色名可能已存在');
+      }
+    },
+    [queryClient, tenantId],
+  );
+
   const removeRole = useCallback(
     async (role: ConsoleRole) => {
       if (!tenantId) return;
@@ -255,46 +278,89 @@ export default function ConsoleRoles() {
   const builtin = roles.filter((r) => r.is_builtin);
   const custom = roles.filter((r) => !r.is_builtin);
 
-  const renderRoleItem = (role: ConsoleRole) => (
-    <div
-      key={role.id}
-      className={`cursor-pointer rounded-md px-3 py-2 ${
-        selectedId === role.id
-          ? 'bg-accent-primary/10'
-          : 'hover:bg-background-second'
-      }`}
-      onClick={() => setSelectedId(role.id)}
-    >
-      <div className="flex items-center gap-2">
-        {role.is_builtin ? (
-          <LucideShieldCheck className="size-4 text-accent-primary" />
-        ) : (
-          <LucideShield className="size-4 text-text-secondary" />
-        )}
-        <span className="text-sm font-medium text-text-primary">
-          {role.name}
-        </span>
-        {role.is_system && (
-          <span className="rounded bg-state-warning/10 px-1 text-[10px] text-state-warning">
-            系统
-          </span>
-        )}
-        {!role.is_system && role.is_builtin && (
-          <span className="rounded bg-background-second px-1 text-[10px] text-text-secondary">
-            内置
-          </span>
-        )}
-        {!role.is_builtin && (
-          <span className="rounded bg-accent-primary/10 px-1 text-[10px] text-accent-primary">
-            自定义
-          </span>
+  const renderRoleItem = (role: ConsoleRole) => {
+    const canRename = !role.is_system && !role.is_builtin;
+    const isRenaming = renamingId === role.id;
+
+    return (
+      <div
+        key={role.id}
+        className={`group cursor-pointer rounded-md px-3 py-2 ${
+          selectedId === role.id
+            ? 'bg-accent-primary/10'
+            : 'hover:bg-background-second'
+        }`}
+        onClick={() => !isRenaming && setSelectedId(role.id)}
+      >
+        <div className="flex items-center gap-2">
+          {role.is_builtin ? (
+            <LucideShieldCheck className="size-4 text-accent-primary shrink-0" />
+          ) : (
+            <LucideShield className="size-4 text-text-secondary shrink-0" />
+          )}
+
+          {isRenaming ? (
+            <Input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={() => renameRole(role, renameValue)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  renameRole(role, renameValue);
+                } else if (e.key === 'Escape') {
+                  setRenamingId('');
+                }
+              }}
+              className="h-7 flex-1 min-w-0 text-sm"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span className="text-sm font-medium text-text-primary truncate">
+              {role.name}
+            </span>
+          )}
+
+          {role.is_system && (
+            <span className="rounded bg-state-warning/10 px-1 text-[10px] text-state-warning shrink-0">
+              系统
+            </span>
+          )}
+          {!role.is_system && role.is_builtin && (
+            <span className="rounded bg-background-second px-1 text-[10px] text-text-secondary shrink-0">
+              内置
+            </span>
+          )}
+          {!role.is_builtin && (
+            <span className="rounded bg-accent-primary/10 px-1 text-[10px] text-accent-primary shrink-0">
+              自定义
+            </span>
+          )}
+
+          {canRename && !isRenaming && (
+            <button
+              type="button"
+              title="重命名"
+              className="ml-auto opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-background-second transition-opacity shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                setRenamingId(role.id);
+                setRenameValue(role.name);
+              }}
+            >
+              <LucidePencil className="size-3.5 text-text-secondary" />
+            </button>
+          )}
+        </div>
+        {!isRenaming && (
+          <div className="mt-0.5 truncate pl-6 text-xs text-text-secondary">
+            {role.description || '—'}
+          </div>
         )}
       </div>
-      <div className="mt-0.5 truncate pl-6 text-xs text-text-secondary">
-        {role.description || '—'}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <ConsoleGuard module="role">

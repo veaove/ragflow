@@ -14,6 +14,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 	"ragflow/internal/service"
 )
 
@@ -67,7 +68,12 @@ func requireTenantAccess(c *gin.Context, userID, tenantID string, write bool) er
 		return errors.New("成员状态已停用")
 	}
 	if write && membership.Role != string(permissionRoleOwner) && membership.Role != string(permissionRoleAdmin) {
-		return errors.New("仅租户管理员可执行该操作")
+		// 枚举只覆盖邀请路径写的 admin：控制台编辑成员只写 role_id，枚举留在
+		// normal。只判枚举的话，被分配成内置「租户管理员」的人在控制台里连成员
+		// 都改不了 —— 移交 Owner 之后原 owner 立刻就是这个状态。
+		if !isBuiltinTenantAdmin(c, membership.RoleID) {
+			return errors.New("仅租户管理员可执行该操作")
+		}
 	}
 
 	module, action := inferModuleAction(c.Request.URL.Path, c.Request.Method)
@@ -75,6 +81,26 @@ func requireTenantAccess(c *gin.Context, userID, tenantID string, write bool) er
 		return nil
 	}
 	return checkModuleAction(c, userID, tenantID, module, action)
+}
+
+// isBuiltinTenantAdmin 判断 role_id 是否指向内置「租户管理员」角色。
+//
+// 角色 id 是主键，天然全局唯一，不需要再按租户过滤。查询失败按「不是管理员」
+// 处理（fail closed）：写闸门宁可误拒，也不能因为一次查询抖动就放行。
+func isBuiltinTenantAdmin(c *gin.Context, roleID string) bool {
+	if strings.TrimSpace(roleID) == "" {
+		return false
+	}
+	ids, err := permission.TenantAdminRoleIDs(c.Request.Context(), dao.DB)
+	if err != nil {
+		return false
+	}
+	for _, id := range ids {
+		if id == roleID {
+			return true
+		}
+	}
+	return false
 }
 
 // Module keys of the role matrix that the console itself exposes.

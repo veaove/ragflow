@@ -197,6 +197,16 @@ func tenantAdminRoleIDs(ctx context.Context, db *gorm.DB) ([]string, error) {
 	return builtinRoleIDs(ctx, db, builtinTenantAdminRoleName)
 }
 
+// TenantAdminRoleIDs 返回所有内置「租户管理员」角色的 id。
+//
+// 控制台编辑成员只写 user_tenant.role_id，枚举留在 normal，所以任何按
+// 「这人是不是租户管理员」做判断的地方都不能只看枚举，得再认这一列。
+// 导出是为了让控制台的写操作闸门（handler.requireTenantAccess）用同一份定义，
+// 而不是把「租户管理员」这四个字再抄一遍到另一个包。
+func TenantAdminRoleIDs(ctx context.Context, db *gorm.DB) ([]string, error) {
+	return tenantAdminRoleIDs(ctx, db)
+}
+
 func builtinRoleIDs(ctx context.Context, db *gorm.DB, roleName string) ([]string, error) {
 	if db == nil {
 		return nil, nil
