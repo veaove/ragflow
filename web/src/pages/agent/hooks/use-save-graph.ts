@@ -110,6 +110,22 @@ export function shouldAutosaveCanvas({
   return true;
 }
 
+/**
+ * True when the canvas we are about to write is the one the server already
+ * holds. Only `graph` is compared: `components` is a pure function of it
+ * (`buildDslComponentsByGraph` reads `node.data.form` and the edges), and the
+ * rest of the DSL is spread through from the previous payload untouched.
+ */
+export function isSameCanvasContent(
+  serverDsl: Record<string, any> | undefined,
+  nextDsl: Record<string, any> | undefined,
+): boolean {
+  if (!serverDsl || !nextDsl) {
+    return false;
+  }
+  return JSON.stringify(serverDsl.graph) === JSON.stringify(nextDsl.graph);
+}
+
 export const useWatchAgentChange = (chatDrawerVisible: boolean) => {
   const [time, setTime] = useState<string>();
   const { id } = useParams();
@@ -117,6 +133,7 @@ export const useWatchAgentChange = (chatDrawerVisible: boolean) => {
   const edges = useGraphStore((state) => state.edges);
   const { saveGraph } = useSaveGraph(false, true);
   const { data: flowDetail } = useFetchAgent();
+  const { buildDslData } = useBuildDslData();
 
   const setSaveTime = useCallback((updateTime: number) => {
     setTime(formatDate(updateTime));
@@ -138,13 +155,24 @@ export const useWatchAgentChange = (chatDrawerVisible: boolean) => {
     ) {
       return;
     }
+    // The debounce below fires on any nodes/edges reference change, and a
+    // refetch re-seeds the store with brand-new node objects — so a publish, a
+    // manual save or a window refocus all look like an edit here. Writing that
+    // back is not a no-op: the request omits `release`, and the backend coerces
+    // an absent release to false, which unpublishes the agent it just
+    // published. Skip anything the server already has.
+    if (isSameCanvasContent(flowDetail?.dsl, buildDslData())) {
+      return;
+    }
     const ret = await saveGraph();
     if (ret?.data?.update_time) {
       setSaveTime(ret.data.update_time);
     }
   }, [
+    buildDslData,
     chatDrawerVisible,
     edges.length,
+    flowDetail?.dsl,
     flowDetail?.id,
     id,
     nodes.length,
