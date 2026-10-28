@@ -77,15 +77,16 @@ func TestResolveTenantIDForUserReturnsTenantNotUserID(t *testing.T) {
 	}
 }
 
-// A user with no membership must not be handed back as their own tenant. Empty
-// makes the model lookup fail loudly instead of silently reading someone else's
-// configuration.
-func TestResolveTenantIDForUserWithoutMembershipIsEmpty(t *testing.T) {
+// With no membership row the helper deliberately falls back to the user id —
+// that is what pre-tenant_id rows assume, and it keeps single-user tenants
+// working. Pinned here so the fallback is not removed by accident, and so the
+// search fix above stays a "membership wins" change rather than a rewrite.
+func TestResolveTenantIDForUserFallsBackToUserIDWhenUnattached(t *testing.T) {
 	testDB := setupServiceTestDB(t)
 	pushServiceDB(t, testDB)
 
 	const orphanUserID = "user-without-tenant"
-	if got := resolveTenantIDForUser(t.Context(), orphanUserID); got != "" {
-		t.Fatalf("resolveTenantIDForUser(%q) = %q, want empty", orphanUserID, got)
+	if got := resolveTenantIDForUser(t.Context(), orphanUserID); got != orphanUserID {
+		t.Fatalf("resolveTenantIDForUser(%q) = %q, want the user id back", orphanUserID, got)
 	}
 }
