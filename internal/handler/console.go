@@ -214,6 +214,22 @@ const (
 	permissionRoleNormal = "normal"
 )
 
+// isBuiltinTenantAdmin reports whether roleID points at the built-in 租户管理员 role.
+// Built-in roles are created by dao.EnsureBuiltinRoles with is_builtin=1.
+func isBuiltinTenantAdmin(c *gin.Context, roleID string) bool {
+	if roleID == "" {
+		return false
+	}
+	var role entity.Role
+	if err := dao.DB.WithContext(c.Request.Context()).
+		Where("id = ? AND is_builtin = 1").First(&role).Error; err != nil {
+		return false
+	}
+	// 内置全权限角色只有 Owner（is_system）和 租户管理员；
+	// Owner 在 user_tenant.role 枚举里直接判过了，这里剩「租户管理员」。
+	return role.Name == "租户管理员"
+}
+
 func consoleTenantID(c *gin.Context) string {
 	return c.Param("tenant_id")
 }
