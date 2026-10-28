@@ -5,7 +5,7 @@ import { IDialog } from '@/interfaces/database/chat';
 import {
   formatKnowledgeBaseCell,
   getKnowledgeBaseNames,
-} from './chat-labels';
+} from '@/utils/kb-labels';
 import { ChatDropdown } from './chat-dropdown';
 import { useRenameChat } from './hooks/use-rename-chat';
 import { useModelNameResolver } from './use-model-name-resolver';

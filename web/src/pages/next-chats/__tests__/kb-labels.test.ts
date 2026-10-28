@@ -4,7 +4,7 @@ import {
   NO_KNOWLEDGE_BASE_LABEL,
   formatKnowledgeBaseCell,
   getKnowledgeBaseNames,
-} from '../chat-labels';
+} from '@/utils/kb-labels';
 
 // 知识库列的口径：接口成对返回 dataset_ids / kb_names（同一循环内同时 append），
 // 展示层按下标换成名称；名称缺失按产品要求兜底 "-"，一个都没有才显示「未关联」。

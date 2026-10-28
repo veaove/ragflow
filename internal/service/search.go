@@ -94,6 +94,15 @@ func (s *SearchService) ListSearches(ctx context.Context, userID string, keyword
 	searchApps := make([]map[string]interface{}, len(searches))
 	for i, search := range searches {
 		searchApps[i] = s.toSearchAppResponse(search)
+
+		// 知识库列：搜索应用把 kb_ids 存在 search_config 里（chat 有独立列），
+		// 列表页要显示「引用了哪几个库」，这里统一补成 kb_names + dataset_ids，
+		// 字段口径与 /chats 一致，前端可以共用同一套名称格式化逻辑。
+		if kbIDs := searchConfigKBIDs(search.SearchConfig); len(kbIDs) > 0 {
+			names, ids := s.kbNamesByIDs(ctx, kbIDs)
+			searchApps[i]["kb_names"] = names
+			searchApps[i]["dataset_ids"] = ids
+		}
 	}
 
 	return &ListSearchAppsResponse{
@@ -125,6 +134,49 @@ func (s *SearchService) toSearchAppResponse(search *entity.SearchListItem) map[s
 	}
 
 	return result
+}
+
+// searchConfigKBIDs 从 search_config 里取 kb_ids。
+//
+// 线上数据有两种形状：老应用是空对象 {}，新应用是完整配置（含 kb_ids 数组），
+// 两种都要能过。kb_ids 里的元素按 string 处理，非字符串项直接跳过（脏数据容错）。
+func searchConfigKBIDs(config entity.JSONMap) []string {
+	if config == nil {
+		return nil
+	}
+	raw, ok := config["kb_ids"]
+	if !ok {
+		return nil
+	}
+	list, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	ids := make([]string, 0, len(list))
+	for _, item := range list {
+		if id, ok := item.(string); ok && id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// kbNamesByIDs 按 id 取知识库名称，口径与 ChatService.getDatasetNamesAndIDs 一致：
+// 只保留启用中的库，查不到或已停用的跳过；names 与 ids 一一对应。
+func (s *SearchService) kbNamesByIDs(ctx context.Context, kbIDs []string) ([]string, []string) {
+	var names = make([]string, 0, len(kbIDs))
+	var ids = make([]string, 0, len(kbIDs))
+	for _, kbID := range kbIDs {
+		kb, err := s.datasetDAO.GetByID(ctx, dao.DB, kbID)
+		if err != nil || kb == nil {
+			continue
+		}
+		if kb.Status != nil && *kb.Status == "1" {
+			names = append(names, kb.Name)
+			ids = append(ids, kbID)
+		}
+	}
+	return names, ids
 }
 
 // CreateSearchResponse create search response

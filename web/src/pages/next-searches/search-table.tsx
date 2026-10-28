@@ -7,6 +7,10 @@ import {
 } from '@/components/list-view/list-data-table';
 import { ISearchAppProps } from './hooks';
 import { SearchDropdown } from './search-dropdown';
+import {
+  formatKnowledgeBaseCell,
+  getKnowledgeBaseNames,
+} from '@/utils/kb-labels';
 
 /**
  * 知识搜索（Search）表格视图。
@@ -60,6 +64,26 @@ export function SearchTable({
       render: (row) => (
         <span className="text-text-secondary">{row.status || '-'}</span>
       ),
+    },
+    {
+      // 与知识问答列表同口径：最多平铺两个库名，其余收成「等 N 个」，
+      // 完整列表放 title。格式化逻辑在 utils/kb-labels，三处列表共用。
+      key: 'kb',
+      title: t('common.knowledgeBase'),
+      className: 'max-w-[240px]',
+      render: (row) => {
+        const { text, title } = formatKnowledgeBaseCell(
+          getKnowledgeBaseNames(row),
+        );
+        return (
+          <span
+            className="line-clamp-1 text-text-secondary"
+            title={title || undefined}
+          >
+            {text}
+          </span>
+        );
+      },
     },
     {
       key: 'owner',

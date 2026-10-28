@@ -9,7 +9,7 @@ import { IDialog } from '@/interfaces/database/chat';
 import {
   formatKnowledgeBaseCell,
   getKnowledgeBaseNames,
-} from './chat-labels';
+} from '@/utils/kb-labels';
 import { ChatDropdown } from './chat-dropdown';
 import { useModelNameResolver } from './use-model-name-resolver';
 
@@ -24,7 +24,7 @@ import { useModelNameResolver } from './use-model-name-resolver';
  *
  * 模型 / 知识库 / 重排模型三列展示的必须是**名称**：库里存的是 id，
  * 用户看不懂也没法据此判断「这个问答到底配了什么」，映射规则集中在
- * `chat-labels.ts`，卡片视图复用同一套。
+ * `utils/kb-labels.ts`，卡片视图复用同一套。
  */
 export function ChatTable({
   rows,

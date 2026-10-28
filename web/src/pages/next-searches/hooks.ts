@@ -95,6 +95,9 @@ export interface ISearchAppProps {
   tenant_avatar: any;
   tenant_id: string;
   update_time: number;
+  /** 引用的知识库：后端从 search_config.kb_ids 解析后按 /chats 同口径补齐。 */
+  dataset_ids?: string[];
+  kb_names?: string[];
 }
 interface SearchListResponse {
   code: number;

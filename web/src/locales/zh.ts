@@ -80,6 +80,8 @@ export default {
       top: '前 {{top}} 条',
       rename: '重命名',
       name: '名称',
+      description: '描述',
+      status: '状态',
       save: '保存',
       stop: '停止',
       resume: '恢复',

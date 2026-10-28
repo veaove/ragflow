@@ -86,6 +86,8 @@ export default {
       top: 'Top {{top}}',
       rename: 'Rename',
       name: 'Name',
+      description: 'Description',
+      status: 'Status',
       save: 'Save',
       stop: 'Stop',
       resume: 'Resume',

@@ -7,6 +7,7 @@ import {
 import { AgentListItemType, IFlow } from '@/interfaces/database/agent';
 import { CanvasCategoryToFlowType, FlowType } from './constant';
 import { AgentRowActions } from './agent-row-actions';
+import { formatKnowledgeBaseCell } from '@/utils/kb-labels';
 
 /**
  * 列表数据是两种实体的联合：普通智能体（IFlow，标题字段叫 title）
@@ -118,18 +119,18 @@ export function AgentListTable({
     {
       key: 'kb',
       title: t('common.knowledgeBase'),
+      className: 'max-w-[240px]',
       render: (row) => {
-        const count = row.datasets?.length ?? 0;
+        // 原来只显示「N 个」，看不出引用了哪几个库；改成与问答/搜索列表同口径的
+        // 名称展示（最多两个 + 「等 N 个」，完整列表在 title 里）。
+        const names = (row.datasets ?? []).map((d) => d.name);
+        const { text, title } = formatKnowledgeBaseCell(names);
         return (
           <span
-            className="whitespace-nowrap text-text-secondary"
-            title={
-              count > 0
-                ? row.datasets!.map((d) => d.name).join('、')
-                : undefined
-            }
+            className="line-clamp-1 text-text-secondary"
+            title={title || undefined}
           >
-            {count > 0 ? `${count} 个` : '未关联'}
+            {text}
           </span>
         );
       },

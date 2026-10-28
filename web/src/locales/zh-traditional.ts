@@ -8,6 +8,8 @@ export default {
       total: '總共',
       rename: '重命名',
       name: '名稱',
+      description: '描述',
+      status: '狀態',
       save: '保持',
       namePlaceholder: '請輸入名稱',
       nameSlashError: '名稱不能包含 "/"',

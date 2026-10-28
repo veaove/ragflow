@@ -1,17 +1,15 @@
-import { IDialog } from '@/interfaces/database/chat';
-
 /**
- * 知识问答列表（表格 + 卡片）共用的展示口径。
+ * 列表里「知识库」列的展示口径 —— 知识问答 / 知识搜索 / 智能体三处共用。
  *
- * 产品要求很明确：列表里看到的是**名称**，不是 id。库里 llm_id / rerank_id
- * 存的是 uuid 或 `model@instance@provider` 复合值，知识库只存 id，所以展示层
- * 必须先做一次 id → 名称映射，映射不到才兜底 "-"。
+ * 产品要求很明确：列表里看到的是**名称**，不是 id。后端各接口统一成对返回
+ * `dataset_ids` 与 `kb_names`（两个数组在同一循环里 append，下标一一对应），
+ * 展示层只负责映射与截断。
  *
  * 这些函数刻意留在这里而不是塞进组件：表格和卡片必须用同一套规则，
  * 各写一份迟早会出现「表格显示名字、卡片显示 uuid」的错位。
  *
  * 本文件只放纯函数（不引 hooks、不碰 React），映射规则因此可以被单测直接覆盖；
- * 模型列表的取数与缓存见 `use-model-name-resolver.ts`。
+ * 模型列表的取数与缓存见 `pages/next-chats/use-model-name-resolver.ts`。
  */
 
 /** 映射不到名称时的统一占位符。 */
@@ -21,15 +19,22 @@ export const EMPTY_LABEL = '-';
 export const NO_KNOWLEDGE_BASE_LABEL = '未关联';
 
 /**
+ * 任一「带知识库的列表行」都能传进来：问答是 IDialog，搜索/智能体有自己的类型，
+ * 只要这两个字段的形状一致即可，不强制耦合到某个具体实体。
+ */
+export type KnowledgeBaseRow = {
+  dataset_ids?: string[];
+  kb_names?: string[];
+};
+
+/**
  * 知识库列：接口成对返回 `dataset_ids` 与 `kb_names`，两个数组在同一个循环里
- * 同时 append（`getDatasetNamesAndIDs`），因此下标一一对应。
+ * 同时 append，因此下标一一对应。
  *
  * 某个 id 没有对应名称时按产品要求兜底 "-"；完全没有 id 时返回空数组，
  * 由调用方展示「未关联」。
  */
-export function getKnowledgeBaseNames(
-  row: Pick<IDialog, 'dataset_ids' | 'kb_names'>,
-): string[] {
+export function getKnowledgeBaseNames(row: KnowledgeBaseRow): string[] {
   const ids = row.dataset_ids ?? [];
   const names = row.kb_names ?? [];
 
@@ -56,7 +61,10 @@ export function formatKnowledgeBaseCell(names: string[]): {
   const full = names.join('、');
 
   return {
-    text: names.length > 2 ? `${names.slice(0, 2).join('、')} 等 ${names.length} 个` : full,
+    text:
+      names.length > 2
+        ? `${names.slice(0, 2).join('、')} 等 ${names.length} 个`
+        : full,
     title: full,
   };
 }
