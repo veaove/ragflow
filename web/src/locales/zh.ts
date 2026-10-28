@@ -1454,6 +1454,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
         running: '正在{{name}}',
         seconds: '{{value}} 秒',
         lessThanSecond: '<0.01 秒',
+        retrievalProcess: '检索过程',
         chunkCount: '命中 {{num}} 条切片',
         chunkMore: '另 {{num}} 条相似度较低，已折叠',
         viewSource: '查看原文',

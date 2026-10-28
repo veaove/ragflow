@@ -168,7 +168,18 @@ StepRow.displayName = 'StepRow';
  * than from a page-level loading flag: that flag is shared by the whole screen, so
  * a new question would otherwise re-expand every older answer on the page.
  */
-export const ThinkingPanel = memo(({ steps }: { steps?: IThinkingStep[] }) => {
+export const ThinkingPanel = memo(
+  ({
+    steps,
+    summaryTitle,
+  }: {
+    steps?: IThinkingStep[];
+    /**
+     * 折叠时显示的标题。智能体不传，沿用「已深度思考 N 步」；
+     * 知识问答传「检索过程」——那边没有"思考"，照抄文案会误导。
+     */
+    summaryTitle?: string;
+  }) => {
   const { t } = useTranslate('chat');
   const [manual, setManual] = useState<boolean | null>(null);
 
@@ -186,7 +197,7 @@ export const ThinkingPanel = memo(({ steps }: { steps?: IThinkingStep[] }) => {
 
   const title = running
     ? t('thinkingSteps.running', { name: stepLabel(running, t) })
-    : t('thinkingSteps.done', { num: list.length });
+    : (summaryTitle ?? t('thinkingSteps.done', { num: list.length }));
 
   return (
     <div className="mb-3 overflow-hidden rounded-md border border-border-default bg-bg-card">

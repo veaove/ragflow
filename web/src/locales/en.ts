@@ -1557,6 +1557,7 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
         running: '{{name}}',
         seconds: '{{value}}s',
         lessThanSecond: '<0.01s',
+        retrievalProcess: 'Retrieval',
         chunkCount: '{{num}} chunks matched',
         chunkMore: '{{num}} more below the similarity threshold',
         viewSource: 'View source',

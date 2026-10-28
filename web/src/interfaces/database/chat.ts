@@ -134,7 +134,11 @@ export interface Message {
 
 export interface IReferenceChunk {
   id: string;
-  content: null;
+  /**
+   * 切片正文。库里存的是完整文本（见 conversation_reference.reference），
+   * 这里原类型标成 null 是错的——按 null 处理会让检索过程面板显示空行。
+   */
+  content: string | null;
   document_id: string;
   document_name: string;
   dataset_id: string;

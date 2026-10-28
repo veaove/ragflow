@@ -31,6 +31,8 @@ import { DocumentDownloadButton } from '../document-download-button';
 import { LoadingDots } from '../loading-dots';
 import MarkdownContent from '../markdown-content';
 import { ReferenceImageList } from '../next-message-item/reference-image-list';
+import { ThinkingPanel } from '@/pages/agent/chat/thinking-panel';
+import { buildRetrievalSteps } from '@/pages/next-chats/utils';
 import { UploadedMessageFiles } from '../next-message-item/uploaded-message-files';
 import { RAGFlowAvatar } from '../ragflow-avatar';
 import SvgIcon from '../svg-icon';
@@ -104,6 +106,17 @@ const MessageItem = ({
     [item.downloads],
   );
   const messageContent = item.content;
+
+  // 知识问答的「检索过程」：把引用折叠成两步（检索 / 生成）。
+  // 只在回答完成后渲染——Chat 应用没有节点级流式事件，生成中拿不到中间状态，
+  // 硬显一个空面板反而让人以为卡住了。
+  const retrievalSteps = useMemo(
+    () =>
+      isAssistant && !sendLoading
+        ? buildRetrievalSteps(reference, messageContent ?? '')
+        : [],
+    [isAssistant, sendLoading, reference, messageContent],
+  );
 
   const handleRegenerateMessage = useCallback(() => {
     regenerateMessage?.(item);
@@ -180,6 +193,12 @@ const MessageItem = ({
                 <SvgIcon name="error" width={16} className="size-4" />
                 <span>{t('qcBlockedBanner')}</span>
               </div>
+            )}
+            {retrievalSteps.length > 0 && (
+              <ThinkingPanel
+                steps={retrievalSteps}
+                summaryTitle={t('thinkingSteps.retrievalProcess')}
+              />
             )}
             {/* Show message content if there's any text besides the download */}
             {(messageContent || sendLoading) && (
