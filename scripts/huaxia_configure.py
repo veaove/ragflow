@@ -17,6 +17,9 @@
     qc          建质检规则并绑定应用
     synonym     建同义词组
     similar     给高频标准问补相似问
+    greet       重建寒暄库（一意图一 chunk）+ 补口语变体相似问
+    probe       打检索分，用实测 similarity 定 threshold
+    bind        重设智能体检索节点的库绑定（含阈值）
     transfer    给「夏管家推送」加 transfer_enabled 开关（走 PUT /agents）
 """
 import base64
@@ -26,6 +29,7 @@ import json
 import os
 import struct
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -42,6 +46,33 @@ TENANT_ID = "8d5c79460d6c46efb58353c68d8bf729"
 EMBEDDING = "66efe49d791f41629de93675f4bf9a7c"  # 该租户现有库统一 embd_id
 RERANK = "f9dac826d52c43f8b3799d78e73b4241"
 LLM = "617d72a4b0c44995be2372940ddfebc8"
+
+# ======================================================================
+# 检索参数基线（实测得出，别凭感觉改）
+# ======================================================================
+# 三个界面（华小夏-客服 / 夏管家推送 / 华小夏-IVR）必须用同一套数字，
+# 否则同一个问题在不同入口一个答得出、一个答不出，客户会当成 bug。
+#
+# threshold 定 0.28 的依据 —— 用 scripts/huaxia_configure.py probe 在
+# 「rerank 开、关键词权重 0.37」下打的全量分（3 库：FAQ+寒暄+渠道）：
+#   该命中的最低分：有人吗 0.315（→ 寒暄「你好」）、几点前买算今天 0.395、
+#                   你好 0.418、hello 0.410
+#   不该命中的最高分：我想吃饭 0.239、帮我写首诗 0.210、今天天气 0.155
+#   两者之间只有 0.239~0.315 这段可选 → 取中点 0.28。
+#
+# 两个反例（都实测过，别再试）：
+#   - threshold=0.35（原来的值）：有人吗 0.315、帮我写首诗 0.210 被砍，
+#     寒暄一半答不出，这就是「客户说在吗能答、换个说法就兜底」的根因。
+#   - 关掉 rerank：分数整体抬到 0.4~0.8，但区分度反而没了 ——
+#     今天天气 0.386（top1 是 REITs 分红）、hello 0.405，能用的窗口只有 0.02，
+#     等于没法用阈值筛。开 rerank 后窗口是 0.08，宽 4 倍。
+#   - 关键词权重提到 0.7（vector 权重 0.3）：全线掉到 0.15~0.29，
+#     你好 0.199、有人吗 0.150，比关 rerank 更难分。
+RETRIEVAL_TUNING = {
+    "rerank_id": RERANK,
+    "similarity_threshold": 0.28,
+    "keywords_similarity_weight": 0.37,   # 注意：会话应用那边是它的补数（vector 0.63）
+}
 
 # 生产库（现状）
 KB_FIRSTFAQ = "6995fa4b2ad24d5f9270fcfe18d12d1d"   # 华夏基金FAQ库（qa, 9 chunk）
@@ -276,6 +307,13 @@ SYNONYMS = {
         ("服务渠道", "hx", "synonym",
          ["服务渠道", "购买渠道", "交易渠道", "在哪买"], "渠道全集"),
     ],
+    # 寒暄库：只归一"打招呼"这一个语义族。
+    # 为什么不把"谢谢/再见"也并进来 —— 它们不是同义关系，合并会让「谢谢」召回"在吗"的答案。
+    KB_GREET: [
+        ("寒暄问候", "hx", "synonym",
+         ["你好", "您好", "在吗", "在么", "在不在", "有人吗", "hi", "hello", "哈喽"],
+         "打招呼的口语变体，避免换个说法就不认"),
+    ],
 }
 
 
@@ -436,6 +474,183 @@ def cmd_similar(api: Api):
             print(f"  [x] {current[0][:26]} 失败：{e}")
             fail += 1
     print(f"\n相似问：成功 {ok} / 跳过 {skip} / 失败 {fail}")
+
+
+# ======================================================================
+# 寒暄库重建（一意图一 chunk + 口语变体做相似问）
+# ======================================================================
+# 为什么必须重建，而不是只补同义词：
+#   原文档是 general 解析的纯文本，十组问答挤成 2 个 chunk，question_kwd 为空。
+#   后果有两条——
+#     1) 向量路：一个 chunk 的向量是 5 个意图的平均，「有人吗」这种三字短问句
+#        跟谁都不像（实测 similarity 0.2~0.35，被 threshold 卡光）；
+#     2) 关键词路：question_kwd 空 → question_tks^20 这一路恒 0 分，
+#        只剩向量分撑，融合分更低。
+#   改成 qa 解析（txt 逐行「问题,回答」）后一意图一 chunk，再把口语变体写进
+#   相似问（落 question_kwd），两条检索路才都认这个库。同义词组解决的是
+#   「换个说法问业务问题」，治不了「一段文本里混了十个意图」。
+GREET_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+                         "docs", "huaxia_kefu", "kb", "寒暄知识库.txt")
+GREET_DOC_NAME = "华夏基金-寒暄知识库.txt"
+
+# 标准问 → 口语变体（相似问）。每个变体只归一个标准问：
+# 同一个词挂到两个 chunk 上会让它们得分打平，排序随机。
+GREET_SIMILAR = {
+    "你好": ["您好", "你好呀", "您好呀", "你好啊", "哈喽", "嗨", "hi", "hello", "喂",
+             "在么", "在不在", "有人吗", "有人么", "有没有人"],
+    "在吗": ["你在吗", "小夏在吗", "在吗小夏"],
+    "你是谁": ["你叫什么", "你叫什么名字", "你是机器人吗", "你是男是女"],
+    "你能做什么": ["你会什么", "你能干啥", "你有什么功能", "能帮我做什么",
+                   "你能回答什么问题"],
+    "你贵姓": ["你姓什么", "你的名字", "怎么称呼你"],
+    "谢谢": ["感谢", "谢了", "多谢", "谢谢你", "感谢你", "辛苦了", "麻烦你了"],
+    "再见": ["拜拜", "下次见", "我走了", "退下吧"],
+    "早上好": ["早安", "上午好"],
+    "晚上好": ["晚安", "晚上好呀"],
+    "华夏基金怎么样": ["华夏基金靠谱吗", "华夏基金安全吗", "介绍一下华夏基金",
+                       "华夏基金公司介绍", "华夏基金实力"],
+    "怎么转人工": ["转人工", "我要人工", "人工客服", "找人工", "转坐席", "人工服务"],
+    "你们有APP吗": ["有APP吗", "手机APP", "下载APP", "官方APP", "有没有APP", "微信小程序"],
+}
+
+
+def _greet_lines():
+    """读源文件并校验「一行一对」。
+
+    半角逗号是 qa 解析器判「问题/回答」的分隔符：一行里出现两个就把三列读成
+    「答案接上一行」，两个意图被静默粘进同一个 chunk。中文文案里应统一用「，」，
+    所以这里直接卡死。
+    """
+    with open(GREET_SRC, encoding="utf-8") as f:
+        lines = [ln.rstrip("\n") for ln in f if ln.strip()]
+    bad = [i + 1 for i, ln in enumerate(lines) if ln.count(",") != 1]
+    if bad:
+        raise SystemExit(f"源文件第 {bad} 行不是「问题,回答」（半角逗号须恰好 1 个）")
+    return lines
+
+
+def cmd_greet(api: Api):
+    """重建寒暄库：qa 解析成 12 个意图 chunk，再逐 chunk 写入口语变体。"""
+    lines = _greet_lines()
+    expect = {ln.split(",", 1)[0].strip() for ln in lines}
+    missing_variants = expect - set(GREET_SIMILAR)
+    if missing_variants:
+        raise SystemExit(f"这些标准问没写变体：{sorted(missing_variants)}")
+    print(f"源文件 {len(lines)} 组问答，覆盖 {len(expect)} 个意图")
+
+    docs = as_list(api.get(f"/api/v1/datasets/{KB_GREET}/documents?page=1&page_size=50")["data"], "docs")
+    if docs:
+        api.delete(f"/api/v1/datasets/{KB_GREET}/documents", {"ids": [d["id"] for d in docs]})
+        print(f"  删除旧文档 {len(docs)} 个（{[d['name'] for d in docs]}）")
+
+    # 用正式文档名上传，别把仓库里的文件名带到客户界面上
+    tmp = os.path.join(tempfile.gettempdir(), GREET_DOC_NAME)
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+    api.upload_file(f"/api/v1/datasets/{KB_GREET}/documents", tmp,
+                    {"parser_id": "qa", "run": "1"})
+    print(f"  已上传 {GREET_DOC_NAME}（parser=qa）")
+
+    # upload 的 run=1 在这个版本里不落成解析任务（实测文档停在 UNSTART），
+    # 必须再显式调一次 parse。
+    uploaded = as_list(api.get(f"/api/v1/datasets/{KB_GREET}/documents?page=1&page_size=50")["data"], "docs")
+    pending = [d["id"] for d in uploaded if (d.get("ingestion_status") or "") != "COMPLETED"]
+    if pending:
+        out = api.post(f"/api/v1/datasets/{KB_GREET}/documents/parse", {"document_ids": pending})
+        print(f"  已触发解析：{out['data'].get('success_count')} 个任务")
+
+    doc, doc_id = None, ""
+    for _ in range(60):
+        time.sleep(2)
+        docs = as_list(api.get(f"/api/v1/datasets/{KB_GREET}/documents?page=1&page_size=50")["data"], "docs")
+        if not docs:
+            continue
+        doc = docs[0]
+        doc_id = doc["id"]
+        st = doc.get("ingestion_status") or doc.get("status")
+        if st in ("COMPLETED", "FAILED") or (doc.get("chunk_count") or 0) > 0 and st != "RUNNING":
+            if st == "FAILED":
+                raise SystemExit(f"解析失败：{doc.get('progress_msg')}")
+            break
+    else:
+        raise SystemExit("等待解析超时（120s），稍后重跑本命令即可（会先删再传）")
+    print(f"  解析完成：{doc.get('chunk_count')} 个 chunk")
+
+    chunks = as_list(api.get(f"/api/v1/datasets/{KB_GREET}/documents/{doc_id}/chunks?page=1&page_size=200")["data"], "chunks")
+    by_q = {}
+    for c in chunks:
+        qs = c.get("question_kwd") or []
+        if qs:
+            by_q[qs[0].strip()] = c
+    print(f"  可定位标准问 {len(by_q)}/{len(expect)}")
+
+    ok = fail = 0
+    for q, extra in GREET_SIMILAR.items():
+        c = by_q.get(q)
+        if not c:
+            print(f"  [x] 找不到标准问「{q}」")
+            fail += 1
+            continue
+        merged = [q] + [w for w in extra if w != q]
+        try:
+            api.patch(f"/api/v1/datasets/{KB_GREET}/documents/{doc_id}/chunks/{c['chunk_id']}",
+                      {"questions": merged})
+            print(f"  + {q:<12} 变体 {len(merged) - 1:>2} 条")
+            ok += 1
+        except Exception as e:
+            print(f"  [x] {q} 写变体失败：{e}")
+            fail += 1
+    print(f"\n寒暄库：{ok} 个意图已补相似问 / 失败 {fail}")
+    print("下一步：python scripts/huaxia_configure.py probe  看真实分数，再定阈值")
+
+
+# ======================================================================
+# 检索打分探针：直接问「多少分」，用来定 threshold，不靠猜
+# ======================================================================
+# 为什么要单独一个命令：similarity 是 Infinity 融合分（term*关键词权重 +
+# vec*向量权重），开不开 rerank 上限完全不同——开 rerank 后上限约 0.6，
+# 关 rerank 能到 0.9。把 threshold 设成 0.35 在开 rerank 时等于砍掉一半召回。
+PROBE_QUESTIONS = [
+    ("你好", "寒暄/标准问"),
+    ("在吗", "寒暄/标准问"),
+    ("有人吗", "寒暄/相似问"),
+    ("hello", "寒暄/相似问（英文）"),
+    ("谢谢", "寒暄/标准问"),
+    ("华夏基金怎么样", "寒暄/标准问"),
+    ("基金定投的起点金额是多少", "业务/必须命中 FAQ"),
+    ("申购费率是多少", "业务/必须命中 FAQ"),
+    ("你们支持哪些银行卡", "业务/必须命中渠道库"),
+    ("今天天气怎么样", "闲聊/应该低分"),
+]
+
+
+def cmd_probe(api: Api, kb_ids=None, label="寒暄+FAQ+渠道"):
+    """按当前智能体的检索参数打一次分，打印每条召回的 similarity。
+
+    阈值判定看两列：命中应该命中的（业务+寒暄）分数下限，以及不该命中的上限。
+    加 --no-rerank 复现智能体线上的真实参数（DSL 里 rerank_id 为空）。
+    """
+    kb_ids = kb_ids or [KB_FAQ, KB_GREET, KB_CHANNEL]
+    rerank = "" if "--no-rerank" in sys.argv else RERANK
+    print(f"== 检索打分（{label}，rerank={'开' if rerank else '关'}，vw=0.63，threshold=0.001）==")
+    worst = []
+    for q, note in PROBE_QUESTIONS:
+        body = {"dataset_ids": kb_ids, "question": q, "page_size": 5,
+                "similarity_threshold": 0.001, "vector_similarity_weight": 0.63,
+                "keyword": True, "rerank_id": rerank}
+        try:
+            chunks = api.post("/api/v1/retrieval", body)["data"].get("chunks") or []
+        except Exception as e:
+            print(f"[ERR ] {q:<22} {e}")
+            continue
+        top = chunks[0] if chunks else None
+        sim = round((top or {}).get("similarity") or 0, 3)
+        head = ((top or {}).get("content") or "").replace("\n", " ")[:44]
+        worst.append((sim, q))
+        print(f"  {q:<22} top1={sim:<6} 召回={len(chunks)}  {head}")
+    print("\n分数排序（低→高）：")
+    for sim, q in sorted(worst):
+        print(f"  {sim:<6} {q}")
 
 
 # ======================================================================
@@ -674,8 +889,13 @@ def _sse(api: Api, path, body, method="POST"):
                     v = d.get(key)
                     if isinstance(v, str) and v:
                         pieces.append(v)
-                if isinstance(d.get("reference"), list) and d["reference"]:
-                    refs = d["reference"]
+                # reference 有两种形态：问答应用是 {"chunks":[...],"total":n}，
+                # 智能体是纯 list。只认 list 会把引用数一律报成 0。
+                ref = d.get("reference")
+                if isinstance(ref, dict) and ref.get("chunks"):
+                    refs = ref["chunks"]
+                elif isinstance(ref, list) and ref:
+                    refs = ref
     except urllib.error.HTTPError as e:
         return f"HTTP {e.code}: {e.read()[:300].decode('utf-8', 'replace')}", []
 
@@ -777,6 +997,88 @@ def cmd_eval(api: Api):
 
 
 # ======================================================================
+# 智能体 / 会话应用的检索库绑定与参数对齐
+# ======================================================================
+# 检索节点上的 dataset_ids 决定了三件事：能召回哪些内容、拥有哪些同义词组、
+# 以及 noise 有多少（库越多越容易互相挤 top_n）。所以绑定要按库的职责划，不是越多越好。
+AGENT_IVR = "d84989e4e3ca4d328bfa9a5525418ac9"     # 华小夏-IVR（按键菜单）
+AGENT_RETRIEVAL_BINDINGS = {
+    # 夏管家推送原来只绑 FAQ：客套话问「在吗」只能答成业务条款。
+    # 补寒暄库后与「华小夏-客服」「华小夏-IVR」的库组合对齐。
+    AGENT_TRANSFER: [KB_FAQ, KB_GREET],
+    # IVR 与按键菜单共用一套库：数字键走死值，其余自然语言才进检索
+    AGENT_IVR: [KB_FAQ, KB_GREET, KB_CHANNEL],
+}
+
+# 会话应用（问答应用）：同一套基线，只是字段名换成 vector_similarity_weight
+# （会话应用存的是「向量权重」，与智能体节点的「关键词权重」互为补数）
+CHAT_RETRIEVAL_APPS = [
+    APP_PROD,                               # 华小夏-客服
+    "a958e5089ea54e668c4bdf465695bfce",     # 华小夏-沙箱（模拟测试）
+]
+
+
+def cmd_bind(api: Api):
+    """对齐各处入口的检索库与参数（幂等，保留 release）。
+
+    只改「库 + 三个检索参数」，其余字段原样回写，避免把别人调好的提示词冲掉。
+    """
+    for agent_id, kb_ids in AGENT_RETRIEVAL_BINDINGS.items():
+        row = api.get(f"/api/v1/agents/{agent_id}")["data"]
+        dsl = row["dsl"] if isinstance(row.get("dsl"), dict) else json.loads(row["dsl"])
+        title = row.get("title") or agent_id
+        changed = False
+        for cid, comp in dsl["components"].items():
+            if comp["obj"]["component_name"] != "Retrieval":
+                continue
+            params = comp["obj"]["params"]
+            want = {"dataset_ids": list(kb_ids), **RETRIEVAL_TUNING}
+            diff = {k: v for k, v in want.items()
+                    if (params.get(k) or ([] if k == "dataset_ids" else None)) != v}
+            if not diff:
+                print(f"  = {title} / {cid} 已是目标配置，跳过")
+                continue
+            before = {k: params.get(k) for k in want}
+            params.update(want)
+            # graph 里还有一份 form 拷贝，不同步的话画布一打开又变回旧值
+            for n in dsl.get("graph", {}).get("nodes", []):
+                if n.get("id") == cid:
+                    n.setdefault("data", {}).setdefault("form", {}).update(want)
+            changed = True
+            print(f"  ~ {title} / {cid}：{len(before['dataset_ids'] or [])}→{len(kb_ids)} 库，"
+                  f"thr {before['similarity_threshold']}→{want['similarity_threshold']}，"
+                  f"kww {before['keywords_similarity_weight']}→{want['keywords_similarity_weight']}，"
+                  f"rerank {before['rerank_id'] or '关'}→{'开' if want['rerank_id'] else '关'}")
+        if changed:
+            # release 必须原样带回：PUT 不传等于悄悄下架
+            api.put(f"/api/v1/agents/{agent_id}",
+                    {"title": title, "dsl": dsl, "release": bool(row.get("release"))})
+            print(f"  已保存 {title}（release 保持 {bool(row.get('release'))}）")
+
+    for app_id in CHAT_RETRIEVAL_APPS:
+        app = api.get(f"/api/v1/chats/{app_id}")["data"]
+        # 只 PATCH 接口真的保存并回显的字段。
+        # vector_similarity_weight 在这个版本里既不在 PATCH 白名单里落库、也不回显
+        # （读出来恒 None），会话应用实际按 1 - keywords_similarity_weight 推导，
+        # 所以推它等于每次都比出差异、每次都说"改了"。
+        body = {
+            "similarity_threshold": RETRIEVAL_TUNING["similarity_threshold"],
+            "keywords_similarity_weight": RETRIEVAL_TUNING["keywords_similarity_weight"],
+            "rerank_id": RETRIEVAL_TUNING["rerank_id"],
+        }
+        cur = {k: app.get(k) for k in body}
+        if all(cur[k] == v for k, v in body.items()):
+            print(f"  = 会话应用 {app.get('name')} 已是目标配置，跳过")
+            continue
+        api.patch(f"/api/v1/chats/{app_id}", body)
+        print(f"  ~ 会话应用 {app.get('name')}：{len(app.get('dataset_ids') or [])} 库，"
+              f"thr {cur['similarity_threshold']}→{body['similarity_threshold']}，"
+              f"kww {cur['keywords_similarity_weight']}→{body['keywords_similarity_weight']}，"
+              f"rerank {'关' if not cur['rerank_id'] else '开'}→{'开' if body['rerank_id'] else '关'}")
+    print("\n提示：改完必须跑 probe + test，阈值只管「能不能召回」，不管「答得对不对」。")
+
+
+# ======================================================================
 # 转人工（需求 5）：上架「夏管家推送」智能体
 # ======================================================================
 # 关于「一键停用转人工」：结论是不改 DSL，用平台既有的发布开关。
@@ -784,6 +1086,7 @@ def cmd_eval(api: Api):
 # （实测 begin.outputs = {"query":"我要人工","zuoxi_02":"我要人工"}，
 #  配置的 zuoxi_02=1 并不生效），因此没法把开关塞进 Begin 再去 Switch 里判断。
 # 停用转人工 = 下架这个智能体，入口即消失，这是现成且零风险的机制。
+# ======================================================================
 def cmd_transfer(api: Api):
     """检查「夏管家推送」的转人工链路，按需上架。
 

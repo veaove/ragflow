@@ -24,7 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from huaxia_configure import (  # noqa: E402
-    Api, KB_CHANNEL, KB_FAQ, KB_GREET, LLM, _sse,
+    Api, KB_CHANNEL, KB_FAQ, KB_GREET, LLM, RETRIEVAL_TUNING, _sse,
 )
 
 AGENT_NAME = "华小夏-IVR（按键菜单）"
@@ -219,9 +219,13 @@ def build_dsl() -> dict:
         "dataset_ids": [KB_FAQ, KB_GREET, KB_CHANNEL],
         "query": "{Agent:Rewrite@content}",
         "retrieval_from": "dataset",
-        "similarity_threshold": 0.35, "top_n": 5, "top_k": 1024,
-        "keywords_similarity_weight": 0.37, "rerank_candidates_count": 30,
-        "rerank_id": "", "cross_languages": [], "meta_data_filter": {},
+        # 与「华小夏-客服」「夏管家推送」共用同一套基线（见 huaxia_configure.RETRIEVAL_TUNING）。
+        # 单独调这个节点的阈值，就会出现「同样一句话在 IVR 里兜底、在客服里能答」。
+        "similarity_threshold": RETRIEVAL_TUNING["similarity_threshold"],
+        "keywords_similarity_weight": RETRIEVAL_TUNING["keywords_similarity_weight"],
+        "rerank_id": RETRIEVAL_TUNING["rerank_id"],
+        "top_n": 5, "top_k": 1024, "rerank_candidates_count": 30,
+        "cross_languages": [], "meta_data_filter": {},
         "user_id": "{sys.user_id}",
         "outputs": {"formalized_content": {"type": "string", "value": ""},
                     "json": {"type": "Array<Object>", "value": []}},
