@@ -101,6 +101,11 @@ func RunMigrations(ctx context.Context, db *gorm.DB) error {
 		return fmt.Errorf("failed to backfill memory.created_by: %w", err)
 	}
 
+	// Keep the raw layer in memory.memory_type so settings stay editable.
+	if err := migrateMemoryRawType(ctx, db); err != nil {
+		return fmt.Errorf("failed to backfill memory.memory_type raw bit: %w", err)
+	}
+
 	common.Info("All manual migrations completed successfully")
 	return nil
 }
@@ -142,9 +147,15 @@ func migrateCanvasTenantID(ctx context.Context, db *gorm.DB) error {
 //
 // tenant_id is never rewritten. It names the memory's vector index
 // (MemoryIndexName) and scopes the tenant models used at extraction time, so
-// moving it would orphan already-embedded messages. A row whose tenant_id is
-// a real tenant therefore keeps an empty created_by and readers fall back to
-// tenant_id for the owner check — the same answer the old code gave.
+// moving it would orphan already-embedded messages.
+//
+// Rows whose tenant_id is a real tenant — written after tenants became
+// multi-member — have no user to copy from, so the second pass attributes them
+// to that tenant's owner. Leaving created_by empty there is not harmless: the
+// permission layer falls back to tenant_id as the owner, which can never equal
+// a caller's user id, so a private memory would be invisible to its own
+// creator. Attributing to the owner keeps the old "tenant-private" reading
+// while giving the row a subject that can actually be matched.
 func migrateMemoryCreatedBy(ctx context.Context, db *gorm.DB) error {
 	migrator := db.WithContext(ctx).Migrator()
 	if !migrator.HasTable(&entity.Memory{}) {
@@ -156,6 +167,7 @@ func migrateMemoryCreatedBy(ctx context.Context, db *gorm.DB) error {
 		}
 	}
 
+	// Pass 1: tenant_id still holds the creator's user id.
 	res := db.WithContext(ctx).Exec(`
 		UPDATE memory SET created_by = tenant_id
 		WHERE (created_by IS NULL OR created_by = '')
@@ -163,8 +175,57 @@ func migrateMemoryCreatedBy(ctx context.Context, db *gorm.DB) error {
 	if res.Error != nil {
 		return res.Error
 	}
+	backfilled := res.RowsAffected
+
+	// Pass 2: tenant_id is a real tenant, so credit that tenant's owner.
+	res = db.WithContext(ctx).Exec(`
+		UPDATE memory SET created_by = (
+			SELECT ut.user_id FROM user_tenant ut
+			WHERE ut.tenant_id = memory.tenant_id
+			  AND ut.role = 'owner'
+			  AND (ut.status IS NULL OR ut.status = '1')
+			ORDER BY ut.create_time ASC
+			LIMIT 1
+		)
+		WHERE (created_by IS NULL OR created_by = '')
+		  AND NOT EXISTS (SELECT 1 FROM user u WHERE u.id = memory.tenant_id)`)
+	if res.Error != nil {
+		return res.Error
+	}
+	if backfilled+res.RowsAffected > 0 {
+		common.Info("Backfilled memory.created_by",
+			zap.Int64("rows", backfilled+res.RowsAffected))
+	}
+	return nil
+}
+
+// migrateMemoryRawType sets the raw bit on memories that were created without
+// it.
+//
+// Both memory forms treat the raw layer as mandatory — the option is locked on
+// and the schema rejects any selection that omits it — and every conversation
+// turn is stored as a raw message regardless of the flag. A stored row without
+// the bit is therefore not a different behaviour, it is a row whose own
+// settings page fails to validate, which locks the user out of editing the
+// memory at all.
+//
+// Safe to run repeatedly and behaviour-preserving: getTypesToExtract drops raw
+// before building the extraction prompt, so the set of extracted types does not
+// change.
+func migrateMemoryRawType(ctx context.Context, db *gorm.DB) error {
+	migrator := db.WithContext(ctx).Migrator()
+	if !migrator.HasTable(&entity.Memory{}) {
+		return nil
+	}
+
+	res := db.WithContext(ctx).Exec(`
+		UPDATE memory SET memory_type = IFNULL(memory_type, 0) | 1
+		WHERE IFNULL(memory_type, 0) & 1 = 0`)
+	if res.Error != nil {
+		return res.Error
+	}
 	if res.RowsAffected > 0 {
-		common.Info("Backfilled memory.created_by", zap.Int64("rows", res.RowsAffected))
+		common.Info("Backfilled memory_type raw bit", zap.Int64("rows", res.RowsAffected))
 	}
 	return nil
 }

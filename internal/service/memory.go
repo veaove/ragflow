@@ -508,20 +508,16 @@ func (s *MemoryService) CreateMemory(ctx context.Context, userID string, req *Cr
 		return nil, errors.New("memory type must be a list")
 	}
 
-	memoryTypeSet := make(map[string]bool)
-	for _, mt := range req.MemoryType {
-		lowerMT := strings.ToLower(mt)
-		if _, ok := dao.MemoryTypeMap[lowerMT]; !ok {
-			return nil, fmt.Errorf("memory type '%s' is not supported", mt)
-		}
-		memoryTypeSet[lowerMT] = true
+	memoryTypeSet, err := validateMemoryTypes(req.MemoryType)
+	if err != nil {
+		return nil, err
 	}
 	uniqueMemoryTypes := make([]string, 0, len(memoryTypeSet))
 	for mt := range memoryTypeSet {
 		uniqueMemoryTypes = append(uniqueMemoryTypes, mt)
 	}
 
-	memoryName, err := common.UniqueName(memoryName, MemoryNameLimit, func(candidate string) (bool, error) {
+	memoryName, err = common.UniqueName(memoryName, MemoryNameLimit, func(candidate string) (bool, error) {
 		existing, err := s.memoryDAO.GetByNameAndTenant(ctx, dao.DB, candidate, tenantID)
 		if err != nil {
 			return false, err
@@ -676,13 +672,9 @@ func (s *MemoryService) UpdateMemory(ctx context.Context, userID string, memoryI
 	}
 
 	if req.MemoryType != nil && len(req.MemoryType) > 0 {
-		memoryTypeSet := make(map[string]bool)
-		for _, mt := range req.MemoryType {
-			lowerMT := strings.ToLower(mt)
-			if _, ok := dao.MemoryTypeMap[lowerMT]; !ok {
-				return nil, fmt.Errorf("memory type '%s' is not supported", mt)
-			}
-			memoryTypeSet[lowerMT] = true
+		memoryTypeSet, err := validateMemoryTypes(req.MemoryType)
+		if err != nil {
+			return nil, err
 		}
 		uniqueMemoryTypes := make([]string, 0, len(memoryTypeSet))
 		for mt := range memoryTypeSet {
@@ -882,6 +874,28 @@ func (s *MemoryService) UpdateMemory(ctx context.Context, userID string, memoryI
 	}
 
 	return formatRetDataFromMemory(updatedMemory), nil
+}
+
+// validateMemoryTypes lower-cases the requested types, rejects unknown ones and
+// returns the resulting set.
+//
+// The raw layer is mandatory in this build: every conversation turn is written
+// as a raw message before extraction runs, and both memory forms lock the
+// option on. Accepting a set without it would store a row whose own settings
+// page then fails validation, leaving the memory permanently uneditable.
+func validateMemoryTypes(requested []string) (map[string]bool, error) {
+	set := make(map[string]bool, len(requested))
+	for _, mt := range requested {
+		lowerMT := strings.ToLower(mt)
+		if _, ok := dao.MemoryTypeMap[lowerMT]; !ok {
+			return nil, fmt.Errorf("memory type '%s' is not supported", mt)
+		}
+		set[lowerMT] = true
+	}
+	if !set["raw"] {
+		return nil, errors.New("memory type 'raw' is required")
+	}
+	return set, nil
 }
 
 func normalizeMemoryTypes(memoryTypes []string) []string {
