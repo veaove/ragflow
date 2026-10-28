@@ -15,7 +15,7 @@
  */
 
 import { IReference } from '@/interfaces/database/chat';
-import { currentReg, normalizeCitationDigits, showImage } from '@/utils/chat';
+import { currentReg, parseCitationIndex, showImage } from '@/utils/chat';
 
 export interface ReferenceMatch {
   id: string;
@@ -31,7 +31,11 @@ export const findAllReferenceMatches = (text: string): ReferenceMatch[] => {
   let match;
   while ((match = currentReg.exec(text)) !== null) {
     matches.push({
-      id: normalizeCitationDigits(match[1]),
+      // currentReg deliberately captures nothing: the full-width spellings
+      // (【ID:12】, 【来源：ID12】) need different group layouts, so a shared
+      // capture index is not possible. Pull the id back out of the whole match
+      // instead — leaving match[1] here would silently yield undefined ids.
+      id: String(parseCitationIndex(match[0])),
       fullMatch: match[0],
       start: match.index,
       end: match.index + match[0].length,

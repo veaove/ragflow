@@ -43,16 +43,18 @@ func CitationPrompt() string {
 //
 //	{{ example }}  — output of CitationPrompt() (above)
 //	{{ sources }}  — formatted retrieval chunks as
-//	                `<ID>: <content>` blocks
+//	                `ID: <content>` blocks
 //
 // Kept as a string template rather than a Jinja2 render. Simple
 // string replace is enough for the structured placeholders this
 // template uses; the runtime/template_jinja.go gonja fallback is
 // available for callers that need it.
-const citationPlusTemplate = `You are an agent for adding correct citations to the given text by user.
-You are given a piece of text within [ID:<ID>] tags, which was generated based on the provided sources.
-However, the sources are not cited in the [ID:<ID>].
-Your task is to enhance user trust by generating correct, appropriate citations for this report.
+const citationPlusTemplate = `You are an agent for adding correct citations to the text given by the user.
+The text was generated from the sources below, but none of them is cited yet.
+Insert citations that point at the source behind each claim, and return the text otherwise unchanged.
+
+A citation marker must be written with ASCII square brackets, exactly as [ID:<id>], with the source id copied verbatim.
+NEVER wrap a marker in full-width brackets (【】) and NEVER put a label such as 来源, 出处 or source inside or around it.
 
 {{ example }}
 

@@ -28,7 +28,8 @@ import (
 // template carry illustrative IDs, and without this the model can emit them
 // instead of the real chunk IDs it was given.
 const citationIDSuffix = "\n\nIMPORTANT: The example IDs above (45, 46, 78, etc.) are illustrative only. Use the actual chunk IDs from the provided knowledge blocks." +
-	" Cite each source INDIVIDUALLY as [ID:i][ID:j]; NEVER merge consecutive citations into a range such as [ID:i-j]."
+	" Cite each source INDIVIDUALLY as [ID:i][ID:j]; NEVER merge consecutive citations into a range such as [ID:i-j]." +
+	" Write every marker with ASCII square brackets, exactly as [ID:<id>]. NEVER wrap a marker in full-width brackets (【】) and NEVER put a label such as 来源, 出处 or source inside or around it."
 
 // CitationPrompt mirrors Python rag/prompts/generator.citation_prompt: return
 // the citation-rules text the final answer must follow. The user-defined

@@ -1,6 +1,8 @@
 import type { IReferenceChunk } from '@/interfaces/database/chat';
 import {
   buildCitationDisplayMap,
+  citationMarkerReg,
+  citationWholeMarkerReg,
   parseCitationIndex,
   resolveCitationChunk,
 } from '../citation-utils';
@@ -30,6 +32,44 @@ describe('parseCitationIndex', () => {
   it('parses hex chunk-id markers as strings', () => {
     expect(parseCitationIndex('[ID:a2d067519c9e0db1]')).toBe(
       'a2d067519c9e0db1',
+    );
+  });
+
+  it('parses the full-width markers Chinese models emit', () => {
+    expect(parseCitationIndex('【来源：IDa2d067519c9e0db1】')).toBe(
+      'a2d067519c9e0db1',
+    );
+    expect(parseCitationIndex('【ID:2】')).toBe(2);
+    expect(parseCitationIndex('【source: b3e178620da1fc42】')).toBe(
+      'b3e178620da1fc42',
+    );
+  });
+
+  it('does not treat an ordinary Chinese bracket as a marker', () => {
+    expect(parseCitationIndex('【2024】')).toBeNaN();
+  });
+});
+
+describe('citationMarkerReg', () => {
+  it('matches both marker spellings and strips the whole marker', () => {
+    const text = '甲[ID:a2d067519c9e0db1]乙【来源：IDb3e178620da1fc42】丙';
+    expect(text.match(citationMarkerReg)).toEqual([
+      '[ID:a2d067519c9e0db1]',
+      '【来源：IDb3e178620da1fc42】',
+    ]);
+    expect(text.replace(citationMarkerReg, '')).toBe('甲乙丙');
+  });
+
+  it('leaves a plain Chinese bracket alone', () => {
+    expect('【2024】'.match(citationMarkerReg)).toBeNull();
+  });
+});
+
+describe('citationWholeMarkerReg', () => {
+  it('captures the whole marker for react-string-replace', () => {
+    const text = '参考【来源：IDb3e178620da1fc42】';
+    expect(text.match(citationWholeMarkerReg)?.[0]).toBe(
+      '【来源：IDb3e178620da1fc42】',
     );
   });
 });

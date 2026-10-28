@@ -32,21 +32,51 @@ export const normalizeCitationDigits = (text: string) => {
 
 export type CitationKey = number | string;
 
+const citationIdPattern = '[0-9a-fA-F\u0660-\u0669\u06F0-\u06F9]+';
+
+// A citation marker has two accepted spellings: the canonical ASCII form
+// ([12], [ID:12], [ID:12ab]) and the full-width form Chinese models fall back
+// to when answering in Chinese — 【ID:12ab】, 【来源：ID12ab】. The full-width
+// form must carry the ID or a source label, so ordinary Chinese brackets such
+// as 【2024】 are not mistaken for citations.
+const citationMarkerTemplate = (id: string) =>
+  [
+    `\\[(?:ID:)?${id}\\]`,
+    `【\\s*(?:来源|出处|source)\\s*[:：]?\\s*(?:ID\\s*[:：]?\\s*)?${id}\\s*】`,
+    `【\\s*ID\\s*[:：]\\s*${id}\\s*】`,
+  ].join('|');
+
+const citationMarkerPattern = citationMarkerTemplate(citationIdPattern);
+
+export const citationMarkerReg = new RegExp(citationMarkerPattern, 'gi');
+
+// react-string-replace hands its callback the LAST capture group, so the whole
+// marker has to be the only group; citationMarkerReg keeps its id uncaptured.
+export const citationWholeMarkerReg = new RegExp(
+  `(${citationMarkerPattern})`,
+  'gi',
+);
+
+const citationMarkerCaptureReg = new RegExp(
+  citationMarkerTemplate(`(${citationIdPattern})`),
+  'i',
+);
+
 export const parseCitationIndex = (value: string): CitationKey => {
   const normalized = normalizeCitationDigits(value);
-  const markerMatch = normalized.match(
-    /\[(?:ID:)?([0-9a-fA-F\u0660-\u0669\u06F0-\u06F9]+)\]/,
-  );
-  if (markerMatch) {
-    const captured = markerMatch[1];
+  // Each marker spelling captures its id in its own group, so the id is
+  // whichever captured group actually matched.
+  const captured = normalized
+    .match(citationMarkerCaptureReg)
+    ?.slice(1)
+    .find(Boolean);
+  if (captured) {
     return /^\d+$/.test(captured) ? Number(captured) : captured;
   }
   if (/^\d+$/.test(normalized)) return Number(normalized);
   if (/^[0-9a-fA-F]+$/.test(normalized)) return normalized;
   return Number.NaN;
 };
-export const citationMarkerReg =
-  /\[(?:ID:)?([0-9a-fA-F\u0660-\u0669\u06F0-\u06F9]+)\]/g;
 
 // Resolve the chunk a citation marker points at. A numeric key is the
 // chunk's position in the payload — the plain-chat contract, where the
