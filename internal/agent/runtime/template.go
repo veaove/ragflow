@@ -105,9 +105,31 @@ func ResolveTemplate(s string, state *CanvasState) (string, error) {
 			}
 			return ""
 		}
-		return fmt.Sprintf("%v", v)
+		return stringifyTemplateValue(v)
 	})
 	return out, firstErr
+}
+
+// stringifyTemplateValue 把变量值渲染成模板里的字符串。
+//
+// 切片必须按空行 join，而不是交给 fmt 的 %v：Go 会把 []string 渲染成
+// "[a b]"（空格分隔、带方括号），多段内容会被拼成一整行，段落结构全丢。
+// 文档拼接场景（Parallel 收集每章输出 → merge 成全文）依赖这个行为，
+// 而"用 %v 打印切片"本质上只是调试格式，没有任何生产用途。
+//
+// 标量仍走 %v，保持和以前完全一致。
+func stringifyTemplateValue(v any) string {
+	switch x := v.(type) {
+	case []string:
+		return strings.Join(x, "\n\n")
+	case []any:
+		parts := make([]string, 0, len(x))
+		for _, item := range x {
+			parts = append(parts, fmt.Sprintf("%v", item))
+		}
+		return strings.Join(parts, "\n\n")
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // ResolveTemplateForDisplay is the display-only variant of
