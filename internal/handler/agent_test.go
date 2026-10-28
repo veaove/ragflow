@@ -1880,3 +1880,78 @@ func TestAgentChatCompletions_EmptyFilesNil(t *testing.T) {
 		t.Errorf("capturedFiles = %v, want nil when files not in request", capturedFiles)
 	}
 }
+
+// TestAgentDetailResponse_TenantID pins the tenant scope the editor receives
+// with an agent's detail payload.
+//
+// The owner's user id used to be emitted as `tenant_id`, which the editor feeds
+// straight into the model / compilation-template / tool-catalog lookups. For a
+// canvas owned by a member of a multi-member tenant that id is not a tenant at
+// all, so `GET /api/v1/models?tenant_id=<user id>` answered 404, the valid-model
+// set came back empty, and every node carrying an llm_id was reported as
+// "model unavailable". Nothing errored — the payload just pointed at the wrong
+// scope — so only an assertion on the encoded field catches a regression.
+func TestAgentDetailResponse_TenantID(t *testing.T) {
+	cases := []struct {
+		name string
+		row  *entity.UserCanvas
+		want string
+	}{
+		{
+			name: "canvas tenant wins over owner",
+			row: &entity.UserCanvas{
+				ID:       "canvas-1",
+				UserID:   "member-user",
+				TenantID: "dept-tenant",
+			},
+			want: "dept-tenant",
+		},
+		{
+			name: "legacy row without tenant_id falls back to owner",
+			row: &entity.UserCanvas{
+				ID:     "canvas-legacy",
+				UserID: "personal-user",
+			},
+			want: "personal-user",
+		},
+		{
+			name: "tenant_id with only whitespace is treated as absent",
+			row: &entity.UserCanvas{
+				ID:       "canvas-blank",
+				UserID:   "personal-user",
+				TenantID: "   ",
+			},
+			want: "personal-user",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := json.Marshal(newAgentDetailResponse(tc.row, nil))
+			if err != nil {
+				t.Fatalf("marshal detail response: %v", err)
+			}
+			var body struct {
+				TenantID string `json:"tenant_id"`
+				UserID   string `json:"user_id"`
+			}
+			if err = json.Unmarshal(raw, &body); err != nil {
+				t.Fatalf("unmarshal detail response: %v", err)
+			}
+			if body.TenantID != tc.want {
+				t.Errorf("tenant_id = %q, want %q", body.TenantID, tc.want)
+			}
+			// The two fields must stay independent: collapsing them is exactly
+			// the bug this test guards.
+			if tc.row.UserID != "" && body.UserID != tc.row.UserID {
+				t.Errorf("user_id = %q, want %q", body.UserID, tc.row.UserID)
+			}
+		})
+	}
+
+	// A nil row must not invent a tenant; the handler reports 404 before this
+	// point, but the helper has to stay total.
+	if got := newAgentDetailResponse(nil, nil).TenantID; got != "" {
+		t.Errorf("nil row tenant_id = %q, want empty", got)
+	}
+}

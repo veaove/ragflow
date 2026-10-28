@@ -347,20 +347,35 @@ func (h *AgentHandler) GetAgent(c *gin.Context) {
 		common.ResponseWithCodeData(c, ec, nil, em)
 		return
 	}
-	tenantID := ""
-	if row != nil {
-		tenantID = row.UserID
-	}
-	common.SuccessWithData(c, &agentDetailResponse{
+	common.SuccessWithData(c, newAgentDetailResponse(row, lastPublishTime), "success")
+}
+
+// newAgentDetailResponse assembles the GetAgent payload.
+//
+// Split out of the handler so the tenant resolution is assertable without a
+// live service: the bug it fixes produced no error at all — only a silently
+// wrong `tenant_id` in the JSON, which the editor then used to scope every
+// model and template lookup.
+func newAgentDetailResponse(row *entity.UserCanvas, lastPublishTime *int64) *agentDetailResponse {
+	return &agentDetailResponse{
 		UserCanvas:      row,
-		TenantID:        tenantID,
+		TenantID:        service.CanvasTenantID(row),
 		LastPublishTime: lastPublishTime,
-	}, "success")
+	}
 }
 
 // agentDetailResponse adds the canvas owner's tenant scope and publish time.
-// user_canvas stores the owner identity in user_id, so that value is exposed
-// as tenant_id for resource-scoped selectors.
+//
+// The embedded UserCanvas already carries `tenant_id`, but with `omitempty` —
+// a legacy row without the column would drop the key entirely. Restating the
+// field here keeps `tenant_id` always present for the front-end's
+// ownerTenantId context, and because a field at depth 0 shadows the embedded
+// one during JSON encoding, THIS value is the one that ships. It must therefore
+// be resolved through service.CanvasTenantID: writing user_id here made every
+// resource lookup scoped by this context (models, compilation templates, tool
+// catalog) query the owner's id as if it were a tenant, which 404s for members
+// of a multi-member tenant and paints the whole canvas red with bogus
+// "model unavailable" issues.
 type agentDetailResponse struct {
 	*entity.UserCanvas
 	TenantID        string `json:"tenant_id"`

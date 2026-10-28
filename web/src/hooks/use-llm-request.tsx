@@ -158,20 +158,26 @@ export const useFetchAllAddedModels = (
  * referenced (both the model_id form and the legacy composite form), for
  * validating that a persisted form value still points at an existing model.
  * `isFetched` must be checked before trusting `validIds` — while the model
- * list is loading it is empty and every value would look missing.
+ * list is loading it is empty and every value would look missing. `isError`
+ * matters just as much: a failed lookup (unknown tenant, no permission) also
+ * leaves `validIds` empty, and callers that treat it as authoritative paint
+ * every node with an llm_id as broken.
  */
 export const useModelValidIds = (
   modelTypes: string[],
   ownerTenantId?: string,
 ) => {
-  const { data, isFetched } = useFetchAllAddedModels(undefined, ownerTenantId);
+  const { data, isFetched, isError } = useFetchAllAddedModels(
+    undefined,
+    ownerTenantId,
+  );
 
   const validIds = useMemo(
     () => buildValidModelIds(data, modelTypes),
     [data, modelTypes],
   );
 
-  return { validIds, isFetched };
+  return { validIds, isFetched, isError };
 };
 
 export function useFindLlmByUuid() {

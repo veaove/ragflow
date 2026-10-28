@@ -81,8 +81,11 @@ export function useCanvasChecklist({
   // Model and template-group references use the canvas owner's tenant.
   // Dataset and memory references are scoped by canvasID so both the canvas
   // owner and current user can use the resource.
-  const { validIds: modelValidIds, isFetched: modelsFetched } =
-    useModelValidIds(ModelTypeMap.llm_id, ownerTenantId);
+  const {
+    validIds: modelValidIds,
+    isFetched: modelsFetched,
+    isError: modelsError,
+  } = useModelValidIds(ModelTypeMap.llm_id, ownerTenantId);
   const {
     groups: templateGroups,
     isFetched: templateGroupsFetched,
@@ -106,7 +109,12 @@ export function useCanvasChecklist({
         !memoryLoading && !memoryError && (memoryList?.length ?? 0) < 100
           ? new Set(memoryList?.map((x) => x.id))
           : undefined,
-      modelValidIds: modelsFetched ? modelValidIds : undefined,
+      // Same policy as memories/template groups: a failed model lookup leaves
+      // validIds empty, and an empty set is indistinguishable from "none of the
+      // configured models exist" — that would flag every node carrying an
+      // llm_id. Hold the check back instead of reporting a false canvas-wide
+      // outage.
+      modelValidIds: modelsFetched && !modelsError ? modelValidIds : undefined,
       staleDatasetIds: datasetsSettled ? staleDatasetIds : undefined,
       // The groups query fetches only the first page (page_size: 100) — a
       // full page means some groups live beyond it, so hold off instead of
@@ -128,6 +136,7 @@ export function useCanvasChecklist({
       memoryError,
       memoryList,
       modelsFetched,
+      modelsError,
       modelValidIds,
       datasetsSettled,
       staleDatasetIds,
