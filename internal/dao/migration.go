@@ -96,6 +96,11 @@ func RunMigrations(ctx context.Context, db *gorm.DB) error {
 		return fmt.Errorf("failed to backfill user_canvas.tenant_id: %w", err)
 	}
 
+	// Backfill memory.created_by (column added alongside this change).
+	if err := migrateMemoryCreatedBy(ctx, db); err != nil {
+		return fmt.Errorf("failed to backfill memory.created_by: %w", err)
+	}
+
 	common.Info("All manual migrations completed successfully")
 	return nil
 }
@@ -123,6 +128,43 @@ func migrateCanvasTenantID(ctx context.Context, db *gorm.DB) error {
 	}
 	if res.RowsAffected > 0 {
 		common.Info("Backfilled user_canvas.tenant_id", zap.Int64("rows", res.RowsAffected))
+	}
+	return nil
+}
+
+// migrateMemoryCreatedBy backfills memory.created_by.
+//
+// Memory used to keep the owner in tenant_id, which was the same value only
+// while one user owned a whole tenant. The column is added here because
+// RunMigrations runs before AutoMigrate, and the backfill is deliberately
+// narrow: it copies tenant_id into created_by *only* when tenant_id still
+// resolves to a user row, i.e. rows written under the old assumption.
+//
+// tenant_id is never rewritten. It names the memory's vector index
+// (MemoryIndexName) and scopes the tenant models used at extraction time, so
+// moving it would orphan already-embedded messages. A row whose tenant_id is
+// a real tenant therefore keeps an empty created_by and readers fall back to
+// tenant_id for the owner check — the same answer the old code gave.
+func migrateMemoryCreatedBy(ctx context.Context, db *gorm.DB) error {
+	migrator := db.WithContext(ctx).Migrator()
+	if !migrator.HasTable(&entity.Memory{}) {
+		return nil
+	}
+	if !migrator.HasColumn(&entity.Memory{}, "created_by") {
+		if err := migrator.AddColumn(&entity.Memory{}, "CreatedBy"); err != nil {
+			return err
+		}
+	}
+
+	res := db.WithContext(ctx).Exec(`
+		UPDATE memory SET created_by = tenant_id
+		WHERE (created_by IS NULL OR created_by = '')
+		  AND EXISTS (SELECT 1 FROM user u WHERE u.id = memory.tenant_id)`)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected > 0 {
+		common.Info("Backfilled memory.created_by", zap.Int64("rows", res.RowsAffected))
 	}
 	return nil
 }

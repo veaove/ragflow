@@ -262,14 +262,14 @@ func (dao *MemoryDAO) DeleteByID(ctx context.Context, db *gorm.DB, id string) er
 //	memory, err := dao.GetWithOwnerNameByID("memory123")
 func (dao *MemoryDAO) GetWithOwnerNameByID(ctx context.Context, db *gorm.DB, id string) (*entity.MemoryListItem, error) {
 	querySQL := `
-		SELECT m.id, m.name, m.avatar, m.tenant_id, m.memory_type,
+		SELECT m.id, m.name, m.avatar, m.tenant_id, m.created_by, m.memory_type,
 			m.storage_type, m.embd_id, m.tenant_embd_id, m.llm_id, m.tenant_llm_id,
 			m.permissions, m.description, m.memory_size, m.forgetting_policy,
 			m.temperature, m.system_prompt, m.user_prompt, m.create_time, m.create_date,
 			m.update_time, m.update_date,
 			u.nickname as owner_name
 		FROM memory m
-		LEFT JOIN user u ON m.tenant_id = u.id
+		LEFT JOIN user u ON u.id = COALESCE(NULLIF(m.created_by, ''), m.tenant_id)
 		WHERE m.id = ?
 	`
 
@@ -353,14 +353,14 @@ func (dao *MemoryDAO) GetByFilter(ctx context.Context, db *gorm.DB, memoryIDs, t
 	}
 
 	querySQL := fmt.Sprintf(`
-		SELECT m.id, m.name, m.avatar, m.tenant_id, m.memory_type,
+		SELECT m.id, m.name, m.avatar, m.tenant_id, m.created_by, m.memory_type,
 			m.storage_type, m.embd_id, m.tenant_embd_id, m.llm_id, m.tenant_llm_id,
 			m.permissions, m.description, m.memory_size, m.forgetting_policy,
 			m.temperature, m.system_prompt, m.user_prompt, m.create_time, m.create_date,
 			m.update_time, m.update_date,
 			u.nickname as owner_name
 		FROM memory m
-		LEFT JOIN user u ON m.tenant_id = u.id
+		LEFT JOIN user u ON u.id = COALESCE(NULLIF(m.created_by, ''), m.tenant_id)
 		%s
 		ORDER BY m.create_time DESC
 	`, whereClause)

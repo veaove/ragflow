@@ -396,7 +396,13 @@ func (s *MemoryService) ListMemoryFilters(ctx context.Context, userID string) (*
 	typeCounts := map[string]int64{}
 	storageCounts := map[string]int64{}
 	for _, memory := range memories {
-		owner := memory.TenantID
+		// Group by creator, not by tenant: the filter lists who a memory came
+		// from, and every memory of a tenant would otherwise collapse into one
+		// bucket labelled with the tenant id.
+		owner := memory.CreatedBy
+		if owner == "" {
+			owner = memory.TenantID
+		}
 		label := owner
 		if memory.OwnerName != nil && *memory.OwnerName != "" {
 			label = *memory.OwnerName
@@ -459,25 +465,33 @@ func filterOptionsInOrder(counts map[string]int64, canonicalOrder []string) []Me
 //	req := &CreateMemoryRequest{Name: "MyMemory", MemoryType: []string{"semantic"}, EmbdID: "embd1", LLMID: "llm1"}
 //	resp, err := service.CreateMemory("tenant123", req)
 func (s *MemoryService) CreateMemory(ctx context.Context, userID string, req *CreateMemoryRequest) (*CreateMemoryResponse, error) {
+	// Resolve the owning tenant before anything else: tenant_id is not the
+	// caller's user id once a tenant has more than one member, and it drives
+	// both the tenant-model lookup below and the vector index name used at
+	// extraction time. Writing user_id here left the memory pointing at a
+	// tenant that does not exist, so model resolution silently failed and no
+	// teammate could ever see it.
+	tenantID := resolveTenantIDForUser(ctx, userID)
+
 	// Resolve tenant model IDs, mirroring Python's ensure_tenant_model_ids_for_params.
 	// Resolution failure is non-fatal (e.g. Builtin models that have no
 	// tenant_model row) — we leave the tenant_*_id fields nil and proceed.
 	modelFactory := NewModelFactory()
 	if req.LLMID != "" && req.TenantLLMID == nil {
-		info, err := modelFactory.ResolveInfo(ctx, ModelAccess{TenantID: userID}, entity.ModelTypeChat, req.LLMID)
+		info, err := modelFactory.ResolveInfo(ctx, ModelAccess{TenantID: tenantID}, entity.ModelTypeChat, req.LLMID)
 		if err != nil {
 			common.Warn("CreateMemory: failed to resolve tenant LLM id",
-				zap.String("tenant_id", userID), zap.String("llm_id", req.LLMID), zap.Error(err))
+				zap.String("tenant_id", tenantID), zap.String("llm_id", req.LLMID), zap.Error(err))
 		} else if info != nil && info.ID != "" {
 			tenantLLMID := info.ID
 			req.TenantLLMID = &tenantLLMID
 		}
 	}
 	if req.EmbdID != "" && req.TenantEmbdID == nil {
-		info, err := modelFactory.ResolveInfo(ctx, ModelAccess{TenantID: userID}, entity.ModelTypeEmbedding, req.EmbdID)
+		info, err := modelFactory.ResolveInfo(ctx, ModelAccess{TenantID: tenantID}, entity.ModelTypeEmbedding, req.EmbdID)
 		if err != nil {
 			common.Warn("CreateMemory: failed to resolve tenant embedding id",
-				zap.String("tenant_id", userID), zap.String("embd_id", req.EmbdID), zap.Error(err))
+				zap.String("tenant_id", tenantID), zap.String("embd_id", req.EmbdID), zap.Error(err))
 		} else if info != nil && info.ID != "" {
 			tenantEmbdID := info.ID
 			req.TenantEmbdID = &tenantEmbdID
@@ -508,7 +522,7 @@ func (s *MemoryService) CreateMemory(ctx context.Context, userID string, req *Cr
 	}
 
 	memoryName, err := common.UniqueName(memoryName, MemoryNameLimit, func(candidate string) (bool, error) {
-		existing, err := s.memoryDAO.GetByNameAndTenant(ctx, dao.DB, candidate, userID)
+		existing, err := s.memoryDAO.GetByNameAndTenant(ctx, dao.DB, candidate, tenantID)
 		if err != nil {
 			return false, err
 		}
@@ -526,7 +540,8 @@ func (s *MemoryService) CreateMemory(ctx context.Context, userID string, req *Cr
 	memory := &entity.Memory{
 		ID:               newID,
 		Name:             memoryName,
-		TenantID:         userID,
+		TenantID:         tenantID,
+		CreatedBy:        userID,
 		MemoryType:       memoryTypeInt,
 		StorageType:      "table",
 		EmbdID:           req.EmbdID,

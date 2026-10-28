@@ -18,10 +18,16 @@ package entity
 
 // Memory memory model
 type Memory struct {
-	ID               string  `gorm:"column:id;primaryKey;size:32" json:"id"`
-	Name             string  `gorm:"column:name;size:128;not null" json:"name"`
-	Avatar           *string `gorm:"column:avatar;type:longtext" json:"avatar,omitempty"`
-	TenantID         string  `gorm:"column:tenant_id;size:32;not null;index" json:"tenant_id"`
+	ID       string  `gorm:"column:id;primaryKey;size:32" json:"id"`
+	Name     string  `gorm:"column:name;size:128;not null" json:"name"`
+	Avatar   *string `gorm:"column:avatar;type:longtext" json:"avatar,omitempty"`
+	TenantID string  `gorm:"column:tenant_id;size:32;not null;index" json:"tenant_id"`
+	// CreatedBy is the user who created the memory. It is the owner identity:
+	// tenant_id only says which tenant the memory belongs to, and those two are
+	// no longer the same value once a tenant has more than one member. Rows
+	// written before this column existed leave it empty — readers fall back to
+	// tenant_id, which was the creator's user id back then.
+	CreatedBy        string  `gorm:"column:created_by;size:32;index" json:"created_by,omitempty"`
 	MemoryType       int64   `gorm:"column:memory_type;default:1;index" json:"memory_type"`
 	StorageType      string  `gorm:"column:storage_type;size:32;not null;default:table;index" json:"storage_type"`
 	EmbdID           string  `gorm:"column:embd_id;size:128;not null" json:"embd_id"`

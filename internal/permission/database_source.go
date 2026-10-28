@@ -1029,10 +1029,18 @@ func memoryResource(memory *entity.Memory) Resource {
 	if memory.Permissions == string(entity.TenantPermissionTeam) {
 		visibility = VisibilityTenant
 	}
+	// The owner is the creator, not the tenant: tenant_id says who may share the
+	// memory, created_by says who owns it. Rows predating created_by stored the
+	// creator's user id in tenant_id, so falling back to it keeps them working.
+	ownerUserID := memory.CreatedBy
+	if ownerUserID == "" {
+		ownerUserID = memory.TenantID
+	}
 	return Resource{
 		Ref:               ResourceRef{Kind: ResourceKindMemory, ID: memory.ID},
 		TenantID:          memory.TenantID,
-		OwnerUserID:       memory.TenantID,
+		OwnerUserID:       ownerUserID,
+		CreatedBy:         memory.CreatedBy,
 		Visibility:        visibility,
 		TenantRequirement: TenantMember,
 		OwnerOperations:   []Operation{OperationRead, OperationCreate, OperationUpdate, OperationDelete, OperationShare, OperationRun, OperationUse},

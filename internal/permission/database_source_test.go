@@ -386,8 +386,13 @@ func TestDatabaseCheckerAuthorizesMemoryFromPersistedRows(t *testing.T) {
 
 	valid := string(entity.StatusValid)
 	memories := []entity.Memory{
-		{ID: "team-memory", Name: "team", TenantID: "team-1", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionTeam), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
-		{ID: "private-memory", Name: "private", TenantID: "owner-1", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionMe), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
+		// Team memory: shared with every member of team-1, owned by its creator.
+		{ID: "team-memory", Name: "team", TenantID: "team-1", CreatedBy: "creator-1", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionTeam), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
+		// Private memory inside a shared tenant: only its creator may read it.
+		{ID: "private-memory", Name: "private", TenantID: "team-1", CreatedBy: "owner-1", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionMe), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
+		// Legacy row written before created_by existed: tenant_id held the
+		// creator's user id, so the owner check has to fall back to it.
+		{ID: "legacy-memory", Name: "legacy", TenantID: "legacy-user", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionMe), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
 	}
 	for i := range memories {
 		if err := db.Create(&memories[i]).Error; err != nil {
@@ -405,17 +410,29 @@ func TestDatabaseCheckerAuthorizesMemoryFromPersistedRows(t *testing.T) {
 	checker := NewDatabaseChecker(db)
 	teamRef := ResourceRef{Kind: ResourceKindMemory, ID: "team-memory"}
 	privateRef := ResourceRef{Kind: ResourceKindMemory, ID: "private-memory"}
-	resources, err := (&databaseSource{db: db}).GetResources(context.Background(), []ResourceRef{teamRef, privateRef})
+	legacyRef := ResourceRef{Kind: ResourceKindMemory, ID: "legacy-memory"}
+	resources, err := (&databaseSource{db: db}).GetResources(context.Background(), []ResourceRef{teamRef, privateRef, legacyRef})
 	if err != nil {
 		t.Fatalf("load memory authorization facts: %v", err)
 	}
-	if len(resources) != 2 {
-		t.Fatalf("loaded %d memory resources, want 2", len(resources))
+	if len(resources) != 3 {
+		t.Fatalf("loaded %d memory resources, want 3", len(resources))
 	}
+	ownerByID := map[string]string{}
 	for _, resource := range resources {
-		if resource.TenantID != resource.OwnerUserID {
-			t.Errorf("memory resource %q has tenant %q and owner %q; current memory schema uses tenant_id as owner identity", resource.Ref.ID, resource.TenantID, resource.OwnerUserID)
-		}
+		ownerByID[resource.Ref.ID] = resource.OwnerUserID
+	}
+	// The owner is the creator. tenant_id answers "who may share it", not "who
+	// owns it" — the two stopped being the same value once a tenant could hold
+	// more than one member.
+	if got := ownerByID["team-memory"]; got != "creator-1" {
+		t.Errorf("team-memory owner = %q, want creator-1", got)
+	}
+	if got := ownerByID["private-memory"]; got != "owner-1" {
+		t.Errorf("private-memory owner = %q, want owner-1", got)
+	}
+	if got := ownerByID["legacy-memory"]; got != "legacy-user" {
+		t.Errorf("legacy-memory owner = %q, want tenant_id fallback legacy-user", got)
 	}
 	if err := checker.CheckResource(context.Background(), Subject{UserID: membership.UserID}, teamRef, OperationRead); err != nil {
 		t.Errorf("team member CheckResource(read) error = %v, want nil", err)
@@ -432,8 +449,13 @@ func TestDatabaseCheckerAuthorizesMemoryFromPersistedRows(t *testing.T) {
 	if err := checker.CheckResource(context.Background(), Subject{UserID: "owner-1"}, privateRef, OperationRead); err != nil {
 		t.Errorf("memory owner CheckResource(read) error = %v, want nil", err)
 	}
+	// Same tenant, different member: private must stay invisible. This is the
+	// case the old tenant-as-owner model got wrong in the other direction.
 	if err := checker.CheckResource(context.Background(), Subject{UserID: membership.UserID}, privateRef, OperationRead); !errors.Is(err, ErrPermissionDenied) {
 		t.Errorf("team member CheckResource(private read) error = %v, want permission denied", err)
+	}
+	if err := checker.CheckResource(context.Background(), Subject{UserID: "legacy-user"}, legacyRef, OperationRead); err != nil {
+		t.Errorf("legacy memory owner CheckResource(read) error = %v, want nil", err)
 	}
 }
 
@@ -447,10 +469,14 @@ func TestDatabaseCheckerScopesMemoriesToOwnerAndTeamMembership(t *testing.T) {
 	}
 
 	memories := []entity.Memory{
-		{ID: "owner-private", Name: "owner", TenantID: "member-1", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionMe), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
-		{ID: "team-visible", Name: "team", TenantID: "team-1", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionTeam), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
-		{ID: "team-private", Name: "private", TenantID: "team-1", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionMe), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
-		{ID: "other-team", Name: "other", TenantID: "other-tenant", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionTeam), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
+		// Created by member-1: owner access even though it stays private.
+		{ID: "owner-private", Name: "owner", TenantID: "team-1", CreatedBy: "member-1", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionMe), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
+		// Someone else's team memory in member-1's tenant: visible.
+		{ID: "team-visible", Name: "team", TenantID: "team-1", CreatedBy: "creator-1", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionTeam), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
+		// Someone else's private memory in the same tenant: not visible.
+		{ID: "team-private", Name: "private", TenantID: "team-1", CreatedBy: "creator-1", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionMe), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
+		// Team memory of another tenant: not visible.
+		{ID: "other-team", Name: "other", TenantID: "other-tenant", CreatedBy: "creator-1", StorageType: "table", EmbdID: "embedding", LLMID: "chat", Permissions: string(entity.TenantPermissionTeam), MemorySize: 1024, ForgettingPolicy: "FIFO", Temperature: 0.5},
 	}
 	for i := range memories {
 		if err := db.Create(&memories[i]).Error; err != nil {
