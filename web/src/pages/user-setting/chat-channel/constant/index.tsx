@@ -88,6 +88,22 @@ const CHANNEL_NAMES: Record<ChatChannelKey, string> = {
   [ChatChannelKey.ZALOUSER]: 'Zalo (Personal)',
 };
 
+/**
+ * 「可用渠道」只展示国内渠道。
+ *
+ * 钉钉 / 飞书 / 企业微信 / QQ 机器人是国内产品；Discord、Telegram、WhatsApp 等
+ * 境外渠道不再出现（它们仍然保留在枚举和文案里，需要时加回这个数组即可）。
+ *
+ * 已经接入的渠道不受影响 —— 页面上的「已添加」列表读的是后端返回的记录，
+ * 隐藏的是「可以新增哪些」，不是「已经有哪些」。
+ */
+export const DOMESTIC_CHAT_CHANNEL_KEYS: readonly ChatChannelKey[] = [
+  ChatChannelKey.DINGTALK,
+  ChatChannelKey.FEISHU,
+  ChatChannelKey.QQBOT,
+  ChatChannelKey.WECOM,
+];
+
 export const generateChatChannelInfo = (t: TFunction): IChatChannelInfoMap =>
   Object.values(ChatChannelKey).reduce((acc, key) => {
     acc[key] = {

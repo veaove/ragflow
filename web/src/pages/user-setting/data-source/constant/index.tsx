@@ -84,6 +84,36 @@ type DataSourceFeatureVisibility = {
   syncDeletedFiles?: boolean;
 };
 
+/**
+ * 「数据源」页只展示国内可用的接入方式。
+ *
+ * 判定口径与模型配置页一致（见 setting-model/domestic-providers.ts）：
+ *   - 国内产品：飞书、钉钉、Seafile；
+ *   - 通用协议 / 标准接口：WebDAV、IMAP、MySQL、PostgreSQL、REST API、RSS、
+ *     Sitemap —— 它们连的是客户自己的服务器，不对接任何境外厂商云服务。
+ *
+ * 境外 SaaS 和境外软件（Confluence / Notion / Google Drive / Gmail / Jira /
+ * Box / Dropbox / Bitbucket / Azure DevOps / GitHub / GitLab / Moodle / Zotero /
+ * Slack / Teams / OneDrive / Outlook / Salesforce / Airtable / Asana / Zendesk …）
+ * 一律不显示。要放开某个来源，把它加进这个数组即可 —— 用白名单而不是黑名单，
+ * 是因为新接入的来源默认不出现，不会无声地漏进界面。
+ *
+ * 注意：这里只控制「可添加」的列表。已经建好的数据源仍会正常显示名称和图标，
+ * 否则那些连接就再也没法在界面上查看或删除。
+ */
+export const DOMESTIC_DATA_SOURCE_KEYS: readonly DataSourceKey[] = [
+  DataSourceKey.FEISHU_WIKI,
+  DataSourceKey.DINGTALK_AI_TABLE,
+  DataSourceKey.SEAFILE,
+  DataSourceKey.WEBDAV,
+  DataSourceKey.IMAP,
+  DataSourceKey.MYSQL,
+  DataSourceKey.POSTGRESQL,
+  DataSourceKey.REST_API,
+  DataSourceKey.RSS,
+  DataSourceKey.SITEMAP,
+];
+
 type DataSourceFormValues = Record<string, any>;
 
 export const DataSourceFeatureVisibilityMap: Partial<

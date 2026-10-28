@@ -20,7 +20,11 @@ import { useTranslation } from 'react-i18next';
 import { ProfileSettingWrapperCard } from '../components/user-setting-header';
 import AddChatChannelModal from './add-channel-modal';
 import { AddedChannelCard } from './component/added-channel-card';
-import { ChatChannelKey, useChatChannelInfo } from './constant';
+import {
+  ChatChannelKey,
+  DOMESTIC_CHAT_CHANNEL_KEYS,
+  useChatChannelInfo,
+} from './constant';
 import { useAddChatChannel, useListChatChannel } from './hooks';
 import { IChatChannelInfo } from './interface';
 
@@ -73,18 +77,7 @@ const ChatChannel = () => {
   const { t } = useTranslation();
   const { chatChannelInfo } = useChatChannelInfo();
   const channelTemplates: IChatChannelInfo[] = Object.values(ChatChannelKey)
-    .filter(
-      (id) =>
-        [
-          ChatChannelKey.DISCORD,
-          ChatChannelKey.DINGTALK,
-          ChatChannelKey.FEISHU,
-          ChatChannelKey.TELEGRAM,
-          ChatChannelKey.QQBOT,
-          ChatChannelKey.WECOM,
-          ChatChannelKey.WHATSAPP,
-        ].includes(id), // Show only selected chat channels
-    )
+    .filter((id) => DOMESTIC_CHAT_CHANNEL_KEYS.includes(id))
     .map((id) => ({
       id,
       name: chatChannelInfo[id].name,
