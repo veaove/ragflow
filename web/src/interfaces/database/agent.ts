@@ -369,3 +369,38 @@ export interface IWebhookTrace {
   next_since_ts: number;
   finished: boolean;
 }
+
+// One retrieval hit surfaced under a thinking step. Only the fields the
+// conversation view renders are kept; the raw chunk payload lives in the SSE
+// frame and is not stored on the message.
+export interface IThinkingChunk {
+  id: string;
+  content: string;
+  similarity?: number;
+  documentId?: string;
+  documentName?: string;
+}
+
+export type ThinkingStepStatus = 'running' | 'done' | 'error';
+
+// One canvas node reduced to what the thinking panel shows. Raw inputs/outputs
+// are dropped on purpose: they are the log sheet's shape, and dumping them next
+// to an answer buries the answer.
+export interface IThinkingStep {
+  // component_id, e.g. "Retrieval:Policy"
+  id: string;
+  // component_type, e.g. "Retrieval"
+  type: string;
+  // component_name, e.g. "Policy"
+  name: string;
+  status: ThinkingStepStatus;
+  // seconds, as reported by node_finished
+  elapsed?: number;
+  error?: string;
+  chunks?: IThinkingChunk[];
+  chunkCount?: number;
+  // Categorize: the branch the router settled on.
+  category?: string;
+  // Agent/Message: rendered answer length, so the step is not a blank row.
+  outputChars?: number;
+}

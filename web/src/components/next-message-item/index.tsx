@@ -37,6 +37,7 @@ import { IRegenerateMessage, IRemoveMessageById } from '@/hooks/logic-hooks';
 import { INodeEvent, MessageEventType } from '@/hooks/use-send-message';
 import { cn } from '@/lib/utils';
 import { AgentChatContext } from '@/pages/agent/context';
+import { ThinkingPanel } from '@/pages/agent/chat/thinking-panel';
 import { WorkFlowTimeline } from '@/pages/agent/log-sheet/workflow-timeline';
 import { citationMarkerReg } from '@/utils/citation-utils';
 import { getDirAttribute } from '@/utils/text-direction';
@@ -328,6 +329,8 @@ function MessageItem({
                 <span>{t('qcBlockedBanner')}</span>
               </div>
             )}
+
+            {isAssistant && !isShare && <ThinkingPanel steps={item.steps} />}
 
             {renderContent()}
 

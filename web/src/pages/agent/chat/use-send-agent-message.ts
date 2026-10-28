@@ -40,6 +40,7 @@ import { BeginQuery } from '../interface';
 import useGraphStore from '../store';
 import { receiveMessageError } from '../utils';
 import { shouldSplitMessage } from '../utils/chat';
+import { buildThinkingSteps } from './use-agent-thinking';
 
 export function findMessageFromList(eventList: IEventList) {
   const messageEventList = eventList.filter(
@@ -589,6 +590,10 @@ export const useSendAgentMessage = ({
     }
     const inputAnswer = findInputFromList(answerList);
     const answer = content || getLatestError(answerList);
+    // Pipeline steps behind this answer. Derived from the same stream the
+    // answer is built from, so the panel fills in as the run progresses and
+    // stays in sync without a second request.
+    const steps = buildThinkingSteps(answerList);
 
     if (answerList.length > 0) {
       const shouldSplit = shouldSplitMessage(answerList, content);
@@ -601,6 +606,7 @@ export const useSendAgentMessage = ({
           downloads,
           id,
           qc_event,
+          steps,
         });
         addNewestOneAnswer({
           answer: '',
@@ -616,6 +622,7 @@ export const useSendAgentMessage = ({
           id,
           qc_event,
           ...inputAnswer,
+          steps,
         });
       }
     }

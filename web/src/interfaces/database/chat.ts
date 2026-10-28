@@ -1,5 +1,6 @@
 import { MessageType, WebSearchProvider } from '@/constants/chat';
 import { IAttachment } from '@/hooks/use-send-message';
+import { IThinkingStep } from './agent';
 
 export interface IDocumentDownloadInfo {
   doc_id: string;
@@ -125,6 +126,10 @@ export interface Message {
   chatBoxId?: string;
   attachment?: IAttachment;
   downloads?: IDocumentDownloadInfo[];
+  // Agent pipeline steps behind this answer, used by the thinking panel. Live
+  // stream only: the SSE frames are not persisted, so a reloaded conversation
+  // has no steps.
+  steps?: IThinkingStep[];
 }
 
 export interface IReferenceChunk {
@@ -163,6 +168,8 @@ export interface IAnswer {
   audio_binary?: string;
   data?: any;
   chatBoxId?: string;
+  // Live pipeline steps for this answer; see Message.steps.
+  steps?: IThinkingStep[];
   // Quality-inspection hint that produced this answer. Live-stream only: it is
   // not persisted, so a reloaded conversation shows the replacement text
   // without the banner.
