@@ -93,6 +93,11 @@ export default {
       // 列表里的状态列存的是库里的 "1"/"0"，一律翻译成文本再显示。
       statusActive: '有效',
       statusInactive: '已停用',
+      // 智能体列表的「类型」列会和画布应用混排：内置流水线、编译算子
+      // 都不是画布应用（不落 user_canvas），得有别于应用形态的固定叫法。
+      // 用语与列表分区的标题保持同一套（内置解析流程 / 编译算子）。
+      builtinPipeline: '内置解析流程',
+      compilationTemplate: '编译算子',
       january: '1月',
       february: '2月',
       march: '3月',
@@ -480,6 +485,9 @@ export default {
       name: '名称',
       memoryNamePlaceholder: '记忆名称',
       memoryType: '记忆类型',
+      storageType: '存储类型',
+      storageTable: '表格',
+      storageGraph: '图谱',
       embeddingModel: 'Embedding 模型',
       selectModel: '选择模型',
       llm: '大语言模型',

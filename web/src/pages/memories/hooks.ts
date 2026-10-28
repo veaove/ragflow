@@ -27,6 +27,7 @@ import {
   MemoryListResponse,
   MemoryFiltersResponse,
 } from './interface';
+import { memoryTypeLabelKey, storageTypeLabelKey } from './memory-labels';
 
 export const MemoryKeys = {
   list: () => ['memoryList'] as const,
@@ -371,6 +372,18 @@ export function useSelectFilters(filterData: MemoryFiltersResponse) {
   const { t } = useTranslation();
 
   const filters: FilterCollection[] = useMemo(() => {
+    // 服务端把 memory_type / storage_type 的枚举值直接当 label 返回
+    // （raw、table…），中文界面会因此摆出英文。这里按 id 换成译文，
+    // 认不出的枚举保留服务端 label，免得新枚举变成一个筛不到的空选项。
+    const localize = (
+      list: MemoryFiltersResponse['filter']['memory_type'],
+      toKey: (id?: string | null) => string | undefined,
+    ) =>
+      list.map((item) => {
+        const key = toKey(item.id);
+        return key ? { ...item, label: t(key) } : item;
+      });
+
     return [
       {
         field: 'owner',
@@ -379,13 +392,13 @@ export function useSelectFilters(filterData: MemoryFiltersResponse) {
       },
       {
         field: 'memoryType',
-        list: filterData.filter.memory_type,
+        list: localize(filterData.filter.memory_type, memoryTypeLabelKey),
         label: t('memories.memoryType'),
       },
       {
         field: 'storageType',
-        list: filterData.filter.storage_type,
-        label: t('memory.config.storageType'),
+        list: localize(filterData.filter.storage_type, storageTypeLabelKey),
+        label: t('memories.storageType'),
       },
     ];
   }, [filterData, t]);

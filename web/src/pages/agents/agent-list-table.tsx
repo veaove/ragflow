@@ -5,9 +5,9 @@ import {
   formatListTime,
 } from '@/components/list-view/list-data-table';
 import { AgentListItemType, IFlow } from '@/interfaces/database/agent';
-import { CanvasCategoryToFlowType, FlowType } from './constant';
-import { AgentRowActions } from './agent-row-actions';
+import { appTypeLabelKey } from '@/pages/analytics/app-type';
 import { formatKnowledgeBaseCell } from '@/utils/kb-labels';
+import { AgentRowActions } from './agent-row-actions';
 
 /**
  * 列表数据是两种实体的联合：普通智能体（IFlow，标题字段叫 title）
@@ -47,17 +47,20 @@ export function AgentListTable({
 }) {
   const { t } = useTranslation();
 
+  /**
+   * 类型列显示的是应用形态，不是数据库枚举：`canvas_category` 是
+   * agent_canvas / chatflow_canvas / workflow_canvas / dataflow_canvas，
+   * 直接渲染会把枚举值摆到界面上（此前就是这样）。文案走 analytics.appType*
+   * 那一张映射表，和咨询日志、知识库「应用」标签保持同一套叫法。
+   */
   const typeLabel = (row: AgentRow) => {
     if (row.type === AgentListItemType.BuiltinPipeline) {
-      return '内置流水线';
+      return t('common.builtinPipeline');
     }
     if (row.type === AgentListItemType.CompilationTemplateGroup) {
-      return '编译模板';
+      return t('common.compilationTemplate');
     }
-    const flowType = CanvasCategoryToFlowType[row.canvas_category ?? ''];
-    if (flowType === FlowType.Workflow) return t('flow.taskFlow');
-    if (flowType === FlowType.Chatflow) return t('flow.chatflow');
-    return row.canvas_category || '智能体';
+    return t(appTypeLabelKey(row.canvas_category || 'agent_canvas'));
   };
 
   const columns: ListColumn<AgentRow>[] = [
@@ -188,7 +191,11 @@ export function AgentListTable({
           row.type === AgentListItemType.CompilationTemplateGroup ||
           row.type === AgentListItemType.BuiltinPipeline;
         if (readOnly) {
-          return <span className="text-xs text-text-secondary">只读</span>;
+          return (
+            <span className="text-xs text-text-secondary">
+              {t('common.readOnly')}
+            </span>
+          );
         }
         return (
           <AgentRowActions

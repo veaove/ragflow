@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/button';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { ListDeletionKey } from '@/constants/list-deletion';
 import { useTranslate } from '@/hooks/common-hooks';
+import { useListViewPreference } from '@/hooks/use-list-view-preference';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import { pick } from 'lodash';
 import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { ViewToggle } from '@/pages/studio/view-toggle';
 import { AddOrEditModal } from './add-or-edit-modal';
 import { defaultMemoryFields } from './constants';
 import {
@@ -21,10 +23,12 @@ import {
 } from './hooks';
 import { ICreateMemoryProps, IMemory } from './interface';
 import { MemoryCard } from './memory-card';
+import { MemoryTable } from './memory-table';
 
 export default function MemoryList() {
   // const { data } = useFetchFlowList();
   const { t } = useTranslate('memories');
+  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
   const [addOrEditType, setAddOrEditType] = useState<'add' | 'edit'>('add');
   // const [isEdit, setIsEdit] = useState(false);
   const {
@@ -61,6 +65,14 @@ export default function MemoryList() {
     setAddOrEditType('add');
     showMemoryRenameModal(defaultMemoryFields as unknown as IMemory);
   }, [showMemoryRenameModal]);
+  // 卡片和表格共用同一个重命名入口：先切成 edit，再交给弹窗预填。
+  const handleShowMemoryRenameModal = useCallback(
+    (memory: IMemory) => {
+      setAddOrEditType('edit');
+      showMemoryRenameModal(memory);
+    },
+    [showMemoryRenameModal],
+  );
   const handlePageChange = useCallback(
     (page: number, pageSize?: number) => {
       setPagination({ page, pageSize });
@@ -108,22 +120,33 @@ export default function MemoryList() {
                 {t('createMemory')}
               </Button>
             </ListFilterBar>
+            {/* 卡片 / 表格切换与智能体、知识检索列表同源（同一份 localStorage
+                偏好），放在标题行下方右侧，不占搜索框宽度。 */}
+            <div className="mt-3 flex justify-end">
+              <ViewToggle mode={viewMode} onChange={setViewMode} />
+            </div>
           </header>
 
           {list?.data?.memory_list?.length ? (
             <>
-              <CardContainer className="flex-1 overflow-auto px-5">
-                {list?.data.memory_list.map((x) => (
-                  <MemoryCard
-                    key={x.id}
-                    data={x}
-                    showMemoryRenameModal={() => {
-                      setAddOrEditType('edit');
-                      showMemoryRenameModal(x);
-                    }}
+              {viewMode === 'table' ? (
+                <div className="flex-1 overflow-auto px-5">
+                  <MemoryTable
+                    rows={list.data.memory_list}
+                    showMemoryRenameModal={handleShowMemoryRenameModal}
                   />
-                ))}
-              </CardContainer>
+                </div>
+              ) : (
+                <CardContainer className="flex-1 overflow-auto px-5">
+                  {list?.data.memory_list.map((x) => (
+                    <MemoryCard
+                      key={x.id}
+                      data={x}
+                      showMemoryRenameModal={handleShowMemoryRenameModal}
+                    />
+                  ))}
+                </CardContainer>
+              )}
 
               <footer className="mt-4 px-5 pb-5">
                 <RAGFlowPagination
