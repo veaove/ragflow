@@ -308,7 +308,13 @@ export default function Agents() {
                       handleEditCompilation(id)();
                       return;
                     }
-                    navigateToAgent(id, item?.canvas_category as any);
+                    // navigateToAgent 是柯里化的（返回 () => void），必须再调一次才会真的跳转；
+                    // 之前漏了这对括号，列表里点名称没有任何反应（按钮按下即返回函数，没人执行）。
+                    // category 为空时兜底成 agent_canvas，避免拼出 ?category=undefined 打不开画布。
+                    navigateToAgent(
+                      id,
+                      (item?.canvas_category ?? AgentCategory.AgentCanvas) as AgentCategory,
+                    )();
                   }}
                 />
                 {builtinVisible && (
