@@ -1,16 +1,15 @@
 import { useTranslation } from 'react-i18next';
-import { MoreButton } from '@/components/more-button';
 import {
   ListDataTable,
   ListColumn,
   formatListTime,
 } from '@/components/list-view/list-data-table';
-import { ISearchAppProps } from './hooks';
-import { SearchDropdown } from './search-dropdown';
 import {
   formatKnowledgeBaseCell,
   getKnowledgeBaseNames,
 } from '@/utils/kb-labels';
+import { ISearchAppProps } from './hooks';
+import { SearchRowActions } from './search-row-actions';
 import { searchStatusLabelKey } from './search-status';
 
 /**
@@ -121,14 +120,10 @@ export function SearchTable({
       title: t('common.action'),
       align: 'right',
       render: (row) => (
-        <div className="flex justify-end">
-          <SearchDropdown
-            dataset={row}
-            showSearchRenameModal={showSearchRenameModal}
-          >
-            <MoreButton />
-          </SearchDropdown>
-        </div>
+        <SearchRowActions
+          search={row}
+          showSearchRenameModal={showSearchRenameModal}
+        />
       ),
     },
   ];

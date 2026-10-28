@@ -60,7 +60,10 @@ export function ListDataTable<T extends { id: string }>({
         </TableHeader>
         <TableBody>
           {rows.map((row) => (
-            <TableRow key={row.id} data-testid={rowTestId}>
+            // `group` 让单元格里的 hover 才出现的内容（MoreButton 之类）有
+            // 可依附的祖先——卡片视图的 HomeCard 根节点就带 group，表格漏了
+            // 会让操作按钮永远停在 opacity-0。
+            <TableRow key={row.id} className="group" data-testid={rowTestId}>
               {columns.map((column) => (
                 <TableCell
                   key={column.key}

@@ -1,5 +1,4 @@
 import { useTranslation } from 'react-i18next';
-import { MoreButton } from '@/components/more-button';
 import {
   ListDataTable,
   ListColumn,
@@ -10,7 +9,7 @@ import {
   formatKnowledgeBaseCell,
   getKnowledgeBaseNames,
 } from '@/utils/kb-labels';
-import { ChatDropdown } from './chat-dropdown';
+import { ChatRowActions } from './chat-row-actions';
 import { useModelNameResolver } from './use-model-name-resolver';
 
 /**
@@ -127,11 +126,7 @@ export function ChatTable({
       title: t('common.action'),
       align: 'right',
       render: (row) => (
-        <div className="flex justify-end">
-          <ChatDropdown chat={row} showChatRenameModal={showChatRenameModal}>
-            <MoreButton />
-          </ChatDropdown>
-        </div>
+        <ChatRowActions chat={row} showChatRenameModal={showChatRenameModal} />
       ),
     },
   ];
