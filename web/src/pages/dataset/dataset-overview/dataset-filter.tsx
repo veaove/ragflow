@@ -52,6 +52,10 @@ const DatasetFilter = (
               value: LogTabs.DATASOURCE_LOGS,
               label: t('knowledgeDetails.datasourceLogs'),
             },
+            {
+              value: LogTabs.APP_REFS,
+              label: t('knowledgeDetails.appLogs'),
+            },
           ]}
           onChange={(value) =>
             setActive?.(value as (typeof LogTabs)[keyof typeof LogTabs])

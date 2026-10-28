@@ -29,10 +29,18 @@ describe('appTypeLabelKey', () => {
     const keys = Object.values(APP_TYPE_LABEL_KEYS);
     expect(new Set(keys).size).toBe(keys.length);
     expect(appTypeLabelKey('chat')).toBe('analytics.appTypeChat');
+    expect(appTypeLabelKey('search')).toBe('analytics.appTypeSearch');
+    expect(appTypeLabelKey('evaluation')).toBe('analytics.appTypeEvaluation');
     expect(appTypeLabelKey('agent_canvas')).toBe('analytics.appTypeAgent');
-    expect(appTypeLabelKey('chatflow_canvas')).toBe('analytics.appTypeChatflow');
-    expect(appTypeLabelKey('workflow_canvas')).toBe('analytics.appTypeWorkflow');
-    expect(appTypeLabelKey('dataflow_canvas')).toBe('analytics.appTypeDataflow');
+    expect(appTypeLabelKey('chatflow_canvas')).toBe(
+      'analytics.appTypeChatflow',
+    );
+    expect(appTypeLabelKey('workflow_canvas')).toBe(
+      'analytics.appTypeWorkflow',
+    );
+    expect(appTypeLabelKey('dataflow_canvas')).toBe(
+      'analytics.appTypeDataflow',
+    );
   });
 
   it('falls back to the unknown label for a missing or unrecognised type', () => {

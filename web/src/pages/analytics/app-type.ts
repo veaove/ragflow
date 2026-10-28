@@ -27,9 +27,16 @@
  *
  * The values are the canvas_category values used by the agents module, so the
  * two surfaces stay in step.
+ *
+ * "search" and "evaluation" are not consultation app shapes: they are the
+ * dataset-reference kinds (see IDatasetReferenceKind) reported by
+ * GET /datasets/:id/references, which reuses this map so that one app type is
+ * never labelled two different ways.
  */
 export const APP_TYPE_LABEL_KEYS: Record<string, string> = {
   chat: 'analytics.appTypeChat',
+  search: 'analytics.appTypeSearch',
+  evaluation: 'analytics.appTypeEvaluation',
   agent_canvas: 'analytics.appTypeAgent',
   chatflow_canvas: 'analytics.appTypeChatflow',
   workflow_canvas: 'analytics.appTypeWorkflow',

@@ -58,7 +58,11 @@ const useFetchFileLogList = () => {
   );
   const knowledgeBaseId = searchParams.get('id') || id;
   const logType = active === LogTabs.DATASET_LOGS ? 'dataset' : 'file';
-  const isDataSourceLogs = active === LogTabs.DATASOURCE_LOGS;
+  // Tabs that render their own source instead of the ingestion log: the
+  // datasource tab reads the pipeline log, the apps tab reads the dataset's
+  // reference list. Neither should trigger a file-log request.
+  const isOwnSourceTab =
+    active === LogTabs.DATASOURCE_LOGS || active === LogTabs.APP_REFS;
   const { data } = useQuery<IFileLogList>({
     queryKey: DatasetOverviewKeys.logs(
       knowledgeBaseId,
@@ -74,7 +78,7 @@ const useFetchFileLogList = () => {
       }
       return previousData;
     },
-    enabled: !!knowledgeBaseId && !isDataSourceLogs,
+    enabled: !!knowledgeBaseId && !isOwnSourceTab,
     refetchInterval: (query) =>
       hasActiveIngestionLogs(query.state.data) ? PollIntervalMs : false,
     queryFn: async () => {

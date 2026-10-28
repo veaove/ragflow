@@ -13,6 +13,8 @@ const ActiveLogStatuses = new Set([
 export const DatasetOverviewKeys = {
   summary: (datasetId?: string) =>
     ['datasetOverview', datasetId, 'summary'] as const,
+  references: (datasetId?: string) =>
+    ['datasetOverview', datasetId, 'references'] as const,
   logs: (
     datasetId: string | undefined,
     page: number | undefined,

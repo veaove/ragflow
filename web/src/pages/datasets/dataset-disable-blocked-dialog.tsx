@@ -13,7 +13,8 @@ import {
 } from '@/interfaces/database/dataset';
 
 const KIND_LABEL: Record<IDatasetReferenceKind, string> = {
-  chat: '聊天 / 搜索应用',
+  chat: '知识问答',
+  search: '知识搜索',
   agent: '智能体应用',
   evaluation: '评估集',
 };
@@ -52,14 +53,17 @@ export function DatasetDisableBlockedDialog({
 }: DatasetDisableBlockedDialogProps) {
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[480px]" data-testid="dataset-disable-blocked">
+      <DialogContent
+        className="sm:max-w-[480px]"
+        data-testid="dataset-disable-blocked"
+      >
         <DialogHeader>
           <DialogTitle>无法禁用「{dataset.name || '该知识库'}」</DialogTitle>
         </DialogHeader>
 
         <p className="text-sm text-text-secondary">
-          该知识库仍被以下 {references.length} 个应用引用。请先在对应应用中解绑，
-          解绑后即可禁用。
+          该知识库仍被以下 {references.length}{' '}
+          个应用引用。请先在对应应用中解绑， 解绑后即可禁用。
         </p>
 
         <ul className="max-h-[260px] space-y-2 overflow-y-auto pr-1">

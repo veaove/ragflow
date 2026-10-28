@@ -46,6 +46,11 @@ func setupServiceTestDB(t *testing.T) *gorm.DB {
 		&entity.TenantModelInstance{},
 		&entity.TenantModel{},
 		&entity.UserCanvas{},
+		// Reference lookup tables: dialog / search / evaluation_datasets are
+		// read by findDatasetReferences (disable guard + "apps" tab).
+		&entity.Chat{},
+		&entity.Search{},
+		&entity.EvaluationDataset{},
 	); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}

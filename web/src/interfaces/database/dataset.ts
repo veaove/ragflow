@@ -61,7 +61,7 @@ export interface IDataset {
   connectors: IConnector[];
 }
 
-export type IDatasetReferenceKind = 'chat' | 'agent' | 'evaluation';
+export type IDatasetReferenceKind = 'chat' | 'search' | 'agent' | 'evaluation';
 
 /** One app that binds a dataset; a dataset with references cannot be disabled. */
 export interface IDatasetReference {

@@ -15,6 +15,7 @@ import { FC, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useSearchParams } from 'react-router';
 import { RunningStatus } from '../dataset/constant';
+import AppReferencesTable from './app-references-table';
 import { LogTabs } from './dataset-common';
 import DataSourceLogsTable from './data-source-logs-table';
 import { DatasetFilter } from './dataset-filter';
@@ -291,6 +292,8 @@ const FileLogsPage: FC = () => {
       {/* Table */}
       {active === LogTabs.DATASOURCE_LOGS ? (
         <DataSourceLogsTable datasetId={datasetId} />
+      ) : active === LogTabs.APP_REFS ? (
+        <AppReferencesTable datasetId={datasetId} />
       ) : (
         <FileLogsTable
           data={tableList}

@@ -16,9 +16,11 @@ import (
 )
 
 // Dataset reference kinds. The values are part of the API contract consumed by
-// the dataset list switch, which renders one label per kind.
+// the dataset list switch and the dataset overview "apps" tab, both of which
+// render one label per kind.
 const (
 	DatasetReferenceKindChat       = "chat"
+	DatasetReferenceKindSearch     = "search"
 	DatasetReferenceKindAgent      = "agent"
 	DatasetReferenceKindEvaluation = "evaluation"
 )
@@ -35,16 +37,25 @@ type DatasetReference struct {
 	Category string `json:"category,omitempty"`
 }
 
-// chatReferenceRow / canvasReferenceRow / evaluationReferenceRow read the raw
-// JSON columns instead of the typed entities: kb_ids and dsl are longtext
-// columns written by both the Go and the legacy Python side, and scanning them
-// through JSONMap would fail the whole lookup when one row holds a shape the
-// typed decoder does not expect. The raw string is enough for an exact
-// membership check.
+// chatReferenceRow / searchReferenceRow / canvasReferenceRow /
+// evaluationReferenceRow read the raw JSON columns instead of the typed
+// entities: kb_ids, search_config and dsl are longtext columns written by both
+// the Go and the legacy Python side, and scanning them through JSONMap would
+// fail the whole lookup when one row holds a shape the typed decoder does not
+// expect. The raw string is enough for an exact membership check.
 type chatReferenceRow struct {
 	ID    string  `gorm:"column:id"`
 	Name  *string `gorm:"column:name"`
 	KBIDs *string `gorm:"column:kb_ids"`
+}
+
+// searchReferenceRow keeps the bound dataset ids inside search_config.kb_ids.
+// Older rows hold `{}`, so the column is nullable here and only inspected after
+// the LIKE scan narrowed the set.
+type searchReferenceRow struct {
+	ID           string  `gorm:"column:id"`
+	Name         *string `gorm:"column:name"`
+	SearchConfig *string `gorm:"column:search_config"`
 }
 
 type canvasReferenceRow struct {
@@ -64,9 +75,11 @@ type evaluationReferenceRow struct {
 
 // ListDatasetReferences returns every app that currently binds datasetID.
 //
-// Only datasets the caller is allowed to update are inspected, mirroring
-// UpdateDataset: the list is used to explain why a disable was rejected, so it
-// must not leak app names to users who could not disable the dataset anyway.
+// Read access is enough: the list backs both the "cannot disable, unbind first"
+// dialog on the dataset list and the "apps" tab of the dataset overview, so a
+// reader who can open the dataset must be able to see which apps use it. The
+// disable guard itself is enforced by UpdateDataset, which requires update
+// permission on its own, so relaxing this lookup does not weaken it.
 func (d *DatasetService) ListDatasetReferences(ctx context.Context, datasetID, userID string) ([]DatasetReference, common.ErrorCode, error) {
 	datasetID = strings.TrimSpace(datasetID)
 	userID = strings.TrimSpace(userID)
@@ -87,7 +100,7 @@ func (d *DatasetService) ListDatasetReferences(ctx context.Context, datasetID, u
 		ctx,
 		permission.Subject{UserID: userID},
 		permission.ResourceRef{Kind: permission.ResourceKindDataset, ID: datasetID},
-		permission.OperationUpdate,
+		permission.OperationRead,
 	); err != nil {
 		code, permissionErr := permissionresponse.NormalizeHidden(err)
 		return nil, code, permissionErr
@@ -126,6 +139,29 @@ func findDatasetReferences(ctx context.Context, db *gorm.DB, kb *entity.Knowledg
 			Kind: DatasetReferenceKindChat,
 			ID:   chat.ID,
 			Name: stringOrEmpty(chat.Name),
+		})
+	}
+
+	// Knowledge-search apps keep their bound datasets inside search_config, a
+	// JSON object shaped `{"kb_ids":[...], ...}`. Anything that does not carry
+	// this dataset in kb_ids is filtered out below, so a row whose config also
+	// mentions the id elsewhere (e.g. a chat_id) is not reported.
+	var searches []searchReferenceRow
+	if err := db.WithContext(ctx).
+		Table("search").
+		Select("id, name, search_config").
+		Where("tenant_id = ? AND (status = ? OR status IS NULL) AND search_config LIKE ?", kb.TenantID, string(entity.StatusValid), like).
+		Scan(&searches).Error; err != nil {
+		return nil, errors.New("failed to look up search references")
+	}
+	for _, search := range searches {
+		if search.SearchConfig == nil || !jsonColumnContains(*search.SearchConfig, needle) {
+			continue
+		}
+		refs = append(refs, DatasetReference{
+			Kind: DatasetReferenceKindSearch,
+			ID:   search.ID,
+			Name: stringOrEmpty(search.Name),
 		})
 	}
 
