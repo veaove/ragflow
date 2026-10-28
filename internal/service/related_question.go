@@ -28,16 +28,33 @@ import (
 	"ragflow/internal/rag/prompts"
 )
 
+// relatedQuestionsModelAccess resolves the model access used to generate
+// related questions.
+//
+// The model configuration hangs off the tenant, and tenant_id != user_id in a
+// multi-member tenant. Handing the caller's user id over as the tenant made the
+// factory look for a provider owned by the personal id and fail the strict
+// owner comparison, which surfaced on the search page as
+//
+//	103 tenant <user id> has no access to provider owned by tenant <tenant id>
+//
+// on every question, because related search is fetched in parallel with the
+// answer.
+func relatedQuestionsModelAccess(ctx context.Context, userID string) ModelAccess {
+	return ModelAccess{UserID: userID, TenantID: resolveTenantIDForUser(ctx, userID)}
+}
+
 // GenerateRelatedQuestions generates related search questions for chat/searchbot endpoints.
 func GenerateRelatedQuestions(ctx context.Context, userID, question, searchID string, searchSvc *SearchService, tenantSvc *TenantService, modelFactory *ModelFactory) ([]string, error) {
 	if modelFactory == nil {
 		return nil, fmt.Errorf("model factory not configured")
 	}
+	access := relatedQuestionsModelAccess(ctx, userID)
 	searchConfig, err := relatedQuestionsSearchConfig(ctx, userID, searchID, searchSvc)
 	if err != nil {
 		return nil, err
 	}
-	modelID := relatedQuestionsModelID(ctx, userID, searchConfig, tenantSvc)
+	modelID := relatedQuestionsModelID(ctx, access.TenantID, searchConfig, tenantSvc)
 	if modelID == "" {
 		return nil, fmt.Errorf("no chat model configured")
 	}
@@ -49,7 +66,7 @@ func GenerateRelatedQuestions(ctx context.Context, userID, question, searchID st
 		{Role: "system", Content: prompt},
 		{Role: "user", Content: "\nKeywords: " + question + "\nRelated search terms:\n    "},
 	}
-	chatModel, err := modelFactory.NewChatModel(ctx, ModelAccess{TenantID: userID}, modelID)
+	chatModel, err := modelFactory.NewChatModel(ctx, access, modelID)
 	if err != nil {
 		return nil, err
 	}
