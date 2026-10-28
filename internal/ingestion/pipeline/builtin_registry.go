@@ -225,6 +225,10 @@ func (r *Registry) IsValid(ref string) bool {
 }
 
 func parseTemplate(filename string, raw []byte) (*BuiltinPipeline, error) {
+	// Strip UTF-8 BOM if present. Windows editors (including PowerShell) often
+	// add one, and Go's json.Decoder does not skip it — the entire registry
+	// load fails when a single template carries a BOM.
+	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF})
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	var data map[string]any
