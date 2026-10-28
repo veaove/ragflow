@@ -1508,7 +1508,7 @@ func (s *AgentService) RunAgent(ctx context.Context, userID, canvasID, sessionID
 	if err != nil {
 		return nil, err
 	}
-	agentTenantID := canvasRow.UserID
+	agentTenantID := CanvasTenantID(canvasRow)
 	// Trigger type defaults to debug (the editor /agent run entry and tests);
 	// production entry points override it through WithRunTrigger.
 	triggerType := runTriggerFromContext(ctx)
@@ -3229,6 +3229,24 @@ func (s *AgentService) CancelSessionRun(ctx context.Context, userID, sessionID s
 	// an idempotent no-op. Publishing a session-scoped marker here would race
 	// completed-run cleanup and could cancel a later run that reuses sessionID.
 	return nil
+}
+
+// CanvasTenantID returns the tenant that owns a canvas.
+//
+// tenant_id is the authoritative column: a canvas created by member B of a
+// multi-member tenant belongs to that tenant, not to B. Only pre-tenant_id rows
+// fall back to user_id, which used to stand in for the tenant (see
+// entity.UserCanvas). Resolving the tenant from user_id in a multi-member tenant
+// points at a tenant that usually does not exist, so runtime model and dataset
+// lookups fail with "tenant ... has no access to model ...".
+func CanvasTenantID(canvas *entity.UserCanvas) string {
+	if canvas == nil {
+		return ""
+	}
+	if tenantID := strings.TrimSpace(canvas.TenantID); tenantID != "" {
+		return tenantID
+	}
+	return canvas.UserID
 }
 
 // resolveTenantIDForUser picks the tenant a newly created canvas belongs to.

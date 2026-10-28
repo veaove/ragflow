@@ -94,7 +94,7 @@ func resolveAppOwner(c *gin.Context, appType, appID string) (string, error) {
 			}
 			return "", err
 		}
-		return canvas.UserID, nil
+		return service.CanvasTenantID(canvas), nil
 	default:
 		return "", errors.New("invalid app_type")
 	}
