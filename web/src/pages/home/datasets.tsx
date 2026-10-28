@@ -1,27 +1,29 @@
 import { CardSineLineContainer } from '@/components/card-singleline-container';
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
-import { RenameDialog } from '@/components/rename-dialog';
 import { HomeIcon } from '@/components/svg-icon';
 import { CardSkeleton } from '@/components/ui/skeleton';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useFetchNextKnowledgeListByPage } from '@/hooks/use-knowledge-request';
 import { useTranslation } from 'react-i18next';
 import { DatasetCard } from '../datasets/dataset-card';
-import { useRenameDataset } from '../datasets/use-rename-dataset';
+import { DatasetEditDialog } from '../datasets/dataset-edit-dialog';
+import { useEditDataset } from '../datasets/use-edit-dataset';
 import { SeeAllAppCard } from './application-card';
 
 export function Datasets() {
   const { t } = useTranslation();
   const { kbs, loading } = useFetchNextKnowledgeListByPage();
   const {
-    datasetRenameLoading,
+    datasetEditLoading,
     initialDatasetName,
-    onDatasetRenameOk,
-    datasetRenameVisible,
-    hideDatasetRenameModal,
-    showDatasetRenameModal,
-  } = useRenameDataset();
+    initialDatasetDescription,
+    initialDatasetCategory,
+    onDatasetEditOk,
+    datasetEditVisible,
+    hideDatasetEditModal,
+    showDatasetEditModal,
+  } = useEditDataset();
   const { navigateToDatasetList } = useNavigatePage();
 
   return (
@@ -47,7 +49,7 @@ export function Datasets() {
                   <DatasetCard
                     key={dataset.id}
                     dataset={dataset}
-                    showDatasetRenameModal={showDatasetRenameModal}
+                    showDatasetEditModal={showDatasetEditModal}
                   ></DatasetCard>
                 ))}
                 {
@@ -70,12 +72,14 @@ export function Datasets() {
         )}
       </div>
 
-      {datasetRenameVisible && (
-        <RenameDialog
-          hideModal={hideDatasetRenameModal}
-          onOk={onDatasetRenameOk}
+      {datasetEditVisible && (
+        <DatasetEditDialog
+          hideModal={hideDatasetEditModal}
+          onOk={onDatasetEditOk}
           initialName={initialDatasetName}
-          loading={datasetRenameLoading}
+          initialDescription={initialDatasetDescription}
+          initialCategory={initialDatasetCategory}
+          loading={datasetEditLoading}
         />
       )}
     </section>
