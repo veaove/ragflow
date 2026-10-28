@@ -1,5 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LucidePencil, LucidePlus, LucideShield, LucideShieldCheck } from 'lucide-react';
+import {
+  LucidePencil,
+  LucidePlus,
+  LucideShield,
+  LucideShieldCheck,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -202,19 +207,21 @@ export default function ConsoleRoles() {
   const toggleRow = useCallback(
     (module: string) => {
       if (selected?.is_system) return;
-      setDraft((rows) => rows.map((row) => {
-        if (row.module !== module) return row;
-        const allOn = ACTION_COLUMNS.every((c) => row[c.key] === true);
-        const next = allOn ? false : true;
-        return {
-          ...row,
-          can_view: next,
-          can_create: next,
-          can_edit: next,
-          can_delete: next,
-          can_manage: next,
-        };
-      }));
+      setDraft((rows) =>
+        rows.map((row) => {
+          if (row.module !== module) return row;
+          const allOn = ACTION_COLUMNS.every((c) => row[c.key] === true);
+          const next = allOn ? false : true;
+          return {
+            ...row,
+            can_view: next,
+            can_create: next,
+            can_edit: next,
+            can_delete: next,
+            can_manage: next,
+          };
+        }),
+      );
       setDirty(true);
     },
     [selected],
@@ -365,227 +372,233 @@ export default function ConsoleRoles() {
   return (
     <ConsoleGuard module="role">
       <section className="flex h-full flex-col p-5">
-      <header className="mb-4 flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-medium text-text-primary">
-            {t('console.roles')}
-          </h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            基于 RBAC 的细粒度权限管理
-          </p>
-        </div>
-        <Button variant="secondary" onClick={() => setAuditOpen(true)}>
-          变更记录
-        </Button>
-      </header>
-
-      <div className="flex min-h-0 flex-1 gap-4">
-        <aside className="flex w-64 shrink-0 flex-col rounded-lg border border-border-default">
-          <div className="flex items-center justify-between border-b border-border-default px-3 py-2">
-            <span className="text-sm font-medium text-text-primary">
-              角色列表
-            </span>
-            <Button
-              variant="transparent"
-              size="icon-sm"
-              onClick={() => setCreateOpen(true)}
-              title="新建角色"
-            >
-              <LucidePlus className="size-4" />
-            </Button>
+        <header className="mb-4 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-medium text-text-primary">
+              {t('console.roles')}
+            </h1>
+            <p className="mt-1 text-sm text-text-secondary">
+              基于 RBAC 的细粒度权限管理
+            </p>
           </div>
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
-            {builtin.length > 0 && (
-              <div className="px-1 pb-1 text-xs text-text-secondary">内置角色</div>
-            )}
-            {builtin.map(renderRoleItem)}
-            {custom.length > 0 && (
-              <div className="px-1 pb-1 pt-3 text-xs text-text-secondary">
-                自定义角色
-              </div>
-            )}
-            {custom.map(renderRoleItem)}
-            {roles.length === 0 && (
-              <div className="py-8 text-center text-xs text-text-secondary">
-                {isFetching ? '…' : '暂无角色'}
-              </div>
-            )}
-          </div>
-        </aside>
+          <Button variant="secondary" onClick={() => setAuditOpen(true)}>
+            变更记录
+          </Button>
+        </header>
 
-        <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-border-default">
-          <div className="flex items-center gap-2 border-b border-border-default px-4 py-2">
-            <span className="text-sm font-medium text-text-primary">
-              权限配置 - {selected?.name ?? '未选择'}
-            </span>
-            {selected?.is_system && (
-              <span className="rounded bg-state-warning/10 px-1.5 py-0.5 text-[10px] text-state-warning">
-                系统（不可编辑）
+        <div className="flex min-h-0 flex-1 gap-4">
+          <aside className="flex w-64 shrink-0 flex-col rounded-lg border border-border-default">
+            <div className="flex items-center justify-between border-b border-border-default px-3 py-2">
+              <span className="text-sm font-medium text-text-primary">
+                角色列表
               </span>
-            )}
-            {selected && !selected.is_system && selected.is_builtin && (
-              <span className="rounded bg-background-second px-1.5 py-0.5 text-[10px] text-text-secondary">
-                内置
-              </span>
-            )}
-            {selected && !selected.is_system && !selected.is_builtin && (
-              <button
-                type="button"
-                className="ml-auto text-xs text-state-error hover:underline"
-                onClick={() => removeRole(selected)}
+              <Button
+                variant="transparent"
+                size="icon-sm"
+                onClick={() => setCreateOpen(true)}
+                title="新建角色"
               >
-                删除角色
-              </button>
-            )}
-            {dirty && !selected?.is_system && (
-              <Button className="ml-2 h-8" onClick={save}>
-                保存
+                <LucidePlus className="size-4" />
               </Button>
-            )}
-          </div>
+            </div>
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+              {builtin.length > 0 && (
+                <div className="px-1 pb-1 text-xs text-text-secondary">
+                  内置角色
+                </div>
+              )}
+              {builtin.map(renderRoleItem)}
+              {custom.length > 0 && (
+                <div className="px-1 pb-1 pt-3 text-xs text-text-secondary">
+                  自定义角色
+                </div>
+              )}
+              {custom.map(renderRoleItem)}
+              {roles.length === 0 && (
+                <div className="py-8 text-center text-xs text-text-secondary">
+                  {isFetching ? '…' : '暂无角色'}
+                </div>
+              )}
+            </div>
+          </aside>
 
-          <div className="min-h-0 flex-1 overflow-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>功能模块</TableHead>
-                  <TableHead className="w-[70px] text-center">全选</TableHead>
-                  {ACTION_COLUMNS.map((c) => (
-                    <TableHead key={c.key} className="w-[70px] text-center">
-                      {c.label}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {draft.map((row) => {
-                  const allOn = ACTION_COLUMNS.every((c) => row[c.key] === true);
-                  return (
-                    <TableRow key={row.module}>
-                      <TableCell className="text-sm text-text-primary">
-                        {MODULE_LABELS[row.module] ?? row.module}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <input
-                          type="checkbox"
-                          checked={allOn}
-                          disabled={isSystemRole}
-                          onChange={() => toggleRow(row.module)}
-                        />
-                      </TableCell>
-                      {ACTION_COLUMNS.map((c) => (
-                        <TableCell key={c.key} className="text-center">
+          <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-border-default">
+            <div className="flex items-center gap-2 border-b border-border-default px-4 py-2">
+              <span className="text-sm font-medium text-text-primary">
+                权限配置 - {selected?.name ?? '未选择'}
+              </span>
+              {selected?.is_system && (
+                <span className="rounded bg-state-warning/10 px-1.5 py-0.5 text-[10px] text-state-warning">
+                  系统（不可编辑）
+                </span>
+              )}
+              {selected && !selected.is_system && selected.is_builtin && (
+                <span className="rounded bg-background-second px-1.5 py-0.5 text-[10px] text-text-secondary">
+                  内置
+                </span>
+              )}
+              {selected && !selected.is_system && !selected.is_builtin && (
+                <button
+                  type="button"
+                  className="ml-auto text-xs text-state-error hover:underline"
+                  onClick={() => removeRole(selected)}
+                >
+                  删除角色
+                </button>
+              )}
+              {dirty && !selected?.is_system && (
+                <Button className="ml-2 h-8" onClick={save}>
+                  保存
+                </Button>
+              )}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-auto">
+              <Table scroll="page">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>功能模块</TableHead>
+                    <TableHead className="w-[70px] text-center">全选</TableHead>
+                    {ACTION_COLUMNS.map((c) => (
+                      <TableHead key={c.key} className="w-[70px] text-center">
+                        {c.label}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {draft.map((row) => {
+                    const allOn = ACTION_COLUMNS.every(
+                      (c) => row[c.key] === true,
+                    );
+                    return (
+                      <TableRow key={row.module}>
+                        <TableCell className="text-sm text-text-primary">
+                          {MODULE_LABELS[row.module] ?? row.module}
+                        </TableCell>
+                        <TableCell className="text-center">
                           <input
                             type="checkbox"
-                            checked={row[c.key] === true}
+                            checked={allOn}
                             disabled={isSystemRole}
-                            onChange={() => toggleCell(row.module, c.key)}
+                            onChange={() => toggleRow(row.module)}
                           />
                         </TableCell>
-                      ))}
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                        {ACTION_COLUMNS.map((c) => (
+                          <TableCell key={c.key} className="text-center">
+                            <input
+                              type="checkbox"
+                              checked={row[c.key] === true}
+                              disabled={isSystemRole}
+                              onChange={() => toggleCell(row.module, c.key)}
+                            />
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </div>
-      </div>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>新建角色</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <div className="mb-1 text-sm text-text-secondary">角色名称</div>
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="例如：合规质检员"
-              />
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>新建角色</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <div className="mb-1 text-sm text-text-secondary">角色名称</div>
+                <Input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="例如：合规质检员"
+                />
+              </div>
+              <div>
+                <div className="mb-1 text-sm text-text-secondary">描述</div>
+                <Input
+                  value={newDesc}
+                  onChange={(e) => setNewDesc(e.target.value)}
+                  placeholder="一句话说明这个角色能做什么"
+                />
+              </div>
             </div>
-            <div>
-              <div className="mb-1 text-sm text-text-secondary">描述</div>
-              <Input
-                value={newDesc}
-                onChange={(e) => setNewDesc(e.target.value)}
-                placeholder="一句话说明这个角色能做什么"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setCreateOpen(false)}>
-              取消
-            </Button>
-            <Button onClick={createRole}>创建</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setCreateOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={createRole}>创建</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      {/* 权限变更记录：读写同一个 audit_log 表，这里只看权限相关的对象类型 */}
-      <Dialog open={auditOpen} onOpenChange={setAuditOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>权限变更记录</DialogTitle>
-          </DialogHeader>
-          <div className="max-h-[60vh] overflow-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>时间</TableHead>
-                  <TableHead>操作人</TableHead>
-                  <TableHead>动作</TableHead>
-                  <TableHead>对象</TableHead>
-                  <TableHead>IP</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {audits.length === 0 && (
+        {/* 权限变更记录：读写同一个 audit_log 表，这里只看权限相关的对象类型 */}
+        <Dialog open={auditOpen} onOpenChange={setAuditOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>权限变更记录</DialogTitle>
+            </DialogHeader>
+            <div className="max-h-[60vh] overflow-auto">
+              <Table scroll="page">
+                <TableHeader>
                   <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="py-8 text-center text-sm text-text-secondary"
-                    >
-                      暂无变更记录
-                    </TableCell>
+                    <TableHead>时间</TableHead>
+                    <TableHead>操作人</TableHead>
+                    <TableHead>动作</TableHead>
+                    <TableHead>对象</TableHead>
+                    <TableHead>IP</TableHead>
                   </TableRow>
-                )}
-                {audits.map((a) => (
-                  <TableRow key={a.id}>
-                    <TableCell className="whitespace-nowrap text-xs text-text-secondary">
-                      {a.create_time
-                        ? new Date(a.create_time).toLocaleString()
-                        : '-'}
-                    </TableCell>
-                    <TableCell className="text-xs">{a.operator || '-'}</TableCell>
-                    <TableCell className="text-xs">
-                      {ACTION_LABELS[a.action] ?? a.action}
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {OBJECT_LABELS[a.object_type] ?? a.object_type}
-                      {a.object_id ? (
-                        <span className="ml-1 text-text-secondary">
-                          {a.object_id.slice(0, 8)}
-                        </span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-xs text-text-secondary">
-                      {a.ip_address || '-'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setAuditOpen(false)}>
-              关闭
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                </TableHeader>
+                <TableBody>
+                  {audits.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="py-8 text-center text-sm text-text-secondary"
+                      >
+                        暂无变更记录
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {audits.map((a) => (
+                    <TableRow key={a.id}>
+                      <TableCell className="whitespace-nowrap text-xs text-text-secondary">
+                        {a.create_time
+                          ? new Date(a.create_time).toLocaleString()
+                          : '-'}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {a.operator || '-'}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {ACTION_LABELS[a.action] ?? a.action}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {OBJECT_LABELS[a.object_type] ?? a.object_type}
+                        {a.object_id ? (
+                          <span className="ml-1 text-text-secondary">
+                            {a.object_id.slice(0, 8)}
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-xs text-text-secondary">
+                        {a.ip_address || '-'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setAuditOpen(false)}>
+                关闭
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </section>
     </ConsoleGuard>
   );

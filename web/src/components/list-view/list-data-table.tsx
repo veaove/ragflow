@@ -42,18 +42,13 @@ export function ListDataTable<T extends { id: string }>({
   return (
     <div className="rounded-lg border border-border-default">
       {/*
-        表头 sticky 依赖「最近的滚动容器是页面的那个」：三个列表页都把表格套在
-        `flex-1 overflow-auto` 里，滚动发生在那儿。Table 自带的 `overflow-auto`
-        会让它自己成为最近的滚动容器，可它高度随内容撑开、内部并不滚动，于是
-        sticky 贴着这个假滚动容器，页面一滚表头照旧被带走。这里把内层滚动关掉，
-        横向溢出交给页面容器处理。
+        列表页的滚动发生在页面容器（`flex-1 overflow-auto`）里，所以表格必须
+        声明 `scroll="page"`：让这一层不再是滚动容器，sticky 表头才会真正贴住
+        页面容器。此前这里只写了 `overflow-visible`，但所有调用方都是页面滚动，
+        交给 Table 的开关统一表达意图，避免下一个表格再踩一次。
       */}
-      <Table data-testid={tableTestId} rootClassName="overflow-visible">
-        {/*
-          表头必须有实底：sticky 生效后行内容会从下面穿过去，透明表头会糊成一片。
-          底边补一条分隔线，滚动时才分得清表头与内容。
-        */}
-        <TableHeader className="bg-bg-base [&_th]:border-b [&_th]:border-border-light">
+      <Table data-testid={tableTestId} scroll="page">
+        <TableHeader>
           <TableRow>
             {columns.map((column) => (
               <TableHead

@@ -104,7 +104,9 @@ export function RunDetailDialog({
 
         <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
           {loading && !detail ? (
-            <div className="py-10 text-center text-sm text-text-disabled">…</div>
+            <div className="py-10 text-center text-sm text-text-disabled">
+              …
+            </div>
           ) : (
             <dl className="grid grid-cols-[6rem_1fr] gap-x-4 gap-y-2 text-sm">
               {summary.map((row) => (
@@ -159,7 +161,7 @@ export function RunDetailDialog({
                 {nodesLoading ? '…' : t('studio.runDetailEmpty')}
               </div>
             ) : (
-              <Table>
+              <Table scroll="page">
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t('studio.runDetailNode')}</TableHead>

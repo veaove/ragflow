@@ -91,7 +91,11 @@ function RatingTag({ rating }: { rating: string }) {
  * no page-level padding or title so it can sit inside the home page tab strip
  * as well as inside its own standalone route.
  */
-export function ConsultationsPanel({ embedded = false }: { embedded?: boolean }) {
+export function ConsultationsPanel({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const { t } = useTranslation();
 
   const [from, setFrom] = useState(todayMinus(6));
@@ -108,7 +112,12 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
   const [detailOpen, setDetailOpen] = useState(false);
 
   const query = useMemo(
-    () => ({ from, to, rating: rating || undefined, keyword: keyword || undefined }),
+    () => ({
+      from,
+      to,
+      rating: rating || undefined,
+      keyword: keyword || undefined,
+    }),
     [from, to, rating, keyword],
   );
 
@@ -137,7 +146,10 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
   }, [reload]);
 
   const openDetail = useCallback(async (item: IConsultationLogItem) => {
-    const res = await analyticsService.getConsultation(item.session_id, item.chain);
+    const res = await analyticsService.getConsultation(
+      item.session_id,
+      item.chain,
+    );
     setDetail(res?.data?.data ?? null);
     setDetailOpen(true);
   }, []);
@@ -147,11 +159,15 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
   }, [query]);
 
   return (
-    <div className={embedded ? 'flex h-full flex-col' : 'flex h-full flex-col p-5'}>
+    <div
+      className={embedded ? 'flex h-full flex-col' : 'flex h-full flex-col p-5'}
+    >
       <div className="mb-4 flex items-center gap-3">
         {!embedded && (
           <>
-            <h1 className="text-xl font-medium">{t('analytics.consultationLog')}</h1>
+            <h1 className="text-xl font-medium">
+              {t('analytics.consultationLog')}
+            </h1>
             <span className="text-sm text-text-disabled">
               {t('analytics.consultationLogHint')}
             </span>
@@ -197,10 +213,12 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border-default bg-bg-base">
-        <Table>
+        <Table scroll="page">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-40">{t('analytics.customerId')}</TableHead>
+              <TableHead className="w-40">
+                {t('analytics.customerId')}
+              </TableHead>
               <TableHead className="w-36">{t('analytics.app')}</TableHead>
               <TableHead className="w-24">{t('analytics.appType')}</TableHead>
               <TableHead className="w-44">{t('analytics.time')}</TableHead>
@@ -214,7 +232,9 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
           <TableBody>
             {items.map((it) => (
               <TableRow key={`${it.chain}-${it.session_id}`}>
-                <TableCell className="font-mono text-xs">{it.customer_id || '-'}</TableCell>
+                <TableCell className="font-mono text-xs">
+                  {it.customer_id || '-'}
+                </TableCell>
                 <TableCell>{it.app_name || '-'}</TableCell>
                 <TableCell className="text-text-secondary">
                   {it.app_type ? t(appTypeLabelKey(it.app_type)) : '-'}
@@ -222,12 +242,16 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
                 <TableCell className="text-text-secondary">
                   {formatTime(it.start_time)}
                 </TableCell>
-                <TableCell className="text-text-secondary">{it.rounds}</TableCell>
+                <TableCell className="text-text-secondary">
+                  {it.rounds}
+                </TableCell>
                 <TableCell>
                   <RatingTag rating={it.rating} />
                 </TableCell>
                 <TableCell className="text-text-secondary">
-                  {it.duration_ms > 0 ? `${(it.duration_ms / 1000).toFixed(1)}s` : '—'}
+                  {it.duration_ms > 0
+                    ? `${(it.duration_ms / 1000).toFixed(1)}s`
+                    : '—'}
                 </TableCell>
                 <TableCell className="max-w-0 truncate text-text-secondary">
                   {it.first_question || '-'}
@@ -246,7 +270,10 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
             ))}
             {!loading && items.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="py-10 text-center text-text-disabled">
+                <TableCell
+                  colSpan={9}
+                  className="py-10 text-center text-text-disabled"
+                >
                   {t('analytics.empty')}
                 </TableCell>
               </TableRow>
@@ -276,7 +303,8 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
             <div className="max-h-[60vh] overflow-auto">
               <div className="mb-3 text-sm text-text-secondary">
                 {t('analytics.customerId')}：{detail.customer_id || '-'} ·{' '}
-                {detail.app_name || '-'} · {detail.rounds} {t('analytics.roundsUnit')}
+                {detail.app_name || '-'} · {detail.rounds}{' '}
+                {t('analytics.roundsUnit')}
               </div>
               <div className="flex flex-col gap-4">
                 {detail.turns.map((turn) => (
@@ -289,7 +317,9 @@ export function ConsultationsPanel({ embedded = false }: { embedded?: boolean })
                     }
                   >
                     <div className="mb-1 text-xs opacity-70">
-                      {turn.role === 'user' ? t('analytics.customer') : t('analytics.ai')}
+                      {turn.role === 'user'
+                        ? t('analytics.customer')
+                        : t('analytics.ai')}
                       {turn.duration_ms > 0
                         ? ` · ${(turn.duration_ms / 1000).toFixed(1)}s`
                         : ''}

@@ -715,7 +715,7 @@ const SkillsPage: React.FC = () => {
                 </CardContainer>
               ) : (
                 <div className="flex-1 overflow-auto border border-border rounded-lg">
-                  <Table>
+                  <Table scroll="page">
                     <TableHeader className="bg-bg-title sticky top-0">
                       <TableRow>
                         <TableHead className="w-[50px] text-center">

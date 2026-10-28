@@ -120,7 +120,9 @@ export default function Vocab() {
       }
       const all: ISynonymGroup[] = response?.data?.data ?? [];
       setGroups(
-        all.filter((g: ISynonymGroup) => (g.group_type ?? 'synonym') === groupType),
+        all.filter(
+          (g: ISynonymGroup) => (g.group_type ?? 'synonym') === groupType,
+        ),
       );
     } catch {
       setGroups([]);
@@ -302,7 +304,11 @@ export default function Vocab() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Input
           className="w-64"
-          placeholder={tab === 'synonym' ? '搜索词组名、标准词或词条' : '搜索标准词、别名或领域'}
+          placeholder={
+            tab === 'synonym'
+              ? '搜索词组名、标准词或词条'
+              : '搜索标准词、别名或领域'
+          }
           value={keyword}
           onChange={(e) => {
             setKeyword(e.target.value);
@@ -320,7 +326,7 @@ export default function Vocab() {
       </div>
 
       <div className="flex-1 overflow-auto rounded-lg border border-border-base">
-        <Table>
+        <Table scroll="page">
           <TableHeader className="bg-background-second">
             <TableRow>
               <TableHead className="h-10 text-text-title">词组名称</TableHead>
@@ -329,7 +335,9 @@ export default function Vocab() {
                 {tab === 'synonym' ? '同义词 / 近义词' : '别名 / 简称'}
               </TableHead>
               <TableHead className="h-10 text-text-title">作用域</TableHead>
-              <TableHead className="h-10 w-16 text-text-title">词条数</TableHead>
+              <TableHead className="h-10 w-16 text-text-title">
+                词条数
+              </TableHead>
               <TableHead className="h-10 text-text-title">状态</TableHead>
               <TableHead className="h-10 w-32 text-text-title">操作</TableHead>
             </TableRow>
@@ -337,7 +345,10 @@ export default function Vocab() {
           <TableBody>
             {paged.length === 0 && !loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-40 text-center text-text-secondary">
+                <TableCell
+                  colSpan={7}
+                  className="h-40 text-center text-text-secondary"
+                >
                   {loadError ? (
                     <div className="flex flex-col items-center gap-2">
                       <span className="text-state-error">词表加载失败</span>
@@ -358,8 +369,7 @@ export default function Vocab() {
             ) : (
               paged.map((group) => {
                 const primary = group.words?.[0]?.word ?? '';
-                const aliases =
-                  group.words?.slice(1).map((w) => w.word) ?? [];
+                const aliases = group.words?.slice(1).map((w) => w.word) ?? [];
                 // disabled = 已被某次发布替换下来的历史版本，不是「待生效」。
                 // 之前统一按「非 live 即待生效」渲染，用户会把它当成正常词组点进去编辑。
                 const status = group.status ?? 'live';
@@ -595,7 +605,9 @@ function VocabEditor({
 
             <div>
               <label className="mb-1 block text-sm text-text-secondary">
-                {draft.groupType === 'proper' ? '别名 / 简称' : '同义词 / 近义词'}
+                {draft.groupType === 'proper'
+                  ? '别名 / 简称'
+                  : '同义词 / 近义词'}
                 <span className="ml-1 text-xs text-text-secondary">
                   （每行一个，第一行为标准词）
                 </span>
@@ -604,7 +616,9 @@ function VocabEditor({
                 rows={8}
                 value={draft.wordsText}
                 placeholder={'华夏上证50ETF\n50ETF\n上证50'}
-                onChange={(e) => setDraft({ ...draft, wordsText: e.target.value })}
+                onChange={(e) =>
+                  setDraft({ ...draft, wordsText: e.target.value })
+                }
               />
               {/* 同义词现在按标准词的等价权重参与检索，一个单字（如「买」）
                   会把大量无关提问一并拉进来，所以先在这里提示一下。 */}
@@ -615,7 +629,9 @@ function VocabEditor({
             </div>
 
             <div>
-              <label className="mb-1 block text-sm text-text-secondary">备注</label>
+              <label className="mb-1 block text-sm text-text-secondary">
+                备注
+              </label>
               <Input
                 value={draft.remark}
                 placeholder="可选，说明这组词的用途"

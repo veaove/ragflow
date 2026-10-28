@@ -84,8 +84,11 @@ export function StudioTable({
   };
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border-default">
-      <Table>
+    // 这一层原本是 `overflow-x-auto`：横向滚动能力让它同时成了纵向的滚动容器，
+    // 而它高度随内容撑开、并不纵向滚动，sticky 表头于是贴在这个假容器上，
+    // 页面一滚就消失。横向溢出交给页面容器，表头才能贴住真正的滚动容器。
+    <div className="rounded-lg border border-border-default">
+      <Table scroll="page">
         <TableHeader>
           <TableRow>
             <TableHead>{t('common.name')}</TableHead>
@@ -113,12 +116,12 @@ export function StudioTable({
               <TableCell>
                 <span
                   className={
-                    app.release
-                      ? 'text-accent-primary'
-                      : 'text-text-secondary'
+                    app.release ? 'text-accent-primary' : 'text-text-secondary'
                   }
                 >
-                  {app.release ? t('studio.statusPublished') : t('studio.statusDraft')}
+                  {app.release
+                    ? t('studio.statusPublished')
+                    : t('studio.statusDraft')}
                 </span>
               </TableCell>
               <TableCell className="text-text-secondary">
@@ -161,7 +164,9 @@ export function StudioTable({
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-44">
-                      <DropdownMenuItem onClick={() => openCanvas(app.id, 'run')}>
+                      <DropdownMenuItem
+                        onClick={() => openCanvas(app.id, 'run')}
+                      >
                         <Play className="size-3.5" />
                         {t('flow.run')}
                       </DropdownMenuItem>

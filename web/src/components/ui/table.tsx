@@ -2,15 +2,34 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
+/**
+ * 表格有两种滚动归属，选错表头就不吸附（`TableHeader` 是 sticky，依附「最近的
+ * 滚动容器」）：
+ *
+ * - `self`（默认）：表格自己滚。此时 `rootClassName` 必须带高度约束
+ *   （`max-h-[calc(100vh-280px)]` 之类），这一层才真的滚得起来。
+ * - `page`：外层容器滚（列表页的 `flex-1 overflow-auto`、对话框的
+ *   `max-h-[70vh] overflow-y-auto`）。此时表格**绝不能**自己成为滚动容器：
+ *   它高度随内容撑开、内部并不滚动，表头会贴在这个假滚动容器上，
+ *   外层一滚就跟着消失。
+ *
+ * 两者不可兼得——横向滚动能力本身就意味着这一层是滚动容器，而滚动容器会
+ * 截断 sticky 的依附链。所以宽表要么自己滚（`self` + 高度约束），要么交给
+ * 页面滚（`page`，横向溢出由页面容器处理）。
+ */
 const Table = React.forwardRef<
   HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement> & { rootClassName?: string }
->(({ className, rootClassName, ...props }, ref) => (
+  React.HTMLAttributes<HTMLTableElement> & {
+    rootClassName?: string;
+    scroll?: 'self' | 'page';
+  }
+>(({ className, rootClassName, scroll = 'self', ...props }, ref) => (
   <div
     className={cn(
       // 列表统一外观：8px 圆角 + 白底 + 极淡描边，让表格在浅灰/白底页面上
       // 都能立成一张卡片（原先 16px + 半透明灰，和设计稿不一致）。
       'relative w-full overflow-auto rounded-lg bg-bg-base border border-border-light scrollbar-auto',
+      scroll === 'page' && 'overflow-visible',
       rootClassName,
     )}
   >
@@ -30,7 +49,10 @@ const TableHeader = React.forwardRef<
   <thead
     ref={ref}
     className={cn(
-      '[&_tr]:border-b-0 top-0 sticky bg-transparent z-10',
+      // 表头必须有实底：sticky 生效后行内容会从下面穿过去，透明表头会糊成一片。
+      // 底边补一条分隔线，滚动时才分得清表头与内容。表格根节点已经是 bg-bg-base，
+      // 所以在浅色卡片里这段实底不产生色差。
+      '[&_tr]:border-b-0 top-0 sticky z-10 bg-bg-base [&_th]:border-b [&_th]:border-border-light',
       className,
     )}
     {...props}

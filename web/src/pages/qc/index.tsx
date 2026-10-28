@@ -408,7 +408,7 @@ function HitsPanel() {
         {hits.length === 0 && !loading ? (
           <Empty type={EmptyType.Data} text="暂无命中记录" />
         ) : (
-          <Table>
+          <Table scroll="page">
             <TableHeader className="bg-background-second">
               <TableRow>
                 <TableHead className="h-10 text-text-title">时间</TableHead>

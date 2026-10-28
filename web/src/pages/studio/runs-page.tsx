@@ -97,8 +97,7 @@ export default function StudioRunsPage() {
 
   const statusBadge = useMemo(
     () => (value: string) => {
-      if (value === 'succeeded')
-        return 'text-accent-primary';
+      if (value === 'succeeded') return 'text-accent-primary';
       if (value === 'failed') return 'text-red-600';
       return 'text-text-secondary';
     },
@@ -195,9 +194,7 @@ export default function StudioRunsPage() {
 
         <Select
           value={sort}
-          onValueChange={(v) =>
-            update((p) => p.set('sort', v))
-          }
+          onValueChange={(v) => update((p) => p.set('sort', v))}
         >
           <SelectTrigger className="w-fit" data-testid="run-sort-select">
             <SelectValue />
@@ -226,8 +223,8 @@ export default function StudioRunsPage() {
       {runs.length === 0 && !loading ? (
         <EmptyAppCard type={EmptyCardType.Agent} onClick={() => undefined} />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border-default">
-          <Table>
+        <div className="rounded-lg border border-border-default">
+          <Table scroll="page">
             <TableHeader>
               <TableRow>
                 <TableHead>{t('studio.colRunId')}</TableHead>
@@ -259,7 +256,9 @@ export default function StudioRunsPage() {
                   <TableCell className={`text-xs ${statusBadge(run.status)}`}>
                     {t(`studio.runStatus.${run.status}`)}
                   </TableCell>
-                  <TableCell className="text-xs">{run.duration_ms} ms</TableCell>
+                  <TableCell className="text-xs">
+                    {run.duration_ms} ms
+                  </TableCell>
                   <TableCell className="text-xs">
                     {run.prompt_tokens + run.completion_tokens}
                   </TableCell>

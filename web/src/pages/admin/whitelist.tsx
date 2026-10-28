@@ -274,7 +274,7 @@ function AdminWhitelist() {
           </CardHeader>
 
           <CardContent>
-            <Table>
+            <Table scroll="page">
               <colgroup>
                 <col />
                 <col className="w-[25%]" />

@@ -284,12 +284,9 @@ export function SynonymManagement({ datasetId }: { datasetId: string }) {
 
       <div className="flex-1 overflow-auto rounded-lg border border-border-base">
         {paged.length === 0 && !loading ? (
-          <Empty
-            type={EmptyType.Data}
-            text="暂无词组，点击右上角新建"
-          />
+          <Empty type={EmptyType.Data} text="暂无词组，点击右上角新建" />
         ) : (
-          <Table>
+          <Table scroll="page">
             <TableHeader className="bg-background-second">
               <TableRow>
                 <TableHead className="h-10 w-10 text-text-secondary">
@@ -390,9 +387,7 @@ function WordEditor({
     <Dialog open={!!state} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>
-            {state?.groupId ? '编辑词组' : '新建词组'}
-          </DialogTitle>
+          <DialogTitle>{state?.groupId ? '编辑词组' : '新建词组'}</DialogTitle>
         </DialogHeader>
 
         {draft && (
@@ -405,9 +400,7 @@ function WordEditor({
                 <Input
                   value={draft.name}
                   placeholder="如：华夏上证50ETF"
-                  onChange={(e) =>
-                    setDraft({ ...draft, name: e.target.value })
-                  }
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 />
               </div>
               <div className="w-40">
@@ -451,9 +444,7 @@ function WordEditor({
               <Input
                 value={draft.remark}
                 placeholder="可选"
-                onChange={(e) =>
-                  setDraft({ ...draft, remark: e.target.value })
-                }
+                onChange={(e) => setDraft({ ...draft, remark: e.target.value })}
               />
             </div>
 

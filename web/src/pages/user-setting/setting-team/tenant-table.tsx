@@ -89,8 +89,10 @@ const TenantTable = ({ searchTerm }: { searchTerm: string }) => {
   };
 
   return (
-    <div className="rounded-lg bg-bg-input scrollbar-auto overflow-hidden border border-border-default">
-      <Table rootClassName="rounded-lg">
+    // 外层原来是 `overflow-hidden`：它同样是滚动容器，却永远滚不动，sticky 表头
+    // 会贴在上面跟着页面走。改 `overflow-auto` 后这层真的能滚，圆角裁剪不变。
+    <div className="rounded-lg bg-bg-input scrollbar-auto overflow-auto border border-border-default">
+      <Table scroll="page" rootClassName="rounded-lg">
         <TableHeader className="bg-bg-title">
           <TableRow className="hover:bg-bg-title">
             <TableHead className="h-12 px-4">{t('common.name')}</TableHead>

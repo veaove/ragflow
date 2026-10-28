@@ -293,7 +293,7 @@ export default function ChangeCenter() {
             暂无待生效变更，所有修改均已发布
           </div>
         ) : (
-          <Table>
+          <Table scroll="page">
             <TableHeader className="bg-background-second">
               <TableRow>
                 <TableHead className="h-10 w-12 text-text-title">

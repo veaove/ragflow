@@ -146,7 +146,7 @@ export function QueryTable({ data = [], deleteRecord, showModal }: IProps) {
 
   return (
     <div className="rounded-md border w-full bg-bg-card">
-      <Table rootClassName="rounded-md">
+      <Table scroll="page" rootClassName="rounded-md">
         <TableHeader className="bg-bg-card">
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>

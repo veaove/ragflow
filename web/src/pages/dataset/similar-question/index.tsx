@@ -18,9 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import { toast } from 'sonner';
 
-import kbService, {
-  listDocument,
-} from '@/services/knowledge-service';
+import kbService, { listDocument } from '@/services/knowledge-service';
 import { stageSimilarQuestions } from '@/services/change-set-service';
 
 import type { IChunk } from '@/interfaces/database/dataset';
@@ -197,13 +195,19 @@ export default function SimilarQuestion() {
       </div>
 
       <div className="flex-1 overflow-auto rounded-lg border border-border-base">
-        <Table>
+        <Table scroll="page">
           <TableHeader className="bg-background-second">
             <TableRow>
-              <TableHead className="h-10 w-52 text-text-title">标准问</TableHead>
+              <TableHead className="h-10 w-52 text-text-title">
+                标准问
+              </TableHead>
               <TableHead className="h-10 text-text-title">答案摘要</TableHead>
-              <TableHead className="h-10 w-72 text-text-title">相似问</TableHead>
-              <TableHead className="h-10 w-36 text-text-title">来源文档</TableHead>
+              <TableHead className="h-10 w-72 text-text-title">
+                相似问
+              </TableHead>
+              <TableHead className="h-10 w-36 text-text-title">
+                来源文档
+              </TableHead>
               <TableHead className="h-10 w-28 text-text-title">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -219,9 +223,7 @@ export default function SimilarQuestion() {
               </TableRow>
             ) : (
               paged.map((chunk) => {
-                const { question, answer } = splitQa(
-                  chunk.content_with_weight,
-                );
+                const { question, answer } = splitQa(chunk.content_with_weight);
                 const similar = chunk.question_kwd ?? [];
                 return (
                   <TableRow key={chunk.chunk_id}>
@@ -364,7 +366,10 @@ function SimilarEditor({
                 onClick={() =>
                   onSave(
                     chunk,
-                    text.split('\n').map((s) => s.trim()).filter(Boolean),
+                    text
+                      .split('\n')
+                      .map((s) => s.trim())
+                      .filter(Boolean),
                   )
                 }
               >

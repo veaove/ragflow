@@ -147,7 +147,7 @@ export function VariableTable({
   return (
     <div className="w-full">
       <div className="rounded-md border">
-        <Table rootClassName="rounded-md">
+        <Table scroll="page" rootClassName="rounded-md">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>

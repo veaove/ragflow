@@ -54,8 +54,9 @@ export function RuleReferencesDialog({
     getQcRuleReferences(rule.id)
       .then((res) => {
         if (cancelled) return;
-        const list = (res?.data as { data?: { references?: IQcRuleReference[] } })
-          ?.data?.references;
+        const list = (
+          res?.data as { data?: { references?: IQcRuleReference[] } }
+        )?.data?.references;
         setRefs(Array.isArray(list) ? list : []);
       })
       .catch(() => {
@@ -94,7 +95,7 @@ export function RuleReferencesDialog({
           </div>
         ) : (
           <div className="max-h-[60vh] overflow-auto">
-            <Table>
+            <Table scroll="page">
               <TableHeader>
                 <TableRow>
                   <TableHead>应用名称</TableHead>

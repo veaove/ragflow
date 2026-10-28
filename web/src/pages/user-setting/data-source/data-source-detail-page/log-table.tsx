@@ -98,7 +98,7 @@ export const DataSourceLogsTable = ({
 
   return (
     <div className="w-full">
-      <Table className="table-fixed">
+      <Table scroll="page" className="table-fixed">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow key={headerGroup.id}>

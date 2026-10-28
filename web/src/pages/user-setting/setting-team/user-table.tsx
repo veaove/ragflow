@@ -98,8 +98,9 @@ const UserTable = ({ searchUser }: { searchUser: string }) => {
     }
   };
   return (
-    <div className="rounded-lg bg-bg-input scrollbar-auto overflow-hidden border border-border-default">
-      <Table rootClassName="rounded-lg">
+    // 同 tenant-table：`overflow-hidden` 是滚不动的滚动容器，表头会跟着页面走。
+    <div className="rounded-lg bg-bg-input scrollbar-auto overflow-auto border border-border-default">
+      <Table scroll="page" rootClassName="rounded-lg">
         <TableHeader className="bg-bg-title">
           <TableRow className="hover:bg-bg-title">
             <TableHead className="h-12 px-4">{t('common.name')}</TableHead>

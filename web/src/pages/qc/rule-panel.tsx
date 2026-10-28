@@ -299,7 +299,8 @@ export function QcRulePanel({
     <div className="flex h-full flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-text-secondary">
-          规则归属当前应用｜共 {total} 条。新建的规则不会自动生效，需到目标应用的设置页手动勾选选用
+          规则归属当前应用｜共 {total}{' '}
+          条。新建的规则不会自动生效，需到目标应用的设置页手动勾选选用
         </div>
         <Button size="sm" onClick={openCreate}>
           新建规则
@@ -310,112 +311,112 @@ export function QcRulePanel({
         {rules.length === 0 && !loading ? (
           <Empty type={EmptyType.Data} text="本应用还没有质检规则" />
         ) : (
-          <Table>
-              <TableHeader className="bg-background-second">
-                <TableRow>
-                  <TableHead className="h-10 text-text-title">规则名称</TableHead>
-                  <TableHead className="h-10 text-text-title">
-                    触发关键词
-                  </TableHead>
-                  <TableHead className="h-10 text-text-title">匹配</TableHead>
-                  <TableHead className="h-10 text-text-title">范围</TableHead>
-                  <TableHead className="h-10 text-text-title">严重级</TableHead>
-                  <TableHead className="h-10 text-text-title">动作</TableHead>
-                  <TableHead className="h-10 text-text-title">状态</TableHead>
-                  <TableHead className="h-10 w-40 text-text-secondary">
-                    操作
-                  </TableHead>
+          <Table scroll="page">
+            <TableHeader className="bg-background-second">
+              <TableRow>
+                <TableHead className="h-10 text-text-title">规则名称</TableHead>
+                <TableHead className="h-10 text-text-title">
+                  触发关键词
+                </TableHead>
+                <TableHead className="h-10 text-text-title">匹配</TableHead>
+                <TableHead className="h-10 text-text-title">范围</TableHead>
+                <TableHead className="h-10 text-text-title">严重级</TableHead>
+                <TableHead className="h-10 text-text-title">动作</TableHead>
+                <TableHead className="h-10 text-text-title">状态</TableHead>
+                <TableHead className="h-10 w-40 text-text-secondary">
+                  操作
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rules.map((rule) => (
+                <TableRow key={rule.id}>
+                  <TableCell className="font-medium text-text-title">
+                    {rule.name}
+                  </TableCell>
+                  <TableCell className="max-w-md">
+                    <div className="flex flex-wrap gap-1">
+                      {rule.keywords.slice(0, 3).map((kw) => (
+                        <span
+                          key={kw}
+                          className="rounded bg-background-second px-1.5 py-0.5 text-xs text-text-secondary"
+                        >
+                          {kw}
+                        </span>
+                      ))}
+                      {rule.keywords.length > 3 && (
+                        <span className="text-xs text-text-sub-title">
+                          +{rule.keywords.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-text-secondary">
+                    {matchModeLabel[rule.match_mode]}
+                  </TableCell>
+                  <TableCell className="text-text-secondary">
+                    {scopeLabel[rule.scope]}
+                  </TableCell>
+                  <TableCell>
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs ${
+                        severityTone[rule.severity]
+                      }`}
+                    >
+                      {severityLabel[rule.severity]}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-text-secondary">
+                    {actionLabel[rule.action]}
+                  </TableCell>
+                  <TableCell>
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs ${
+                        rule.enabled
+                          ? 'bg-green-100 text-green-600'
+                          : 'bg-background-second text-text-sub-title'
+                      }`}
+                    >
+                      {rule.enabled ? '启用' : '停用'}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="link"
+                        onClick={() => setRefsRule(rule)}
+                      >
+                        查看引用
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="link"
+                        onClick={() => openEdit(rule)}
+                      >
+                        编辑
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="link"
+                        onClick={() => toggle(rule)}
+                      >
+                        {rule.enabled ? '停用' : '启用'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="link"
+                        className="text-red-500"
+                        onClick={() => remove(rule)}
+                      >
+                        删除
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rules.map((rule) => (
-                  <TableRow key={rule.id}>
-                    <TableCell className="font-medium text-text-title">
-                      {rule.name}
-                    </TableCell>
-                    <TableCell className="max-w-md">
-                      <div className="flex flex-wrap gap-1">
-                        {rule.keywords.slice(0, 3).map((kw) => (
-                          <span
-                            key={kw}
-                            className="rounded bg-background-second px-1.5 py-0.5 text-xs text-text-secondary"
-                          >
-                            {kw}
-                          </span>
-                        ))}
-                        {rule.keywords.length > 3 && (
-                          <span className="text-xs text-text-sub-title">
-                            +{rule.keywords.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-text-secondary">
-                      {matchModeLabel[rule.match_mode]}
-                    </TableCell>
-                    <TableCell className="text-text-secondary">
-                      {scopeLabel[rule.scope]}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`rounded px-2 py-0.5 text-xs ${
-                          severityTone[rule.severity]
-                        }`}
-                      >
-                        {severityLabel[rule.severity]}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-text-secondary">
-                      {actionLabel[rule.action]}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`rounded px-2 py-0.5 text-xs ${
-                          rule.enabled
-                            ? 'bg-green-100 text-green-600'
-                            : 'bg-background-second text-text-sub-title'
-                        }`}
-                      >
-                        {rule.enabled ? '启用' : '停用'}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="link"
-                          onClick={() => setRefsRule(rule)}
-                        >
-                          查看引用
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="link"
-                          onClick={() => openEdit(rule)}
-                        >
-                          编辑
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="link"
-                          onClick={() => toggle(rule)}
-                        >
-                          {rule.enabled ? '停用' : '启用'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="link"
-                          className="text-red-500"
-                          onClick={() => remove(rule)}
-                        >
-                          删除
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </div>
 
@@ -434,10 +435,7 @@ export function QcRulePanel({
         onSave={save}
       />
 
-      <RuleReferencesDialog
-        rule={refsRule}
-        onClose={() => setRefsRule(null)}
-      />
+      <RuleReferencesDialog rule={refsRule} onClose={() => setRefsRule(null)} />
     </div>
   );
 }
@@ -598,8 +596,8 @@ function RuleEditor({
                   <option value="both">两者</option>
                 </select>
                 <p className="mt-1 text-xs text-text-sub-title">
-                  选「AI 回答」时只在回复里找关键词，用户说的话不参与
-                  —— 所以问句类关键词（如「基金怎么买」）不会命中。
+                  选「AI 回答」时只在回复里找关键词，用户说的话不参与 ——
+                  所以问句类关键词（如「基金怎么买」）不会命中。
                 </p>
               </div>
             </div>
@@ -677,9 +675,11 @@ function RuleEditor({
                     <>
                       <div className="rounded bg-yellow-50 px-2 py-1 text-yellow-700">
                         命中 {testResult.hit_count} 处，将执行「
-                        {actionLabel[
-                          severityActionOptions[draft.actionIndex].action
-                        ]}
+                        {
+                          actionLabel[
+                            severityActionOptions[draft.actionIndex].action
+                          ]
+                        }
                         」
                       </div>
                       <div className="mt-1 rounded border border-border-base bg-background-content px-2 py-1">
