@@ -14,7 +14,10 @@
  *  limitations under the License.
  */
 
-import type { IBuiltinPipeline } from '@/interfaces/database/agent';
+import type {
+  IBuiltinPipeline,
+  IBuiltinPipelineHelp,
+} from '@/interfaces/database/agent';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -97,6 +100,24 @@ export function resolveBuiltinDescription(
 }
 
 /**
+ * Resolves a built-in pipeline's help block for the given locale.
+ *
+ * 和 title / description 走同一套回退：当前语言 → en → 任意一种 → undefined。
+ * 全都没有时返回 undefined，让调用方决定不渲染问号 —— 空 tooltip 比没有更糟。
+ */
+export function resolveBuiltinHelp(
+  item: IBuiltinPipeline,
+  lang?: string,
+): IBuiltinPipelineHelp | undefined {
+  const help = item.help;
+  if (!help) return undefined;
+  const target = normalizeBuiltinLang(lang);
+  if (target && help[target]) return help[target];
+  if (help.en) return help.en;
+  return Object.values(help).find((x) => x);
+}
+
+/**
  * Hook form of the resolvers above. Every surface that renders a built-in
  * pipeline (agent cards, the read-only canvas header, the dataset parser
  * dropdown) uses this so they all follow the same language switch, and
@@ -117,6 +138,7 @@ export function useBuiltinPipelineLabels() {
       title: (item: IBuiltinPipeline) => resolveBuiltinTitle(item, lang),
       description: (item: IBuiltinPipeline) =>
         resolveBuiltinDescription(item, lang),
+      help: (item: IBuiltinPipeline) => resolveBuiltinHelp(item, lang),
     };
   }, [lang]);
 }

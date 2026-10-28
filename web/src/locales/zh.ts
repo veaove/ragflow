@@ -97,6 +97,9 @@ export default {
       // 都不是画布应用（不落 user_canvas），得有别于应用形态的固定叫法。
       // 用语与列表分区的标题保持同一套（内置解析流程 / 编译算子）。
       builtinPipeline: '内置解析流程',
+      builtinHelpFormats: '支持格式',
+      builtinHelpUsage: '适用场景',
+      builtinHelpOutput: '解析产出',
       compilationTemplate: '编译算子',
       january: '1月',
       february: '2月',

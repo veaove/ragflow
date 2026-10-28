@@ -48,6 +48,22 @@ var builtinTemplateFS embed.FS
 // the web client can render the catalog in the active UI language; it picks the
 // entry for the current locale and falls back to the English Title/Description
 // when a language has no translation.
+// PipelineHelp 是模板的「这个模板能干什么」说明，用于卡片上的问号提示。
+//
+// 放在模板 JSON 里而不是前端硬编码：模板的能力（支持哪些格式、切分粒度、
+// 产出什么）是模板自身的属性，前端写死会导致加模板要改前端，且中英文各写一遍。
+type PipelineHelp struct {
+	// Formats 是能吃的文件类型，用展示用的短名（PDF / DOCX / XLSX…），
+	// 不要写 MIME。
+	Formats []string `json:"formats,omitempty"`
+	// Usage 是一句话说明什么时候该用它。
+	Usage string `json:"usage,omitempty"`
+	// Output 说明解析产出什么（切块粒度、是否带 OCR、是否保留表格结构等），
+	// 这决定下游检索能拿到什么。
+	Output string `json:"output,omitempty"`
+}
+
+// BuiltinPipelineMeta is the list-view projection of a builtin template.
 type BuiltinPipelineMeta struct {
 	ParserID        string            `json:"id"`
 	Title           string            `json:"title"`
@@ -55,6 +71,9 @@ type BuiltinPipelineMeta struct {
 	Filename        string            `json:"filename"`
 	TitleI18N       map[string]string `json:"title_i18n,omitempty"`
 	DescriptionI18N map[string]string `json:"description_i18n,omitempty"`
+	// Help 按语言给出使用说明，key 是语言子标签（zh / en）。
+	// 缺当前语言时前端回退 en。
+	Help map[string]PipelineHelp `json:"help,omitempty"`
 }
 
 // BuiltinPipelineListResponse wraps the builtin pipeline list for
@@ -251,6 +270,7 @@ func parseTemplate(filename string, raw []byte) (*BuiltinPipeline, error) {
 			Filename:        filename,
 			TitleI18N:       localizedText(data["title"]),
 			DescriptionI18N: localizedText(data["description"]),
+			Help:            pipelineHelp(data["help"]),
 		},
 		DSL: dsl,
 	}
@@ -312,6 +332,41 @@ func englishText(v any, fallback string) string {
 // their bare language subtag ("zh-Hans" => "zh") because the web client's
 // locale codes carry script/region subtags the templates do not use. A plain
 // string field yields nil: there is nothing to choose between.
+// pipelineHelp 把模板里的 "help" 段解成按语言索引的说明。
+//
+// 结构比 title/description 深一层（每种语言是个对象，含 formats 数组），
+// 所以不能复用 localizedText —— 直接走一次 JSON 往返，省掉手写类型断言。
+// 任何解析失败都返回 nil：帮助文案坏了不该让整个模板列表 500。
+func pipelineHelp(v any) map[string]PipelineHelp {
+	m, ok := v.(map[string]any)
+	if !ok || len(m) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		return nil
+	}
+	var out map[string]PipelineHelp
+	if err = json.Unmarshal(raw, &out); err != nil {
+		return nil
+	}
+	normalized := make(map[string]PipelineHelp, len(out))
+	for lang, help := range out {
+		key := normalizeTemplateLang(lang)
+		if key == "" {
+			continue
+		}
+		if len(help.Formats) == 0 && help.Usage == "" && help.Output == "" {
+			continue
+		}
+		normalized[key] = help
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
 func localizedText(v any) map[string]string {
 	m, ok := v.(map[string]any)
 	if !ok || len(m) == 0 {

@@ -334,6 +334,16 @@ export interface IPipeLineListRequest {
   ext?: string;
 }
 
+/** 模板的「能干什么」说明，对应后端 PipelineHelp。 */
+export interface IBuiltinPipelineHelp {
+  /** 能吃的文件类型，展示用短名（PDF / DOCX） */
+  formats?: string[];
+  /** 什么时候该用它 */
+  usage?: string;
+  /** 解析产出什么（切块粒度、OCR、表格结构等） */
+  output?: string;
+}
+
 export interface IBuiltinPipeline {
   id: string;
   /** Canonical English title. Use the localized value for display. */
@@ -349,6 +359,11 @@ export interface IBuiltinPipeline {
   title_i18n?: Record<string, string>;
   /** Translations of the description, same shape as {@link title_i18n}. */
   description_i18n?: Record<string, string>;
+  /**
+   * 使用说明，按语言索引（zh / en）。缺失时卡片上的问号不渲染 ——
+   * 空 tooltip 比没有 tooltip 更糟。
+   */
+  help?: Record<string, IBuiltinPipelineHelp>;
 }
 
 export interface IBuiltinPipelineListResponse {
