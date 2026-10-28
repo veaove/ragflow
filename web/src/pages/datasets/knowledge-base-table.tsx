@@ -25,7 +25,7 @@ import {
 import { IDataset, IDatasetReference } from '@/interfaces/database/dataset';
 import { pick } from 'lodash';
 import { useMemo } from 'react';
-import { useRenameDataset } from './use-rename-dataset';
+import { useEditDataset } from './use-edit-dataset';
 import { useKnowledgeBaseColumns } from './use-knowledge-base-columns';
 
 export type KnowledgeBaseTableProps = {
@@ -36,7 +36,7 @@ export type KnowledgeBaseTableProps = {
     total: number;
   };
   setPagination: (params: { page: number; pageSize: number }) => void;
-  showDatasetRenameModal: ReturnType<typeof useRenameDataset>['showDatasetRenameModal'];
+  showDatasetEditModal: ReturnType<typeof useEditDataset>['showDatasetEditModal'];
   onDisableBlocked: (dataset: IDataset, references: IDatasetReference[]) => void;
 };
 
@@ -44,7 +44,7 @@ export function KnowledgeBaseTable({
   data,
   pagination,
   setPagination,
-  showDatasetRenameModal,
+  showDatasetEditModal,
   onDisableBlocked,
 }: KnowledgeBaseTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -56,7 +56,7 @@ export function KnowledgeBaseTable({
 
   const columns = useKnowledgeBaseColumns({
     pagination: pick(pagination, 'current', 'pageSize'),
-    showDatasetRenameModal,
+    showDatasetEditModal,
     onDisableBlocked,
   });
 

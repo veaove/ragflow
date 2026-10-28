@@ -61,6 +61,7 @@ func datasetToMap(kb *entity.Knowledgebase) map[string]interface{} {
 		"id":                         kb.ID,
 		"tenant_id":                  kb.TenantID,
 		"name":                       kb.Name,
+		"category":                   kb.Category,
 		"embedding_model":            kb.EmbdID,
 		"permission":                 kb.Permission,
 		"created_by":                 kb.CreatedBy,

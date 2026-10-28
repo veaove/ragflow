@@ -424,6 +424,12 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 		}
 	}
 
+	// knowledgebase 的列同样不在 dataModels 的收敛范围里（历史上由 Python 侧
+	// 迁移管理），新增列必须自己补，否则列表查询会报 Unknown column 'category'。
+	if err := ensureKnowledgebaseCategoryColumn(ctx, db); err != nil {
+		return err
+	}
+
 	// resource_grant 只在 --migrate 分支的 dataModels 里收敛；若部署时只重启
 	// 服务而没跑 migrate，授权写入会因为缺列直接失败，所以这里也补一次。
 	if err := ensureResourceGrantPermissionColumn(ctx, db); err != nil {
@@ -435,6 +441,18 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 	// 报 Unknown column 'enabled'。
 	if err := ensureTenantEnabledColumn(ctx, db); err != nil {
 		return err
+	}
+	return nil
+}
+
+// ensureKnowledgebaseCategoryColumn 幂等地补上 knowledgebase.category。
+// 存量行留空即可：分类是新概念，回填什么都没意义。
+func ensureKnowledgebaseCategoryColumn(ctx context.Context, db *gorm.DB) error {
+	if db.Migrator().HasColumn(&entity.Knowledgebase{}, "category") {
+		return nil
+	}
+	if err := db.WithContext(ctx).Migrator().AddColumn(&entity.Knowledgebase{}, "Category"); err != nil {
+		return fmt.Errorf("add knowledgebase.category: %w", err)
 	}
 	return nil
 }

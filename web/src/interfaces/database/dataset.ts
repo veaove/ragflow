@@ -21,6 +21,8 @@ export interface IDataset {
   create_time: number;
   created_by: string;
   description?: string;
+  /** 使用者自定义的分类（自由文本，可为空） */
+  category?: string;
   document_count: number;
   embedding_model: string;
   embedding_model_name?: string;

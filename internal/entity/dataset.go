@@ -100,38 +100,41 @@ const (
 
 // Knowledgebase represents the knowledge base model
 type Knowledgebase struct {
-	ID                     string     `gorm:"column:id;primaryKey;size:32" json:"id"`
-	Avatar                 *string    `gorm:"column:avatar;type:longtext" json:"avatar,omitempty"`
-	TenantID               string     `gorm:"column:tenant_id;size:32;not null;index" json:"tenant_id"`
-	Name                   string     `gorm:"column:name;size:128;not null;index" json:"name"`
-	Language               *string    `gorm:"column:language;size:32;index;default:'English'" json:"language,omitempty"`
-	Description            *string    `gorm:"column:description;type:longtext" json:"description,omitempty"`
-	EmbdID                 string     `gorm:"column:embd_id;size:128;not null;index" json:"embd_id"`
-	TenantEmbdID           *string    `gorm:"column:tenant_embd_id;size:32;index" json:"tenant_embd_id,omitempty"`
-	Permission             string     `gorm:"column:permission;size:16;not null;default:me;index" json:"permission"`
-	CreatedBy              string     `gorm:"column:created_by;size:32;not null;index" json:"created_by"`
-	DocNum                 int64      `gorm:"column:doc_num;default:0;index" json:"doc_num"`
-	TokenNum               int64      `gorm:"column:token_num;default:0;index" json:"token_num"`
-	ChunkNum               int64      `gorm:"column:chunk_num;default:0;index" json:"chunk_num"`
-	SimilarityThreshold    float64    `gorm:"column:similarity_threshold;default:0.2;index" json:"similarity_threshold"`
-	VectorSimilarityWeight float64    `gorm:"column:vector_similarity_weight;default:0.3;index" json:"vector_similarity_weight"`
+	ID          string  `gorm:"column:id;primaryKey;size:32" json:"id"`
+	Avatar      *string `gorm:"column:avatar;type:longtext" json:"avatar,omitempty"`
+	TenantID    string  `gorm:"column:tenant_id;size:32;not null;index" json:"tenant_id"`
+	Name        string  `gorm:"column:name;size:128;not null;index" json:"name"`
+	Language    *string `gorm:"column:language;size:32;index;default:'English'" json:"language,omitempty"`
+	Description *string `gorm:"column:description;type:longtext" json:"description,omitempty"`
+	// Category 是使用者自定义的知识库分类（如「产品资料」「合规制度」）。
+	// 自由文本而非枚举：不同租户的分类体系差别很大，硬编码一套只会被绕过。
+	Category               *string `gorm:"column:category;size:64;index" json:"category,omitempty"`
+	EmbdID                 string  `gorm:"column:embd_id;size:128;not null;index" json:"embd_id"`
+	TenantEmbdID           *string `gorm:"column:tenant_embd_id;size:32;index" json:"tenant_embd_id,omitempty"`
+	Permission             string  `gorm:"column:permission;size:16;not null;default:me;index" json:"permission"`
+	CreatedBy              string  `gorm:"column:created_by;size:32;not null;index" json:"created_by"`
+	DocNum                 int64   `gorm:"column:doc_num;default:0;index" json:"doc_num"`
+	TokenNum               int64   `gorm:"column:token_num;default:0;index" json:"token_num"`
+	ChunkNum               int64   `gorm:"column:chunk_num;default:0;index" json:"chunk_num"`
+	SimilarityThreshold    float64 `gorm:"column:similarity_threshold;default:0.2;index" json:"similarity_threshold"`
+	VectorSimilarityWeight float64 `gorm:"column:vector_similarity_weight;default:0.3;index" json:"vector_similarity_weight"`
 	// RerankID is the rerank model the knowledge base uses by default, so the
 	// retrieval test can reopen with the same model instead of resetting.
-	RerankID *string `gorm:"column:rerank_id;size:128" json:"rerank_id,omitempty"`
-	ParserID               string     `gorm:"column:parser_id;size:32;not null;default:general;index" json:"parser_id"`
-	PipelineID             *string    `gorm:"column:pipeline_id;size:32;index" json:"pipeline_id,omitempty"`
-	ParserConfig           JSONMap    `gorm:"column:parser_config;type:json" json:"parser_config"`
-	Pagerank               int64      `gorm:"column:pagerank;default:0" json:"pagerank"`
-	GraphragTaskID         *string    `gorm:"column:graphrag_task_id;size:32;index" json:"graphrag_task_id,omitempty"`
-	GraphragTaskFinishAt   *time.Time `gorm:"column:graphrag_task_finish_at" json:"graphrag_task_finish_at,omitempty"`
-	RaptorTaskID           *string    `gorm:"column:raptor_task_id;size:32;index" json:"raptor_task_id,omitempty"`
-	RaptorTaskFinishAt     *time.Time `gorm:"column:raptor_task_finish_at;type:datetime" json:"raptor_task_finish_at,omitempty"`
-	MindmapTaskID          *string    `gorm:"column:mindmap_task_id;size:32;index" json:"mindmap_task_id,omitempty"`
-	MindmapTaskFinishAt    *time.Time `gorm:"column:mindmap_task_finish_at;type:datetime" json:"mindmap_task_finish_at,omitempty"`
-	WikiTaskID             *string    `gorm:"column:wiki_task_id;size:32;index" json:"wiki_task_id,omitempty"`
-	WikiTaskFinishAt       *time.Time `gorm:"column:wiki_task_finish_at" json:"wiki_task_finish_at,omitempty"`
-	SkillTaskID            *string    `gorm:"column:skill_task_id;size:32;index" json:"skill_task_id,omitempty"`
-	SkillTaskFinishAt      *time.Time `gorm:"column:skill_task_finish_at" json:"skill_task_finish_at,omitempty"`
+	RerankID             *string    `gorm:"column:rerank_id;size:128" json:"rerank_id,omitempty"`
+	ParserID             string     `gorm:"column:parser_id;size:32;not null;default:general;index" json:"parser_id"`
+	PipelineID           *string    `gorm:"column:pipeline_id;size:32;index" json:"pipeline_id,omitempty"`
+	ParserConfig         JSONMap    `gorm:"column:parser_config;type:json" json:"parser_config"`
+	Pagerank             int64      `gorm:"column:pagerank;default:0" json:"pagerank"`
+	GraphragTaskID       *string    `gorm:"column:graphrag_task_id;size:32;index" json:"graphrag_task_id,omitempty"`
+	GraphragTaskFinishAt *time.Time `gorm:"column:graphrag_task_finish_at" json:"graphrag_task_finish_at,omitempty"`
+	RaptorTaskID         *string    `gorm:"column:raptor_task_id;size:32;index" json:"raptor_task_id,omitempty"`
+	RaptorTaskFinishAt   *time.Time `gorm:"column:raptor_task_finish_at;type:datetime" json:"raptor_task_finish_at,omitempty"`
+	MindmapTaskID        *string    `gorm:"column:mindmap_task_id;size:32;index" json:"mindmap_task_id,omitempty"`
+	MindmapTaskFinishAt  *time.Time `gorm:"column:mindmap_task_finish_at;type:datetime" json:"mindmap_task_finish_at,omitempty"`
+	WikiTaskID           *string    `gorm:"column:wiki_task_id;size:32;index" json:"wiki_task_id,omitempty"`
+	WikiTaskFinishAt     *time.Time `gorm:"column:wiki_task_finish_at" json:"wiki_task_finish_at,omitempty"`
+	SkillTaskID          *string    `gorm:"column:skill_task_id;size:32;index" json:"skill_task_id,omitempty"`
+	SkillTaskFinishAt    *time.Time `gorm:"column:skill_task_finish_at" json:"skill_task_finish_at,omitempty"`
 	// Dataset-level structure merge task state (plan §8, mirror Python
 	// _INDEX_TYPE_TO_TASK_ID_FIELD's per-structure-index entries).
 	StructureGraphTaskID         *string    `gorm:"column:structure_graph_task_id;size:32;index" json:"structure_graph_task_id,omitempty"`
@@ -286,23 +289,23 @@ type KnowledgebaseDetail struct {
 
 // KnowledgebaseListItem represents a knowledge base item in list responses
 type KnowledgebaseListItem struct {
-	ID                     string  `json:"id"`
-	Avatar                 *string `json:"avatar"`
-	Name                   string  `json:"name"`
-	Language               *string `json:"language"`
-	Description            *string `json:"description"`
-	TenantID               string  `json:"tenant_id"`
-	Permission             string  `json:"permission"`
-	DocNum                 int64   `json:"doc_num"`
-	TokenNum               int64   `json:"token_num"`
-	ChunkNum               int64   `json:"chunk_num"`
-	SimilarityThreshold    float64 `json:"similarity_threshold"`
-	VectorSimilarityWeight float64 `json:"-"`
-	ParserID               string  `json:"parser_id"`
-	ParserConfig           JSONMap `json:"parser_config"`
-	Pagerank               int64   `json:"pagerank"`
-	EmbdID                 string  `json:"embd_id"`
-	TenantEmbdID           *string `json:"tenant_embd_id,omitempty"`
+	ID                     string     `json:"id"`
+	Avatar                 *string    `json:"avatar"`
+	Name                   string     `json:"name"`
+	Language               *string    `json:"language"`
+	Description            *string    `json:"description"`
+	TenantID               string     `json:"tenant_id"`
+	Permission             string     `json:"permission"`
+	DocNum                 int64      `json:"doc_num"`
+	TokenNum               int64      `json:"token_num"`
+	ChunkNum               int64      `json:"chunk_num"`
+	SimilarityThreshold    float64    `json:"similarity_threshold"`
+	VectorSimilarityWeight float64    `json:"-"`
+	ParserID               string     `json:"parser_id"`
+	ParserConfig           JSONMap    `json:"parser_config"`
+	Pagerank               int64      `json:"pagerank"`
+	EmbdID                 string     `json:"embd_id"`
+	TenantEmbdID           *string    `json:"tenant_embd_id,omitempty"`
 	Nickname               string     `json:"nickname"`
 	TenantAvatar           *string    `json:"tenant_avatar,omitempty"`
 	UpdateTime             *int64     `json:"update_time,omitempty"`

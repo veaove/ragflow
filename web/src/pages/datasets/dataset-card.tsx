@@ -7,15 +7,15 @@ import { IDataset } from '@/interfaces/database/dataset';
 import { t } from 'i18next';
 import { ChevronRight } from 'lucide-react';
 import { DatasetDropdown } from './dataset-dropdown';
-import { useRenameDataset } from './use-rename-dataset';
+import { useEditDataset } from './use-edit-dataset';
 
 export type DatasetCardProps = {
   dataset: IDataset;
-} & Pick<ReturnType<typeof useRenameDataset>, 'showDatasetRenameModal'>;
+} & Pick<ReturnType<typeof useEditDataset>, 'showDatasetEditModal'>;
 
 export function DatasetCard({
   dataset,
-  showDatasetRenameModal,
+  showDatasetEditModal,
 }: DatasetCardProps) {
   const { navigateToDataset } = useNavigatePage();
 
@@ -27,7 +27,7 @@ export function DatasetCard({
       }}
       moreDropdown={
         <DatasetDropdown
-          showDatasetRenameModal={showDatasetRenameModal}
+          showDatasetEditModal={showDatasetEditModal}
           dataset={dataset}
         >
           <MoreButton></MoreButton>

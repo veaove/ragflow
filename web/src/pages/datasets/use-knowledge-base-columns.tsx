@@ -24,7 +24,7 @@ import { ColumnDef } from '@tanstack/react-table';
 import { Pencil, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useRenameDataset } from './use-rename-dataset';
+import { useEditDataset } from './use-edit-dataset';
 
 type PaginationInfo = {
   current: number;
@@ -38,11 +38,11 @@ type UseKnowledgeBaseColumnsProps = {
    * caller owns the dialog: the column definition cannot render one.
    */
   onDisableBlocked: (dataset: IDataset, references: IDatasetReference[]) => void;
-} & Pick<ReturnType<typeof useRenameDataset>, 'showDatasetRenameModal'>;
+} & Pick<ReturnType<typeof useEditDataset>, 'showDatasetEditModal'>;
 
 export function useKnowledgeBaseColumns({
   pagination,
-  showDatasetRenameModal,
+  showDatasetEditModal,
   onDisableBlocked,
 }: UseKnowledgeBaseColumnsProps) {
   const { t } = useTranslation();
@@ -98,6 +98,22 @@ export function useKnowledgeBaseColumns({
                 查看 <span className="text-xs">→</span>
               </button>
             </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'category',
+        header: '分类',
+        cell: ({ row }) => {
+          const category = row.getValue('category') as string;
+          // 空分类不显示占位横线之外的东西：分类是可选的组织维度，
+          // 给空值加徽标反而会让人觉得"没填是不对的"。
+          return category ? (
+            <span className="rounded bg-accent-primary/10 px-1.5 py-0.5 text-xs text-accent-primary">
+              {category}
+            </span>
+          ) : (
+            <span className="text-text-secondary">--</span>
           );
         },
       },
@@ -178,7 +194,7 @@ export function useKnowledgeBaseColumns({
 
           const handleEdit = (e: React.MouseEvent) => {
             e.stopPropagation();
-            showDatasetRenameModal(dataset);
+            showDatasetEditModal(dataset);
           };
 
           const handleToggle = async (checked: boolean) => {
@@ -255,7 +271,7 @@ export function useKnowledgeBaseColumns({
       t,
       pagination,
       navigateToDataset,
-      showDatasetRenameModal,
+      showDatasetEditModal,
       saveKnowledgeConfiguration,
       deleteKnowledge,
       onDisableBlocked,

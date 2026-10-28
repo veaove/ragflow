@@ -1662,3 +1662,64 @@ func TestUpdateDatasetRejectsOutOfRangeRetrievalTestSettings(t *testing.T) {
 		t.Fatalf("keywords_similarity_weight 1.5: code=%d err=%v, want CodeDataError", code, err)
 	}
 }
+
+// 分类是自由文本，落库时去掉首尾空格。
+func TestUpdateDataset_WritesCategory(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "KB")
+
+	category := "  产品资料  "
+	result, code, err := testDatasetUpdateService(t).UpdateDataset(t.Context(), "kb-1", "tenant-1",
+		service.UpdateDatasetRequest{Category: &category})
+	if err != nil {
+		t.Fatalf("UpdateDataset: %v", err)
+	}
+	if code != common.CodeSuccess {
+		t.Fatalf("code = %d, want success", code)
+	}
+	if result["category"] != "产品资料" {
+		t.Fatalf("category = %#v, want trimmed 产品资料", result["category"])
+	}
+}
+
+// 传空串表示清空分类。
+func TestUpdateDataset_ClearsCategory(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "KB")
+
+	initial := "旧分类"
+	if _, _, err := testDatasetUpdateService(t).UpdateDataset(t.Context(), "kb-1", "tenant-1",
+		service.UpdateDatasetRequest{Category: &initial}); err != nil {
+		t.Fatalf("seed category: %v", err)
+	}
+
+	empty := ""
+	result, _, err := testDatasetUpdateService(t).UpdateDataset(t.Context(), "kb-1", "tenant-1",
+		service.UpdateDatasetRequest{Category: &empty})
+	if err != nil {
+		t.Fatalf("clear category: %v", err)
+	}
+	if result["category"] != "" {
+		t.Fatalf("category = %#v, want empty", result["category"])
+	}
+}
+
+// 超长分类必须在写库前拒绝：列是 varchar(64)，按字符数判而不是字节，
+// 否则 64 个汉字的分类名（192 字节）会被误拒。
+func TestUpdateDataset_RejectsTooLongCategory(t *testing.T) {
+	db := setupDatasetUpdateTestDB(t)
+	pushServiceDB(t, db)
+	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "KB")
+
+	tooLong := strings.Repeat("类", 65)
+	_, code, err := testDatasetUpdateService(t).UpdateDataset(t.Context(), "kb-1", "tenant-1",
+		service.UpdateDatasetRequest{Category: &tooLong})
+	if err == nil {
+		t.Fatal("UpdateDataset should reject 65-rune category")
+	}
+	if code == common.CodeSuccess {
+		t.Fatalf("code = %d, want failure", code)
+	}
+}

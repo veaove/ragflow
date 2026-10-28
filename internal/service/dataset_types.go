@@ -183,6 +183,7 @@ type UpdateDatasetRequest struct {
 	Name           *string                    `json:"name,omitempty"`
 	Avatar         *string                    `json:"avatar,omitempty"`
 	Description    *string                    `json:"description,omitempty"`
+	Category       *string                    `json:"category,omitempty"`
 	Language       *string                    `json:"language,omitempty"`
 	Connectors     *[]DatasetConnectorRequest `json:"connectors,omitempty"`
 	EmbdID         *string                    `json:"embd_id,omitempty"`

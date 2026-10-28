@@ -1,6 +1,5 @@
 import { EmptyCardType } from '@/components/empty/constant';
 import { EmptyAppCard } from '@/components/empty/empty';
-import { RenameDialog } from '@/components/rename-dialog';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -37,7 +36,8 @@ import { DatasetCard } from './dataset-card';
 import { CardContainer } from '@/components/card-container';
 import { ViewToggle } from '@/pages/studio/view-toggle';
 import { useListViewPreference } from '@/hooks/use-list-view-preference';
-import { useRenameDataset } from './use-rename-dataset';
+import { useEditDataset } from './use-edit-dataset';
+import { DatasetEditDialog } from './dataset-edit-dialog';
 
 type StatusFilter = 'all' | 'enabled' | 'disabled';
 
@@ -65,13 +65,15 @@ export default function Datasets() {
   } = useFetchNextKnowledgeListByPage();
 
   const {
-    datasetRenameLoading,
+    datasetEditLoading,
     initialDatasetName,
-    onDatasetRenameOk,
-    datasetRenameVisible,
-    hideDatasetRenameModal,
-    showDatasetRenameModal,
-  } = useRenameDataset();
+    initialDatasetDescription,
+    initialDatasetCategory,
+    onDatasetEditOk,
+    datasetEditVisible,
+    hideDatasetEditModal,
+    showDatasetEditModal,
+  } = useEditDataset();
   const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
 
   const filteredKbs = useMemo(() => {
@@ -226,7 +228,7 @@ export default function Datasets() {
                 <DatasetCard
                   key={kb.id}
                   dataset={kb}
-                  showDatasetRenameModal={showDatasetRenameModal}
+                  showDatasetEditModal={showDatasetEditModal}
                 />
               ))}
             </CardContainer>
@@ -239,7 +241,7 @@ export default function Datasets() {
                 total: total_datasets ?? 0,
               }}
               setPagination={handlePageChange}
-              showDatasetRenameModal={showDatasetRenameModal}
+              showDatasetEditModal={showDatasetEditModal}
               onDisableBlocked={(dataset, references) =>
                 setDisableBlocked({ dataset, references })
               }
@@ -278,13 +280,15 @@ export default function Datasets() {
           loading={creatingLoading}
         ></DatasetCreatingDialog>
       )}
-      {datasetRenameVisible && (
-        <RenameDialog
-          hideModal={hideDatasetRenameModal}
-          onOk={onDatasetRenameOk}
+      {datasetEditVisible && (
+        <DatasetEditDialog
+          hideModal={hideDatasetEditModal}
+          onOk={onDatasetEditOk}
           initialName={initialDatasetName}
-          loading={datasetRenameLoading}
-        ></RenameDialog>
+          initialDescription={initialDatasetDescription}
+          initialCategory={initialDatasetCategory}
+          loading={datasetEditLoading}
+        />
       )}
       {disableBlocked && (
         <DatasetDisableBlockedDialog

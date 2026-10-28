@@ -14,14 +14,14 @@ import { IDataset } from '@/interfaces/database/dataset';
 import { PenLine, Trash2 } from 'lucide-react';
 import { MouseEventHandler, PropsWithChildren, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useRenameDataset } from './use-rename-dataset';
+import { useEditDataset } from './use-edit-dataset';
 
 export function DatasetDropdown({
   children,
-  showDatasetRenameModal,
+  showDatasetEditModal,
   dataset,
 }: PropsWithChildren &
-  Pick<ReturnType<typeof useRenameDataset>, 'showDatasetRenameModal'> & {
+  Pick<ReturnType<typeof useEditDataset>, 'showDatasetEditModal'> & {
     dataset: IDataset;
   }) {
   const { t } = useTranslation();
@@ -31,9 +31,9 @@ export function DatasetDropdown({
     useCallback(
       (e) => {
         e.stopPropagation();
-        showDatasetRenameModal(dataset);
+        showDatasetEditModal(dataset);
       },
-      [dataset, showDatasetRenameModal],
+      [dataset, showDatasetEditModal],
     );
 
   const handleDelete: MouseEventHandler<HTMLDivElement> = useCallback(() => {

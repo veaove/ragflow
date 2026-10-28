@@ -88,6 +88,14 @@ func (d *DatasetService) UpdateDataset(ctx context.Context, datasetID, userID st
 		}
 		simpleUpdates["description"] = *req.Description
 	}
+	if req.Category != nil {
+		category := strings.TrimSpace(*req.Category)
+		// 按字符数判：64 个汉字占 192 字节，按字节判会误拒中文分类名。
+		if len([]rune(category)) > 64 {
+			return nil, common.CodeDataError, errors.New("category must be at most 64 characters")
+		}
+		simpleUpdates["category"] = category
+	}
 	if req.Language != nil {
 		language, err := normalizeDatasetLanguage(*req.Language)
 		if err != nil {
