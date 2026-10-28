@@ -14,11 +14,13 @@ import {
 } from '@/hooks/use-agent-request';
 import { useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import { buildMessageUuidWithRole } from '@/utils/chat';
+import { Switch } from '@/components/ui/switch';
 import { memo, useCallback, useContext, useEffect, useRef } from 'react';
 import { AgentChatContext } from '../context';
 import DebugContent from '../debug-content';
 import { useAwaitComponentData } from '../hooks/use-chat-logic';
 import { useIsTaskMode } from '../hooks/use-get-begin-query';
+import { useAgentAutoRead } from './use-auto-read';
 
 function AgentChatBox() {
   const { data: canvasInfo, refetch } = useFetchAgent();
@@ -62,6 +64,10 @@ function AgentChatBox() {
 
   const isTaskMode = useIsTaskMode();
 
+  // 自动朗读：电话渠道演示用。打开后开场白和每轮回答会自动念，
+  // 关掉即恢复"点喇叭才念"的平台默认行为。
+  const autoRead = useAgentAutoRead(derivedMessages, sendLoading);
+
   const handlePressEnter = useCallback(() => {
     sendAgentPressEnter();
   }, [sendAgentPressEnter]);
@@ -99,6 +105,14 @@ function AgentChatBox() {
   return (
     <>
       <section className="flex flex-1 flex-col px-5 min-h-0 pb-4">
+        <div className="flex items-center justify-end gap-2 pt-2 pb-1">
+          <span className="text-xs text-text-secondary">自动朗读</span>
+          <Switch
+            checked={autoRead.enabled}
+            onCheckedChange={autoRead.setEnabled}
+            aria-label="自动朗读回答"
+          />
+        </div>
         <div className="flex-1 overflow-auto min-h-0" ref={messageContainerRef}>
           <div>
             {!sendLoading && <div data-testid="agent-run-idle" />}
