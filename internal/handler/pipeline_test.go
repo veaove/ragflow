@@ -163,7 +163,12 @@ func TestPipelineHandler_ListPipelines_RealRegistry(t *testing.T) {
 	var resp struct {
 		Data struct {
 			Canvas []struct {
-				ID string `json:"id"`
+				ID   string `json:"id"`
+				Help map[string]struct {
+					Formats []string `json:"formats"`
+					Usage   string   `json:"usage"`
+					Output  string   `json:"output"`
+				} `json:"help"`
 			} `json:"canvas"`
 		} `json:"data"`
 	}
@@ -182,6 +187,28 @@ func TestPipelineHandler_ListPipelines_RealRegistry(t *testing.T) {
 	}
 	if seen["naive"] {
 		t.Error("alias naive must be hidden from listing")
+	}
+
+	// help 必须随列表透出：模板 JSON 里写了、后端没解出来，卡片上的问号
+	// 就整片消失，而这种"静默缺失"在单元测试里不写断言是看不出来的。
+	for _, item := range resp.Data.Canvas {
+		help, ok := item.Help["zh"]
+		if !ok {
+			t.Errorf("%s: missing help.zh", item.ID)
+			continue
+		}
+		if len(help.Formats) == 0 {
+			t.Errorf("%s: help.zh.formats is empty", item.ID)
+		}
+		if help.Usage == "" {
+			t.Errorf("%s: help.zh.usage is empty", item.ID)
+		}
+		if help.Output == "" {
+			t.Errorf("%s: help.zh.output is empty", item.ID)
+		}
+		if _, ok := item.Help["en"]; !ok {
+			t.Errorf("%s: missing help.en", item.ID)
+		}
 	}
 }
 
