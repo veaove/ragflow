@@ -108,6 +108,13 @@ func TestFindDatasetReferencesReportsEveryAppKind(t *testing.T) {
 		VALUES (?, ?, ?, ?, ?, ?)`, "search-1", tenantID, "知识搜索", `{"kb_ids":["`+datasetID+`"]}`, "1", ownerID)
 	exec(`INSERT INTO search (id, tenant_id, name, search_config, status, created_by)
 		VALUES (?, ?, ?, ?, ?, ?)`, "search-2", tenantID, "空配置", `{}`, "1", ownerID)
+	// The legacy Python side stamped search.tenant_id with the creator's user id
+	// instead of the tenant id, so that shape has to be found too...
+	exec(`INSERT INTO search (id, tenant_id, name, search_config, status, created_by)
+		VALUES (?, ?, ?, ?, ?, ?)`, "search-3", ownerID, "老口径搜索", `{"kb_ids":["`+datasetID+`"]}`, "1", ownerID)
+	// ...without dragging in a member of another tenant that happens to bind it.
+	exec(`INSERT INTO search (id, tenant_id, name, search_config, status, created_by)
+		VALUES (?, ?, ?, ?, ?, ?)`, "search-4", outsiderID, "外租户搜索", `{"kb_ids":["`+datasetID+`"]}`, "1", outsiderID)
 
 	// Agent canvases keep it in dsl; the tenant scope goes through user_tenant.
 	exec(`INSERT INTO user_canvas (id, user_id, tenant_id, title, dsl, canvas_category)
@@ -133,6 +140,7 @@ func TestFindDatasetReferencesReportsEveryAppKind(t *testing.T) {
 	want := map[string]string{
 		"chat:chat-1":       "客服助手",
 		"search:search-1":   "知识搜索",
+		"search:search-3":   "老口径搜索",
 		"agent:canvas-1":    "智能体A",
 		"evaluation:eval-1": "评估集",
 	}
@@ -145,9 +153,15 @@ func TestFindDatasetReferencesReportsEveryAppKind(t *testing.T) {
 			t.Fatalf("%s name = %q, want %q", key, gotName, name)
 		}
 	}
-	// A row that only mentions another dataset, an empty search config and a
-	// canvas owned by someone outside the tenant are not references.
-	for _, key := range []string{"chat:chat-2", "search:search-2", "agent:canvas-2"} {
+	// A row that only mentions another dataset, an empty search config, a search
+	// app of another tenant and a canvas owned by someone outside the tenant are
+	// not references.
+	for _, key := range []string{
+		"chat:chat-2",
+		"search:search-2",
+		"search:search-4",
+		"agent:canvas-2",
+	} {
 		if _, ok := got[key]; ok {
 			t.Fatalf("%s must not be reported, got %#v", key, got)
 		}

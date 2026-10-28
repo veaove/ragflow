@@ -123,11 +123,25 @@ func findDatasetReferences(ctx context.Context, db *gorm.DB, kb *entity.Knowledg
 	needle := "\"" + kb.ID + "\""
 	refs := make([]DatasetReference, 0, 4)
 
+	// Scope every lookup to the tenant that owns the dataset. Rows written by
+	// the legacy Python side can carry the creator's *user id* in tenant_id
+	// instead of the tenant id (this deployment has tenant_id != user_id), so
+	// matching on the tenant id alone silently misses those apps — a search app
+	// bound to the dataset would then neither show up in the "apps" tab nor
+	// block a disable. Member ids cover both shapes: a user id is globally
+	// unique, so an app stamped with one belongs to a member of exactly this
+	// tenant.
+	memberUsers := db.WithContext(ctx).
+		Model(&entity.UserTenant{}).
+		Select("user_id").
+		Where("tenant_id = ? AND (status = ? OR status IS NULL)", kb.TenantID, string(entity.StatusValid))
+
 	var chats []chatReferenceRow
 	if err := db.WithContext(ctx).
 		Table("dialog").
 		Select("id, name, kb_ids").
-		Where("tenant_id = ? AND (status = ? OR status IS NULL) AND kb_ids LIKE ?", kb.TenantID, string(entity.StatusValid), like).
+		Where("(tenant_id = ? OR tenant_id IN (?)) AND (status = ? OR status IS NULL) AND kb_ids LIKE ?",
+			kb.TenantID, memberUsers, string(entity.StatusValid), like).
 		Scan(&chats).Error; err != nil {
 		return nil, errors.New("failed to look up chat references")
 	}
@@ -150,7 +164,8 @@ func findDatasetReferences(ctx context.Context, db *gorm.DB, kb *entity.Knowledg
 	if err := db.WithContext(ctx).
 		Table("search").
 		Select("id, name, search_config").
-		Where("tenant_id = ? AND (status = ? OR status IS NULL) AND search_config LIKE ?", kb.TenantID, string(entity.StatusValid), like).
+		Where("(tenant_id = ? OR tenant_id IN (?)) AND (status = ? OR status IS NULL) AND search_config LIKE ?",
+			kb.TenantID, memberUsers, string(entity.StatusValid), like).
 		Scan(&searches).Error; err != nil {
 		return nil, errors.New("failed to look up search references")
 	}
@@ -165,18 +180,13 @@ func findDatasetReferences(ctx context.Context, db *gorm.DB, kb *entity.Knowledg
 		})
 	}
 
-	// user_canvas has no tenant column; scope it through user_tenant so a
-	// same-shaped id in another tenant's canvas can never block this dataset.
-	tenantUsers := db.WithContext(ctx).
-		Model(&entity.UserTenant{}).
-		Select("user_id").
-		Where("tenant_id = ? AND (status = ? OR status IS NULL)", kb.TenantID, string(entity.StatusValid))
-
+	// user_canvas has no reliable tenant column (old rows leave it empty and
+	// fall back to user_id), so it is scoped through membership alone.
 	var canvases []canvasReferenceRow
 	if err := db.WithContext(ctx).
 		Table("user_canvas").
 		Select("id, title, dsl, canvas_category").
-		Where("user_id IN (?)", tenantUsers).
+		Where("user_id IN (?)", memberUsers).
 		Where("dsl LIKE ?", like).
 		Scan(&canvases).Error; err != nil {
 		return nil, errors.New("failed to look up agent references")
@@ -197,7 +207,7 @@ func findDatasetReferences(ctx context.Context, db *gorm.DB, kb *entity.Knowledg
 	if err := db.WithContext(ctx).
 		Table("evaluation_datasets").
 		Select("id, name, kb_ids").
-		Where("tenant_id = ? AND kb_ids LIKE ?", kb.TenantID, like).
+		Where("(tenant_id = ? OR tenant_id IN (?)) AND kb_ids LIKE ?", kb.TenantID, memberUsers, like).
 		Scan(&evaluations).Error; err != nil {
 		return nil, errors.New("failed to look up evaluation references")
 	}
