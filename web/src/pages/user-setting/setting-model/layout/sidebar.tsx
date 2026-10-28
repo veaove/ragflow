@@ -29,6 +29,7 @@ import { ChevronRight, Plus } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import AddCustomProviderModal from '../add-custom-provider-modal';
+import { filterVisibleProviders } from '../domestic-providers';
 
 /**
  * Sidebar selection type for the right pane.
@@ -73,16 +74,24 @@ export function Sidebar({ selection, onSelect }: SidebarProps) {
     );
   }, [addedProviders]);
 
+  // 只要服务商在租户里存在过就保持可见（不管有没有实例）：白名单难免遗漏，
+  // 而把一个已有配置的服务商藏起来，它就彻底没法在界面上管理了。
+  const configuredNames = useMemo(() => {
+    return new Set(addedProviders.map((p) => p.name));
+  }, [addedProviders]);
+
   const filteredProviders = useMemo(() => {
     const q = search.trim().toLowerCase();
+    // 只展示国内服务商；已经配置过的即使不在名单里也照常显示。
+    const visible = filterVisibleProviders(providers, configuredNames);
     const list = q
-      ? providers.filter((p) => p.name.toLowerCase().includes(q))
-      : providers;
+      ? visible.filter((p) => p.name.toLowerCase().includes(q))
+      : visible;
     // Stable partition: added providers first, then unadded.
     const added = list.filter((p) => addedSet.has(p.name));
     const others = list.filter((p) => !addedSet.has(p.name));
     return [...added, ...others];
-  }, [providers, search, addedSet]);
+  }, [providers, search, addedSet, configuredNames]);
 
   /**
    * Creates the provider first, then its first instance carrying the endpoint
@@ -122,7 +131,9 @@ export function Sidebar({ selection, onSelect }: SidebarProps) {
       await queryClient.invalidateQueries({
         queryKey: LlmKeys.availableProviders(),
       });
-      await queryClient.invalidateQueries({ queryKey: LlmKeys.addedProviders() });
+      await queryClient.invalidateQueries({
+        queryKey: LlmKeys.addedProviders(),
+      });
       onSelect(providerName);
     },
     [queryClient, onSelect],
