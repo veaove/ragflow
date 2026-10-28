@@ -445,16 +445,30 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 	return nil
 }
 
+// ensureColumn 幂等地给表补列，返回「本次是否新加了列」，调用方据此决定要不要回填。
+//
+// 表还没建时直接返回 false：AutoMigrate 的主模型列表负责建表，而本组函数挂在
+// runtime models 迁移里，只跑后者的场景（例如单测）表并不存在，直接 ALTER 会报
+// "no such table: xxx"，把一个正常的补列步骤变成启动失败。
+// 这条路已经被踩过两次（resource_grant、knowledgebase），故收敛成一处。
+func ensureColumn(ctx context.Context, db *gorm.DB, model interface{}, column, field string) (bool, error) {
+	if !db.Migrator().HasTable(model) {
+		return false, nil
+	}
+	if db.Migrator().HasColumn(model, column) {
+		return false, nil
+	}
+	if err := db.WithContext(ctx).Migrator().AddColumn(model, field); err != nil {
+		return false, fmt.Errorf("add %T.%s: %w", model, column, err)
+	}
+	return true, nil
+}
+
 // ensureKnowledgebaseCategoryColumn 幂等地补上 knowledgebase.category。
 // 存量行留空即可：分类是新概念，回填什么都没意义。
 func ensureKnowledgebaseCategoryColumn(ctx context.Context, db *gorm.DB) error {
-	if db.Migrator().HasColumn(&entity.Knowledgebase{}, "category") {
-		return nil
-	}
-	if err := db.WithContext(ctx).Migrator().AddColumn(&entity.Knowledgebase{}, "Category"); err != nil {
-		return fmt.Errorf("add knowledgebase.category: %w", err)
-	}
-	return nil
+	_, err := ensureColumn(ctx, db, &entity.Knowledgebase{}, "category", "Category")
+	return err
 }
 
 // ensureResourceGrantPermissionColumn 幂等地补上 resource_grant.permission。
@@ -462,17 +476,9 @@ func ensureKnowledgebaseCategoryColumn(ctx context.Context, db *gorm.DB) error {
 // 存量行按 'edit' 回填：这个字段出现之前授权就是可编辑的，
 // 按 read 回填会让所有已授权的人一夜之间失去编辑权。
 func ensureResourceGrantPermissionColumn(ctx context.Context, db *gorm.DB) error {
-	// 表还没建时无列可补：AutoMigrate 的主模型列表负责建 resource_grant，
-	// 而本函数挂在 runtime models 迁移里，只跑后者的场景（如单测）并不存在该表，
-	// 直接 ALTER 会报 "no such table"。表建好后本函数自然会在下次启动时补齐列。
-	if !db.Migrator().HasTable(&entity.ResourceGrant{}) {
-		return nil
-	}
-	if db.Migrator().HasColumn(&entity.ResourceGrant{}, "permission") {
-		return nil
-	}
-	if err := db.WithContext(ctx).Migrator().AddColumn(&entity.ResourceGrant{}, "Permission"); err != nil {
-		return fmt.Errorf("add resource_grant.permission: %w", err)
+	added, err := ensureColumn(ctx, db, &entity.ResourceGrant{}, "permission", "Permission")
+	if err != nil || !added {
+		return err
 	}
 	if err := db.WithContext(ctx).Exec(
 		"UPDATE resource_grant SET permission = 'edit' WHERE permission IS NULL OR permission = ''",
@@ -487,11 +493,9 @@ func ensureResourceGrantPermissionColumn(ctx context.Context, db *gorm.DB) error
 // 全部存量租户按「启用」处理：这个功能上线前不存在停用概念，
 // 若把存量置为禁用会一次性锁死所有租户。
 func ensureTenantEnabledColumn(ctx context.Context, db *gorm.DB) error {
-	if db.Migrator().HasColumn(&entity.Tenant{}, "enabled") {
-		return nil
-	}
-	if err := db.WithContext(ctx).Migrator().AddColumn(&entity.Tenant{}, "Enabled"); err != nil {
-		return fmt.Errorf("add tenant.enabled: %w", err)
+	added, err := ensureColumn(ctx, db, &entity.Tenant{}, "enabled", "Enabled")
+	if err != nil || !added {
+		return err
 	}
 	if err := db.WithContext(ctx).Exec("UPDATE tenant SET enabled = 1 WHERE enabled IS NULL").Error; err != nil {
 		return fmt.Errorf("backfill tenant.enabled: %w", err)
