@@ -46,15 +46,18 @@ func TestStringifyTemplateValueJoinsAnySlice(t *testing.T) {
 
 // 标量必须保持原样，不能因为这次改动影响既有的变量替换。
 func TestStringifyTemplateValueKeepsScalars(t *testing.T) {
-	cases := map[string]any{
-		"text": "hello",
-		"42":   42,
-		"1.5":  1.5,
-		"true": true,
+	cases := []struct {
+		in   any
+		want string
+	}{
+		{"hello", "hello"},
+		{42, "42"},
+		{1.5, "1.5"},
+		{true, "true"},
 	}
-	for want, in := range cases {
-		if got := stringifyTemplateValue(in); got != want {
-			t.Errorf("stringifyTemplateValue(%v) = %q, want %q", in, got, want)
+	for _, c := range cases {
+		if got := stringifyTemplateValue(c.in); got != c.want {
+			t.Errorf("stringifyTemplateValue(%v) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }
