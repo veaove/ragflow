@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 	"ragflow/internal/service"
 )
 
@@ -214,20 +216,27 @@ const (
 	permissionRoleNormal = "normal"
 )
 
-// isBuiltinTenantAdmin reports whether roleID points at the built-in 租户管理员 role.
-// Built-in roles are created by dao.EnsureBuiltinRoles with is_builtin=1.
+// isBuiltinTenantAdmin reports whether roleID points at a built-in 租户管理员 role.
+//
+// The console's member editor writes only `user_tenant.role_id` and leaves the
+// `role` enum at 'normal', so a member granted 租户管理员 through the UI still
+// looks like a plain member to anything reading the enum — this column is the
+// only evidence. Resolution goes through permission.TenantAdminRoleIDs so the
+// write gate and the permission layer share one definition of "which role ids
+// count as tenant admin"; role names and the is_builtin filter live there.
+//
+// The lookup is global rather than tenant-scoped because role ids are unique
+// across tenants and this roleID came from a membership of the tenant already
+// resolved by requireTenantAccess.
 func isBuiltinTenantAdmin(c *gin.Context, roleID string) bool {
 	if roleID == "" {
 		return false
 	}
-	var role entity.Role
-	if err := dao.DB.WithContext(c.Request.Context()).
-		Where("id = ? AND is_builtin = 1").First(&role).Error; err != nil {
+	ids, err := permission.TenantAdminRoleIDs(c.Request.Context(), dao.DB)
+	if err != nil {
 		return false
 	}
-	// 内置全权限角色只有 Owner（is_system）和 租户管理员；
-	// Owner 在 user_tenant.role 枚举里直接判过了，这里剩「租户管理员」。
-	return role.Name == "租户管理员"
+	return slices.Contains(ids, roleID)
 }
 
 func consoleTenantID(c *gin.Context) string {
