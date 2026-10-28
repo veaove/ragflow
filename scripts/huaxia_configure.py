@@ -598,7 +598,16 @@ IVR_PROMPT = (
 
 
 def cmd_ivr(api: Api):
-    """建 IVR 播报应用：tts 开、短答案 prompt、只绑短答案类库。"""
+    """[已弃用] 建 IVR 播报应用：tts 开、短答案 prompt、只绑短答案类库。
+
+    客户要的是「中国移动式按键菜单」，不是一问一答播报，所以这个应用已从线上删除；
+    新交付见 scripts/build_ivr_demo.py（16 节点按键树 + 预录音频 + 可点击模拟器）。
+    保留此函数只为可追溯——重跑会在平台上重建一个没人用的播报应用。
+    """
+    print("⚠️  cmd_ivr 已弃用：按键菜单流程改用 scripts/build_ivr_demo.py")
+    print("    如确需重建播报应用，加 --force 显式确认。")
+    if "--force" not in sys.argv:
+        return
     app = find_chat(api, APP_IVR)
     if app:
         print(f"IVR 应用已存在：{app['id']}（tts={app.get('tts')}）")
