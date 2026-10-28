@@ -17,6 +17,7 @@
 import message from '@/components/ui/message';
 import { Spin } from '@/components/ui/spin';
 import request from '@/utils/request';
+import { resolveCsvLocate } from '@/utils/csv-locate';
 import { decodeBlobText } from '@/utils/file-util';
 import classNames from 'classnames';
 import Papa from 'papaparse';
@@ -36,9 +37,19 @@ interface CSVData {
 interface FileViewerProps {
   className?: string;
   url: string;
+  /**
+   * Citation locate range, same shape the Excel previewer accepts:
+   * `[page(1-based), rowStart, rowEnd, colStart, colEnd]`. The row numbers are
+   * 1-based *physical* CSV rows, i.e. row 1 is the header row.
+   */
+  positions?: number[][];
 }
 
-const CSVFileViewer: React.FC<FileViewerProps> = ({ className, url }) => {
+const CSVFileViewer: React.FC<FileViewerProps> = ({
+  className,
+  url,
+  positions,
+}) => {
   const [data, setData] = useState<CSVData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -98,6 +109,19 @@ const CSVFileViewer: React.FC<FileViewerProps> = ({ className, url }) => {
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const rowHeight = 36;
+
+  // Citation range translated into 0-based indexes over `data.rows`. The header
+  // offset lives in `resolveCsvLocate` because it differs from the xlsx case.
+  const locate = useMemo(() => resolveCsvLocate(positions), [positions]);
+
+  // Bring the cited row into view once the rows exist. The header row is
+  // sticky but still occupies flow space, so a plain rowStart * rowHeight
+  // offset lands the target directly below it.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !locate) return;
+    el.scrollTo({ top: locate.rowStart * rowHeight });
+  }, [locate, data, rowHeight]);
 
   // The true column count of the table: ragged rows may have more or fewer
   // cells than the header, so the "last column" is data-driven, not the
@@ -253,18 +277,37 @@ const CSVFileViewer: React.FC<FileViewerProps> = ({ className, url }) => {
                     key={`row-${actualIndex}`}
                     className="table-row hover:bg-gray-50"
                   >
-                    {row.map((cell, cellIndex) => (
-                      <div
-                        key={`cell-${actualIndex}-${cellIndex}`}
-                        className={classNames(
-                          'table-cell px-6 py-2 whitespace-nowrap text-sm text-text-secondary overflow-hidden text-ellipsis border-b border-border-normal',
-                          cellIndex === maxCols - 1 && 'w-full',
-                        )}
-                        style={{ height: rowHeight }}
-                      >
-                        {cell || '-'}
-                      </div>
-                    ))}
+                    {row.map((cell, cellIndex) => {
+                      const isLocated =
+                        locate !== null &&
+                        actualIndex >= locate.rowStart &&
+                        actualIndex <= locate.rowEnd &&
+                        cellIndex >= locate.colStart &&
+                        cellIndex <= locate.colEnd;
+                      return (
+                        <div
+                          key={`cell-${actualIndex}-${cellIndex}`}
+                          className={classNames(
+                            'table-cell px-6 py-2 whitespace-nowrap text-sm text-text-secondary overflow-hidden text-ellipsis border-b border-border-normal',
+                            cellIndex === maxCols - 1 && 'w-full',
+                          )}
+                          style={{
+                            height: rowHeight,
+                            // Fixed light colors rather than theme tokens: the
+                            // highlight must stay legible on the light table in
+                            // both themes, matching the xlsx/PDF locate colors.
+                            ...(isLocated
+                              ? {
+                                  backgroundColor: '#ffe58f',
+                                  color: '#1a1a1a',
+                                }
+                              : null),
+                          }}
+                        >
+                          {cell || '-'}
+                        </div>
+                      );
+                    })}
                     {/* Empty cells to complete ragged rows so the row's full-width
                         bottom border is drawn by the last padding cell instead
                         of disappearing through gaps between shorter rows. */}
