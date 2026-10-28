@@ -11,6 +11,7 @@ import {
   formatKnowledgeBaseCell,
   getKnowledgeBaseNames,
 } from '@/utils/kb-labels';
+import { searchStatusLabelKey } from './search-status';
 
 /**
  * 知识搜索（Search）表格视图。
@@ -61,9 +62,14 @@ export function SearchTable({
     {
       key: 'status',
       title: t('common.status'),
-      render: (row) => (
-        <span className="text-text-secondary">{row.status || '-'}</span>
-      ),
+      render: (row) => {
+        const labelKey = searchStatusLabelKey(row.status);
+        return (
+          <span className="text-text-secondary">
+            {labelKey ? t(labelKey) : '-'}
+          </span>
+        );
+      },
     },
     {
       // 与知识问答列表同口径：最多平铺两个库名，其余收成「等 N 个」，
@@ -87,14 +93,14 @@ export function SearchTable({
     },
     {
       key: 'owner',
-      title: '创建者',
+      title: t('common.creator'),
       render: (row) => (
         <span className="text-text-secondary">{row.nickname || '-'}</span>
       ),
     },
     {
       key: 'created',
-      title: '创建时间',
+      title: t('common.createTime'),
       render: (row) => (
         <span className="whitespace-nowrap text-text-secondary">
           {formatListTime(row.create_time)}
@@ -103,7 +109,7 @@ export function SearchTable({
     },
     {
       key: 'updated',
-      title: '更新时间',
+      title: t('common.updateTime'),
       render: (row) => (
         <span className="whitespace-nowrap text-text-secondary">
           {formatListTime(row.update_time)}

@@ -54,7 +54,7 @@ export function ChatTable({
     },
     {
       key: 'description',
-      title: '描述',
+      title: t('common.description'),
       className: 'max-w-[240px]',
       render: (row) => (
         <span
@@ -67,7 +67,7 @@ export function ChatTable({
     },
     {
       key: 'llm',
-      title: '模型',
+      title: t('common.model'),
       render: (row) => {
         const name = resolveModelName(row.llm_id);
         return (
@@ -79,7 +79,7 @@ export function ChatTable({
     },
     {
       key: 'kb',
-      title: '知识库',
+      title: t('common.knowledgeBase'),
       className: 'max-w-[240px]',
       render: (row) => {
         const { text, title } = formatKnowledgeBaseCell(
@@ -94,7 +94,7 @@ export function ChatTable({
     },
     {
       key: 'rerank',
-      title: '重排模型',
+      title: t('common.rerankModel'),
       render: (row) => {
         const name = resolveModelName(row.rerank_id);
         return (
@@ -106,7 +106,7 @@ export function ChatTable({
     },
     {
       key: 'params',
-      title: 'TopK / 阈值',
+      title: t('common.topKThreshold'),
       render: (row) => (
         <span className="whitespace-nowrap font-mono text-xs text-text-secondary">
           {row.top_k ?? '-'} / {row.similarity_threshold ?? '-'}
@@ -115,7 +115,7 @@ export function ChatTable({
     },
     {
       key: 'updated',
-      title: '更新时间',
+      title: t('common.updateTime'),
       render: (row) => (
         <span className="whitespace-nowrap text-text-secondary">
           {formatListTime(row.update_time || row.update_date)}

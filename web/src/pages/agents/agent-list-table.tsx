@@ -88,13 +88,9 @@ export function AgentListTable({
       title: t('studio.colStatus'),
       render: (row) => (
         <span
-          className={
-            row.release
-              ? 'text-state-success'
-              : 'text-text-secondary'
-          }
+          className={row.release ? 'text-state-success' : 'text-text-secondary'}
         >
-          {row.release ? '已发布' : '草稿'}
+          {row.release ? t('studio.statusPublished') : t('studio.statusDraft')}
         </span>
       ),
     },
@@ -137,7 +133,7 @@ export function AgentListTable({
     },
     {
       key: 'tags',
-      title: '标签',
+      title: t('common.tags'),
       className: 'max-w-[180px]',
       render: (row) => {
         const tags = (row.tags ?? '')
@@ -168,14 +164,14 @@ export function AgentListTable({
     },
     {
       key: 'owner',
-      title: '创建者',
+      title: t('common.creator'),
       render: (row) => (
         <span className="text-text-secondary">{row.nickname || '-'}</span>
       ),
     },
     {
       key: 'updated',
-      title: '更新时间',
+      title: t('studio.colUpdated'),
       render: (row) => (
         <span className="whitespace-nowrap text-text-secondary">
           {formatListTime(row.update_date || row.update_time)}
