@@ -178,14 +178,22 @@ func (s *Service) ListUsers(ctx context.Context, pageIndex, pageSize int, name, 
 	// 补充「所在租户」。
 	// 一个用户理论上可属于多个租户，列表只展示一个，取 MIN 保证不因多行报错；
 	// 用户与租户解耦后（创建用户不再自动建租户），未分配租户的用户这里是空串。
+	//
+	// is_owner 与展示的租户无关：它回答的是「这人是不是某个租户的主人」，
+	// 用于用户类型列（平台超管 / 所有者 / 普通用户）。多租户用户只要在
+	// 其中一个租户是 owner 就算，否则把 owner 降级显示成普通用户会掩盖事实。
 	type userTenantRow struct {
 		UserID     string
 		TenantID   string
 		TenantName string
+		IsOwner    int
 	}
 	var utRows []userTenantRow
 	if err := dao.DB.WithContext(ctx).Raw(`
-		SELECT ut.user_id, MIN(ut.tenant_id) AS tenant_id, MIN(IFNULL(t.name, '')) AS tenant_name
+		SELECT ut.user_id,
+		       MIN(ut.tenant_id) AS tenant_id,
+		       MIN(IFNULL(t.name, '')) AS tenant_name,
+		       MAX(CASE WHEN ut.role = 'owner' THEN 1 ELSE 0 END) AS is_owner
 		FROM user_tenant ut
 		JOIN tenant t ON t.id = ut.tenant_id
 		WHERE ut.status = '1'
@@ -195,9 +203,11 @@ func (s *Service) ListUsers(ctx context.Context, pageIndex, pageSize int, name, 
 	}
 	tenantNameByUser := make(map[string]string, len(utRows))
 	tenantIDByUser := make(map[string]string, len(utRows))
+	ownerByUser := make(map[string]bool, len(utRows))
 	for _, row := range utRows {
 		tenantNameByUser[row.UserID] = row.TenantName
 		tenantIDByUser[row.UserID] = row.TenantID
+		ownerByUser[row.UserID] = row.IsOwner == 1
 	}
 
 	result := make([]map[string]interface{}, 0, len(users))
@@ -208,6 +218,7 @@ func (s *Service) ListUsers(ctx context.Context, pageIndex, pageSize int, name, 
 			"create_date":  user.CreateTime,
 			"is_active":    user.IsActive,
 			"is_superuser": user.IsSuperuser,
+			"is_owner":     ownerByUser[user.ID],
 			"tenant_id":    tenantIDByUser[user.ID],
 			"tenant_name":  tenantNameByUser[user.ID],
 		})

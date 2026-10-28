@@ -703,16 +703,17 @@ func (r *Router) Setup(engine *gin.Engine) {
 			}
 
 			// 模型配置（含 API Key、默认模型选择）归「配置中心 - 模型配置」矩阵管
+			// 写操作留在守卫里；只读元数据（租户有哪些可用模型）任何已登录用户都需要。
 			model := v1.Group("/models", handler.ModulePermission("model"))
 			{
-				// GET /models returns the tenant's added models across
-				// all instances. Front-end useFetchAllAddedModels consumes this.
-				model.GET("", r.providerHandler.ListTenantAddedModels)
 				model.PATCH("", r.tenantHandler.SetModels)
-				// Tenant default-model selection (used by the agent page's useFetchDefaultModels hook)
-				model.GET("/default", r.tenantHandler.GetDefaultModels)
 				model.PATCH("/default", r.tenantHandler.SetDefaultModels)
 			}
+
+			// 只读：列出租户已添加的所有模型（知识库检索测试、Agent 配置、
+			// 跨语言搜索等页面需要），已登录即可，不绑 model 模块权限。
+			v1.GET("/models", r.providerHandler.ListTenantAddedModels)
+			v1.GET("/models/default", r.tenantHandler.GetDefaultModels)
 
 			allModels := v1.Group("/all-models")
 			{

@@ -14,7 +14,6 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
-	"ragflow/internal/permission"
 	"ragflow/internal/service"
 )
 
@@ -81,26 +80,6 @@ func requireTenantAccess(c *gin.Context, userID, tenantID string, write bool) er
 		return nil
 	}
 	return checkModuleAction(c, userID, tenantID, module, action)
-}
-
-// isBuiltinTenantAdmin 判断 role_id 是否指向内置「租户管理员」角色。
-//
-// 角色 id 是主键，天然全局唯一，不需要再按租户过滤。查询失败按「不是管理员」
-// 处理（fail closed）：写闸门宁可误拒，也不能因为一次查询抖动就放行。
-func isBuiltinTenantAdmin(c *gin.Context, roleID string) bool {
-	if strings.TrimSpace(roleID) == "" {
-		return false
-	}
-	ids, err := permission.TenantAdminRoleIDs(c.Request.Context(), dao.DB)
-	if err != nil {
-		return false
-	}
-	for _, id := range ids {
-		if id == roleID {
-			return true
-		}
-	}
-	return false
 }
 
 // Module keys of the role matrix that the console itself exposes.
