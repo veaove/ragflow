@@ -67,8 +67,15 @@ func chatStreamWithContext(ctx context.Context, chatModel *modelModule.ChatModel
 
 // TenantStreamAdapter adapts a factory-created chat model to AskService's
 // channel-based streaming interface.
+//
+// UserID and TenantID are deliberately separate. A deployment is not guaranteed
+// to have tenant_id == user_id (this one does not), so passing only a tenant
+// makes the model factory fall back to the strict "provider must belong to this
+// exact tenant" check. Carrying the user too lets it run the permission check
+// instead, which is what knows about tenant membership.
 type TenantStreamAdapter struct {
 	Factory  *ModelFactory
+	UserID   string
 	TenantID string
 	ModelID  string
 }
@@ -77,7 +84,8 @@ func (a *TenantStreamAdapter) ChatStream(ctx context.Context, messages []modelMo
 	if a.Factory == nil {
 		return nil, nil, fmt.Errorf("model factory not configured")
 	}
-	chatModel, err := a.Factory.NewChatModel(ctx, ModelAccess{TenantID: a.TenantID}, a.ModelID)
+	access := ModelAccess{TenantID: a.TenantID, UserID: a.UserID}
+	chatModel, err := a.Factory.NewChatModel(ctx, access, a.ModelID)
 	if err != nil {
 		return nil, nil, err
 	}

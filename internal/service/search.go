@@ -243,8 +243,15 @@ func (s *SearchService) DeleteSearch(ctx context.Context, userID string, searchI
 	return nil
 }
 
+// SearchCompletionPlan carries everything needed to stream one search
+// completion.
+//
+// TenantID is the tenant that owns the model configuration, not the caller's
+// user id. The two are equal in a stock RAGFlow deployment but not in a
+// multi-member tenant, so callers must not substitute UserID for it.
 type SearchCompletionPlan struct {
 	UserID     string
+	TenantID   string
 	SearchID   string
 	Question   string
 	DatasetIDs []string
@@ -298,6 +305,13 @@ func (s *SearchService) PrepareCompletion(ctx context.Context, userID, searchID 
 		}
 	}
 
+	// The model configuration hangs off the tenant, and tenant_id != user_id in a
+	// multi-member tenant. Resolve the real tenant once here and use it for both
+	// the default-model lookup and the plan's model access. Passing userID made
+	// GetDefaultModelName query the tenant table with a user id, which silently
+	// yields "chat model not configured".
+	tenantID := resolveTenantIDForUser(ctx, userID)
+
 	modelID, _ := stringFromSearchConfig(searchConfig["chat_id"])
 	if modelID == "" {
 		tenantSvc := s.tenantService
@@ -305,7 +319,7 @@ func (s *SearchService) PrepareCompletion(ctx context.Context, userID, searchID 
 			tenantSvc = NewTenantService()
 		}
 		var defaultModelName string
-		defaultModelName, err = tenantSvc.GetDefaultModelName(ctx, userID, entity.ModelTypeChat)
+		defaultModelName, err = tenantSvc.GetDefaultModelName(ctx, tenantID, entity.ModelTypeChat)
 		if err == nil {
 			modelID = strings.TrimSpace(defaultModelName)
 		}
@@ -313,6 +327,7 @@ func (s *SearchService) PrepareCompletion(ctx context.Context, userID, searchID 
 
 	return &SearchCompletionPlan{
 		UserID:     userID,
+		TenantID:   tenantID,
 		SearchID:   searchID,
 		Question:   question,
 		DatasetIDs: datasetIDs,

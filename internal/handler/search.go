@@ -430,7 +430,15 @@ func (h *SearchHandler) Completion(c *gin.Context) {
 		return
 	}
 
-	adapter := &service.TenantStreamAdapter{Factory: h.modelFactory, TenantID: plan.UserID, ModelID: plan.ModelID}
+	// plan.TenantID is the real tenant, resolved in the service. Using plan.UserID
+	// here handed the model factory a personal id, which fails with "103 model
+	// configuration unavailable" whenever tenant_id != user_id.
+	adapter := &service.TenantStreamAdapter{
+		Factory:  h.modelFactory,
+		UserID:   plan.UserID,
+		TenantID: plan.TenantID,
+		ModelID:  plan.ModelID,
+	}
 
 	hadError := false
 	for delta := range h.askService.StreamWithOptions(c.Request.Context(), adapter, plan.UserID, plan.Question, plan.DatasetIDs, plan.Options) {
