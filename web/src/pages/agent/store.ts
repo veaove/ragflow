@@ -684,9 +684,18 @@ const useGraphStore = create<RFState>()(
         return id;
       },
       getAllAgentTools: () => {
-        return get()
-          .nodes.filter((n) => n?.data?.label === Operator.Agent)
-          .flatMap((n) => n?.data?.form?.tools);
+        return (
+          get()
+            .nodes.filter((n) => n?.data?.label === Operator.Agent)
+            // flatMap flattens arrays but does not skip undefined: an Agent node
+            // whose form carries no `tools` key (hand-built DSLs, older
+            // canvases) used to inject `undefined` into this list, and every
+            // downstream `.find`/`.map` over it threw
+            // "Cannot read properties of undefined (reading 'id')" — which in
+            // FormSheet/useIsMcp turns into "clicking any node crashes".
+            .flatMap((n) => n?.data?.form?.tools ?? [])
+            .filter((tool): tool is IAgentTool => Boolean(tool))
+        );
       },
       getAgentToolById: (
         id: string,

@@ -1115,12 +1115,14 @@ export const buildCategorizeObjectFromList = (list: Array<ICategorizeItem>) => {
 };
 
 export function getAgentNodeTools(agentNode?: RAGFlowNodeType) {
-  const tools: IAgentForm['tools'] = get(agentNode, 'data.form.tools', []);
+  // `?? []` rather than a lodash default: a hand-built DSL may carry an
+  // explicit `tools: null`, which `get`'s default value does not cover.
+  const tools: IAgentForm['tools'] = get(agentNode, 'data.form.tools') ?? [];
   return tools;
 }
 
 export function getAgentNodeMCP(agentNode?: RAGFlowNodeType) {
-  const tools: IAgentForm['mcp'] = get(agentNode, 'data.form.mcp', []);
+  const tools: IAgentForm['mcp'] = get(agentNode, 'data.form.mcp') ?? [];
   return tools;
 }
 

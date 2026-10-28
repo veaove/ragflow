@@ -187,7 +187,7 @@ def build_dsl() -> dict:
         "logical_operator": "or", "to": [key_node("9")],
     })
     switch_params = {"conditions": conditions, "end_cpn_ids": [C_REWRITE]}
-    add(C_SWITCH, "Switch", switch_params, [C_BEGIN], (280, 380), "Condition",
+    add(C_SWITCH, "Switch", switch_params, [C_BEGIN], (280, 380), "Switch",
         [key_node(k) for k in "123456789"] + [C_MENU, C_REWRITE])
     for i, k in enumerate("123456789"):
         link(C_SWITCH, key_node(k), f"Case {i + 1}")
@@ -209,7 +209,7 @@ def build_dsl() -> dict:
         "outputs": {"content": {"type": "string", "value": ""}, "structured": {}},
         "cite": False, "message_history_window_size": 0, "max_tokens": 120,
         "temperature": 0.1, "temperatureEnabled": True, "max_rounds": 1,
-        "max_retries": 3, "delay_after_error": 1, "mcp": [],
+        "max_retries": 3, "delay_after_error": 1, "mcp": [], "tools": [],
         "exception_goto": [], "exception_method": "", "exception_default_value": "",
         "showStructuredOutput": False,
     }, [C_SWITCH], (980, 380), "Agent", [C_RETRIEVAL])
@@ -237,7 +237,7 @@ def build_dsl() -> dict:
                                    "operator": "empty", "value": ""}],
                         "logical_operator": "and", "to": [C_FALLBACK]}],
         "end_cpn_ids": [C_GENERATE],
-    }, [C_RETRIEVAL], (1500, 380), "Condition", [C_FALLBACK, C_GENERATE])
+    }, [C_RETRIEVAL], (1500, 380), "Switch", [C_FALLBACK, C_GENERATE])
     link(C_HASCHUNK, C_FALLBACK, "Case 1")
     link(C_HASCHUNK, C_GENERATE, "end_cpn_ids")
 
@@ -248,7 +248,7 @@ def build_dsl() -> dict:
         # cite 必须关：开着答案里会带 [ID:xxx]，喇叭朗读时会把这段标号念出来
         "cite": False, "message_history_window_size": 3, "max_tokens": 512,
         "temperature": 0.1, "temperatureEnabled": True, "max_rounds": 1,
-        "max_retries": 3, "delay_after_error": 1, "mcp": [],
+        "max_retries": 3, "delay_after_error": 1, "mcp": [], "tools": [],
         "exception_goto": [], "exception_method": "", "exception_default_value": "",
         "showStructuredOutput": False,
     }, [C_HASCHUNK], (1780, 520), "Agent", [C_ANSWER])
