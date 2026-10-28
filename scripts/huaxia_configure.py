@@ -776,20 +776,32 @@ def cmd_eval(api: Api):
 #  配置的 zuoxi_02=1 并不生效），因此没法把开关塞进 Begin 再去 Switch 里判断。
 # 停用转人工 = 下架这个智能体，入口即消失，这是现成且零风险的机制。
 def cmd_transfer(api: Api):
+    """检查「夏管家推送」的转人工链路，按需上架。
+
+    默认只检查不发布：二维码素材还是占位符 xxxx，上架后客户点开是破图。
+    客户给了真实二维码、替换掉 DSL 里的 URL 之后，再 `transfer --publish` 上架。
+    """
+    publish = "--publish" in sys.argv
     d = api.get(f"/api/v1/agents/{AGENT_TRANSFER}")["data"]
-    print(f"当前：{d.get('title')}  release={d.get('release')}")
-    if d.get("release"):
-        print("已上架，跳过")
-        return
-    api.post(f"/api/v1/agents/{AGENT_TRANSFER}/publish", {})
-    d2 = api.get(f"/api/v1/agents/{AGENT_TRANSFER}")["data"]
-    print(f"已发布：release={d2.get('release')}")
-    # 提醒素材缺口
-    dsl = d2["dsl"] if isinstance(d2.get("dsl"), dict) else json.loads(d2["dsl"])
+    print(f"{d.get('title')}  release={d.get('release')}")
+
+    dsl = d["dsl"] if isinstance(d.get("dsl"), dict) else json.loads(d["dsl"])
+    placeholders = []
     for k, v in dsl.get("components", {}).items():
         for line in (v.get("obj", {}).get("params", {}).get("content") or []):
-            if "xxxx" in str(line):
-                print(f"[待补素材] {k} 里二维码地址仍是占位符：{str(line)[:80]}")
+            if "xxxx" in str(line) or "(http" not in str(line) and "![" in str(line):
+                placeholders.append((k, str(line)[:100]))
+    for k, line in placeholders:
+        print(f"[素材待补] {k}：{line}")
+
+    if not publish:
+        print("\n仅检查。素材替换后加 --publish 上架。")
+        return
+    if placeholders:
+        print("\n[拒绝上架] 二维码仍是占位符，上架会显示破图。先替换素材。")
+        return
+    api.post(f"/api/v1/agents/{AGENT_TRANSFER}/publish", {})
+    print(f"已上架：release={api.get(f'/api/v1/agents/{AGENT_TRANSFER}')['data'].get('release')}")
 
 
 if __name__ == "__main__":
