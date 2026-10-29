@@ -2,6 +2,7 @@ import { MessageType } from '@/constants/chat';
 import { Authorization } from '@/constants/authorization';
 import api from '@/utils/api';
 import { getAuthorization } from '@/utils/authorization-util';
+import { stripCitationMarkers } from '@/utils/citation-utils';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
@@ -179,7 +180,10 @@ export function useAgentAutoRead(
     if (!last || last.role !== MessageType.Assistant) {
       return;
     }
-    const content = typeof last.content === 'string' ? last.content : '';
+    // 引用标号（[ID:<chunkId>]）是给眼睛看的，念出来只会变成"方括号 ID 冒号…"。
+    const content = stripCitationMarkers(
+      typeof last.content === 'string' ? last.content : '',
+    );
     if (!content.trim()) {
       return;
     }

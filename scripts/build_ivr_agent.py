@@ -80,7 +80,7 @@ GENERATE_PROMPT = (
     "你是华夏基金电话客服的应答助手，回答会被播报给来电客户听。\n\n"
     "# 回复要求\n"
     "1. 只依据下方「参考资料」回答，资料里没有的不要编造。\n"
-    "2. 口语化，一段话说完，不要 Markdown、不要列表符号、不要表格、不要引用标号。\n"
+    "2. 口语化，一段话说完，不要 Markdown、不要列表符号、不要表格、不要自己编引用标号。\n"
     "3. 一般控制在 120 字以内；信息太多时只说最关键的一条。\n"
     "4. 涉及收益、风险时不作任何承诺。\n"
     "5. 结尾统一加一句：回复 0 回到菜单。\n"
@@ -245,8 +245,10 @@ def build_dsl() -> dict:
         "llm_id": LLM, "sys_prompt": GENERATE_PROMPT,
         "prompts": [{"role": "user", "content": "{sys.query}"}],
         "outputs": {"content": {"type": "string", "value": ""}, "structured": {}},
-        # cite 必须关：开着答案里会带 [ID:xxx]，喇叭朗读时会把这段标号念出来
-        "cite": False, "message_history_window_size": 3, "max_tokens": 512,
+        # cite 开：答案里由 grounding 那一遍插 [ID:xxx]，正文才有 [1][2] 号和文件卡片，
+        # 和「华夏基金业务咨询（意图分流）」一个样子。播报不受影响 —— 前端合成 TTS 前
+        # 会把标号剥掉（stripCitationMarkers）。
+        "cite": True, "message_history_window_size": 3, "max_tokens": 512,
         "temperature": 0.1, "temperatureEnabled": True, "max_rounds": 1,
         "max_retries": 3, "delay_after_error": 1, "mcp": [], "tools": [],
         "exception_goto": [], "exception_method": "", "exception_default_value": "",

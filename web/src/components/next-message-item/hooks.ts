@@ -19,6 +19,7 @@ import { useSetModalState } from '@/hooks/common-hooks';
 import { IRemoveMessageById, useSpeechWithSse } from '@/hooks/logic-hooks';
 import { useDeleteMessage, useFeedback } from '@/hooks/use-chat-request';
 import { IFeedbackRequestBody } from '@/interfaces/request/chat';
+import { stripCitationMarkers } from '@/utils/citation-utils';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const useSendFeedback = (messageId: string) => {
@@ -115,6 +116,8 @@ function base64ToBlob(base64: string, mime: string): Blob | null {
 }
 
 export const useSpeech = (content: string, audioBinary?: string) => {
+  // 引用标号（[ID:<chunkId>]）是给眼睛看的，念出来只会变成"方括号 ID 冒号…"。
+  const spokenContent = stripCitationMarkers(content);
   const { read } = useSpeechWithSse();
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -160,7 +163,7 @@ export const useSpeech = (content: string, audioBinary?: string) => {
 
   const speech = useCallback(async () => {
     // 命中缓存：直接播，不再请求（第二次点同一段回答时走这里）。
-    const cached = ttsUrlCache.get(content);
+    const cached = ttsUrlCache.get(spokenContent);
     if (cached) {
       try {
         await playUrl(cached);
@@ -180,7 +183,7 @@ export const useSpeech = (content: string, audioBinary?: string) => {
         return;
       }
       const url = URL.createObjectURL(blob);
-      cacheTtsUrl(content, url);
+      cacheTtsUrl(spokenContent, url);
       try {
         await playUrl(url);
       } catch (error) {
@@ -194,7 +197,7 @@ export const useSpeech = (content: string, audioBinary?: string) => {
     // 交给 <audio> 原生解码，不走 MSE。
     setIsLoading(true);
     try {
-      const response = await read({ text: content });
+      const response = await read({ text: spokenContent });
       if (!response) return;
       // 合成失败时后端返回 200 + JSON（如 no default tts model is set）。
       // 这种响应绝不能喂给 <audio>，否则只会得到一个解码失败的空元素。
@@ -207,7 +210,7 @@ export const useSpeech = (content: string, audioBinary?: string) => {
       const blob = await response.blob();
       if (blob.size === 0) return;
       const url = URL.createObjectURL(blob);
-      cacheTtsUrl(content, url);
+      cacheTtsUrl(spokenContent, url);
       await playUrl(url);
     } catch (error) {
       console.warn('tts play failed', error);
@@ -215,7 +218,7 @@ export const useSpeech = (content: string, audioBinary?: string) => {
     } finally {
       setIsLoading(false);
     }
-  }, [read, content, audioBinary, playUrl]);
+  }, [read, spokenContent, audioBinary, playUrl]);
 
   const handleRead = useCallback(() => {
     if (isPlaying) {

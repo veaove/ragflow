@@ -75,15 +75,6 @@ interface IProps
   showLoudspeaker?: boolean;
   showLog?: boolean;
   isShare?: boolean;
-  /**
-   * 回答里没有引用标号时，把本轮命中的文档也画成引用卡片。
-   *
-   * 智能体画布上的「引用」开关决定后端要不要在正文里插 [ID:…] 标号，标号再决定
-   * 前端能否画出卡片。电话 IVR 这类场景不能开（标号会被 TTS 念出来），于是试用
-   * 和运行时一张卡片都没有——即使检索明明命中了。打开这个开关后，没有标号的回答
-   * 会按文档出卡（有配图用配图，没配图放文件图标），和开了引用的那条链路同一套样式。
-   */
-  showReferenceFiles?: boolean;
 }
 
 function MessageItem({
@@ -107,7 +98,6 @@ function MessageItem({
   showLog,
   isShare,
   nickname,
-  showReferenceFiles = false,
 }: IProps) {
   const { theme } = useTheme();
   const { t } = useTranslate('chat');
@@ -348,7 +338,6 @@ function MessageItem({
               <ReferenceImageList
                 referenceChunks={reference?.chunks}
                 messageContent={messageContent}
-                fallbackToHitDocuments={showReferenceFiles}
               ></ReferenceImageList>
             )}
 

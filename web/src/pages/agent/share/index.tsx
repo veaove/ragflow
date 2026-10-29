@@ -157,7 +157,6 @@ const ChatContainer = () => {
                     showLikeButton={false}
                     showLoudspeaker={false}
                     showLog={false}
-                    showReferenceFiles
                     sendLoading={sendLoading}
                   >
                     {message.role === MessageType.Assistant &&

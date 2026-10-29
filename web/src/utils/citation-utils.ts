@@ -125,3 +125,17 @@ export const buildCitationDisplayMap = (
   }
   return map;
 };
+
+/**
+ * 去掉回答里的引用标号，给「要念出来」的场景用（喇叭按钮、自动朗读）。
+ *
+ * 开了「引用」的智能体会在正文里插 [ID:<chunkId>]（前端渲染成 [1][2] 小标），
+ * 语音渠道直接念原文就会把 "方括号 ID 冒号 4983…" 念出来。这里连同标号前面的
+ * 那个空格一起去掉，免得中文标点前留一个空档。
+ */
+export const stripCitationMarkers = (content: string): string =>
+  (content ?? '')
+    .replace(citationMarkerReg, '')
+    .replace(/[ \t]+(?=[，。；：！？、）】」』,.!?;:])/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();

@@ -134,10 +134,6 @@ function AgentChatBox() {
                   clickDocumentButton={clickDocumentButton}
                   index={i}
                   showLikeButton={false}
-                  // 试用/运行时最想知道「这答案照着哪份材料说的」。画布上的
-                  // Agent 节点没开「引用」就不会有 [ID:…] 标号，这里用命中
-                  // 文件清单兜底，别让检索结果在界面上凭空消失。
-                  showReferenceFiles
                   sendLoading={sendLoading && derivedMessages.length - 1 === i}
                 >
                   {message.role === MessageType.Assistant &&

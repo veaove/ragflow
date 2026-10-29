@@ -5,6 +5,7 @@ import {
   citationWholeMarkerReg,
   parseCitationIndex,
   resolveCitationChunk,
+  stripCitationMarkers,
 } from '../citation-utils';
 
 const buildChunk = (id: string): IReferenceChunk => ({
@@ -127,5 +128,25 @@ describe('buildCitationDisplayMap', () => {
     expect(map.get('b3e178620da1fc42')).toBe(0);
     expect(map.get('a2d067519c9e0db1')).toBe(1);
     expect(map.size).toBe(2);
+  });
+});
+
+describe('stripCitationMarkers', () => {
+  it('drops agent [ID:…] markers so TTS does not read them out', () => {
+    expect(
+      stripCitationMarkers(
+        '公司成立于1998年 [ID:498309038b007c6e]。热线 400-818-6666 [ID:7f21]。',
+      ),
+    ).toBe('公司成立于1998年。热线 400-818-6666。');
+  });
+
+  it('drops positional and full-width markers too', () => {
+    expect(stripCitationMarkers('答案如下 [1][2]。')).toBe('答案如下。');
+    expect(stripCitationMarkers('见资料【ID:0ab3】。')).toBe('见资料。');
+  });
+
+  it('leaves an answer without markers untouched', () => {
+    expect(stripCitationMarkers('您好，请讲。')).toBe('您好，请讲。');
+    expect(stripCitationMarkers('')).toBe('');
   });
 });

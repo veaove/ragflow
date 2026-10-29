@@ -92,7 +92,7 @@ describe('buildReferenceImages', () => {
       positions: [],
     }) as IReferenceChunk;
 
-  const consultation = [
+  const chunks = [
     chunk('c1', 'doc-1', '公司概览.md', 'img-1'),
     chunk('c2', 'doc-2', '高效服务.md'),
     chunk('c3', 'doc-3', '投研体系.md', 'img-3'),
@@ -100,7 +100,7 @@ describe('buildReferenceImages', () => {
 
   it('maps every citation marker to the picture of the chunk it points at', () => {
     const images = buildReferenceImages(
-      consultation,
+      chunks,
       '成立于1998年 [ID:c1]，投研体系完备 [ID:c3]。',
     );
 
@@ -125,7 +125,7 @@ describe('buildReferenceImages', () => {
   });
 
   it('keeps the original numbering for positional chat markers', () => {
-    const images = buildReferenceImages(consultation, '答案如下 [0]。');
+    const images = buildReferenceImages(chunks, '答案如下 [0]。');
 
     expect(images).toHaveLength(1);
     expect(images[0]).toMatchObject({
@@ -135,46 +135,12 @@ describe('buildReferenceImages', () => {
     });
   });
 
-  it('renders one card per hit document when the answer carries no marker', () => {
-    const images = buildReferenceImages(
-      [
-        chunk('c1', 'doc-1', '公司概览.md'),
-        chunk('c2', 'doc-1', '公司概览.md', 'img-1'),
-        chunk('c3', 'doc-2', 'faq库.xlsx'),
-      ],
-      '华夏基金成立于1998年。',
-      { fallbackToHitDocuments: true },
-    );
-
-    expect(images).toEqual([
-      {
-        key: 'doc-1',
-        imageId: 'img-1',
-        documentId: 'doc-1',
-        documentName: '公司概览.md',
-        index: 0,
-      },
-      {
-        key: 'doc-2',
-        imageId: '',
-        documentId: 'doc-2',
-        documentName: 'faq库.xlsx',
-        index: 1,
-      },
-    ]);
+  it('skips a cited chunk that carries no picture', () => {
+    expect(buildReferenceImages(chunks, '见 [ID:c2]。')).toEqual([]);
   });
 
-  it('stays empty without a marker unless the caller asks for the fallback', () => {
-    expect(
-      buildReferenceImages(consultation, '华夏基金成立于1998年。'),
-    ).toEqual([]);
-  });
-
-  it('returns an empty list for a run without a reference', () => {
-    expect(
-      buildReferenceImages(undefined, '您好，请讲。', {
-        fallbackToHitDocuments: true,
-      }),
-    ).toEqual([]);
+  it('draws nothing when the answer cites nothing', () => {
+    expect(buildReferenceImages(chunks, '华夏基金成立于1998年。')).toEqual([]);
+    expect(buildReferenceImages(undefined, '您好，请讲。')).toEqual([]);
   });
 });

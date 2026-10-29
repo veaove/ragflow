@@ -31,16 +31,9 @@ import { RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
 import { useMemo } from 'react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { ReferenceImageItem, buildReferenceImages } from './utils';
-
 type IProps = {
   referenceChunks?: IReferenceChunk[] | Record<string, IReferenceChunk>;
   messageContent: string;
-  /**
-   * 回答里没有引用标号时，把本轮命中的文档也画成卡片（有配图用配图，没配图放
-   * 文件图标）。没开「引用」的智能体（电话 IVR 不能开，标号会被 TTS 念出来）
-   * 靠它才有卡片可看，否则检索命中了什么在界面上完全看不出来。
-   */
-  fallbackToHitDocuments?: boolean;
 };
 
 const getButtonVisibilityClass = (imageCount: number) => {
@@ -55,44 +48,13 @@ const getButtonVisibilityClass = (imageCount: number) => {
 };
 
 /**
- * ChunkImage renders one image extracted from a cited chunk, wrapped in
- * PhotoView so it can be zoomed. Only wraps when the image URL is ready:
- * PhotoView caches an empty src and would then show a blank preview.
- */
-function ChunkImage({
-  imageId,
-  documentId,
-  label,
-  previewButton,
-}: {
-  imageId: string;
-  documentId: string;
-  label?: string;
-  previewButton: React.ReactNode;
-}) {
-  const src = useDocumentImageUrl(imageId, documentId);
-  const imageElement = (
-    <Image
-      id={imageId}
-      documentId={documentId}
-      className="h-40 w-full"
-      label={label}
-      previewButton={previewButton}
-    />
-  );
-
-  if (!src) {
-    return imageElement;
-  }
-
-  return <PhotoView src={src}>{imageElement}</PhotoView>;
-}
-
-/**
- * ImagePhotoView renders one reference card: the chunk's picture when it has
- * one, a file icon otherwise (a hit document whose chunks carry no image, which
- * is the norm for txt/xlsx sources), plus the file-name caption that opens the
- * document drawer.
+ * ImagePhotoView renders an image with PhotoView preview wrapper.
+ * Only wraps with PhotoView when the image URL is ready to prevent
+ * PhotoView from registering an empty src which causes blank preview.
+ *
+ * @param id - The image identifier used to fetch the image
+ * @param documentId - The document identifier for the image
+ * @param index - The display index of the image in the list
  */
 function ImagePhotoView({
   imageId,
@@ -100,6 +62,7 @@ function ImagePhotoView({
   documentName,
   label,
 }: ReferenceImageItem) {
+  const src = useDocumentImageUrl(imageId, documentId);
   const { visible, showModal, hideModal } = useSetModalState();
   const previewButton = (
     <button
@@ -118,25 +81,19 @@ function ImagePhotoView({
       <span className="truncate">{middleEllipsis(documentName, 10, 6)}</span>
     </button>
   );
+  const imageElement = (
+    <Image
+      id={imageId}
+      documentId={documentId}
+      className="h-40 w-full"
+      label={label}
+      previewButton={previewButton}
+    />
+  );
 
-  return (
+  const wrapped = (
     <div className="relative">
-      {imageId ? (
-        <ChunkImage
-          imageId={imageId}
-          documentId={documentId}
-          label={label}
-          previewButton={previewButton}
-        />
-      ) : (
-        <div
-          onClick={showModal}
-          className="flex h-40 w-full cursor-pointer items-center justify-center rounded-md border border-border-button bg-bg-card"
-        >
-          <FileIcon id={documentId} name={documentName} width={44}></FileIcon>
-          {previewButton}
-        </div>
-      )}
+      {imageElement}
       {visible && (
         <PdfDrawer
           visible={visible}
@@ -147,6 +104,14 @@ function ImagePhotoView({
       )}
     </div>
   );
+
+  // When src is not yet available, render image without PhotoView
+  // to avoid PhotoView caching an empty src that would show blank preview
+  if (!src) {
+    return wrapped;
+  }
+
+  return <PhotoView src={src}>{wrapped}</PhotoView>;
 }
 
 function ImageCarousel({ images }: { images: ReferenceImageItem[] }) {
@@ -207,14 +172,10 @@ function ImageCarousel({ images }: { images: ReferenceImageItem[] }) {
 export function ReferenceImageList({
   referenceChunks,
   messageContent,
-  fallbackToHitDocuments = false,
 }: IProps) {
   const images = useMemo(
-    () =>
-      buildReferenceImages(referenceChunks, messageContent, {
-        fallbackToHitDocuments,
-      }),
-    [fallbackToHitDocuments, messageContent, referenceChunks],
+    () => buildReferenceImages(referenceChunks, messageContent),
+    [messageContent, referenceChunks],
   );
 
   const imageCount = images?.length || 0;
