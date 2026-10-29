@@ -200,6 +200,22 @@ func (s *Synonym) Lookup(tk string, topN int) []string {
 // An empty tenantID or datasetID keeps the legacy file-only behaviour, so
 // callers that have no knowledge-base context are unaffected.
 func (s *Synonym) LookupScoped(ctx context.Context, tenantID, datasetID, tk string, topN int) []string {
+	return s.LookupScopedWithAliases(ctx, tenantID, datasetID, tk, topN, nil)
+}
+
+// LookupScopedWithAliases is LookupScoped plus a second chance at the same
+// vocabulary through tokenizer-shaped keys.
+//
+// A vocabulary entry is stored exactly as the customer typed it, but the query
+// path asks the dictionary about a *segment*: "基金怎么买" is normalised to
+// "基金买" before the lookup happens. An entry written "基金是怎么买" therefore
+// never matched, and adding it changed nothing at all — which is exactly what
+// the customer reported ("加了相似词，感觉没生效") while the change-set preview,
+// which tokenises the entry, showed an effect.
+//
+// aliasKeys returns the segmented forms of one entry, so both spellings resolve
+// to the same group. Pass nil for verbatim-only behaviour.
+func (s *Synonym) LookupScopedWithAliases(ctx context.Context, tenantID, datasetID, tk string, topN int, aliasKeys func(string) []string) []string {
 	if tk == "" {
 		return []string{}
 	}
@@ -212,7 +228,7 @@ func (s *Synonym) LookupScoped(ctx context.Context, tenantID, datasetID, tk stri
 
 	// 1) Tenant vocabulary wins: it is the only source the customer curates,
 	// so it must take precedence over the generic packaged dictionary.
-	if dict := s.tenantDictionary(ctx, tenantID, datasetID); dict != nil {
+	if dict := s.tenantDictionary(ctx, tenantID, datasetID, aliasKeys); dict != nil {
 		if res, ok := dict[key]; ok && len(res) > 0 {
 			if len(res) > topN {
 				return res[:topN]
@@ -276,9 +292,6 @@ func normalizeSynonymKey(tk string) string {
 	return strings.ToLower(key)
 }
 
-// tenantDictionary returns the cached tenant vocabulary for a knowledge base,
-// loading it on first use. It returns nil when no loader is wired or the scope
-// is incomplete, which leaves the caller on the base dictionary.
 // currentLoader returns the configured vocabulary loader, or nil when none is
 // wired.
 func (s *Synonym) currentLoader() SynonymLoader {
@@ -303,7 +316,7 @@ func (s *Synonym) SetLoader(loader SynonymLoader) {
 // tenantDictionary returns the cached tenant vocabulary for a knowledge base,
 // loading it on first use. It returns nil when no loader is wired or the scope
 // is incomplete, which leaves the caller on the base dictionary.
-func (s *Synonym) tenantDictionary(ctx context.Context, tenantID, datasetID string) map[string][]string {
+func (s *Synonym) tenantDictionary(ctx context.Context, tenantID, datasetID string, aliasKeys func(string) []string) map[string][]string {
 	loader := s.currentLoader()
 	if loader == nil || tenantID == "" || datasetID == "" {
 		return nil
@@ -331,6 +344,10 @@ func (s *Synonym) tenantDictionary(ctx context.Context, tenantID, datasetID stri
 	if dict == nil {
 		dict = map[string][]string{}
 	}
+	// Cache what the loader returned, widened with the entries' segmented
+	// forms. The cache is keyed by dataset only, so a later verbatim-only
+	// caller reuses the widened map — strictly more keys, never fewer.
+	dict = withEntryAliases(dict, aliasKeys)
 
 	entry := &dbDictEntry{dict: dict}
 	entry.loadedAt.Store(time.Now().UnixMilli())
@@ -339,6 +356,71 @@ func (s *Synonym) tenantDictionary(ctx context.Context, tenantID, datasetID stri
 		return stored.dict
 	}
 	return dict
+}
+
+// withEntryAliases widens a vocabulary with the tokenizer-shaped form of every
+// entry, keeping the verbatim key.
+//
+// The two spellings must resolve to the same group: the customer stores
+// "基金是怎么买", the query asks about the segment "基金买". Without the alias
+// the entry is dead weight and the group never fires for that phrasing.
+//
+// The loader's map is never mutated — it is shared with the cache.
+func withEntryAliases(dict map[string][]string, aliasKeys func(string) []string) map[string][]string {
+	if aliasKeys == nil || len(dict) == 0 {
+		return dict
+	}
+
+	extra := make(map[string][]string, len(dict))
+	for entry, members := range dict {
+		if len(members) == 0 {
+			continue
+		}
+		for _, alias := range aliasKeys(entry) {
+			alias = strings.ToLower(strings.TrimSpace(alias))
+			if alias == "" || alias == strings.ToLower(strings.TrimSpace(entry)) {
+				continue
+			}
+			extra[alias] = append(extra[alias], members...)
+		}
+	}
+	if len(extra) == 0 {
+		return dict
+	}
+
+	merged := make(map[string][]string, len(dict)+len(extra))
+	for key, members := range dict {
+		merged[key] = dedupeMembers(members)
+	}
+	for key, members := range extra {
+		merged[key] = dedupeMembers(append(merged[key], members...))
+	}
+	return merged
+}
+
+// dedupeMembers drops repeats and empty strings while preserving order, so an
+// entry reached through both its verbatim and segmented key does not spend two
+// of the caller's synonym slots on the same word.
+func dedupeMembers(members []string) []string {
+	if len(members) < 2 {
+		if len(members) == 1 && members[0] == "" {
+			return nil
+		}
+		return members
+	}
+	seen := make(map[string]struct{}, len(members))
+	out := make([]string, 0, len(members))
+	for _, m := range members {
+		if m == "" {
+			continue
+		}
+		if _, ok := seen[m]; ok {
+			continue
+		}
+		seen[m] = struct{}{}
+		out = append(out, m)
+	}
+	return out
 }
 
 // InvalidateDataset drops the cached vocabulary of one knowledge base so the

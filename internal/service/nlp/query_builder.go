@@ -326,7 +326,42 @@ func (qb *QueryBuilder) lookupSynonyms(
 	if syns, ok := override[tk]; ok {
 		return syns
 	}
-	return qb.synonym.LookupScoped(ctx, tenantID, datasetID, tk, 8)
+	return qb.synonym.LookupScopedWithAliases(ctx, tenantID, datasetID, tk, 8, qb.vocabularyAliasKeys)
+}
+
+// vocabularyAliasKeys returns the segmented forms of a vocabulary entry so the
+// dictionary answers to both the spelling the customer stored and the spelling
+// the query path asks about.
+//
+// The lookup key on this side is a segment, not raw text: "基金怎么买" becomes
+// "基金买" long before the dictionary is consulted. An entry stored verbatim as
+// "基金是怎么买" therefore never matched, and adding it changed nothing —
+// while the change-set preview, which tokenises entries itself, showed a
+// difference. That gap is what made the customer believe the vocabulary was
+// broken.
+//
+// Only entries whose segmentation actually differs contribute a key, and
+// one-rune results are dropped: segmenting "怎么买" down to "买" would graft
+// every query containing that character onto the whole group.
+func (qb *QueryBuilder) vocabularyAliasKeys(entry string) []string {
+	if qb == nil || qb.termWeight == nil || entry == "" {
+		return nil
+	}
+	normalized := strings.ToLower(qb.StrFullWidth2HalfWidth(qb.AddSpaceBetweenEngZh(entry)))
+	normalized = qb.Traditional2Simplified(normalized)
+	normalized = rePunct.ReplaceAllString(normalized, " ")
+	normalized = qb.RmWWW(normalized)
+
+	segments := qb.termWeight.Split(normalized)
+	keys := make([]string, 0, len(segments))
+	for _, seg := range segments {
+		seg = strings.TrimSpace(seg)
+		if utf8.RuneCountInString(seg) < 2 || strings.EqualFold(seg, entry) {
+			continue
+		}
+		keys = append(keys, seg)
+	}
+	return keys
 }
 
 func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID, datasetID, txt string, tbl string, minMatch float64, language string, synonymOverride map[string][]string) (*types.MatchTextExpr, []string) {
