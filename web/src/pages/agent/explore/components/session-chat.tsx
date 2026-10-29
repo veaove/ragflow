@@ -191,6 +191,7 @@ export function SessionChat({ session }: SessionChatProps) {
                       showLikeButton={false}
                       sendLoading={isStreamingActiveSession}
                       showLog={false}
+                      showReferenceFiles
                     >
                       {hasUserFillUpInputs &&
                         derivedMessages.length - 1 === i && (

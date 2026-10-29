@@ -529,6 +529,7 @@ export default {
       assistantSetting: '助理設置',
       qcRules: '質檢規則',
       qcBlockedBanner: '該回答已被質檢攔截',
+      referenceFiles: '引用檔案 {{num}} 個',
       qcRulesHint:
         '勾選即對本應用生效，改動自動儲存；未勾選的規則不參與質檢。規則在哪裡建立不影響是否生效',
       qcRulesSelectedCount: '生效 {{selected}} 條',

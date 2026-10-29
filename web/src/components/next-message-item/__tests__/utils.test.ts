@@ -1,6 +1,9 @@
-import { UploadResponseDataType } from '@/interfaces/database/chat';
+import {
+  IReferenceChunk,
+  UploadResponseDataType,
+} from '@/interfaces/database/chat';
 import { IDocumentInfo } from '@/interfaces/database/document';
-import { getFileMimeType, isImageFile } from '../utils';
+import { aggregateReferenceDocs, getFileMimeType, isImageFile } from '../utils';
 
 describe('getFileMimeType', () => {
   it('uses the browser-provided type for local File objects', () => {
@@ -62,5 +65,52 @@ describe('isImageFile', () => {
     expect(isImageFile(new File(['x'], 'archive.bin', { type: '' }))).toBe(
       false,
     );
+  });
+});
+
+describe('aggregateReferenceDocs', () => {
+  const chunk = (documentId: string, documentName: string, id: string) =>
+    ({
+      id,
+      content: 'x',
+      document_id: documentId,
+      document_name: documentName,
+      dataset_id: 'kb-1',
+      image_id: '',
+      similarity: 0.5,
+      vector_similarity: 0.5,
+      term_similarity: 0.5,
+      positions: [],
+    }) as IReferenceChunk;
+
+  it('groups the chunks of one document under a single entry', () => {
+    const docs = aggregateReferenceDocs([
+      chunk('doc-1', '公司概览.md', 'c1'),
+      chunk('doc-1', '公司概览.md', 'c2'),
+      chunk('doc-2', '联系我们.md', 'c3'),
+    ]);
+
+    expect(docs).toEqual([
+      { count: 2, doc_id: 'doc-1', doc_name: '公司概览.md' },
+      { count: 1, doc_id: 'doc-2', doc_name: '联系我们.md' },
+    ]);
+  });
+
+  it('accepts the keyed shape an agent message ships', () => {
+    const docs = aggregateReferenceDocs({
+      '498309038b007c6e': chunk('doc-1', '公司概览.md', 'c1'),
+    });
+
+    expect(docs).toEqual([
+      { count: 1, doc_id: 'doc-1', doc_name: '公司概览.md' },
+    ]);
+  });
+
+  it('drops chunks that lost their document reference', () => {
+    expect(aggregateReferenceDocs([chunk('', '', 'c1')])).toEqual([]);
+  });
+
+  it('returns an empty list for a run without a reference', () => {
+    expect(aggregateReferenceDocs(undefined)).toEqual([]);
   });
 });
