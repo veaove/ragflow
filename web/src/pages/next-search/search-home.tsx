@@ -89,18 +89,28 @@ export default function SearchHome({
     },
   });
 
-  // 相似问题：输入停顿 500ms 后拿当前问题去检索，取命中的 chunk 作为候选。
+  // 相似问题：输入停顿后拿当前问题去检索，取命中的 chunk 作为候选。
+  //
+  // 停顿取 250ms 而不是 500ms：这一格是「边打字边看」的预览，实测一次检索
+  // 本身要 300~550ms（服务端 280ms，其中 embedding 是远程调用），500ms 的
+  // 空等占了用户感知延迟的三分之一以上，而多发的请求只是同一条查询的前缀。
   const [debouncedQuestion, setDebouncedQuestion] = useState('');
   useEffect(() => {
+    const next = trim(searchText);
     const timer = setTimeout(() => {
-      setDebouncedQuestion(trim(searchText));
-    }, 500);
+      // 只在文本真的变了才落状态：同值 setState 会让 queryKey 指向同一条查询，
+      // 白白多打一次 300ms+ 的检索。
+      setDebouncedQuestion((prev) => (prev === next ? prev : next));
+    }, 250);
     return () => clearTimeout(timer);
   }, [searchText]);
 
-  const { data: similarQuestions } = useQuery({
+  const { data: similarQuestions, isFetching: similarFetching } = useQuery({
     queryKey: ['similarQuestions', debouncedQuestion, kbIds.join(',')],
     enabled: debouncedQuestion.length >= 2 && kbIds.length > 0,
+    // 输入下一个字时先留着上一轮的结果，不要清空重来：清空会让右侧在每次
+    // 按键后闪一下「未找到相关问题」，看起来像坏了。
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       // umi-request 的第二个参数是 options，body 必须放在 data 里；
       // 直接平铺会被当成 options，body 为空 → 后端 ShouldBindJSON 报 EOF（101）。
@@ -229,12 +239,20 @@ export default function SearchHome({
             </h2>
             <p className="mt-1 text-sm text-text-secondary">相关度由高到低</p>
 
-            <div className="mt-4 flex flex-col gap-3">
+            <div
+              className={`mt-4 flex flex-col gap-3 transition-opacity ${
+                similarFetching ? 'opacity-60' : ''
+              }`}
+            >
               {similarList.length === 0 && (
                 <p className="rounded-lg border border-dashed border-border-default p-4 text-center text-sm text-text-secondary">
-                  {debouncedQuestion.length >= 2
-                    ? '未找到相关问题，换个说法试试'
-                    : '输入问题后，这里会显示知识库中相关的内容'}
+                  {debouncedQuestion.length < 2
+                    ? '输入问题后，这里会显示知识库中相关的内容'
+                    : // 请求还没回来时不能说「未找到」：那 300~550ms 里用户看到的
+                      // 全是「未找到相关问题」，明明马上就有结果。
+                      similarFetching
+                      ? '正在检索知识库…'
+                      : '未找到相关问题，换个说法试试'}
                 </p>
               )}
               {similarList.map(({ question, score, tag }) => (

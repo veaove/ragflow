@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
 	"ragflow/internal/common"
@@ -180,6 +181,13 @@ func (m *MinioStorage) Get(ctx context.Context, bucket, fnm string, tenantID ...
 	bucket, fnm = m.resolveBucketAndPath(bucket, fnm)
 	var lastErr error
 
+	// A missing bucket / key is a configuration or lifecycle problem, not a
+	// transient one: the two-attempt loop below only ever adds a 1s sleep per
+	// attempt before failing with the same error. That is not free — Get is on
+	// the retrieval path (tag source files, chunk images), and a stale tag-file
+	// reference to a deleted bucket used to cost ~2s on every single search
+	// while the object could never appear.
+
 	for i := 0; i < 2; i++ {
 		obj, err := m.client.GetObject(ctx, bucket, fnm, minio.GetObjectOptions{})
 		if err != nil {
@@ -188,6 +196,12 @@ func (m *MinioStorage) Get(ctx context.Context, bucket, fnm string, tenantID ...
 				return nil, ctxErr
 			}
 			common.Warn("failed to get object", zap.String("bucket", bucket), zap.String("key", fnm), zap.Error(err))
+			if isMissingObjectErr(err) {
+				return nil, err
+			}
+			if i == 1 {
+				break
+			}
 			if sleepErr := sleepOrAbort(ctx, time.Second); sleepErr != nil {
 				return nil, sleepErr
 			}
@@ -205,7 +219,13 @@ func (m *MinioStorage) Get(ctx context.Context, bucket, fnm string, tenantID ...
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
 			}
-			common.Error("failed to read object data", err, zap.String("bucket", bucket), zap.String("key", fnm))
+			common.Error("failed to read object data", readErr, zap.String("bucket", bucket), zap.String("key", fnm))
+			if isMissingObjectErr(readErr) {
+				return nil, readErr
+			}
+			if i == 1 {
+				break
+			}
 			if sleepErr := sleepOrAbort(ctx, time.Second); sleepErr != nil {
 				return nil, sleepErr
 			}
@@ -216,6 +236,31 @@ func (m *MinioStorage) Get(ctx context.Context, bucket, fnm string, tenantID ...
 	}
 
 	return nil, lastErr
+}
+
+// isMissingObjectErr reports whether the object store said the bucket or the key
+// simply does not exist. Those never resolve on their own, so callers on a
+// latency-sensitive path must fail fast instead of sleeping and retrying.
+//
+// errors.As rather than minio.ToErrorResponse: the SDK error arrives wrapped by
+// the reader in some paths, and ToErrorResponse only type-asserts the outermost
+// error, which silently turns a permanent miss back into a retry.
+func isMissingObjectErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	missing := func(code string) bool {
+		return code == "NoSuchBucket" || code == "NoSuchKey"
+	}
+	var resp minio.ErrorResponse
+	if errors.As(err, &resp) {
+		return missing(resp.Code)
+	}
+	var respPtr *minio.ErrorResponse
+	if errors.As(err, &respPtr) && respPtr != nil {
+		return missing(respPtr.Code)
+	}
+	return false
 }
 
 // Remove removes an object from MinIO
