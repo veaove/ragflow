@@ -230,9 +230,16 @@ func (dao *SynonymDAO) PromotePendingByGroupIDs(ctx context.Context, db *gorm.DB
 		Update("status", entity.SynonymStatusLive).Error
 }
 
-// DiscardPendingByGroupIDs soft-deletes the pending groups and words of a
-// change set, restricted to the selected group ids. Live rows are untouched;
-// only the staged copies of the selected groups are abandoned.
+// DiscardPendingByGroupIDs removes the pending groups and words of a change
+// set, restricted to the selected group ids. Live rows are untouched; only the
+// staged copies of the selected groups are abandoned.
+//
+// The rows are deleted rather than flagged. `disabled` already means "a later
+// publish replaced this version", and the vocabulary manager renders it as
+// 已被新版本替换 — but a discarded copy was never live, and the group it was
+// based on is still live and untouched. Flagging it left a ghost row in the
+// manager claiming a replacement that never happened, with the edit entry
+// hidden because the row looked like history.
 func (dao *SynonymDAO) DiscardPendingByGroupIDs(ctx context.Context, db *gorm.DB, tenantID, datasetID, changeSetID string, groupIDs []string) error {
 	ids, err := selectedPendingGroupIDs(ctx, db, tenantID, datasetID, changeSetID, groupIDs)
 	if err != nil {
@@ -241,17 +248,76 @@ func (dao *SynonymDAO) DiscardPendingByGroupIDs(ctx context.Context, db *gorm.DB
 	if len(ids) == 0 {
 		return nil
 	}
-	if err := db.WithContext(ctx).Model(&entity.SynonymWord{}).
-		Where("status = ?", entity.SynonymStatusPending).
+	// The ids are the staged copies only, so deleting their words cannot touch
+	// the live words of the group the copy was based on.
+	if err := db.WithContext(ctx).
 		Where("group_id IN ?", ids).
-		Update("status", entity.SynonymStatusDisabled).Error; err != nil {
+		Delete(&entity.SynonymWord{}).Error; err != nil {
 		return err
 	}
 	return db.WithContext(ctx).Model(&entity.SynonymGroup{}).
 		Where("tenant_id = ?", tenantID).
 		Where("dataset_id = ?", datasetID).
 		Where("id IN ?", ids).
-		Update("status", entity.SynonymStatusDisabled).Error
+		Delete(&entity.SynonymGroup{}).Error
+}
+
+// maxVersionChainDepth bounds the version-chain walk in LiveHeadOfChain. A chain
+// grows by one row per publish and is a handful of rows long in practice; the
+// bound only exists so a corrupted row that points at itself cannot spin.
+const maxVersionChainDepth = 16
+
+// LiveHeadOfChain follows source_group_id forward from groupID and returns the
+// live version at the head of that chain, or nil when the lineage has no live
+// version left.
+//
+// A published copy keeps source_group_id pointing at the row it replaced, so the
+// chain is the version lineage — G0 ← G1 ← G2, exactly one of them live at a
+// time. Editing a row that is no longer live has to be staged against the head:
+// a pending copy whose source is already disabled publishes *beside* the live
+// version instead of replacing it, leaving two live versions of one concept in
+// the retrieval dictionary.
+func (dao *SynonymDAO) LiveHeadOfChain(ctx context.Context, db *gorm.DB, tenantID, datasetID, groupID string) (*entity.SynonymGroup, error) {
+	current := groupID
+	visited := map[string]struct{}{groupID: {}}
+
+	for depth := 0; depth < maxVersionChainDepth; depth++ {
+		children := make([]*entity.SynonymGroup, 0, 2)
+		if err := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
+			Where("tenant_id = ?", tenantID).
+			Where("dataset_id = ?", datasetID).
+			Where("source_group_id = ?", current).
+			Order("create_time DESC").
+			Find(&children).Error; err != nil {
+			return nil, err
+		}
+		if len(children) == 0 {
+			return nil, nil
+		}
+		// At most one version of a lineage is live; finding it ends the walk.
+		for _, child := range children {
+			if child.Status == entity.SynonymStatusLive {
+				return child, nil
+			}
+		}
+		// Nothing live yet — follow the newest copy that has not been visited so
+		// a partially built chain (a staged copy that was never published) still
+		// resolves.
+		var next *entity.SynonymGroup
+		for _, child := range children {
+			if _, seen := visited[child.ID]; seen {
+				continue
+			}
+			next = child
+			break
+		}
+		if next == nil {
+			return nil, nil
+		}
+		visited[next.ID] = struct{}{}
+		current = next.ID
+	}
+	return nil, nil
 }
 
 // FindPendingCopy returns the pending copy already staged for sourceGroupID in

@@ -72,6 +72,11 @@ interface EditorState {
   groupType: SynonymGroupType;
   remark: string;
   wordsText: string;
+  /**
+   * 打开的是一条已被后续发布替换下来的历史版本。只用于在编辑器里提示「保存后
+   * 会成为一个新的待生效版本」，不参与请求体。
+   */
+  archived: boolean;
 }
 
 const emptyEditor = (groupType: SynonymGroupType): EditorState => ({
@@ -82,6 +87,7 @@ const emptyEditor = (groupType: SynonymGroupType): EditorState => ({
   groupType,
   remark: '',
   wordsText: '',
+  archived: false,
 });
 
 /**
@@ -170,6 +176,9 @@ export default function Vocab() {
         groupType: group.group_type ?? 'synonym',
         remark: group.remark ?? '',
         wordsText: words.map((w) => w.word).join('\n'),
+        // 历史版本同样可以编辑：锁定编辑入口只会让人改不了要改的词，而账号里
+        // 看到的仍是那一条。保存会按「新版本」暂存，发布后才生效。
+        archived: group.status === 'disabled',
       });
     } catch {
       toast.error('加载词条失败');
@@ -213,7 +222,7 @@ export default function Vocab() {
         : await createSynonymGroup(datasetId, payload);
 
       // 业务错误同样会 resolve（错误提示由请求拦截器统一弹出），所以不能无条件弹
-      // 「已保存」——否则被拒绝的编辑（例如编辑了已被替换的历史词组）也会显示成功。
+      // 「已保存」——否则被拒绝的保存（名称重复、无权写入、变更集失效）也会显示成功。
       if (response?.data?.code !== 0) {
         return;
       }
@@ -373,6 +382,7 @@ export default function Vocab() {
                 const aliases = group.words?.slice(1).map((w) => w.word) ?? [];
                 // disabled = 已被某次发布替换下来的历史版本，不是「待生效」。
                 // 之前统一按「非 live 即待生效」渲染，用户会把它当成正常词组点进去编辑。
+                // 但它仍然可编辑：编辑入口不再由状态决定，只有徽标文案不同。
                 const status = group.status ?? 'live';
                 return (
                   <TableRow key={group.id}>
@@ -412,6 +422,11 @@ export default function Vocab() {
                             ? 'text-text-sub-title'
                             : undefined
                         }
+                        title={
+                          status === 'disabled'
+                            ? '已被后续发布的新版本替换；仍可编辑，保存后成为新的待生效版本'
+                            : undefined
+                        }
                       >
                         {status === 'live'
                           ? '已生效'
@@ -421,20 +436,17 @@ export default function Vocab() {
                       </Badge>
                     </TableCell>
                     <TableCell>
+                      {/* 编辑入口对所有状态开放。历史版本（已替换）原来只显示
+                          一行灰字、把编辑按钮藏掉，用户想改那条词就没有入口了 ——
+                          而列表里既然还列着它，就得能改它。 */}
                       <div className="flex gap-2">
-                        {status === 'disabled' ? (
-                          <span className="text-xs text-text-sub-title">
-                            已被新版本替换
-                          </span>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="link"
-                            onClick={() => openEdit(group)}
-                          >
-                            编辑
-                          </Button>
-                        )}
+                        <Button
+                          size="sm"
+                          variant="link"
+                          onClick={() => openEdit(group)}
+                        >
+                          编辑
+                        </Button>
                         <Button
                           size="sm"
                           variant="link"
@@ -525,6 +537,14 @@ function VocabEditor({
 
         {draft && (
           <div className="flex flex-col gap-4">
+            {/* 编辑历史版本时先说清楚后果：保存不会直接改线上那一条，而是把当前
+                生效的版本换成一个新的待生效版本，仍需到变更中心发布。 */}
+            {draft.archived && (
+              <p className="rounded-md border border-border-base bg-background-second p-3 text-xs text-text-secondary">
+                这是已被新版本替换下来的历史词组。保存后会作为一个新的待生效版本
+                暂存，到「变更中心」发布后才会替换当前生效的版本。
+              </p>
+            )}
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="mb-1 block text-sm text-text-secondary">
