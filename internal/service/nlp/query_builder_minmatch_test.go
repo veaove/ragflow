@@ -134,6 +134,7 @@ func TestQuestionScopedWithOverride_RebasesMinimumShouldMatch(t *testing.T) {
 
 	baseGate, _ := baseline.ExtraOptions["minimum_should_match"].(float64)
 	expGate, _ := expanded.ExtraOptions["minimum_should_match"].(float64)
+	t.Logf("minimum_should_match: baseline=%v expanded=%v query=%q", baseGate, expGate, expanded.MatchingText)
 
 	if baseGate != 0.3 {
 		t.Fatalf("baseline minimum_should_match = %v, want 0.3", baseGate)
