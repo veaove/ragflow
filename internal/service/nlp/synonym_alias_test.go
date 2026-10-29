@@ -160,6 +160,10 @@ func TestVocabularyAliasKeysSkipsFragments(t *testing.T) {
 	if got := qb.vocabularyAliasKeys("买基金"); len(got) != 0 {
 		t.Fatalf("vocabularyAliasKeys(买基金) = %v, want none", got)
 	}
+	// Latin entries must not grow aliases either: they tokenise to themselves.
+	if got := qb.vocabularyAliasKeys("50ETF"); len(got) != 0 {
+		t.Fatalf("vocabularyAliasKeys(50ETF) = %v, want none", got)
+	}
 	// Different spelling -> exactly the segment the query path would use.
 	got := qb.vocabularyAliasKeys("基金是怎么买")
 	if !reflect.DeepEqual(got, []string{"基金买"}) {
