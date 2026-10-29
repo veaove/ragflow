@@ -518,6 +518,12 @@ func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID
 	var qs []string
 	// keywords stores keywords extracted from segments.
 	var keywords []string
+	// literalClauses and synonymClauses count what actually lands in the
+	// emitted query string: the user's own terms versus the aliases a
+	// configured synonym group appended. minimum_should_match is a share of
+	// that total, so these two counts are what rebaseMinMatchForSynonyms needs
+	// to keep the gate measuring the question instead of the dictionary's size.
+	var literalClauses, synonymClauses int
 
 	// Split text and process each segment (limit to 256)
 	// segments are the text segments after splitting by term weight.
@@ -620,6 +626,7 @@ func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID
 					fineGrainedSyns = append(fineGrainedSyns, fg)
 				}
 			}
+			synonymClauses += len(fineGrainedSyns)
 
 			if len(keywords) >= 32 {
 				break
@@ -659,6 +666,7 @@ func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID
 			// weight, and one decimal flattens every weight below 0.05 to ^0.0.
 			termParts = append(termParts, fmt.Sprintf("(%s)^%v", termWeight.term, termWeight.weight))
 		}
+		literalClauses += len(termParts)
 		// tmsStr is the query string for the current segment.
 		tmsStr := strings.Join(termParts, " ")
 
@@ -668,6 +676,7 @@ func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID
 			tokenized, _ := tok.Tokenize(segment)
 			if tokenized != "" {
 				tmsStr += fmt.Sprintf(` ("%s"~2)^1.5`, tokenized)
+				literalClauses++
 			}
 		}
 
@@ -691,6 +700,7 @@ func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID
 				// absolute similarity_threshold and ended up blocking chunks
 				// that were reachable only through a configured alias.
 				tmsStr = fmt.Sprintf("(%s)^5 OR (%s)^5", tmsStr, strings.Join(synParts, " OR "))
+				synonymClauses += len(synParts)
 			}
 		}
 
@@ -718,13 +728,51 @@ func (qb *QueryBuilder) QuestionScopedWithOverride(ctx context.Context, tenantID
 			MatchingText: query,
 			TopN:         100,
 			ExtraOptions: map[string]interface{}{
-				"minimum_should_match": minMatch,
+				"minimum_should_match": rebaseMinMatchForSynonyms(minMatch, literalClauses, synonymClauses),
 				"original_query":       originalQuery,
 			},
 		}, keywords
 	}
 
 	return nil, keywords
+}
+
+// rebaseMinMatchForSynonyms re-expresses a minimum_should_match fraction over a
+// query that carries synonym expansion.
+//
+// minimum_should_match is a share of the clauses the engine finds in the query
+// string — not a share of what the user typed. A synonym group turns one typed
+// segment into one literal clause plus N alias clauses, so the same 30% quietly
+// became "match at least 30% of a query you never wrote". A chunk sitting on the
+// user's own words then fell below the bar, the whole lexical leg returned
+// nothing, and the fused score collapsed to vector_similarity_weight × vector
+// score. Measured on a five-alias group, one question went 0.909 → 0.213 while
+// the vector leg moved by 0.013 — the aliases meant to widen recall had zeroed
+// the keyword channel.
+//
+// Scaling the fraction by literal/(literal+synonym) asks for the same share of
+// the ORIGINAL clauses. Alias-only matches still clear the gate, so reachability
+// through an alias is unchanged; the lexical leg simply stops being cancelled
+// out by the aliases themselves. With no expansion the fraction passes through
+// untouched, which keeps every synonym-free query bit-identical.
+func rebaseMinMatchForSynonyms(minMatch float64, literalClauses, synonymClauses int) float64 {
+	if minMatch <= 0 || synonymClauses <= 0 {
+		return minMatch
+	}
+	total := literalClauses + synonymClauses
+	if total <= 0 {
+		return minMatch
+	}
+	rebased := minMatch * float64(literalClauses) / float64(total)
+	// The engines render the fraction as a whole percentage, so anything below
+	// the resolvable step would be truncated back to the old value's integer
+	// neighbours. Zero is the honest encoding of "the question is shorter than
+	// one clause of the expansion" — it says: match on any term, which is what
+	// minMatch already means at vector_similarity_weight >= 0.8.
+	if rebased < 0.01 {
+		return 0.0
+	}
+	return rebased
 }
 
 // Paragraph builds a query expression based on content terms and keywords.
