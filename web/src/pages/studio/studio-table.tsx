@@ -176,7 +176,7 @@ export function StudioTable({
                         }
                       >
                         <Compass className="size-3.5" />
-                        {t('explore.title')}
+                        {t('explore.tryOut')}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => openCanvas(app.id, 'checklist')}

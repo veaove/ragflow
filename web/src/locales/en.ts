@@ -4929,6 +4929,8 @@ Important structured information may include: names, dates, locations, events, k
     },
     explore: {
       title: 'Launch',
+      // Entry button on the canvas header / studio menu; distinct from the page title.
+      tryOut: 'Try',
       canvasList: 'Canvas List',
       sessions: 'Sessions',
       newSession: 'New Session',

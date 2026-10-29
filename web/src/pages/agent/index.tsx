@@ -400,7 +400,7 @@ export default function Agent() {
           {isConversationMode && (
             <Button variant={'secondary'} onClick={handleExploreClick}>
               <Compass />
-              {t('explore.title')}
+              {t('explore.tryOut')}
             </Button>
           )}
           <PublishConfirmDialog
