@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import {
   Table,
   TableBody,
@@ -26,6 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useClientPagination } from '@/hooks/logic-hooks/use-pagination';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import {
   AuditEntry,
@@ -157,6 +159,14 @@ export default function ConsoleRoles() {
   const audits: AuditEntry[] = (auditData ?? []).filter((a) =>
     PERMISSION_OBJECTS.includes(a.object_type),
   );
+
+  // 审计接口只回一个数组（没有 total），这里又固定取最近 100 条 —— 所以只能在
+  // 这 100 条里做前端分页。要翻更早的记录得让后端补 total，本页不擅自假装能翻。
+  const {
+    pagedList: auditPageItems,
+    total: auditTotal,
+    paginationProps: auditPaginationProps,
+  } = useClientPagination(audits);
 
   const { data, isFetching } = useQuery({
     queryKey: ['console/roles', tenantId],
@@ -563,7 +573,7 @@ export default function ConsoleRoles() {
                       </TableCell>
                     </TableRow>
                   )}
-                  {audits.map((a) => (
+                  {auditPageItems.map((a) => (
                     <TableRow key={a.id}>
                       <TableCell className="whitespace-nowrap text-xs text-text-secondary">
                         {a.create_time
@@ -592,6 +602,11 @@ export default function ConsoleRoles() {
                 </TableBody>
               </Table>
             </div>
+            {auditTotal > 0 && (
+              <div className="mt-2">
+                <RAGFlowPagination {...auditPaginationProps} />
+              </div>
+            )}
             <DialogFooter>
               <Button variant="secondary" onClick={() => setAuditOpen(false)}>
                 关闭

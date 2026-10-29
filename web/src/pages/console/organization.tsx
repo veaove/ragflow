@@ -5,7 +5,7 @@ import {
   LucidePlus,
   LucideSearch,
 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConsoleGuard } from '@/components/console-guard';
@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import {
   Table,
   TableBody,
@@ -56,6 +57,10 @@ export default function ConsoleOrganization() {
   const [editingId, setEditingId] = useState<string>('');
   const [parentId, setParentId] = useState<string>('');
   const [name, setName] = useState('');
+  // 成员表走服务端分页（handler 支持 page/page_size，上限 200）。原来固定
+  // `page_size: 200` 且没有分页条，成员超过 200 人时后面的直接被截断。
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const { data: deptData } = useQuery({
     queryKey: ['console/departments', tenantId],
@@ -68,18 +73,32 @@ export default function ConsoleOrganization() {
   const departments: DepartmentNode[] = deptData?.departments ?? [];
 
   const { data: memberData, isFetching } = useQuery({
-    queryKey: ['console/members', tenantId, selectedDept, keywords],
+    queryKey: [
+      'console/members',
+      tenantId,
+      selectedDept,
+      keywords,
+      page,
+      pageSize,
+    ],
     enabled: !!tenantId,
     queryFn: async () => {
       const res = await fetchConsoleMembers(tenantId as string, {
         department_id: selectedDept || undefined,
         keywords: keywords || undefined,
-        page_size: 200,
+        page,
+        page_size: pageSize,
       });
       return res?.data?.data ?? { members: [], total: 0 };
     },
   });
   const members: ConsoleMember[] = memberData?.members ?? [];
+  const total = memberData?.total ?? 0;
+
+  // 切部门 / 改关键词都会让当前页偏移失效，回到第 1 页。
+  useEffect(() => {
+    setPage(1);
+  }, [selectedDept, keywords]);
 
   const flat = useMemo(() => {
     const out: DepartmentNode[] = [];
@@ -253,7 +272,7 @@ export default function ConsoleOrganization() {
                 {currentName}
               </span>
               <span className="rounded bg-background-second px-1.5 py-0.5 text-xs text-text-secondary">
-                {members.length} 人
+                {total} 人
               </span>
               <div className="relative ml-auto">
                 <LucideSearch className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
@@ -327,6 +346,20 @@ export default function ConsoleOrganization() {
                 </TableBody>
               </Table>
             </div>
+
+            {total > 0 && (
+              <div className="border-t border-border-default px-4 py-2">
+                <RAGFlowPagination
+                  current={page}
+                  pageSize={pageSize}
+                  total={total}
+                  onChange={(next, nextSize) => {
+                    setPage(next);
+                    if (nextSize) setPageSize(nextSize);
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
 

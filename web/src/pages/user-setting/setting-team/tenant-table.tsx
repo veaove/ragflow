@@ -25,6 +25,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
+import { useClientPagination } from '@/hooks/logic-hooks/use-pagination';
 import {
   useFetchUserInfo,
   useListTenant,
@@ -68,6 +70,9 @@ const TenantTable = ({ searchTerm }: { searchTerm: string }) => {
     return filtered;
   }, [data, sortOrder, searchTerm]);
 
+  // Same as the member table: `useListTenant` returns every tenant at once.
+  const { pagedList, total, paginationProps } = useClientPagination(sortedData);
+
   const toggleSortOrder = () => {
     if (sortOrder === 'asc') {
       setSortOrder('desc');
@@ -89,98 +94,111 @@ const TenantTable = ({ searchTerm }: { searchTerm: string }) => {
   };
 
   return (
-    // 外层原来是 `overflow-hidden`：它同样是滚动容器，却永远滚不动，sticky 表头
-    // 会贴在上面跟着页面走。改 `overflow-auto` 后这层真的能滚，圆角裁剪不变。
-    <div className="rounded-lg bg-bg-input scrollbar-auto overflow-auto border border-border-default">
-      <Table scroll="page" rootClassName="rounded-lg">
-        <TableHeader className="bg-bg-title">
-          <TableRow className="hover:bg-bg-title">
-            <TableHead className="h-12 px-4">{t('common.name')}</TableHead>
-            <TableHead className="h-12 px-4">
-              <div className="flex items-center gap-1">
-                {t('setting.updateDate')}
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={toggleSortOrder}
-                >
-                  {renderSortIcon()}
-                </Button>
-              </div>
-            </TableHead>
-            <TableHead className="h-12 px-4">{t('setting.email')}</TableHead>
-            <TableHead className="h-12 px-4">{t('common.action')}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody className="bg-bg-base">
-          {loading ? (
-            <TableRow>
-              <TableCell colSpan={4} className="h-24 text-center">
-                <div className="flex items-center justify-center">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+    <div>
+      {/* 外层原来是 `overflow-hidden`：它同样是滚动容器，却永远滚不动，sticky 表头
+          会贴在上面跟着页面走。改 `overflow-auto` 后这层真的能滚，圆角裁剪不变。 */}
+      <div className="rounded-lg bg-bg-input scrollbar-auto overflow-auto border border-border-default">
+        <Table scroll="page" rootClassName="rounded-lg">
+          <TableHeader className="bg-bg-title">
+            <TableRow className="hover:bg-bg-title">
+              <TableHead className="h-12 px-4">{t('common.name')}</TableHead>
+              <TableHead className="h-12 px-4">
+                <div className="flex items-center gap-1">
+                  {t('setting.updateDate')}
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={toggleSortOrder}
+                  >
+                    {renderSortIcon()}
+                  </Button>
                 </div>
-              </TableCell>
+              </TableHead>
+              <TableHead className="h-12 px-4">{t('setting.email')}</TableHead>
+              <TableHead className="h-12 px-4">{t('common.action')}</TableHead>
             </TableRow>
-          ) : sortedData && sortedData.length > 0 ? (
-            sortedData.map((tenant) => (
-              <TableRow key={tenant.tenant_id} className="hover:bg-bg-card">
-                <TableCell className="p-4 flex gap-1 items-center">
-                  <RAGFlowAvatar
-                    isPerson
-                    className="size-4"
-                    avatar={tenant.avatar}
-                    name={tenant.nickname}
-                  />
-                  <SearchHighlight text={tenant.nickname} query={searchTerm} />
-                </TableCell>
-                <TableCell className="p-4">
-                  {formatDate(tenant.update_date)}
-                </TableCell>
-                <TableCell className="p-4">
-                  <SearchHighlight text={tenant.email} query={searchTerm} />
-                </TableCell>
-                <TableCell className="p-4">
-                  {tenant.role === TenantRole.Invite ? (
-                    <div className="flex gap-2">
-                      <Button
-                        variant="link"
-                        className="p-0 h-auto"
-                        onClick={handleAgree(tenant.tenant_id, true)}
-                      >
-                        {t(`setting.agree`)}
-                      </Button>
-                      <Button
-                        variant="link"
-                        className="p-0 h-auto"
-                        onClick={handleAgree(tenant.tenant_id, false)}
-                      >
-                        {t(`setting.refuse`)}
-                      </Button>
-                    </div>
-                  ) : tenant.role === TenantRole.Normal &&
-                    user.id !== tenant.tenant_id ? (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 p-0"
-                      onClick={handleQuitTenantUser(user.id, tenant.tenant_id)}
-                    >
-                      {/* {t('setting.quit')} */}
-                      <LogOut />
-                    </Button>
-                  ) : null}
+          </TableHeader>
+          <TableBody className="bg-bg-base">
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={4} className="h-24 text-center">
+                  <div className="flex items-center justify-center">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+                  </div>
                 </TableCell>
               </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={4} className="h-24 text-center">
-                {t('common.noData')}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            ) : sortedData && sortedData.length > 0 ? (
+              pagedList.map((tenant) => (
+                <TableRow key={tenant.tenant_id} className="hover:bg-bg-card">
+                  <TableCell className="p-4 flex gap-1 items-center">
+                    <RAGFlowAvatar
+                      isPerson
+                      className="size-4"
+                      avatar={tenant.avatar}
+                      name={tenant.nickname}
+                    />
+                    <SearchHighlight
+                      text={tenant.nickname}
+                      query={searchTerm}
+                    />
+                  </TableCell>
+                  <TableCell className="p-4">
+                    {formatDate(tenant.update_date)}
+                  </TableCell>
+                  <TableCell className="p-4">
+                    <SearchHighlight text={tenant.email} query={searchTerm} />
+                  </TableCell>
+                  <TableCell className="p-4">
+                    {tenant.role === TenantRole.Invite ? (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="link"
+                          className="p-0 h-auto"
+                          onClick={handleAgree(tenant.tenant_id, true)}
+                        >
+                          {t(`setting.agree`)}
+                        </Button>
+                        <Button
+                          variant="link"
+                          className="p-0 h-auto"
+                          onClick={handleAgree(tenant.tenant_id, false)}
+                        >
+                          {t(`setting.refuse`)}
+                        </Button>
+                      </div>
+                    ) : tenant.role === TenantRole.Normal &&
+                      user.id !== tenant.tenant_id ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 p-0"
+                        onClick={handleQuitTenantUser(
+                          user.id,
+                          tenant.tenant_id,
+                        )}
+                      >
+                        {/* {t('setting.quit')} */}
+                        <LogOut />
+                      </Button>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={4} className="h-24 text-center">
+                  {t('common.noData')}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      {!loading && total > 0 && (
+        <div className="mt-4">
+          <RAGFlowPagination {...paginationProps} />
+        </div>
+      )}
     </div>
   );
 };

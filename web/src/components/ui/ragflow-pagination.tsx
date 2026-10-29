@@ -58,10 +58,16 @@ export function RAGFlowPagination({
     }));
   }, [pageSizeOptions, t]);
 
+  // Page math must follow what the size changer currently shows, not the
+  // `pageSize` prop: the prop only arrives once the parent has committed the
+  // new size (and a parent that ignores the onChange size would otherwise keep
+  // rendering the old page count after the user picked 100).
+  const effectivePageSize = Number(currentPageSize) || pageSize;
+
   const pages = useMemo(() => {
-    const num = Math.ceil(total / pageSize);
+    const num = Math.ceil(total / effectivePageSize);
     return new Array(num).fill(0).map((_, idx) => idx + 1);
-  }, [pageSize, total]);
+  }, [effectivePageSize, total]);
 
   const changePage = useCallback(
     (page: number) => {
@@ -150,7 +156,7 @@ export function RAGFlowPagination({
     }
 
     return newPages;
-  }, [pages, currentPage]);
+  }, [pages, currentPage, maxDisplayedPages]);
 
   return (
     <div className="flex items-center justify-end text-text-sub-title-invert">

@@ -103,6 +103,7 @@ export default function Vocab() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [editor, setEditor] = useState<EditorState | null>(null);
 
   const groupType: SynonymGroupType = tab === 'synonym' ? 'synonym' : 'proper';
@@ -151,8 +152,8 @@ export default function Vocab() {
   }, [groups, keyword]);
 
   const paged = useMemo(
-    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filtered, page],
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize],
   );
 
   const openCreate = () => setEditor(emptyEditor(groupType));
@@ -451,12 +452,15 @@ export default function Vocab() {
         </Table>
       </div>
 
-      {filtered.length > PAGE_SIZE && (
+      {filtered.length > 0 && (
         <RAGFlowPagination
           current={page}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           total={filtered.length}
-          onChange={setPage}
+          onChange={(next, nextSize) => {
+            setPage(next);
+            if (nextSize) setPageSize(nextSize);
+          }}
         />
       )}
 

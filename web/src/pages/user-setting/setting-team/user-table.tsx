@@ -30,6 +30,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
+import { useClientPagination } from '@/hooks/logic-hooks/use-pagination';
 import { useListTenantUser } from '@/hooks/use-user-setting-request';
 import { formatDate } from '@/utils/date';
 import { upperFirst } from 'lodash';
@@ -78,6 +80,12 @@ const UserTable = ({ searchUser }: { searchUser: string }) => {
 
     return filtered;
   }, [data, sortOrder, searchUser]);
+
+  // The member list arrives in one go (`useListTenantUser` sends no offset), so
+  // the offset lives here — without it a 200-person tenant rendered 200 rows and
+  // the table had no page bar at all.
+  const { pagedList, total, paginationProps } = useClientPagination(sortedData);
+
   const toggleSortOrder = () => {
     if (sortOrder === 'asc') {
       setSortOrder('desc');
@@ -98,115 +106,122 @@ const UserTable = ({ searchUser }: { searchUser: string }) => {
     }
   };
   return (
-    // 同 tenant-table：`overflow-hidden` 是滚不动的滚动容器，表头会跟着页面走。
-    <div className="rounded-lg bg-bg-input scrollbar-auto overflow-auto border border-border-default">
-      <Table scroll="page" rootClassName="rounded-lg">
-        <TableHeader className="bg-bg-title">
-          <TableRow className="hover:bg-bg-title">
-            <TableHead className="h-12 px-4">{t('common.name')}</TableHead>
-            <TableHead className="h-12 px-4">
-              <div className="flex items-center gap-1">
-                {t('setting.updateDate')}
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={toggleSortOrder}
-                >
-                  {renderSortIcon()}
-                </Button>
-              </div>
-            </TableHead>
-            <TableHead className="h-12 px-4">{t('setting.email')}</TableHead>
-            <TableHead className="h-12 px-4">{t('setting.role')}</TableHead>
-            <TableHead className="h-12 px-4">{t('common.action')}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody className="bg-bg-base">
-          {loading ? (
-            <TableRow>
-              <TableCell colSpan={5} className="h-24 text-center">
-                <div className="flex items-center justify-center">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
+    <div>
+      {/* 同 tenant-table：`overflow-hidden` 是滚不动的滚动容器，表头会跟着页面走。 */}
+      <div className="rounded-lg bg-bg-input scrollbar-auto overflow-auto border border-border-default">
+        <Table scroll="page" rootClassName="rounded-lg">
+          <TableHeader className="bg-bg-title">
+            <TableRow className="hover:bg-bg-title">
+              <TableHead className="h-12 px-4">{t('common.name')}</TableHead>
+              <TableHead className="h-12 px-4">
+                <div className="flex items-center gap-1">
+                  {t('setting.updateDate')}
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={toggleSortOrder}
+                  >
+                    {renderSortIcon()}
+                  </Button>
                 </div>
-              </TableCell>
+              </TableHead>
+              <TableHead className="h-12 px-4">{t('setting.email')}</TableHead>
+              <TableHead className="h-12 px-4">{t('setting.role')}</TableHead>
+              <TableHead className="h-12 px-4">{t('common.action')}</TableHead>
             </TableRow>
-          ) : sortedData && sortedData.length > 0 ? (
-            sortedData.map((record) => (
-              <TableRow key={record.user_id} className="hover:bg-bg-card">
-                <TableCell className="p-4">
-                  <div className="flex gap-1 items-center">
-                    <RAGFlowAvatar
-                      isPerson
-                      className="size-4"
-                      avatar={record.avatar}
-                      name={record.nickname}
-                    />
-                    <SearchHighlight
-                      text={record.nickname}
-                      query={searchUser}
-                    />
+          </TableHeader>
+          <TableBody className="bg-bg-base">
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="h-24 text-center">
+                  <div className="flex items-center justify-center">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
                   </div>
                 </TableCell>
-                <TableCell className="p-4">
-                  {formatDate(record.update_date)}
-                </TableCell>
-                <TableCell className="p-4">
-                  <SearchHighlight text={record.email} query={searchUser} />
-                </TableCell>
-                <TableCell className="p-4">
-                  {record.role === TenantRole.Normal && (
-                    <Badge className={ColorMap[record.role]}>
-                      {upperFirst('Member')}
-                    </Badge>
-                  )}
-                  {record.role !== TenantRole.Normal && (
-                    <Badge className={ColorMap[record.role]}>
-                      {upperFirst(record.role)}
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell className="p-4">
-                  <ConfirmDeleteDialog
-                    title={t('deleteModal.delMember')}
-                    onOk={async () => {
-                      await deleteTenantUser({
-                        userId: record.user_id,
-                      });
-                      return;
-                    }}
-                    content={{
-                      node: (
-                        <ConfirmDeleteDialogNode
-                          avatar={{
-                            avatar: record.avatar,
-                            name: record.nickname,
-                            isPerson: true,
-                          }}
-                          name={record.email}
-                        ></ConfirmDeleteDialogNode>
-                      ),
-                    }}
-                  >
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 p-0 hover:bg-state-error-5 hover:text-state-error"
+              </TableRow>
+            ) : sortedData && sortedData.length > 0 ? (
+              pagedList.map((record) => (
+                <TableRow key={record.user_id} className="hover:bg-bg-card">
+                  <TableCell className="p-4">
+                    <div className="flex gap-1 items-center">
+                      <RAGFlowAvatar
+                        isPerson
+                        className="size-4"
+                        avatar={record.avatar}
+                        name={record.nickname}
+                      />
+                      <SearchHighlight
+                        text={record.nickname}
+                        query={searchUser}
+                      />
+                    </div>
+                  </TableCell>
+                  <TableCell className="p-4">
+                    {formatDate(record.update_date)}
+                  </TableCell>
+                  <TableCell className="p-4">
+                    <SearchHighlight text={record.email} query={searchUser} />
+                  </TableCell>
+                  <TableCell className="p-4">
+                    {record.role === TenantRole.Normal && (
+                      <Badge className={ColorMap[record.role]}>
+                        {upperFirst('Member')}
+                      </Badge>
+                    )}
+                    {record.role !== TenantRole.Normal && (
+                      <Badge className={ColorMap[record.role]}>
+                        {upperFirst(record.role)}
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="p-4">
+                    <ConfirmDeleteDialog
+                      title={t('deleteModal.delMember')}
+                      onOk={async () => {
+                        await deleteTenantUser({
+                          userId: record.user_id,
+                        });
+                        return;
+                      }}
+                      content={{
+                        node: (
+                          <ConfirmDeleteDialogNode
+                            avatar={{
+                              avatar: record.avatar,
+                              name: record.nickname,
+                              isPerson: true,
+                            }}
+                            name={record.email}
+                          ></ConfirmDeleteDialogNode>
+                        ),
+                      }}
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </ConfirmDeleteDialog>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 p-0 hover:bg-state-error-5 hover:text-state-error"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </ConfirmDeleteDialog>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} className="h-24 text-center">
+                  {t('common.noData')}
                 </TableCell>
               </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={5} className="h-24 text-center">
-                {t('common.noData')}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      {!loading && total > 0 && (
+        <div className="mt-4">
+          <RAGFlowPagination {...paginationProps} />
+        </div>
+      )}
     </div>
   );
 };

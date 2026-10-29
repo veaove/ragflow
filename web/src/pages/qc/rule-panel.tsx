@@ -180,6 +180,7 @@ export function QcRulePanel({
   const [rules, setRules] = React.useState<IQcRule[]>([]);
   const [total, setTotal] = React.useState(0);
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(PAGE_SIZE);
   const [loading, setLoading] = React.useState(false);
   const [editor, setEditor] = React.useState<EditorState | null>(null);
   const [refsRule, setRefsRule] = React.useState<IQcRule | null>(null);
@@ -197,7 +198,7 @@ export function QcRulePanel({
     try {
       const response = await listQcRules({
         page,
-        size: PAGE_SIZE,
+        size: pageSize,
       });
       setRules(response?.data?.data ?? []);
       setTotal(response?.data?.total ?? 0);
@@ -206,7 +207,7 @@ export function QcRulePanel({
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, pageSize]);
 
   React.useEffect(() => {
     reload();
@@ -420,12 +421,15 @@ export function QcRulePanel({
         )}
       </div>
 
-      {total > PAGE_SIZE && (
+      {total > 0 && (
         <RAGFlowPagination
           current={page}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           total={total}
-          onChange={(next) => setPage(next)}
+          onChange={(next, nextSize) => {
+            setPage(next);
+            if (nextSize) setPageSize(nextSize);
+          }}
         />
       )}
 

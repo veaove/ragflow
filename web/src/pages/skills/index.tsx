@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SearchInput } from '@/components/ui/input';
+import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { Segmented } from '@/components/ui/segmented';
 import { Spin } from '@/components/ui/spin';
 import {
@@ -164,7 +165,7 @@ const SkillsPage: React.FC = () => {
 
   // Pagination and sorting state
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(20);
   const [totalSkills, setTotalSkills] = useState(0);
   const [sortBy] = useState<'name' | 'update_time' | 'create_time'>(
     'update_time',
@@ -283,7 +284,7 @@ const SkillsPage: React.FC = () => {
     if (!selectedSpaceId || !selectedSpaceName || hasSearched) return;
     loadSkills();
     // oxlint-disable-next-line react/exhaustive-deps
-  }, [currentPage, sortBy, sortOrder]);
+  }, [currentPage, pageSize, sortBy, sortOrder]);
 
   const handleViewSkill = useCallback(
     async (skill: Skill) => {
@@ -1136,36 +1137,19 @@ const SkillsPage: React.FC = () => {
 
         {/* Pagination */}
         {!hasSearched && totalSkills > 0 && (
-          <div className="flex items-center justify-between py-4 border-t border-border mt-4">
-            <div className="text-sm text-text-secondary">
-              {t('skills.totalSkills', { total: totalSkills })}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage <= 1 || loading}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              >
-                {t('common.previous')}
-              </Button>
-              <span className="text-sm text-text-secondary px-2">
-                {t('skills.pageInfo', {
-                  current: currentPage,
-                  total: Math.ceil(totalSkills / pageSize),
-                })}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={
-                  currentPage >= Math.ceil(totalSkills / pageSize) || loading
-                }
-                onClick={() => setCurrentPage((p) => p + 1)}
-              >
-                {t('common.next')}
-              </Button>
-            </div>
+          // 原来只有自制的「上一页 / 下一页」两个按钮、页大小写死 20 —— 用户永远
+          // 只能 20 条一页，与全站其他列表不一致。换成公共分页组件后才有页大小
+          // 选择器，`size` 也随之进入 fetchSkills 的请求参数。
+          <div className="mt-4">
+            <RAGFlowPagination
+              current={currentPage}
+              pageSize={pageSize}
+              total={totalSkills}
+              onChange={(page, size) => {
+                setCurrentPage(page);
+                if (size) setPageSize(size);
+              }}
+            />
           </div>
         )}
       </div>

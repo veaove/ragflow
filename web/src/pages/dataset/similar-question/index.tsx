@@ -70,6 +70,7 @@ export default function SimilarQuestion() {
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [editing, setEditing] = useState<IChunk | null>(null);
   const [genOpen, setGenOpen] = useState(false);
 
@@ -128,8 +129,8 @@ export default function SimilarQuestion() {
   }, [chunks, keyword]);
 
   const paged = useMemo(
-    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filtered, page],
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize],
   );
 
   const openEdit = async (chunk: IChunk) => {
@@ -275,12 +276,15 @@ export default function SimilarQuestion() {
         </Table>
       </div>
 
-      {filtered.length > PAGE_SIZE && (
+      {filtered.length > 0 && (
         <RAGFlowPagination
           current={page}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           total={filtered.length}
-          onChange={setPage}
+          onChange={(next, nextSize) => {
+            setPage(next);
+            if (nextSize) setPageSize(nextSize);
+          }}
         />
       )}
 

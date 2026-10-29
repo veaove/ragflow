@@ -106,6 +106,7 @@ export function ConsultationsPanel({
   const [items, setItems] = useState<IConsultationLogItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(false);
 
   const [detail, setDetail] = useState<IConsultationDetail | null>(null);
@@ -128,7 +129,7 @@ export function ConsultationsPanel({
         const res = await analyticsService.listConsultations({
           ...query,
           page: nextPage,
-          size: PAGE_SIZE,
+          size: pageSize,
         });
         const payload = res?.data?.data ?? {};
         setItems(payload.items ?? []);
@@ -137,9 +138,12 @@ export function ConsultationsPanel({
         setLoading(false);
       }
     },
-    [query],
+    [query, pageSize],
   );
 
+  // `reload` is rebuilt whenever the filters or the page size change, so this
+  // one effect covers both "filters changed" and "picked a new page size": each
+  // of them invalidates the current offset, hence the explicit reload(1).
   useEffect(() => {
     setPage(1);
     void reload(1);
@@ -285,11 +289,17 @@ export function ConsultationsPanel({
       <div className="mt-3 flex justify-end">
         <RAGFlowPagination
           current={page}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           total={total}
-          onChange={(p) => {
-            setPage(p);
-            void reload(p);
+          onChange={(p, nextSize) => {
+            if (nextSize && nextSize !== pageSize) {
+              // The reset effect above reloads page 1 with the new size; calling
+              // reload(p) here would fetch twice.
+              setPageSize(nextSize);
+            } else {
+              setPage(p);
+              void reload(p);
+            }
           }}
         />
       </div>

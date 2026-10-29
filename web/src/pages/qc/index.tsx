@@ -270,6 +270,7 @@ function HitsPanel() {
   const [hits, setHits] = React.useState<IQcHit[]>([]);
   const [total, setTotal] = React.useState(0);
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(PAGE_SIZE);
   const [loading, setLoading] = React.useState(false);
   const [severity, setSeverity] = React.useState('');
   const [scope, setScope] = React.useState('');
@@ -284,7 +285,7 @@ function HitsPanel() {
   const reload = React.useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, any> = { page, size: PAGE_SIZE };
+      const params: Record<string, any> = { page, size: pageSize };
       if (severity) params.severity = severity;
       if (scope) params.scope = scope;
       if (appliedSessionId) params.session_id = appliedSessionId;
@@ -298,7 +299,7 @@ function HitsPanel() {
     } finally {
       setLoading(false);
     }
-  }, [page, severity, scope, appliedSessionId, from, to]);
+  }, [page, pageSize, severity, scope, appliedSessionId, from, to]);
 
   React.useEffect(() => {
     reload();
@@ -486,12 +487,15 @@ function HitsPanel() {
         )}
       </div>
 
-      {total > PAGE_SIZE && (
+      {total > 0 && (
         <RAGFlowPagination
           current={page}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           total={total}
-          onChange={(next) => setPage(next)}
+          onChange={(next, nextSize) => {
+            setPage(next);
+            if (nextSize) setPageSize(nextSize);
+          }}
         />
       )}
 

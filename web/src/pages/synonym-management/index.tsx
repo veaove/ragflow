@@ -89,6 +89,7 @@ export function SynonymManagement({ datasetId }: { datasetId: string }) {
   const [domain, setDomain] = React.useState<DomainFilter>('all');
   const [keyword, setKeyword] = React.useState('');
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(PAGE_SIZE);
   const [editor, setEditor] = React.useState<EditorState | null>(null);
 
   const reload = React.useCallback(async () => {
@@ -122,8 +123,8 @@ export function SynonymManagement({ datasetId }: { datasetId: string }) {
   }, [groups, keyword]);
 
   const paged = React.useMemo(
-    () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [filtered, page],
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize],
   );
 
   const openCreate = () =>
@@ -344,12 +345,15 @@ export function SynonymManagement({ datasetId }: { datasetId: string }) {
         )}
       </div>
 
-      {filtered.length > PAGE_SIZE && (
+      {filtered.length > 0 && (
         <RAGFlowPagination
           current={page}
-          pageSize={PAGE_SIZE}
+          pageSize={pageSize}
           total={filtered.length}
-          onChange={(next) => setPage(next)}
+          onChange={(next, nextSize) => {
+            setPage(next);
+            if (nextSize) setPageSize(nextSize);
+          }}
         />
       )}
 

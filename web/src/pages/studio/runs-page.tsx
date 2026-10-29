@@ -58,6 +58,10 @@ export default function StudioRunsPage() {
   const canvasId = searchParams.get('canvas_id') ?? '';
   const sort = (searchParams.get('sort') as RunSortKey) || 'created_desc';
   const page = Number(searchParams.get('page')) || 1;
+  // The size changer writes `page_size`, so it has to be read back — using the
+  // PAGE_SIZE default here made the selector look functional while every
+  // request still asked for 12 rows.
+  const pageSize = Number(searchParams.get('page_size')) || PAGE_SIZE;
 
   const [searchInput, setSearchInput] = useState(keywords);
   // 点行查看详情：存 run id，空值即关闭弹窗。
@@ -81,7 +85,7 @@ export default function StudioRunsPage() {
     triggerType,
     sort,
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
   });
 
   const hasFilter = !!(keywords || status || triggerType || canvasId);
@@ -276,7 +280,7 @@ export default function StudioRunsPage() {
         <div className="mt-4 flex justify-end">
           <RAGFlowPagination
             current={page}
-            pageSize={PAGE_SIZE}
+            pageSize={pageSize}
             total={total}
             pageSizeOptions={LIST_PAGE_SIZE_OPTIONS}
             maxDisplayedPages={LIST_MAX_DISPLAYED_PAGES}
