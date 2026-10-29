@@ -45,15 +45,11 @@ var ErrSynonymGroupNotFound = errors.New("synonym group not found")
 // 看到「暂无词组」加一句「synonym group not found」，既看不懂也查不下去。
 var ErrDatasetNotFound = errors.New("dataset not found")
 
-// ErrSynonymGroupNeedsChangeSet is returned when a caller edits a version that
-// is no longer live without supplying a change set.
-//
-// Such a row cannot be written in place: a direct write makes its words live
-// while the group itself stays disabled, so the edit silently never reaches
-// retrieval. Staging is the only path that works for these rows, and the
-// vocabulary page always opens a change set before saving — this error means
-// that step failed and the caller should simply retry.
-var ErrSynonymGroupNeedsChangeSet = errors.New("saving this vocabulary group requires a change set; refresh the page and retry")
+// ErrSynonymGroupReplaced is returned when a caller edits a version that a later
+// publish replaced (status=disabled). Those rows are kept as an audit trail and
+// the manager does not list them; the live version that superseded them is the
+// thing to edit.
+var ErrSynonymGroupReplaced = errors.New("this group was replaced by a newer version; edit the current one instead")
 
 // maxSynonymWordsPerGroup caps one group so a single import cannot blow up the
 // keyword budget of every query that touches this vocabulary.
@@ -109,10 +105,6 @@ func (s *SynonymService) ListSynonymGroups(ctx context.Context, userID, datasetI
 	if err != nil {
 		return nil, err
 	}
-	// Drop the leftovers of discarded staged copies before attaching words: they
-	// are rows a previous discard flagged disabled instead of deleting, and the
-	// manager renders that as 已被新版本替换 even though nothing was replaced.
-	groups = dropDiscardedLeftovers(groups)
 	// Attach each group's words so the list view can render the standard word
 	// and aliases without an N+1 round trip per row.
 	if len(groups) > 0 {
@@ -216,33 +208,21 @@ func (s *SynonymService) UpdateSynonymGroup(ctx context.Context, userID, groupID
 		return nil, err
 	}
 
-	// Editing an existing group never touches the row that is online now: the
-	// edit is written as a pending copy carrying source_group_id, and publish
-	// swaps the copy in. Online retrieval is unaffected until then.
-	//
-	// A disabled group is a version an earlier publish superseded, and it stays
-	// editable — the manager lists it, so the user has to be able to fix it. Its
-	// edit is staged against the live head of the version chain rather than
-	// against the archived row itself: a copy whose source is already disabled
-	// would go live next to the current version instead of replacing it.
-	if req.ChangeSetID != "" && group.Status != entity.SynonymStatusPending {
-		target := group
-		if group.Status == entity.SynonymStatusDisabled {
-			head, herr := s.synonymDAO.LiveHeadOfChain(ctx, dao.DB, tenantID, group.DatasetID, group.ID)
-			if herr != nil {
-				return nil, herr
-			}
-			if head != nil {
-				target = head
-			}
-		}
-		return s.stageUpdateSynonymGroup(ctx, tenantID, target, req)
-	}
-	// Reaching here with a disabled row means no change set was supplied. Writing
-	// it directly would flip only its words live while the group stays disabled,
-	// so the edit would never reach retrieval — refuse loudly instead.
+	// A superseded version keeps its row as an audit trail and is not editable:
+	// the manager only lists the current version, so the only way to address one
+	// is a tab that was already open when someone else published the
+	// replacement. Writing it directly would flip just its words live while the
+	// group itself stays disabled — the edit would never reach retrieval — so
+	// say what happened instead.
 	if group.Status == entity.SynonymStatusDisabled {
-		return nil, ErrSynonymGroupNeedsChangeSet
+		return nil, ErrSynonymGroupReplaced
+	}
+
+	// Staged edit of an existing group: keep the current version untouched and
+	// write a pending copy that carries source_group_id. Publish swaps the copy
+	// in, so online retrieval is unaffected until then.
+	if req.ChangeSetID != "" && group.Status != entity.SynonymStatusPending {
+		return s.stageUpdateSynonymGroup(ctx, tenantID, group, req)
 	}
 
 	updates := make(map[string]any)
@@ -492,44 +472,6 @@ func datasetAccessDenied(err error) bool {
 	return errors.Is(err, permission.ErrPermissionDenied) ||
 		errors.Is(err, permission.ErrMembershipNotFound) ||
 		errors.Is(err, permission.ErrResourceNotFound)
-}
-
-// dropDiscardedLeftovers hides the rows a discard used to leave behind.
-//
-// Discarding a staged copy of a live group used to mark the copy disabled, the
-// same state a published replacement leaves on the version it superseded — so
-// the manager showed 已被新版本替换 for a group nothing had replaced, and hid its
-// edit entry because the row looked like history. Discard now deletes the copy,
-// but older rows are still in the database, and they cannot be told apart from
-// real history by status alone.
-//
-// They can be told apart by the chain: publishing disables the source row, so a
-// genuinely superseded version always points at a source that is already
-// disabled. A disabled row whose source is still live is a discarded copy.
-//
-// The live set comes from the same listing rather than from a second query: the
-// manager loads the whole base (it never narrows by domain), so every live group
-// is in hand already.
-func dropDiscardedLeftovers(groups []*entity.SynonymGroup) []*entity.SynonymGroup {
-	if len(groups) == 0 {
-		return groups
-	}
-	live := make(map[string]struct{}, len(groups))
-	for _, g := range groups {
-		if g.Status == entity.SynonymStatusLive {
-			live[g.ID] = struct{}{}
-		}
-	}
-	kept := make([]*entity.SynonymGroup, 0, len(groups))
-	for _, g := range groups {
-		if g.Status == entity.SynonymStatusDisabled && g.SourceGroupID != "" {
-			if _, stillLive := live[g.SourceGroupID]; stillLive {
-				continue
-			}
-		}
-		kept = append(kept, g)
-	}
-	return kept
 }
 
 // normalizeSynonymDomain validates the vocabulary domain, defaulting to the

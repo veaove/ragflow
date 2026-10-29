@@ -130,71 +130,48 @@ func TestDiscardStagedEditLeavesNoGhost(t *testing.T) {
 	}
 }
 
-// TestSupersededVersionStaysEditable locks the user-visible requirement: a row
-// the manager labels 已替换 must still be editable, and saving it must not put a
-// second live version of the same concept online — the edit is staged against
-// the live head of the version chain.
-func TestSupersededVersionStaysEditable(t *testing.T) {
+// TestEditSupersededVersionIsRefused covers the tab that was already open when
+// someone else published a replacement: the row it points at is now history.
+// A direct write would flip only the words live while the group stays disabled,
+// so the edit would silently never reach retrieval.
+func TestEditSupersededVersionIsRefused(t *testing.T) {
 	svc := setupSynonymAccessFixtures(t)
 	ctx := context.Background()
 
-	old := seedGroup(t, "group-old", synKBPrivate, "退款", entity.SynonymStatusDisabled, "")
-	head := seedGroup(t, "group-head", synKBPrivate, "退款", entity.SynonymStatusLive, old.ID)
+	superseded := seedGroup(t, "group-archived", synKBPrivate, "退款", entity.SynonymStatusDisabled, "")
+	seedGroup(t, "group-live", synKBPrivate, "退款", entity.SynonymStatusLive, superseded.ID)
 
-	staged, err := svc.UpdateSynonymGroup(ctx, synOwner, old.ID, UpdateSynonymGroupRequest{
-		Words:       &[]SynonymWordInput{{Word: "退款", IsPrimary: true}, {Word: "退钱"}, {Word: "退回"}},
+	_, err := svc.UpdateSynonymGroup(ctx, synOwner, superseded.ID, UpdateSynonymGroupRequest{
+		Words:       &[]SynonymWordInput{{Word: "退款", IsPrimary: true}, {Word: "退钱"}},
 		ChangeSetID: "cs-edit-archived",
 	})
+	if !errors.Is(err, ErrSynonymGroupReplaced) {
+		t.Fatalf("err = %v, want ErrSynonymGroupReplaced", err)
+	}
+	// The row it points at must be untouched.
+	reloaded, err := svc.synonymDAO.GetGroup(ctx, dao.DB, synTenantKB, superseded.ID)
 	if err != nil {
-		t.Fatalf("editing a superseded version must be allowed, got: %v", err)
-	}
-	if staged.Status != entity.SynonymStatusPending {
-		t.Fatalf("staged status = %q, want pending", staged.Status)
-	}
-	if staged.SourceGroupID != head.ID {
-		t.Fatalf("staged source = %q, want the live head %q (otherwise publishing it would "+
-			"leave two live versions of one concept)", staged.SourceGroupID, head.ID)
-	}
-	// The version the user clicked is history and must not be rewritten in place.
-	reloaded, err := svc.synonymDAO.GetGroup(ctx, dao.DB, synTenantKB, old.ID)
-	if err != nil {
-		t.Fatalf("failed to reload the archived group: %v", err)
+		t.Fatalf("failed to reload the superseded group: %v", err)
 	}
 	if reloaded.Status != entity.SynonymStatusDisabled {
-		t.Fatalf("archived status = %q, want disabled", reloaded.Status)
+		t.Fatalf("superseded status = %q, want disabled", reloaded.Status)
 	}
 }
 
-// TestEditSupersededVersionWithoutChangeSetIsRefused covers the one path that
-// cannot work: a direct write would flip only the words live while the group
-// stays disabled, so the edit would silently never reach retrieval.
-func TestEditSupersededVersionWithoutChangeSetIsRefused(t *testing.T) {
+// TestListShowsOnlyCurrentVersions locks the manager's contract: publishing a
+// replacement keeps the superseded row as an audit trail, but the manager lists
+// only what is current — the live version plus any staged (pending) one.
+//
+// Listing the replaced row beside its successor put the same group name in the
+// table twice, one of them labelled 已替换 — a state the user cannot act on and
+// did not ask for.
+func TestListShowsOnlyCurrentVersions(t *testing.T) {
 	svc := setupSynonymAccessFixtures(t)
 	ctx := context.Background()
 
-	archived := seedGroup(t, "group-archived", synKBPrivate, "退款", entity.SynonymStatusDisabled, "")
-
-	_, err := svc.UpdateSynonymGroup(ctx, synOwner, archived.ID, UpdateSynonymGroupRequest{
-		Words: &[]SynonymWordInput{{Word: "退款", IsPrimary: true}, {Word: "退钱"}},
-	})
-	if !errors.Is(err, ErrSynonymGroupNeedsChangeSet) {
-		t.Fatalf("err = %v, want ErrSynonymGroupNeedsChangeSet", err)
-	}
-}
-
-// TestListDoesNotShowLeftoversOfRemovedDiscard hides rows written by the old
-// discard path, which could not be told apart from real history by status.
-func TestListDoesNotShowLeftoversOfRemovedDiscard(t *testing.T) {
-	svc := setupSynonymAccessFixtures(t)
-	ctx := context.Background()
-
-	live := seedGroup(t, "group-live", synKBPrivate, "退款", entity.SynonymStatusLive, "")
-	// A real superseded version: its source was disabled by the publish that
-	// replaced it, so it is genuine history and has to stay visible.
-	seedGroup(t, "group-gone", synKBPrivate, "退款", entity.SynonymStatusDisabled, "")
-	realHistory := seedGroup(t, "group-history", synKBPrivate, "退款", entity.SynonymStatusDisabled, "group-gone")
-	// The leftover of a discard: a disabled copy whose source is still live.
-	ghost := seedGroup(t, "group-ghost", synKBPrivate, "退款", entity.SynonymStatusDisabled, live.ID)
+	superseded := seedGroup(t, "group-old", synKBPrivate, "赎回基金", entity.SynonymStatusDisabled, "")
+	live := seedGroup(t, "group-live", synKBPrivate, "赎回基金", entity.SynonymStatusLive, superseded.ID)
+	staged := seedGroup(t, "group-stage", synKBPrivate, "购买基金", entity.SynonymStatusPending, "")
 
 	groups, err := svc.ListSynonymGroups(ctx, synOwner, synKBPrivate, "")
 	if err != nil {
@@ -204,13 +181,18 @@ func TestListDoesNotShowLeftoversOfRemovedDiscard(t *testing.T) {
 	for _, g := range groups {
 		seen[g.ID] = true
 	}
-	if seen[ghost.ID] {
-		t.Fatalf("the discarded leftover %q is still listed", ghost.ID)
+	if seen[superseded.ID] {
+		t.Fatalf("the superseded version %q is still listed beside the version that replaced it",
+			superseded.ID)
 	}
 	if !seen[live.ID] {
-		t.Fatalf("the live group %q is missing from the list", live.ID)
+		t.Fatalf("the live version %q is missing from the list", live.ID)
 	}
-	if !seen[realHistory.ID] {
-		t.Fatalf("the superseded version %q must stay visible", realHistory.ID)
+	if !seen[staged.ID] {
+		t.Fatalf("the staged version %q must stay visible so the user can see it is pending",
+			staged.ID)
+	}
+	if len(groups) != 2 {
+		t.Fatalf("groups = %d, want 2 (live + pending)", len(groups))
 	}
 }

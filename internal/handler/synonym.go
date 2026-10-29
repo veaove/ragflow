@@ -200,7 +200,7 @@ func respondSynonymError(c *gin.Context, err error) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, "synonym group not found")
 		return
 	}
-	if errors.Is(err, service.ErrSynonymGroupNeedsChangeSet) {
+	if errors.Is(err, service.ErrSynonymGroupReplaced) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
 		return
 	}

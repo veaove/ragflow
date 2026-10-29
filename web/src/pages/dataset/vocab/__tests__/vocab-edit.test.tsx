@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 
 import Vocab from '../index';
 
@@ -47,54 +47,53 @@ jest.mock('@/services/change-set-service', () => ({
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const synonymService = require('@/services/synonym-service');
 
-const supersededGroup = {
-  id: 'group-old',
+const group = (id: string, name: string, status: 'live' | 'pending') => ({
+  id,
   dataset_id: 'kb-1',
-  name: '退款',
+  name,
   domain: 'fund' as const,
   scope: 'kb' as const,
   group_type: 'synonym' as const,
-  // 被后续发布替换下来的历史版本：状态位是「已替换」，但用户仍然要能改它。
-  status: 'disabled' as const,
+  status,
   word_count: 2,
-  words: [{ word: '退款', is_primary: true }, { word: '退钱' }],
-};
+  words: [{ word: name, is_primary: true }, { word: `${name}-别名` }],
+});
 
 const listResult = (groups: unknown[]) => ({
   data: { code: 0, message: 'success', data: groups },
 });
 
-describe('词表管理 · 已替换的历史版本', () => {
+/**
+ * 词表管理的列表只有「已生效 / 待生效」两种行：被后续发布替换下来的旧版本
+ * 后端不再返回（它和替换它的那条同名同概念，并排列出会看成两份），所以这里
+ * 既不该出现「已替换」，也不该有被锁住编辑入口的行。
+ */
+describe('词表管理 · 状态与编辑入口', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     synonymService.listSynonymGroups.mockResolvedValue(
-      listResult([supersededGroup]),
-    );
-    synonymService.getSynonymGroup.mockResolvedValue(
-      listResult(supersededGroup),
+      listResult([
+        group('g-live', '赎回基金', 'live'),
+        group('g-stage', '购买基金', 'pending'),
+      ]),
     );
   });
 
-  it('keeps the edit entry for a superseded group', async () => {
+  it('renders 已生效 for the live version and 待生效 for the staged one', async () => {
     render(<Vocab />);
 
-    // 状态照旧标成「已替换」，只是不再把编辑入口藏起来。
-    expect(await screen.findByText('已替换')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '编辑' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '删除' })).toBeInTheDocument();
+    expect(await screen.findByText('已生效')).toBeInTheDocument();
+    expect(screen.getByText('待生效')).toBeInTheDocument();
+    expect(screen.queryByText('已替换')).not.toBeInTheDocument();
   });
 
-  it('opens the editor with a notice about the staged version', async () => {
+  it('keeps the edit entry on every row', async () => {
     render(<Vocab />);
 
-    fireEvent.click(await screen.findByRole('button', { name: '编辑' }));
-
-    await waitFor(() =>
-      expect(synonymService.getSynonymGroup).toHaveBeenCalledWith('group-old'),
+    // 两行都能编辑：编辑入口不再依赖状态。
+    expect(await screen.findAllByRole('button', { name: '编辑' })).toHaveLength(
+      2,
     );
-    expect(await screen.findByText('编辑词组')).toBeInTheDocument();
-    expect(
-      screen.getByText(/这是已被新版本替换下来的历史词组/),
-    ).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '删除' })).toHaveLength(2);
   });
 });

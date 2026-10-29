@@ -37,13 +37,24 @@ func NewSynonymDAO() *SynonymDAO {
 	return &SynonymDAO{}
 }
 
-// ListGroups returns the groups of one knowledge base with their word counts.
-// domain filters by vocabulary domain when non-empty.
+// ListGroups returns the current version of every group of one knowledge base,
+// with their word counts. domain filters by vocabulary domain when non-empty.
+//
+// Superseded versions (status=disabled) are excluded. Publishing keeps the row
+// it replaced as an audit trail, and listing it next to the version that
+// replaced it showed the same concept twice — one row named the same as the
+// other, labelled 已替换, which is not a state the manager can do anything
+// with. The manager only ever manages what is current: 已生效 (live) and
+// 待生效 (pending).
+//
+// Legacy rows with an empty status stay visible: an empty status is not
+// 'disabled', and both the page and the retrieval dictionary treat it as live.
 func (dao *SynonymDAO) ListGroups(ctx context.Context, db *gorm.DB, tenantID, datasetID, domain string) ([]*entity.SynonymGroup, error) {
 	groups := make([]*entity.SynonymGroup, 0)
 	q := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
 		Where("tenant_id = ?", tenantID).
-		Where("dataset_id = ?", datasetID)
+		Where("dataset_id = ?", datasetID).
+		Where("status <> ?", entity.SynonymStatusDisabled)
 	if domain != "" {
 		q = q.Where("domain = ?", domain)
 	}
@@ -260,64 +271,6 @@ func (dao *SynonymDAO) DiscardPendingByGroupIDs(ctx context.Context, db *gorm.DB
 		Where("dataset_id = ?", datasetID).
 		Where("id IN ?", ids).
 		Delete(&entity.SynonymGroup{}).Error
-}
-
-// maxVersionChainDepth bounds the version-chain walk in LiveHeadOfChain. A chain
-// grows by one row per publish and is a handful of rows long in practice; the
-// bound only exists so a corrupted row that points at itself cannot spin.
-const maxVersionChainDepth = 16
-
-// LiveHeadOfChain follows source_group_id forward from groupID and returns the
-// live version at the head of that chain, or nil when the lineage has no live
-// version left.
-//
-// A published copy keeps source_group_id pointing at the row it replaced, so the
-// chain is the version lineage — G0 ← G1 ← G2, exactly one of them live at a
-// time. Editing a row that is no longer live has to be staged against the head:
-// a pending copy whose source is already disabled publishes *beside* the live
-// version instead of replacing it, leaving two live versions of one concept in
-// the retrieval dictionary.
-func (dao *SynonymDAO) LiveHeadOfChain(ctx context.Context, db *gorm.DB, tenantID, datasetID, groupID string) (*entity.SynonymGroup, error) {
-	current := groupID
-	visited := map[string]struct{}{groupID: {}}
-
-	for depth := 0; depth < maxVersionChainDepth; depth++ {
-		children := make([]*entity.SynonymGroup, 0, 2)
-		if err := db.WithContext(ctx).Model(&entity.SynonymGroup{}).
-			Where("tenant_id = ?", tenantID).
-			Where("dataset_id = ?", datasetID).
-			Where("source_group_id = ?", current).
-			Order("create_time DESC").
-			Find(&children).Error; err != nil {
-			return nil, err
-		}
-		if len(children) == 0 {
-			return nil, nil
-		}
-		// At most one version of a lineage is live; finding it ends the walk.
-		for _, child := range children {
-			if child.Status == entity.SynonymStatusLive {
-				return child, nil
-			}
-		}
-		// Nothing live yet — follow the newest copy that has not been visited so
-		// a partially built chain (a staged copy that was never published) still
-		// resolves.
-		var next *entity.SynonymGroup
-		for _, child := range children {
-			if _, seen := visited[child.ID]; seen {
-				continue
-			}
-			next = child
-			break
-		}
-		if next == nil {
-			return nil, nil
-		}
-		visited[next.ID] = struct{}{}
-		current = next.ID
-	}
-	return nil, nil
 }
 
 // FindPendingCopy returns the pending copy already staged for sourceGroupID in
