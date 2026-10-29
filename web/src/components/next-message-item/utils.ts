@@ -16,45 +16,100 @@
 
 import { AudioExtensions } from '@/constants/common';
 import {
-  Docagg,
   IReferenceChunk,
   UploadResponseDataType,
 } from '@/interfaces/database/chat';
 import { IDocumentInfo } from '@/interfaces/database/document';
-import { currentReg, parseCitationIndex } from '@/utils/chat';
+import {
+  buildCitationDisplayMap,
+  currentReg,
+  parseCitationIndex,
+  resolveCitationChunk,
+} from '@/utils/chat';
 import { getExtension } from '@/utils/document-util';
 
-/**
- * 把本轮命中的切片按文档聚合，得到「这次回答翻了哪几个文件」。
- *
- * 为什么要前端自己聚合：智能体画布上「引用」开关没打开的节点（比如电话 IVR
- * 的播报节点，标号会被 TTS 念出来）不会在正文里插 [ID:…] 标号，后端也就把
- * doc_aggs 裁掉了。可试用/运行时最想知道的恰恰是「它照着哪份材料答的」，所以
- * 这里退一步用 chunks 自己数——chunks 一定带 document_id / document_name。
- *
- * 两种载荷形态都要认：问答应用给数组，智能体的 IReferenceObject 给 key→chunk 的字典。
- */
-export function aggregateReferenceDocs(
-  chunks?: IReferenceChunk[] | Record<string, IReferenceChunk>,
-): Docagg[] {
-  const list = Array.isArray(chunks) ? chunks : Object.values(chunks ?? {});
-  const byDocument = new Map<string, Docagg>();
+export type ReferenceImageItem = {
+  /** 卡片去重键：标号卡片用标号，文档卡片用文档 id。 */
+  key: string;
+  /** 切片里抽出的配图。为空表示这份文档没有配图，卡片位置放文件图标。 */
+  imageId: string;
+  documentId: string;
+  documentName: string;
+  /** 卡片顺序。标号卡片用它算 [N] 徽标。 */
+  index: number;
+  /** 只有标号卡片才带 [N] 徽标；文档卡片没有编号。 */
+  label?: string;
+};
 
+/**
+ * 回答下方那些引用卡片的数据。
+ *
+ * 两种情形共用同一套卡片：
+ *  1. 回答里有 [N] 标号 —— 一个标号一张卡，卡上是那句话引用的那张图，带 [N] 徽标；
+ *  2. 回答里没有标号 —— 画布上的 Agent 节点没开「引用」（电话 IVR 不能开，标号会被
+ *     TTS 念出来）。这时退化成「每份命中文档一张卡」：有配图用配图，没配图放文件图标。
+ *
+ * 为什么第 2 种要退化而不是什么都不画：检索确实发生了，界面上却一片空白，试用和
+ * 运行时就没法核对这轮答案的依据是什么。
+ *
+ * 标号本身选切片：普通问答的数字标号按位置索引 chunks（徽标显示 n + 1），智能体的
+ * [ID:<chunkId>] 标号按切片自己的 id 匹配。两条路径都不依赖载荷顺序。
+ */
+export function buildReferenceImages(
+  chunks: IReferenceChunk[] | Record<string, IReferenceChunk> | undefined,
+  content: string | undefined,
+  options: { fallbackToHitDocuments?: boolean } = {},
+): ReferenceImageItem[] {
+  const list = Array.isArray(chunks) ? chunks : Object.values(chunks ?? {});
+  const markers = buildCitationDisplayMap(content ?? '');
+
+  if (markers.size > 0) {
+    return [...markers.entries()]
+      .map(([key, position]): ReferenceImageItem | null => {
+        const chunk = resolveCitationChunk(list, key);
+        // 标号卡片是「那句话引用的那张图」，无图切片没有图可放，和原来一样跳过。
+        if (!chunk?.image_id || !chunk?.document_id) {
+          return null;
+        }
+        const index = typeof key === 'number' ? key : position;
+        return {
+          key: String(key),
+          imageId: chunk.image_id ?? '',
+          documentId: chunk.document_id,
+          documentName: chunk.document_name ?? '',
+          index,
+          label: `[${index + 1}]`,
+        };
+      })
+      .filter((item): item is ReferenceImageItem => item !== null);
+  }
+
+  if (!options.fallbackToHitDocuments) {
+    return [];
+  }
+
+  const byDocument = new Map<string, ReferenceImageItem>();
   list.forEach((chunk) => {
-    const docId = chunk?.document_id;
-    if (!docId) {
+    const documentId = chunk?.document_id;
+    if (!documentId) {
       return;
     }
-    const existing = byDocument.get(docId);
-    if (existing) {
-      existing.count += 1;
+    const imageId = chunk.image_id ?? '';
+    const existing = byDocument.get(documentId);
+    if (!existing) {
+      byDocument.set(documentId, {
+        key: documentId,
+        imageId,
+        documentId,
+        documentName: chunk.document_name ?? '',
+        index: byDocument.size,
+      });
       return;
     }
-    byDocument.set(docId, {
-      count: 1,
-      doc_id: docId,
-      doc_name: chunk.document_name ?? '',
-    });
+    // 同一份文档只有部分切片带图，别因为先撞上无图的那条就把图丢掉。
+    if (!existing.imageId && imageId) {
+      existing.imageId = imageId;
+    }
   });
 
   return [...byDocument.values()];

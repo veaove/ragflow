@@ -1552,7 +1552,6 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       chatSetting: 'Chat setting',
       qcRules: 'Quality inspection rules',
       qcBlockedBanner: 'This answer was blocked by quality inspection',
-      referenceFiles: 'Reference files ({{num}})',
       thinkingSteps: {
         done: 'Thought through {{num}} steps',
         running: '{{name}}',

@@ -1449,7 +1449,6 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       chatSetting: '聊天设置',
       qcRules: '质检规则',
       qcBlockedBanner: '该回答已被质检拦截',
-      referenceFiles: '引用文件 {{num}} 个',
       thinkingSteps: {
         done: '已深度思考 {{num}} 步',
         running: '正在{{name}}',

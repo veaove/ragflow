@@ -52,7 +52,6 @@ import { useTheme } from '../theme-provider';
 import { Button } from '../ui/button';
 import { AssistantGroupButton, UserGroupButton } from './group-button';
 import styles from './index.module.less';
-import { ReferenceFileList } from './reference-file-list';
 import { ReferenceImageList } from './reference-image-list';
 import { UploadedMessageFiles } from './uploaded-message-files';
 
@@ -77,12 +76,12 @@ interface IProps
   showLog?: boolean;
   isShare?: boolean;
   /**
-   * 回答里没有引用标号时，在气泡下方列出本轮命中的文件。
+   * 回答里没有引用标号时，把本轮命中的文档也画成引用卡片。
    *
    * 智能体画布上的「引用」开关决定后端要不要在正文里插 [ID:…] 标号，标号再决定
-   * 前端能否画出文件/图片卡片。电话 IVR 这类场景不能开（标号会被 TTS 念出来），
-   * 于是试用和运行时一个文件都看不到——即使检索明明命中了。打开这个开关后，
-   * 没有标号的回答会用「按文档聚合的命中清单」兜底，两边信息量对得上。
+   * 前端能否画出卡片。电话 IVR 这类场景不能开（标号会被 TTS 念出来），于是试用
+   * 和运行时一张卡片都没有——即使检索明明命中了。打开这个开关后，没有标号的回答
+   * 会按文档出卡（有配图用配图，没配图放文件图标），和开了引用的那条链路同一套样式。
    */
   showReferenceFiles?: boolean;
 }
@@ -349,14 +348,8 @@ function MessageItem({
               <ReferenceImageList
                 referenceChunks={reference?.chunks}
                 messageContent={messageContent}
+                fallbackToHitDocuments={showReferenceFiles}
               ></ReferenceImageList>
-            )}
-
-            {isAssistant && showReferenceFiles && (
-              <ReferenceFileList
-                chunks={reference?.chunks}
-                content={messageContent}
-              ></ReferenceFileList>
             )}
 
             {isUser && (

@@ -3,7 +3,11 @@ import {
   UploadResponseDataType,
 } from '@/interfaces/database/chat';
 import { IDocumentInfo } from '@/interfaces/database/document';
-import { aggregateReferenceDocs, getFileMimeType, isImageFile } from '../utils';
+import {
+  buildReferenceImages,
+  getFileMimeType,
+  isImageFile,
+} from '../utils';
 
 describe('getFileMimeType', () => {
   it('uses the browser-provided type for local File objects', () => {
@@ -68,49 +72,109 @@ describe('isImageFile', () => {
   });
 });
 
-describe('aggregateReferenceDocs', () => {
-  const chunk = (documentId: string, documentName: string, id: string) =>
+describe('buildReferenceImages', () => {
+  const chunk = (
+    id: string,
+    documentId: string,
+    documentName: string,
+    imageId = '',
+  ) =>
     ({
       id,
       content: 'x',
       document_id: documentId,
       document_name: documentName,
       dataset_id: 'kb-1',
-      image_id: '',
+      image_id: imageId,
       similarity: 0.5,
       vector_similarity: 0.5,
       term_similarity: 0.5,
       positions: [],
     }) as IReferenceChunk;
 
-  it('groups the chunks of one document under a single entry', () => {
-    const docs = aggregateReferenceDocs([
-      chunk('doc-1', '公司概览.md', 'c1'),
-      chunk('doc-1', '公司概览.md', 'c2'),
-      chunk('doc-2', '联系我们.md', 'c3'),
-    ]);
+  const consultation = [
+    chunk('c1', 'doc-1', '公司概览.md', 'img-1'),
+    chunk('c2', 'doc-2', '高效服务.md'),
+    chunk('c3', 'doc-3', '投研体系.md', 'img-3'),
+  ];
 
-    expect(docs).toEqual([
-      { count: 2, doc_id: 'doc-1', doc_name: '公司概览.md' },
-      { count: 1, doc_id: 'doc-2', doc_name: '联系我们.md' },
+  it('maps every citation marker to the picture of the chunk it points at', () => {
+    const images = buildReferenceImages(
+      consultation,
+      '成立于1998年 [ID:c1]，投研体系完备 [ID:c3]。',
+    );
+
+    expect(images).toEqual([
+      {
+        key: 'c1',
+        imageId: 'img-1',
+        documentId: 'doc-1',
+        documentName: '公司概览.md',
+        index: 0,
+        label: '[1]',
+      },
+      {
+        key: 'c3',
+        imageId: 'img-3',
+        documentId: 'doc-3',
+        documentName: '投研体系.md',
+        index: 1,
+        label: '[2]',
+      },
     ]);
   });
 
-  it('accepts the keyed shape an agent message ships', () => {
-    const docs = aggregateReferenceDocs({
-      '498309038b007c6e': chunk('doc-1', '公司概览.md', 'c1'),
+  it('keeps the original numbering for positional chat markers', () => {
+    const images = buildReferenceImages(consultation, '答案如下 [0]。');
+
+    expect(images).toHaveLength(1);
+    expect(images[0]).toMatchObject({
+      key: '0',
+      documentId: 'doc-1',
+      label: '[1]',
     });
+  });
 
-    expect(docs).toEqual([
-      { count: 1, doc_id: 'doc-1', doc_name: '公司概览.md' },
+  it('renders one card per hit document when the answer carries no marker', () => {
+    const images = buildReferenceImages(
+      [
+        chunk('c1', 'doc-1', '公司概览.md'),
+        chunk('c2', 'doc-1', '公司概览.md', 'img-1'),
+        chunk('c3', 'doc-2', 'faq库.xlsx'),
+      ],
+      '华夏基金成立于1998年。',
+      { fallbackToHitDocuments: true },
+    );
+
+    expect(images).toEqual([
+      {
+        key: 'doc-1',
+        imageId: 'img-1',
+        documentId: 'doc-1',
+        documentName: '公司概览.md',
+        index: 0,
+      },
+      {
+        key: 'doc-2',
+        imageId: '',
+        documentId: 'doc-2',
+        documentName: 'faq库.xlsx',
+        index: 1,
+      },
     ]);
   });
 
-  it('drops chunks that lost their document reference', () => {
-    expect(aggregateReferenceDocs([chunk('', '', 'c1')])).toEqual([]);
+  it('stays empty without a marker unless the caller asks for the fallback', () => {
+    expect(
+      buildReferenceImages(consultation, '华夏基金成立于1998年。'),
+    ).toEqual([]);
   });
 
   it('returns an empty list for a run without a reference', () => {
-    expect(aggregateReferenceDocs(undefined)).toEqual([]);
+    expect(
+      buildReferenceImages(undefined, '您好，请讲。', {
+        fallbackToHitDocuments: true,
+      }),
+    ).toEqual([]);
   });
 });

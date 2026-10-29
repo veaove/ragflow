@@ -26,21 +26,21 @@ import {
 import { useSetModalState } from '@/hooks/common-hooks';
 import { IReferenceChunk } from '@/interfaces/database/chat';
 import PdfDrawer from '@/pages/next-search/document-preview-modal';
-import { buildCitationDisplayMap, resolveCitationChunk } from '@/utils/chat';
 import { middleEllipsis } from '@/utils/common-util';
 import { RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
 import { useMemo } from 'react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
+import { ReferenceImageItem, buildReferenceImages } from './utils';
+
 type IProps = {
   referenceChunks?: IReferenceChunk[] | Record<string, IReferenceChunk>;
   messageContent: string;
-};
-
-type ImageItem = {
-  id: string;
-  documentId: string;
-  documentName: string;
-  index: number;
+  /**
+   * 回答里没有引用标号时，把本轮命中的文档也画成卡片（有配图用配图，没配图放
+   * 文件图标）。没开「引用」的智能体（电话 IVR 不能开，标号会被 TTS 念出来）
+   * 靠它才有卡片可看，否则检索命中了什么在界面上完全看不出来。
+   */
+  fallbackToHitDocuments?: boolean;
 };
 
 const getButtonVisibilityClass = (imageCount: number) => {
@@ -55,16 +55,51 @@ const getButtonVisibilityClass = (imageCount: number) => {
 };
 
 /**
- * ImagePhotoView renders an image with PhotoView preview wrapper.
- * Only wraps with PhotoView when the image URL is ready to prevent
- * PhotoView from registering an empty src which causes blank preview.
- *
- * @param id - The image identifier used to fetch the image
- * @param documentId - The document identifier for the image
- * @param index - The display index of the image in the list
+ * ChunkImage renders one image extracted from a cited chunk, wrapped in
+ * PhotoView so it can be zoomed. Only wraps when the image URL is ready:
+ * PhotoView caches an empty src and would then show a blank preview.
  */
-function ImagePhotoView({ id, documentId, documentName, index }: ImageItem) {
-  const src = useDocumentImageUrl(id, documentId);
+function ChunkImage({
+  imageId,
+  documentId,
+  label,
+  previewButton,
+}: {
+  imageId: string;
+  documentId: string;
+  label?: string;
+  previewButton: React.ReactNode;
+}) {
+  const src = useDocumentImageUrl(imageId, documentId);
+  const imageElement = (
+    <Image
+      id={imageId}
+      documentId={documentId}
+      className="h-40 w-full"
+      label={label}
+      previewButton={previewButton}
+    />
+  );
+
+  if (!src) {
+    return imageElement;
+  }
+
+  return <PhotoView src={src}>{imageElement}</PhotoView>;
+}
+
+/**
+ * ImagePhotoView renders one reference card: the chunk's picture when it has
+ * one, a file icon otherwise (a hit document whose chunks carry no image, which
+ * is the norm for txt/xlsx sources), plus the file-name caption that opens the
+ * document drawer.
+ */
+function ImagePhotoView({
+  imageId,
+  documentId,
+  documentName,
+  label,
+}: ReferenceImageItem) {
   const { visible, showModal, hideModal } = useSetModalState();
   const previewButton = (
     <button
@@ -83,19 +118,25 @@ function ImagePhotoView({ id, documentId, documentName, index }: ImageItem) {
       <span className="truncate">{middleEllipsis(documentName, 10, 6)}</span>
     </button>
   );
-  const imageElement = (
-    <Image
-      id={id}
-      documentId={documentId}
-      className="h-40 w-full"
-      label={`[${index + 1}]`}
-      previewButton={previewButton}
-    />
-  );
 
-  const wrapped = (
+  return (
     <div className="relative">
-      {imageElement}
+      {imageId ? (
+        <ChunkImage
+          imageId={imageId}
+          documentId={documentId}
+          label={label}
+          previewButton={previewButton}
+        />
+      ) : (
+        <div
+          onClick={showModal}
+          className="flex h-40 w-full cursor-pointer items-center justify-center rounded-md border border-border-button bg-bg-card"
+        >
+          <FileIcon id={documentId} name={documentName} width={44}></FileIcon>
+          {previewButton}
+        </div>
+      )}
       {visible && (
         <PdfDrawer
           visible={visible}
@@ -106,17 +147,9 @@ function ImagePhotoView({ id, documentId, documentName, index }: ImageItem) {
       )}
     </div>
   );
-
-  // When src is not yet available, render image without PhotoView
-  // to avoid PhotoView caching an empty src that would show blank preview
-  if (!src) {
-    return wrapped;
-  }
-
-  return <PhotoView src={src}>{wrapped}</PhotoView>;
 }
 
-function ImageCarousel({ images }: { images: ImageItem[] }) {
+function ImageCarousel({ images }: { images: ReferenceImageItem[] }) {
   const buttonVisibilityClass = getButtonVisibilityClass(images.length);
 
   return (
@@ -149,9 +182,9 @@ function ImageCarousel({ images }: { images: ImageItem[] }) {
         }}
       >
         <CarouselContent>
-          {images.map(({ id, documentId, documentName, index }) => (
+          {images.map((item) => (
             <CarouselItem
-              key={index}
+              key={item.key}
               className="
               basis-full
               @sm:basis-1/2
@@ -160,12 +193,7 @@ function ImageCarousel({ images }: { images: ImageItem[] }) {
               @2xl:basis-1/6
               "
             >
-              <ImagePhotoView
-                id={id}
-                documentId={documentId}
-                documentName={documentName}
-                index={index}
-              ></ImagePhotoView>
+              <ImagePhotoView {...item}></ImagePhotoView>
             </CarouselItem>
           ))}
         </CarouselContent>
@@ -179,29 +207,15 @@ function ImageCarousel({ images }: { images: ImageItem[] }) {
 export function ReferenceImageList({
   referenceChunks,
   messageContent,
+  fallbackToHitDocuments = false,
 }: IProps) {
-  const images = useMemo(() => {
-    // The marker itself selects the chunk: plain-chat numeric markers index
-    // the retrieved chunks array (chip renders n + 1); agent [ID:<chunkId>]
-    // markers match the chunk's own id. Either way a citation lands on its
-    // own chunk regardless of the payload's retrieval order.
-    const keyToPosition = buildCitationDisplayMap(messageContent);
-
-    return [...keyToPosition.entries()]
-      .map(([key, position]) => {
-        const chunk = resolveCitationChunk(referenceChunks, key);
-        if (!chunk?.image_id || !chunk?.document_id) {
-          return null;
-        }
-        return {
-          id: chunk.image_id,
-          documentId: chunk.document_id,
-          documentName: chunk.document_name,
-          index: typeof key === 'number' ? key : position,
-        } as ImageItem;
-      })
-      .filter((item): item is ImageItem => item !== null);
-  }, [messageContent, referenceChunks]);
+  const images = useMemo(
+    () =>
+      buildReferenceImages(referenceChunks, messageContent, {
+        fallbackToHitDocuments,
+      }),
+    [fallbackToHitDocuments, messageContent, referenceChunks],
+  );
 
   const imageCount = images?.length || 0;
 
