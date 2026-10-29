@@ -8,7 +8,7 @@
 // groupChunkTokenCap) so the stored config stays independent of the active
 // method; the backend reads only levels/hierarchy and ignores the rest.
 
-import { Operator } from '../../constant';
+import { NodeHandleId, Operator } from '../../constant';
 import { buildDslComponentsByGraph } from '../../utils';
 
 describe('buildDslComponentsByGraph ManualChunker params', () => {
@@ -88,6 +88,73 @@ describe('buildDslComponentsByGraph ManualChunker params', () => {
     expect(params.method).toBe('group');
     expect(params.outputs).toEqual({
       chunks: { type: 'Array<Object>', value: [] },
+    });
+  });
+});
+
+// A hand-built DSL (scripts/build_ivr_agent.py) writes Agent params by hand and
+// omits `tools`, while the canvas UI always writes `tools: []`. buildAgentTools
+// used to call `.concat` on that undefined value, so building the DSL threw
+// "Cannot read properties of undefined (reading 'concat')" and the Run button
+// silently did nothing.
+describe('buildDslComponentsByGraph Agent tools', () => {
+  const createNode = (id: string, label: Operator, form: any) =>
+    ({
+      id,
+      type: 'agentNode',
+      position: { x: 0, y: 0 },
+      data: { label, name: id, form },
+    }) as any;
+
+  it('defaults a missing tools list instead of throwing', () => {
+    const components = buildDslComponentsByGraph(
+      [
+        createNode('begin', Operator.Begin, { inputs: {} }),
+        createNode('Agent:Rewrite', Operator.Agent, {
+          llm_id: 'llm:1',
+          prompts: [{ role: 'user', content: '{sys.query}' }],
+          outputs: { content: { type: 'string', value: '' } },
+        }),
+      ],
+      [
+        {
+          id: 'xy-edge__beginstart-Agent:Rewriteend',
+          source: 'begin',
+          sourceHandle: NodeHandleId.Start,
+          target: 'Agent:Rewrite',
+          targetHandle: NodeHandleId.End,
+        },
+      ] as any,
+      {},
+    ) as any;
+
+    expect(components['Agent:Rewrite'].obj.params).toHaveProperty('tools', []);
+  });
+
+  it('still collects sub-agents hanging off the bottom handle', () => {
+    const components = buildDslComponentsByGraph(
+      [
+        createNode('Agent:parent', Operator.Agent, { tools: [] }),
+        createNode('Agent:child', Operator.Agent, { llm_id: 'llm:2' }),
+      ],
+      [
+        {
+          id: 'xy-edge__Agent:parentagentBottom-Agent:childend',
+          source: 'Agent:parent',
+          sourceHandle: NodeHandleId.AgentBottom,
+          target: 'Agent:child',
+          targetHandle: NodeHandleId.End,
+        },
+      ] as any,
+      {},
+    ) as any;
+
+    const tools = components['Agent:parent'].obj.params.tools;
+
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).toMatchObject({
+      component_name: Operator.Agent,
+      id: 'Agent:child',
     });
   });
 });

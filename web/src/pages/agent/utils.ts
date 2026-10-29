@@ -111,7 +111,11 @@ function buildAgentTools(edges: Edge[], nodes: Node[], nodeId: string) {
       (x) => x.source === nodeId && x.sourceHandle === NodeHandleId.AgentBottom,
     );
 
-    (params as IAgentForm).tools = (params as IAgentForm).tools.concat(
+    // A hand-built DSL (scripts/build_ivr_agent.py) may carry no `tools` key at
+    // all — the canvas UI always writes `tools: []`. Default it here, otherwise
+    // building the DSL throws "Cannot read properties of undefined (reading
+    // 'concat')" and the Run button silently does nothing.
+    (params as IAgentForm).tools = ((params as IAgentForm).tools ?? []).concat(
       bottomSubAgentEdges.map((x) => {
         const {
           params: formData,
