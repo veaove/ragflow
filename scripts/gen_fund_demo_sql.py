@@ -19,6 +19,7 @@
 import argparse
 import os
 import random
+import re
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -970,6 +971,52 @@ ORDER BY actual_rate_pct ASC;
 
 # ---------------------------------------------------------------- main
 
+def emit_fewshot(qa_md):
+    """把 fund_demo_qa.md 的「问 + 标准 SQL」抽出来，作为 few-shot 库素材。
+
+    和 fund_demo_schema.md 分开建库：这份喂给「Question to SQL」检索节点，
+    让模型看到「这种问法对应这种 SQL」，命中率明显高于只给表结构。
+    """
+    items = re.findall(
+        r"## (Q\d+)\. ([^\n]+)\n\n\*\*问\*\*：(.+?)\n\n```sql\n(.*?)```\n\n\*\*期望答案\*\*：(.+?)\n",
+        qa_md, re.S)
+    L = []
+    w = L.append
+    w("# fund_demo 问数示例（自然语言 → SQL）")
+    w("")
+    w("> ⚠️ 演示数据，净值与订单为虚构。本文件是 **few-shot 示例库**，")
+    w("> 与 `fund_demo_schema.md`（表结构库）分开放，分别绑到不同的检索节点。")
+    w("")
+    w("目标库：`fund_demo`（MySQL）。下面每条 SQL 都已在真实库上执行验证过。")
+    w("")
+    for qid, title, question, sql, answer in items:
+        w("## %s ｜ %s" % (qid, title))
+        w("")
+        w("**用户问**：%s" % question.strip())
+        w("")
+        w("**正确 SQL**：")
+        w("")
+        w("```sql")
+        for line in sql.strip().split("\n"):
+            w(line)
+        w("```")
+        w("")
+        w("**返回结果**：%s" % answer.strip())
+        w("")
+        w("---")
+        w("")
+    w("## 通用写法约定")
+    w("")
+    w("- 连接串已指定库，SQL 里直接写表名即可。")
+    w("- 费率类（`manage_fee_rate` / `purchase_fee_rate` / `redeem_fee_rate`）单位是 %，算钱要 `/100`。")
+    w("- `discount_rate` 是**倍数**（0.10 = 1折），直接乘，不再除 100。")
+    w("- 申购费走外扣法：`申购金额 - 申购金额/(1+实际费率/100)`。")
+    w("- 统计金额只算 `order_type IN ('申购','定投') AND status='已确认'`。")
+    w("- 日期条件用实际交易日：`fund_nav` 里没有周末，也没有 2026-10-01~10-07。")
+    w("")
+    return "\n".join(L) + "\n", len(items)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", default=os.path.join("docs", "smart_query_demo"))
@@ -981,6 +1028,7 @@ def main():
         "fund_demo_schema.md": emit_schema(),
         "fund_demo_qa.md": emit_qa(),
     }
+    files["fund_demo_fewshot.md"], n_q = emit_fewshot(files["fund_demo_qa.md"])
     for name, content in files.items():
         path = os.path.join(args.out_dir, name)
         with open(path, "w", encoding="utf-8", newline="\n") as f:
@@ -990,6 +1038,7 @@ def main():
     print("\n交易日 %d 天（%s ~ %s）｜产品 %d ｜净值 %d 行｜订单 %d 笔" % (
         len(DAYS), FIRST_DAY, LAST_DAY, len(PRODUCTS),
         sum(len(v) for v in NAV.values()), len(ORDERS)))
+    print("few-shot 示例 %d 条（fund_demo_fewshot.md）" % n_q)
 
 
 if __name__ == "__main__":
