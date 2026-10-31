@@ -173,17 +173,38 @@ Text-to-SQL 的检索节点只召回这张表的结构，不要和产品文档�
 
 ## 九、接入 RAGFlow 智能问数
 
-1. 用 `fund_demo.sql` 建库，会同时创建一个只读账号：
-   - 用户 `fund_ro`，密码 `FundDemo_2026`，仅 `SELECT` 权限，只授到 `fund_demo.*`
-2. 在智能体画布里用内置模板「问数专家」（`text2sql_data_expert`），或自建 `Agent + Retrieval + ExeSQL` 三节点。
-3. `ExeSQL` 节点填写：
-   - `database_type`：`mysql`
-   - `host`：ExeSQL 在 api 容器内执行，写 Docker 网络内的地址 `docker-mysql-1:3306`（或 MySQL 容器 IP `172.18.0.6:3306`）；
-     若在宿主机用客户端手工验证，则写 `127.0.0.1:3306`
-   - `database`：`fund_demo`
-   - `username` / `password`：`fund_ro` / `FundDemo_2026`
-   - `max_records`：保持默认 1024 即可
-4. `Retrieval` 节点绑定的知识库里**只放本文档**，不要混产品文档。
+> 本库已于 2026-10-31 导入 `172.30.20.51` 的 MySQL（`docker-mysql-1`），6 张表数据齐备。
+
+1. 只读账号：用户 `fund_ro`，密码 `FundDemo_2026`，仅 `SELECT` 到 `fund_demo.*`。
+   已实测：读 `fund_demo` 正常；读 `rag_flow` 被 `ERROR 1142` 拒绝；建表被拒绝。
+2. 画布用 `Agent + Retrieval + ExeSQL` 三节点，或内置「问数专家」模板（`text2sql_data_expert`）。
+3. `ExeSQL` 节点按下面填（字段与 `internal/agent/tool/exesql.go` 对齐）：
+
+| 字段 | 值 | 说明 |
+| --- | --- | --- |
+| `database_type` | `mysql` | 另支持 postgres / mariadb / mssql / oceanbase |
+| `host` | `172.30.20.51` | **只写 IP，不要带端口**。代码用 `net.JoinHostPort(host, port)` 拼 DSN，写成 `ip:port` 会变成 `[ip:port]:3306` 直接连不上 |
+| `port` | `3306` | 不填默认就是 3306 |
+| `database` | `fund_demo` | |
+| `username` / `password` | `fund_ro` / `FundDemo_2026` | |
+| `max_records` | `1024` | 默认值，够用 |
+
+4. ⚠️ **前置条件：必须打开 `ALLOW_ANY_HOST=1`**
+   
+   `ExeSQL` 连库前会过 `ValidateDBHost()` 的 SSRF 校验，**默认拒绝一切内网地址**
+   （`172.16/12`、`10/8`、`192.168/16`、`127.0.0.1` 全部返回 `ErrSSRFBlocked`）。
+   不改这一项，节点会直接报错，连不到库。改法（drop-in，不动主 unit）：
+   
+   ```bash
+   mkdir -p /etc/systemd/system/ragflow-api.service.d
+   printf '[Service]\nEnvironment=ALLOW_ANY_HOST=1\n' \
+     > /etc/systemd/system/ragflow-api.service.d/allow-any-host.conf
+   systemctl daemon-reload && systemctl restart ragflow-api
+   ```
+   
+   注意：`/root/ragflow/docker/.env` 里的 `ALLOW_ANY_HOST=0` **不生效**——
+   RAGFlow 在本部署里是宿主机 systemd 服务（`ragflow-api/admin/ingestor`），不读那个文件。
+5. `Retrieval` 节点绑定的知识库里**只放本文档**，不要混产品文档，否则会召回无关表结构。
 
 > 随机种子固定为 20261031，重跑 `scripts/gen_fund_demo_sql.py` 产出的数据完全一致。
 
