@@ -173,7 +173,17 @@ Text-to-SQL 的检索节点只召回这张表的结构，不要和产品文档�
 
 ## 九、接入 RAGFlow 智能问数
 
-> 本库已于 2026-10-31 导入 `172.30.20.51` 的 MySQL（`docker-mysql-1`），6 张表数据齐备。
+> **2026-10-31 已全部配好并验证**：MySQL 建库、两个知识库、智能体、发布，14 道验收题全部通过。
+
+| 资源 | 名称 / ID |
+| --- | --- |
+| MySQL 库 | `fund_demo` @ `172.30.20.51:3306`（6 表，行数见第一节） |
+| 只读账号 | `fund_ro` / `FundDemo_2026`（仅 SELECT 到本库） |
+| 表结构库 | `问数-表结构-fund_demo`，id `5e668a1a4dfd44ba83af5c8e5e923126`，19 个 chunk |
+| 示例 SQL 库 | `问数-示例SQL-fund_demo`，id `1febaf3eee7e44e0b1052af560f40d30`，16 个 chunk |
+| 智能体 | `问数助手·fund_demo`，id `ac58a0c258d5478db0cfd6572de38e2b`，已发布 |
+
+重新配置跑 `python scripts/setup_fund_demo_agent.py all`（幂等，已存在则复用）。
 
 1. 只读账号：用户 `fund_ro`，密码 `FundDemo_2026`，仅 `SELECT` 到 `fund_demo.*`。
    已实测：读 `fund_demo` 正常；读 `rag_flow` 被 `ERROR 1142` 拒绝；建表被拒绝。
@@ -205,6 +215,9 @@ Text-to-SQL 的检索节点只召回这张表的结构，不要和产品文档�
    注意：`/root/ragflow/docker/.env` 里的 `ALLOW_ANY_HOST=0` **不生效**——
    RAGFlow 在本部署里是宿主机 systemd 服务（`ragflow-api/admin/ingestor`），不读那个文件。
 5. `Retrieval` 节点绑定的知识库里**只放本文档**，不要混产品文档，否则会召回无关表结构。
+6. **已知文案问题**：SQL 查不到记录时，ExeSQL 会返回英文哨兵 `No record in the database!`，
+   这个串写死在 `internal/agent/tool/exesql.go`（为与 Python 版对齐），不是配置项。
+   行为是对的（没有编数据），只是文案是英文，要给客户看可以改那一行常量后重新编译。
 
 > 随机种子固定为 20261031，重跑 `scripts/gen_fund_demo_sql.py` 产出的数据完全一致。
 
