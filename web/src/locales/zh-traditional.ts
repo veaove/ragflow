@@ -3,6 +3,11 @@ export default {
     common: {
       delete: '刪除',
       deleteModalTitle: '確定刪除嗎?',
+      superUserTitle: '平台超級管理員不能使用業務主站',
+      superUserDesc:
+        '該帳號是平台超級管理員，只能登入管理控制台。業務主站的介面會統一拒絕該帳號，所以在這裡顯示不出頁面。如需使用業務主站，請換一個一般帳號登入。',
+      superUserGoConsole: '進入管理控制台',
+      superUserLogout: '登出',
       ok: '是',
       cancel: '否',
       total: '總共',

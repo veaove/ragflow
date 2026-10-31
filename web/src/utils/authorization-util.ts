@@ -21,6 +21,7 @@ import {
   UserInfo,
 } from '@/constants/authorization';
 import { getSearchValue } from './common-util';
+import { resetSuperUserDenied } from './super-user-store';
 import { clearCurrentTenantId } from './tenant-context';
 const KeySet = [Authorization, Token, UserInfo];
 
@@ -39,6 +40,8 @@ const storage = {
     return userInfoStr ? JSON.parse(userInfoStr) : null;
   },
   setAuthorization: (value: string) => {
+    // 换人了：上一个账号被判定成「平台超管」的结论不能带过来。
+    resetSuperUserDenied();
     localStorage.setItem(Authorization, value);
   },
   setToken: (value: string) => {
@@ -60,6 +63,7 @@ const storage = {
     KeySet.forEach((x) => {
       localStorage.removeItem(x);
     });
+    resetSuperUserDenied();
     // 当前租户属于「上一个人」的上下文，不能留给下一个登录者：
     // 它会被请求拦截器塞进 X-Tenant-ID，指向一个此人未必属于的租户。
     // 后端会校验成员关系并回退到默认租户，所以不构成越权，但请求头、

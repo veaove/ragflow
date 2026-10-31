@@ -71,7 +71,10 @@ export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
     queryFn: async () => {
       const { data } = await userService.userInfo();
 
-      if (data.code === 0) {
+      // 请求层在 4xx 时把 response 原样返回，解构出来的 data 可能是 undefined
+      // （超管调主站接口就是这情况）。不加 ?. 会抛
+      // "Cannot read properties of undefined (reading 'code')" 并炸掉首屏。
+      if (data?.code === 0) {
         const targetLng =
           supportedLanguages.find((lang) => lang.code === data.data.language)
             ?.code ?? DEFAULT_LANGUAGE_CODE;
@@ -81,7 +84,7 @@ export const useFetchUserInfo = (): ResponseGetType<IUserInfo> => {
         });
       }
 
-      return data.data ?? {};
+      return data?.data ?? {};
     },
   });
 
@@ -95,8 +98,10 @@ export const useFetchTenantData = (): ResponseGetType<ITenantInfo> => {
     gcTime: 0,
     queryFn: async () => {
       // request 库返回三层: { data: { code:0, data:{tenant_id, role, ...}, message:"success" }, response: {...} }
+      // 4xx 时 request 库原样回 response，这里拿不到业务信封 → 当作空租户处理，
+      // 别让 TypeError 把 useQuery 卡死（否则 PermissionGate 会永远转圈）。
       const { data: axiosRes } = await userService.getTenantInfo();
-      if (axiosRes.code === 0) {
+      if (axiosRes?.code === 0) {
         return (axiosRes.data ?? {}) as ITenantInfo;
       }
       return {} as ITenantInfo;

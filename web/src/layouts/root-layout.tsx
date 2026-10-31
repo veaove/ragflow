@@ -2,11 +2,13 @@ import { useEffect, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 
 import { filterMenuItems, useConsolePermissions } from '@/hooks/use-console-permissions';
+import { useSuperUserDenied } from '@/hooks/use-super-user-denied';
 import { Routes } from '@/routes';
 
 import { AppSidebar } from './components/app-sidebar';
 import { Header } from './components/header';
 import { sidebarMenuItems, type SidebarMenuItem } from './components/sidebar-nav';
+import SuperUserNotice from './components/super-user-notice';
 
 /**
  * 从过滤后的菜单树里拿到第一个可见叶子节点的 path。
@@ -133,6 +135,15 @@ export function RootLayoutContainer({ children }: React.PropsWithChildren) {
 }
 
 export default function RootLayout() {
+  const superUserDenied = useSuperUserDenied();
+
+  // 平台超管：主站接口全被后端拒掉，硬渲染只会得到「侧栏空 + 永远转圈」。
+  // 整页换成「请去控制台」的说明，连侧栏和顶栏一起不渲染 —— 它们各自的
+  // 请求同样会 403，白白刷一串权限提示。
+  if (superUserDenied) {
+    return <SuperUserNotice />;
+  }
+
   return (
     <RootLayoutContainer>
       <PermissionGate />

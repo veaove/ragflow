@@ -62,6 +62,11 @@ export default {
       back: '返回',
       backHome: '返回首页',
       pageNotFound: '页面不存在，请检查地址是否正确',
+      superUserTitle: '平台超级管理员不能使用业务主站',
+      superUserDesc:
+        '该账号是平台超级管理员，只能登录管理控制台。业务主站的接口会统一拒绝该账号，所以这里显示不出页面。如需使用业务主站，请换一个普通账号登录。',
+      superUserGoConsole: '进入管理控制台',
+      superUserLogout: '退出登录',
       loggingOut: '正在退出登录…',
       noResults: '未查到结果',
       selectPlaceholder: '请选择',

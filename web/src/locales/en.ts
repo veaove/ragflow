@@ -68,6 +68,11 @@ export default {
       back: 'Back',
       backHome: 'Back to home',
       pageNotFound: 'Page not found, please check the address',
+      superUserTitle: 'Platform superusers cannot use the workspace',
+      superUserDesc:
+        'This account is a platform superuser and can only sign in to the admin console. The workspace APIs reject superuser accounts, so no page can load here. To work in the workspace, sign in with a regular account.',
+      superUserGoConsole: 'Go to admin console',
+      superUserLogout: 'Sign out',
       loggingOut: 'Signing out…',
       noResults: 'No results found',
       selectPlaceholder: 'Select value',

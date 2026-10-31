@@ -34,6 +34,10 @@ import { RequestMethod, extend } from 'umi-request';
 import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
+import {
+  isSuperUserDeniedMessage,
+  markSuperUserDenied,
+} from './super-user-store';
 
 const FAILED_TO_FETCH = 'Failed to fetch';
 
@@ -185,6 +189,13 @@ const errorHandler = (error: {
           .clone()
           .json()
           .then((body) => {
+            // 平台超管（is_superuser=1）调主站接口必回这条 403。它不是
+            // 「角色权限没配」，补 role_permission 也修不好 —— 请求层要把它
+            // 单独识别出来交给根布局整页提示，不能再弹「该功能」权限不足。
+            if (isSuperUserDeniedMessage(body?.message)) {
+              markSuperUserDenied();
+              return;
+            }
             notifyPermissionDenied(response.url, body?.message);
           })
           .catch(() => {

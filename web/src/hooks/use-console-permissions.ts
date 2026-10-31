@@ -29,11 +29,17 @@ const MENU_MODULE: Record<string, string> = {
 
 export function useConsolePermissions() {
   // 自己拿 tenantInfo，不依赖 external hook
-  const { data: tenantInfo, status: tiStatus } = useQuery({
+  const { data: tenantInfo } = useQuery({
     queryKey: ['console/tenant-info'],
     queryFn: async () => {
       const { data: axiosRes } = await userService.getTenantInfo();
-      return (axiosRes.code === 0 ? axiosRes.data : {}) as { tenant_id?: string; role?: string };
+      // 4xx（含超管的 403）时拿到的是原始 response，没有业务信封；
+      // 不判空会抛 TypeError，让下面的权限查询永远停在 pending，
+      // PermissionGate 就一直显示「加载权限…」。
+      return (axiosRes?.code === 0 ? axiosRes.data : {}) as {
+        tenant_id?: string;
+        role?: string;
+      };
     },
     staleTime: 60_000,
   });
