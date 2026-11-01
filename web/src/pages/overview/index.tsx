@@ -189,9 +189,10 @@ export default function Overview() {
         departments
           ? t('hint.subDepartments', { count: departments.children })
           : '',
-        // 拿不到 tenantId 时该查询是 enabled:false，isPending 会一直是 true，
-        // 直接用会让卡片永远停在骨架屏，所以这里显式要求有 tenantId。
-        !!tenantId && departmentsQ.isPending,
+        // 拿不到 tenantId 或没有「组织架构」权限时该查询是 enabled:false，
+        // isPending 会一直是 true，直接用会让卡片永远停在骨架屏。
+        // 用 isLoading（isPending && isFetching）只在真正发请求时显示骨架。
+        departmentsQ.isLoading,
       ),
       build(
         'knowledgebases',
@@ -221,9 +222,8 @@ export default function Overview() {
     agentSummary,
     agentQ.isPending,
     activityQ.isPending,
-    departmentsQ.isPending,
+    departmentsQ.isLoading,
     datasetsQ.isPending,
-    tenantId,
     t,
   ]);
 
