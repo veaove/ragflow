@@ -3,6 +3,7 @@ import {
   UseRowSelectionType,
   useSelectedIds,
 } from '@/hooks/logic-hooks/use-row-selection';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import {
   useRemoveDocument,
   useRunDocument,
@@ -47,6 +48,10 @@ export function useBulkOperateDataset({
   const { removeDocument } = useRemoveDocument();
   const { setDocumentFolder } = useSetDocumentFolder();
   const { findDocumentParseGaps } = useParserGapValidation();
+  // 批量操作全部是写动作：解析/停止/启停/移动属编辑，删除单独判定。
+  const { can } = useConsolePermissions();
+  const canEdit = can('dataset', 'edit');
+  const canDelete = can('dataset', 'delete');
 
   const runDocument = useCallback(
     async (run: number) => {
@@ -229,7 +234,7 @@ export function useBulkOperateDataset({
         }
       },
     },
-  ];
+  ].filter((item) => (item.id === 'delete' ? canDelete : canEdit));
 
   return { list };
 }

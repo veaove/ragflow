@@ -9,15 +9,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import {
   useDeleteKnowledge,
   useUpdateKnowledge,
   fetchDatasetReferences,
 } from '@/hooks/use-knowledge-request';
-import {
-  IDataset,
-  IDatasetReference,
-} from '@/interfaces/database/dataset';
+import { IDataset, IDatasetReference } from '@/interfaces/database/dataset';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/date';
 import { ColumnDef } from '@tanstack/react-table';
@@ -37,7 +35,10 @@ type UseKnowledgeBaseColumnsProps = {
    * Called when the dataset cannot be disabled because apps still bind it. The
    * caller owns the dialog: the column definition cannot render one.
    */
-  onDisableBlocked: (dataset: IDataset, references: IDatasetReference[]) => void;
+  onDisableBlocked: (
+    dataset: IDataset,
+    references: IDatasetReference[],
+  ) => void;
 } & Pick<ReturnType<typeof useEditDataset>, 'showDatasetEditModal'>;
 
 export function useKnowledgeBaseColumns({
@@ -49,6 +50,10 @@ export function useKnowledgeBaseColumns({
   const { navigateToDataset } = useNavigatePage();
   const { saveKnowledgeConfiguration } = useUpdateKnowledge(true);
   const { deleteKnowledge } = useDeleteKnowledge();
+  // 表格视图的写入口与卡片视图同源：编辑（重命名/启停）与删除分别判定。
+  const { can } = useConsolePermissions();
+  const canEdit = can('dataset', 'edit');
+  const canDelete = can('dataset', 'delete');
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // `enabled` is the switch; `status` is the backend row-lifecycle marker and
@@ -123,9 +128,7 @@ export function useKnowledgeBaseColumns({
         cell: ({ row }) => {
           const description = row.getValue('description') as string;
           return (
-            <span className="text-text-secondary">
-              {description || '--'}
-            </span>
+            <span className="text-text-secondary">{description || '--'}</span>
           );
         },
       },
@@ -147,7 +150,11 @@ export function useKnowledgeBaseColumns({
                   enabled ? 'bg-accent-primary' : 'bg-text-disabled',
                 )}
               />
-              <span className={cn(enabled ? 'text-text-primary' : 'text-text-secondary')}>
+              <span
+                className={cn(
+                  enabled ? 'text-text-primary' : 'text-text-secondary',
+                )}
+              >
                 {enabled
                   ? t('knowledgeDetails.enabled')
                   : t('knowledgeDetails.disabled')}
@@ -226,42 +233,48 @@ export function useKnowledgeBaseColumns({
 
           return (
             <div className="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                className="inline-flex items-center justify-center rounded-md p-1 text-text-secondary transition-colors hover:bg-bg-card hover:text-text-primary"
-                onClick={handleEdit}
-                title={t('common.rename')}
-              >
-                <Pencil className="size-4" />
-              </button>
-
-              <Switch
-                checked={enabled}
-                disabled={toggling}
-                onCheckedChange={handleToggle}
-                className="data-[state=checked]:bg-accent-primary"
-              />
-
-              <ConfirmDeleteDialog
-                onOk={handleDelete}
-                title={t('deleteModal.delDataset')}
-                content={{
-                  node: (
-                    <ConfirmDeleteDialogNode
-                      avatar={{ avatar: dataset.avatar, name: dataset.name }}
-                      name={dataset.name}
-                    />
-                  ),
-                }}
-              >
+              {canEdit && (
                 <button
                   type="button"
-                  className="inline-flex items-center justify-center rounded-md p-1 text-text-secondary transition-colors hover:bg-bg-card hover:text-state-error"
-                  title={t('common.delete')}
+                  className="inline-flex items-center justify-center rounded-md p-1 text-text-secondary transition-colors hover:bg-bg-card hover:text-text-primary"
+                  onClick={handleEdit}
+                  title={t('common.rename')}
                 >
-                  <Trash2 className="size-4" />
+                  <Pencil className="size-4" />
                 </button>
-              </ConfirmDeleteDialog>
+              )}
+
+              {canEdit && (
+                <Switch
+                  checked={enabled}
+                  disabled={toggling}
+                  onCheckedChange={handleToggle}
+                  className="data-[state=checked]:bg-accent-primary"
+                />
+              )}
+
+              {canDelete && (
+                <ConfirmDeleteDialog
+                  onOk={handleDelete}
+                  title={t('deleteModal.delDataset')}
+                  content={{
+                    node: (
+                      <ConfirmDeleteDialogNode
+                        avatar={{ avatar: dataset.avatar, name: dataset.name }}
+                        name={dataset.name}
+                      />
+                    ),
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-md p-1 text-text-secondary transition-colors hover:bg-bg-card hover:text-state-error"
+                    title={t('common.delete')}
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </ConfirmDeleteDialog>
+              )}
             </div>
           );
         },
@@ -276,6 +289,8 @@ export function useKnowledgeBaseColumns({
       deleteKnowledge,
       onDisableBlocked,
       togglingId,
+      canEdit,
+      canDelete,
     ],
   );
 

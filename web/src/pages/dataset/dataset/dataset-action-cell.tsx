@@ -7,6 +7,7 @@ import {
 } from '@/components/ui/hover-card';
 import { DocumentType } from '@/constants/knowledge';
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { useRemoveDocument } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { downloadDatasetDocument } from '@/services/file-manager-service';
@@ -38,6 +39,10 @@ export function DatasetActionCell({
   const isVirtualDocument = type === DocumentType.Virtual;
 
   const { removeDocument } = useRemoveDocument();
+  // 文档改名为编辑、删除为删除；下载/预览属查看，不单独控制。
+  const { can } = useConsolePermissions();
+  const canEdit = can('dataset', 'edit');
+  const canDelete = can('dataset', 'delete');
 
   const onDownloadDocument = useCallback(async () => {
     try {
@@ -73,14 +78,16 @@ export function DatasetActionCell({
       flex gap-2 items-center opacity-0
       transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
     >
-      <Button
-        size="icon-xs"
-        variant="ghost"
-        disabled={isRunning}
-        onClick={handleRename}
-      >
-        <PenLine className="size-[1em]" />
-      </Button>
+      {canEdit && (
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          disabled={isRunning}
+          onClick={handleRename}
+        >
+          <PenLine className="size-[1em]" />
+        </Button>
+      )}
       <HoverCard>
         <HoverCardTrigger>
           <Button size="icon-xs" variant="ghost" disabled={isRunning}>
@@ -118,16 +125,18 @@ export function DatasetActionCell({
           <Download className="size-[1em]" />
         </Button>
       )}
-      <ConfirmDeleteDialog onOk={handleRemove}>
-        <Button
-          data-testid="document-delete"
-          size="icon-xs"
-          variant="ghost"
-          disabled={isRunning}
-        >
-          <Trash2 className="size-[1em]" />
-        </Button>
-      </ConfirmDeleteDialog>
+      {canDelete && (
+        <ConfirmDeleteDialog onOk={handleRemove}>
+          <Button
+            data-testid="document-delete"
+            size="icon-xs"
+            variant="ghost"
+            disabled={isRunning}
+          >
+            <Trash2 className="size-[1em]" />
+          </Button>
+        </ConfirmDeleteDialog>
+      )}
     </div>
   );
 }

@@ -440,14 +440,14 @@ func (r *Router) Setup(engine *gin.Engine) {
 				datasets.GET("", r.datasetsHandler.ListDatasets)
 				datasets.GET("/tags/aggregation", r.datasetsHandler.AggregateTags)
 				datasets.GET("/:dataset_id", r.datasetsHandler.GetDataset)
-				datasets.PUT("/:dataset_id", r.datasetsHandler.UpdateDataset)
+				datasets.PUT("/:dataset_id", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.datasetsHandler.UpdateDataset)
 				datasets.GET("/:dataset_id/references", r.datasetsHandler.ListDatasetReferences)
 				datasets.GET("/:dataset_id/graph", r.datasetsHandler.GetKnowledgeGraph)
 				datasets.POST("/:dataset_id/embedding/check", r.datasetsHandler.CheckEmbedding)
-				datasets.POST("/:dataset_id/documents/batch-update-status", r.documentHandler.BatchUpdateDocumentStatus)
+				datasets.POST("/:dataset_id/documents/batch-update-status", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.BatchUpdateDocumentStatus)
 				// 文件夹：知识库内的文件分组 + 批量归组
 				datasets.GET("/:dataset_id/document-folders", r.documentHandler.ListDocumentFolders)
-				datasets.POST("/:dataset_id/documents/batch-folder", r.documentHandler.BatchSetDocumentFolder)
+				datasets.POST("/:dataset_id/documents/batch-folder", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.BatchSetDocumentFolder)
 				// Scheduler compile-status contract; replaces the retired
 				// RunIndex/TraceIndex/DeleteIndex /index routes.
 				datasets.GET("/:dataset_id/compilation/status", r.datasetsHandler.GetCompilationStatus)
@@ -459,7 +459,7 @@ func (r *Router) Setup(engine *gin.Engine) {
 				datasets.GET("/:dataset_id/artifacts/alteration", r.datasetArtifactHandler.GetArtifactAlteration)
 				datasets.GET("/:dataset_id/artifacts/graph", r.datasetArtifactHandler.GetArtifactGraph)
 				datasets.GET("/:dataset_id/artifacts/:page_type/*slug", r.datasetArtifactHandler.GetArtifact)
-				datasets.PUT("/:dataset_id/artifacts/:page_type/*slug", r.datasetArtifactHandler.UpdateArtifact)
+				datasets.PUT("/:dataset_id/artifacts/:page_type/*slug", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.datasetArtifactHandler.UpdateArtifact)
 				datasets.GET("/:dataset_id/artifacts/structure", r.datasetArtifactHandler.ListStructures)
 
 				// Knowledge-compilation navigation
@@ -469,12 +469,12 @@ func (r *Router) Setup(engine *gin.Engine) {
 				// Knowledge-compilation skills
 				datasets.HEAD("/:dataset_id/skills", r.datasetArtifactHandler.AnySkill)
 				datasets.GET("/:dataset_id/skills", r.datasetArtifactHandler.GetSkillTree)
-				datasets.DELETE("/:dataset_id/skills", r.datasetArtifactHandler.DeleteSkills)
+				datasets.DELETE("/:dataset_id/skills", handler.ModulePermissionAction("dataset", handler.ActionDelete), r.datasetArtifactHandler.DeleteSkills)
 				datasets.GET("/:dataset_id/skills/:skill_kwd", r.datasetArtifactHandler.GetSkillPage)
-				datasets.DELETE("/:dataset_id/skills/:skill_kwd", r.datasetArtifactHandler.DeleteSkill)
+				datasets.DELETE("/:dataset_id/skills/:skill_kwd", handler.ModulePermissionAction("dataset", handler.ActionDelete), r.datasetArtifactHandler.DeleteSkill)
 
-				datasets.POST("", r.datasetsHandler.CreateDataset)
-				datasets.DELETE("", r.datasetsHandler.DeleteDatasets)
+				datasets.POST("", handler.ModulePermissionAction("dataset", handler.ActionCreate), r.datasetsHandler.CreateDataset)
+				datasets.DELETE("", handler.ModulePermissionAction("dataset", handler.ActionDelete), r.datasetsHandler.DeleteDatasets)
 				datasets.POST("/search", r.datasetsHandler.SearchDatasets)
 				datasets.POST("/:dataset_id/search", r.datasetsHandler.SearchDataset)
 				datasets.GET("/metadata/flattened", r.datasetsHandler.ListMetadataFlattened)
@@ -488,55 +488,54 @@ func (r *Router) Setup(engine *gin.Engine) {
 
 				// Metadata Config
 				datasets.GET("/:dataset_id/metadata/config", r.datasetsHandler.GetMetadataConfig)
-				datasets.PUT("/:dataset_id/metadata/config", r.datasetsHandler.UpdateMetadataConfig)
+				datasets.PUT("/:dataset_id/metadata/config", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.datasetsHandler.UpdateMetadataConfig)
 
 				// Dataset documents
 				datasets.GET("/:dataset_id/documents", r.documentHandler.ListDocuments)
-				datasets.POST("/:dataset_id/documents", r.documentHandler.UploadDocuments)
+				datasets.POST("/:dataset_id/documents", handler.ModulePermissionAction("dataset", handler.ActionCreate), r.documentHandler.UploadDocuments)
 				datasets.GET("/:dataset_id/documents/:document_id", r.documentHandler.DownloadDocument)
-				datasets.PATCH("/:dataset_id/documents/:document_id", r.documentHandler.UpdateDatasetDocument)
-				datasets.DELETE("/:dataset_id/documents", r.documentHandler.DeleteDocuments)
-				datasets.POST("/:dataset_id/documents/:document_id/chunks", r.chunkHandler.AddChunk)
+				datasets.PATCH("/:dataset_id/documents/:document_id", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.UpdateDatasetDocument)
+				datasets.DELETE("/:dataset_id/documents", handler.ModulePermissionAction("dataset", handler.ActionDelete), r.documentHandler.DeleteDocuments)
+				datasets.POST("/:dataset_id/documents/:document_id/chunks", handler.ModulePermissionAction("dataset", handler.ActionCreate), r.chunkHandler.AddChunk)
 
 				// Dataset document chunk
 				datasets.GET("/:dataset_id/documents/:document_id/chunks", r.chunkHandler.ListChunks)
-				datasets.PATCH("/:dataset_id/documents/:document_id/chunks", r.chunkHandler.SwitchChunks)
+				datasets.PATCH("/:dataset_id/documents/:document_id/chunks", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.chunkHandler.SwitchChunks)
 				datasets.GET("/:dataset_id/documents/:document_id/chunks/:chunk_id", r.chunkHandler.Get)
-				datasets.POST("/:dataset_id/chunks", r.chunkHandler.Parse)
-				datasets.PATCH("/:dataset_id/documents/:document_id/chunks/:chunk_id", r.chunkHandler.UpdateChunk)
-				datasets.POST("/:dataset_id/documents/parse", r.documentHandler.StartIngestionTask)
-				datasets.POST("/:dataset_id/documents/stop", r.documentHandler.StopParseDocuments)
+				datasets.POST("/:dataset_id/chunks", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.chunkHandler.Parse)
+				datasets.PATCH("/:dataset_id/documents/:document_id/chunks/:chunk_id", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.chunkHandler.UpdateChunk)
+				datasets.POST("/:dataset_id/documents/parse", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.StartIngestionTask)
+				datasets.POST("/:dataset_id/documents/stop", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.StopParseDocuments)
 				datasets.GET("/ingestion/tasks", r.documentHandler.ListIngestionTasks)
-				datasets.PUT("/ingestion/tasks", r.documentHandler.StopIngestionTasks)
-				datasets.DELETE("/ingestion/tasks", r.documentHandler.RemoveIngestionTasks)
-				//datasets.POST("/:dataset_id/documents/parse", r.documentHandler.ParseDocuments)
-				datasets.DELETE("/:dataset_id/chunks", r.chunkHandler.StopParsing)
-				datasets.DELETE("/:dataset_id/documents/:document_id/chunks", r.chunkHandler.RemoveChunks)
-				datasets.PUT("/:dataset_id/documents/:document_id/metadata/config", r.datasetsHandler.UpdateDocumentMetadataConfig)
+				datasets.PUT("/ingestion/tasks", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.StopIngestionTasks)
+				datasets.DELETE("/ingestion/tasks", handler.ModulePermissionAction("dataset", handler.ActionDelete), r.documentHandler.RemoveIngestionTasks)
+				datasets.DELETE("/:dataset_id/chunks", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.chunkHandler.StopParsing)
+				datasets.DELETE("/:dataset_id/documents/:document_id/chunks", handler.ModulePermissionAction("dataset", handler.ActionDelete), r.chunkHandler.RemoveChunks)
+				datasets.PUT("/:dataset_id/documents/:document_id/metadata/config", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.datasetsHandler.UpdateDocumentMetadataConfig)
 				datasets.GET("/:dataset_id/documents/:document_id/structure/graph", r.datasetArtifactHandler.GetDocumentGraph)
 				datasets.GET("/:dataset_id/documents/:document_id/structure/claims", r.datasetArtifactHandler.GetDocumentClaims)
-				datasets.DELETE("/:dataset_id/documents/:document_id/structure/graph", r.datasetArtifactHandler.DeleteDocumentGraph)
-				datasets.POST("/:dataset_id/metadata/update", r.documentHandler.MetadataBatchUpdate)
-				datasets.PATCH("/:dataset_id/documents/metadatas", r.documentHandler.UpdateDocumentMetadatas)
+				datasets.DELETE("/:dataset_id/documents/:document_id/structure/graph", handler.ModulePermissionAction("dataset", handler.ActionDelete), r.datasetArtifactHandler.DeleteDocumentGraph)
+				datasets.POST("/:dataset_id/metadata/update", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.MetadataBatchUpdate)
+				datasets.PATCH("/:dataset_id/documents/metadatas", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.UpdateDocumentMetadatas)
 
 				// Vocabulary alias (synonym) management, scoped to one dataset.
 				datasets.GET("/:dataset_id/synonym-groups", r.getSynonymHandler().ListSynonymGroups)
-				datasets.POST("/:dataset_id/synonym-groups", r.getSynonymHandler().CreateSynonymGroup)
-				datasets.POST("/:dataset_id/synonym-groups/import", r.getSynonymHandler().ImportSynonymGroups)
+				datasets.POST("/:dataset_id/synonym-groups", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.getSynonymHandler().CreateSynonymGroup)
+				datasets.POST("/:dataset_id/synonym-groups/import", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.getSynonymHandler().ImportSynonymGroups)
 
 				// Staged-edit (change set) workflow.
 				datasets.GET("/:dataset_id/change-sets", r.getChangeSetHandler().ListChangeSets)
-				datasets.POST("/:dataset_id/change-sets", r.getChangeSetHandler().CreateChangeSet)
+				datasets.POST("/:dataset_id/change-sets", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.getChangeSetHandler().CreateChangeSet)
 				datasets.GET("/:dataset_id/change-sets/:change_set_id/diff", r.getChangeSetHandler().GetChangeSetDiff)
 				datasets.POST("/:dataset_id/change-sets/:change_set_id/retrieval-compare", r.getChangeSetHandler().RetrievalCompare)
-				datasets.POST("/:dataset_id/change-sets/similar-questions", r.getChangeSetHandler().StageSimilarQuestions)
-				datasets.POST("/:dataset_id/change-sets/generate-questions", r.getChangeSetHandler().GenerateSimilarQuestions)
-				datasets.POST("/:dataset_id/change-sets/publish", r.getChangeSetHandler().PublishChangeSet)
-				datasets.POST("/:dataset_id/change-sets/discard", r.getChangeSetHandler().DiscardChangeSet)
+				datasets.POST("/:dataset_id/change-sets/similar-questions", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.getChangeSetHandler().StageSimilarQuestions)
+				datasets.POST("/:dataset_id/change-sets/generate-questions", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.getChangeSetHandler().GenerateSimilarQuestions)
+				datasets.POST("/:dataset_id/change-sets/publish", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.getChangeSetHandler().PublishChangeSet)
+				datasets.POST("/:dataset_id/change-sets/discard", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.getChangeSetHandler().DiscardChangeSet)
 			}
 
 			// Single vocabulary alias group operations.
-			synonymGroups := v1.Group("/synonym-groups")
+			synonymGroups := v1.Group("/synonym-groups", handler.ModulePermission("dataset"))
 			{
 				synonymGroups.GET("/:group_id", r.getSynonymHandler().GetSynonymGroup)
 				synonymGroups.PUT("/:group_id", r.getSynonymHandler().UpdateSynonymGroup)

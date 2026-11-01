@@ -24,6 +24,15 @@ import (
 	"ragflow/internal/common"
 )
 
+// 矩阵动作。这里导出一份，供 router 在 HTTP method 表达不了语义时显式指定
+// （例如「重新解析」是 POST，但语义是编辑而不是创建）。
+const (
+	ActionView   = actionView
+	ActionCreate = actionCreate
+	ActionEdit   = actionEdit
+	ActionDelete = actionDelete
+)
+
 // ModulePermission 按路由组接入角色权限矩阵。
 //
 // 用法：把整组路由挂上即可，不用逐个 handler 改：
@@ -40,34 +49,57 @@ import (
 // 只有显式 false 才拒绝 —— 避免历史数据/未初始化租户被整体锁死。
 func ModulePermission(module string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		user, code, msg := GetUser(c)
-		if code != common.CodeSuccess {
-			common.ErrorWithCode(c, code, msg)
-			c.Abort()
-			return
-		}
-
 		action := actionFromMethod(c.Request.Method)
 		if action == "" {
 			// OPTIONS / HEAD 之类不参与授权
 			c.Next()
 			return
 		}
-
-		tenantID := CurrentTenantID(c)
-		if tenantID == "" {
-			common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, "无法确定当前租户")
-			c.Abort()
-			return
-		}
-
-		if err := checkModuleAction(c, user.ID, tenantID, module, action); err != nil {
-			common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
-			c.Abort()
-			return
-		}
-		c.Next()
+		requireModuleAction(c, module, action)
 	}
+}
+
+// ModulePermissionAction 是显式动作版。
+//
+// 一个组里混着查询类 POST（检索、embedding 体检、检索对比）和语义不是创建
+// 的 POST（重新解析、发布变更集）时，method 推导会判错：按 method 给整组挂
+// 中间件，会让「只读用户」因为发了一次检索而需要 create 权限。这类路由单独
+// 挂这个中间件，动作按语义给：
+//
+//	datasets.POST("/:dataset_id/documents/parse",
+//		ModulePermissionAction("dataset", ActionEdit), ...)
+func ModulePermissionAction(module, action string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if action == "" {
+			c.Next()
+			return
+		}
+		requireModuleAction(c, module, action)
+	}
+}
+
+// requireModuleAction 是两种中间件的公共实现：取用户、取租户、查矩阵。
+func requireModuleAction(c *gin.Context, module, action string) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		c.Abort()
+		return
+	}
+
+	tenantID := CurrentTenantID(c)
+	if tenantID == "" {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, "无法确定当前租户")
+		c.Abort()
+		return
+	}
+
+	if err := checkModuleAction(c, user.ID, tenantID, module, action); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
+		c.Abort()
+		return
+	}
+	c.Next()
 }
 
 // actionFromMethod 把 HTTP 方法映射到矩阵动作，语义与 console 侧保持一致。

@@ -316,6 +316,48 @@ func TestModulePermissionNoUser(t *testing.T) {
 	}
 }
 
+// 语义与 method 不一致的路由（例如 POST /datasets/:id/documents/parse 是「重新解析」
+// 而不是「创建」）必须能用显式动作授权，否则只读角色会因为点了一次解析而要求 create。
+func TestModulePermissionActionUsesExplicitAction(t *testing.T) {
+	setupHandlerRoleDB(t)
+
+	var normalRole entity.Role
+	dao.DB.Where("tenant_id = ? AND name = ?", "tenant-1", "普通成员").Take(&normalRole)
+	dao.DB.Model(&entity.RolePermission{}).
+		Where("role_id = ? AND module = ?", normalRole.ID, "dataset").
+		Updates(map[string]any{
+			"can_view":   true,
+			"can_create": false,
+			"can_edit":   true,
+			"can_delete": false,
+		})
+
+	valid := string(entity.StatusValid)
+	dao.DB.Create(&entity.UserTenant{
+		ID: "ut-explicit", UserID: "user-explicit", TenantID: "tenant-1",
+		Role: "normal", RoleID: normalRole.ID, Status: &valid, InvitedBy: "owner",
+	})
+	user := &entity.User{ID: "user-explicit", Email: "explicit@qq.com"}
+
+	const parsePath = "/api/v1/datasets/ds-1/documents/parse"
+
+	// 同一路径同是 POST：method 推导判成 create（无权限）→ 拦截。
+	byMethod, recByMethod := makeTestContext(t, http.MethodPost, parsePath, "tenant-1")
+	byMethod.Set("user", user)
+	ModulePermission("dataset")(byMethod)
+	if !byMethod.IsAborted() || recByMethod.Code != http.StatusForbidden {
+		t.Fatalf("method 推导为 create 时应拦截，got aborted=%v code=%d", byMethod.IsAborted(), recByMethod.Code)
+	}
+
+	// 显式 edit → 放行。
+	byAction, _ := makeTestContext(t, http.MethodPost, parsePath, "tenant-1")
+	byAction.Set("user", user)
+	ModulePermissionAction("dataset", ActionEdit)(byAction)
+	if byAction.IsAborted() {
+		t.Fatal("显式 edit 动作应放行")
+	}
+}
+
 func TestCheckModuleActionDenialMessageUsesModuleLabel(t *testing.T) {
 	setupHandlerRoleDB(t)
 

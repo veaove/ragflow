@@ -35,6 +35,7 @@ import { KnowledgeBaseTable } from './knowledge-base-table';
 import { DatasetCard } from './dataset-card';
 import { CardContainer } from '@/components/card-container';
 import { ViewToggle } from '@/pages/studio/view-toggle';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { useListViewPreference } from '@/hooks/use-list-view-preference';
 import { useEditDataset } from './use-edit-dataset';
 import { DatasetEditDialog } from './dataset-edit-dialog';
@@ -76,6 +77,7 @@ export default function Datasets() {
   } = useEditDataset();
   const { mode: viewMode, setMode: setViewMode } =
     useListViewPreference('dataset');
+  const { can } = useConsolePermissions();
 
   const filteredKbs = useMemo(() => {
     if (!kbs) return [];
@@ -215,10 +217,12 @@ export default function Datasets() {
                     </DropdownMenuContent>
                   </DropdownMenu>
 
-                  <Button variant="accent" onClick={showModal}>
-                    <Plus className="size-[1em]" />
-                    {t('knowledgeList.createKnowledgeBase')}
-                  </Button>
+                  {can('dataset', 'create') && (
+                    <Button variant="accent" onClick={showModal}>
+                      <Plus className="size-[1em]" />
+                      {t('knowledgeList.createKnowledgeBase')}
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>

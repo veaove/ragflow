@@ -40,6 +40,25 @@ export function moduleListFor(menuName: string): string[] {
   return Array.isArray(value) ? value : [value];
 }
 
+/** 矩阵里的写动作；查看单独用 `canView`。 */
+export type PermissionAction = 'create' | 'edit' | 'delete' | 'manage';
+
+/**
+ * 矩阵动作判定（纯函数）：没有权限数据、或矩阵里没有该模块的行，都按「无权限」
+ * 处理。注意后端中间件对缺失行是默认放行（避免老租户被锁死），前端这里更严格 ——
+ * 界面上宁可不给按钮，也不要在点了之后弹 403。
+ */
+export function canAction(
+  perms: MyPermissions | null,
+  module: string,
+  action: PermissionAction,
+): boolean {
+  if (!perms) return false;
+  const row = perms.modules?.[module];
+  if (!row) return false;
+  return !!row[`can_${action}` as keyof typeof row];
+}
+
 export function useConsolePermissions() {
   // 自己拿 tenantInfo，不依赖 external hook
   const { data: tenantInfo } = useQuery({
@@ -80,6 +99,7 @@ export function useConsolePermissions() {
       roleName: '',
       isOwner: true,
       canView: () => true,
+      can: () => true,
     };
   }
 
@@ -91,12 +111,19 @@ export function useConsolePermissions() {
     if (!row) return false; // 模块不在矩阵 → 没权限
     return !!row.can_view;
   };
+  /**
+   * 写动作判定，用于按钮显隐。与后端 `ModulePermission` 同源同一份矩阵：
+   * 前端隐藏只是避免「点了才报 403」，真正的闸在后端。
+   */
+  const can = (module: string, action: PermissionAction): boolean =>
+    canAction(permsForFilter, module, action);
   return {
     perms: permsForFilter,
     tenantId,
     roleName: perms?.role_name ?? '',
     isOwner: false,
     canView,
+    can,
   };
 }
 

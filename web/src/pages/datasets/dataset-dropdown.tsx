@@ -9,6 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { useDeleteKnowledge } from '@/hooks/use-knowledge-request';
 import { IDataset } from '@/interfaces/database/dataset';
 import { PenLine, Trash2 } from 'lucide-react';
@@ -26,6 +27,10 @@ export function DatasetDropdown({
   }) {
   const { t } = useTranslation();
   const { deleteKnowledge } = useDeleteKnowledge();
+  // 重命名是编辑、删除是删除，分别按矩阵里的 dataset 动作判定。
+  const { can } = useConsolePermissions();
+  const canEdit = can('dataset', 'edit');
+  const canDelete = can('dataset', 'delete');
 
   const handleShowDatasetRenameModal: MouseEventHandler<HTMLDivElement> =
     useCallback(
@@ -40,38 +45,47 @@ export function DatasetDropdown({
     deleteKnowledge(dataset.id);
   }, [dataset.id, deleteKnowledge]);
 
+  // 两个动作都没权限时不必显示这个入口，否则点开是个空菜单。
+  if (!canEdit && !canDelete) {
+    return <>{children}</>;
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuItem onClick={handleShowDatasetRenameModal}>
-          {t('common.rename')} <PenLine />
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <ConfirmDeleteDialog
-          onOk={handleDelete}
-          title={t('deleteModal.delDataset')}
-          content={{
-            node: (
-              <ConfirmDeleteDialogNode
-                avatar={{ avatar: dataset.avatar, name: dataset.name }}
-                name={dataset.name}
-              />
-            ),
-          }}
-        >
-          <DropdownMenuItem
-            className="text-state-error"
-            onSelect={(e) => {
-              e.preventDefault();
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
+        {canEdit && (
+          <DropdownMenuItem onClick={handleShowDatasetRenameModal}>
+            {t('common.rename')} <PenLine />
+          </DropdownMenuItem>
+        )}
+        {canEdit && canDelete && <DropdownMenuSeparator />}
+        {canDelete && (
+          <ConfirmDeleteDialog
+            onOk={handleDelete}
+            title={t('deleteModal.delDataset')}
+            content={{
+              node: (
+                <ConfirmDeleteDialogNode
+                  avatar={{ avatar: dataset.avatar, name: dataset.name }}
+                  name={dataset.name}
+                />
+              ),
             }}
           >
-            {t('common.delete')} <Trash2 />
-          </DropdownMenuItem>
-        </ConfirmDeleteDialog>
+            <DropdownMenuItem
+              className="text-state-error"
+              onSelect={(e) => {
+                e.preventDefault();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              {t('common.delete')} <Trash2 />
+            </DropdownMenuItem>
+          </ConfirmDeleteDialog>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
