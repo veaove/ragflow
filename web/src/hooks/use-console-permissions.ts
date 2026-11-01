@@ -5,15 +5,21 @@ import { MyPermissions, fetchMyPermissions } from '@/services/console-service';
 
 /**
  * 菜单项 → 权限模块。
+ *
+ * 这是「菜单能不能显示」与「页面能不能进」的唯一事实来源：
+ * 侧边栏过滤、路由重定向、页面守卫（ConsoleGuard）都必须从这里取模块名，
+ * 不要再让调用方手写模块字符串 —— 手写就会写错（组织架构曾被写成 member）。
  */
-const MENU_MODULE: Record<string, string> = {
+export const MENU_MODULE: Record<string, string | string[]> = {
   'header.home': 'overview',
   'header.dataset': 'dataset',
   'header.chat': 'chat',
   'header.knowledgeSearch': 'search',
   'header.flow': 'agent',
   'header.memories': 'memory',
-  'header.qc': 'qc_rule',
+  // 会话质检是聚合页：规则 / 实时 / 命中 / 配置是四个独立模块，
+  // 只授其中任何一个都应该能进这个菜单（否则授了权却没有入口）。
+  'header.qc': ['qc_rule', 'qc_realtime', 'qc_hit', 'qc_config'],
   'header.fileManager': 'file',
   'console.organization': 'organization',
   'console.members': 'member',
@@ -26,6 +32,13 @@ const MENU_MODULE: Record<string, string> = {
   'setting.api': 'apikey',
   'setting.team': 'team',
 };
+
+/** 菜单项对应的模块集合（单模块也统一成数组，调用方只处理一种形态）。 */
+export function moduleListFor(menuName: string): string[] {
+  const value = MENU_MODULE[menuName];
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
 
 export function useConsolePermissions() {
   // 自己拿 tenantInfo，不依赖 external hook
@@ -67,31 +80,23 @@ export function useConsolePermissions() {
       roleName: '',
       isOwner: true,
       canView: () => true,
-      menuAllowed: () => true,
     };
   }
 
   // 非 owner：必须等权限接口返回
   const permsForFilter = status === 'success' && perms ? perms : null;
   const canView = (module: string): boolean => {
-    if (!permsForFilter) return false;     // 没拿到数据 → 不显示
+    if (!permsForFilter) return false; // 没拿到数据 → 不显示
     const row = permsForFilter.modules?.[module];
-    if (!row) return false;               // 模块不在矩阵 → 没权限
+    if (!row) return false; // 模块不在矩阵 → 没权限
     return !!row.can_view;
   };
-  const menuAllowed = (name: string): boolean => {
-    const mod = MENU_MODULE[name];
-    if (!mod) return false;
-    return canView(mod);
-  };
-
   return {
     perms: permsForFilter,
     tenantId,
     roleName: perms?.role_name ?? '',
     isOwner: false,
     canView,
-    menuAllowed,
   };
 }
 
@@ -111,11 +116,9 @@ export function filterMenuItems<T extends { name: string; children?: T[] }>(
   if (!perms) return [];
 
   const allowed = (name: string): boolean => {
-    const module = MENU_MODULE[name];
-    if (!module) return false;
-    const row = perms.modules?.[module];
-    if (!row) return false;
-    return !!row.can_view;
+    const modules = moduleListFor(name);
+    if (!modules.length) return false;
+    return modules.some((module) => !!perms.modules?.[module]?.can_view);
   };
 
   const out: T[] = [];

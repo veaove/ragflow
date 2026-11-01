@@ -47,6 +47,7 @@ import {
   listQcHits,
   updateQcConfig,
 } from '@/services/qc-service';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import * as React from 'react';
 import { toast } from 'sonner';
 import { QcRulePanel } from './rule-panel';
@@ -88,8 +89,23 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'config', label: '系统配置' },
 ];
 
+/** 每个 tab 对应矩阵里的模块：只授「质检规则」的角色不该看到命中记录。 */
+const TAB_MODULE: Record<TabKey, string> = {
+  rules: 'qc_rule',
+  realtime: 'qc_realtime',
+  hits: 'qc_hit',
+  config: 'qc_config',
+};
+
 export function QcManagement() {
   const [tab, setTab] = React.useState<TabKey>('rules');
+  const { canView } = useConsolePermissions();
+
+  const visibleTabs = TABS.filter((t) => canView(TAB_MODULE[t.key]));
+  // 权限变化后当前 tab 可能已不可见，回落到第一个可见 tab，避免整页空白。
+  const activeTab = visibleTabs.some((t) => t.key === tab)
+    ? tab
+    : (visibleTabs[0]?.key ?? tab);
 
   return (
     <div className="flex h-full flex-col">
@@ -100,11 +116,11 @@ export function QcManagement() {
         </p>
       </div>
       <div className="flex items-center gap-2 border-b border-border-base px-5 pt-3">
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <Button
             key={t.key}
             size="sm"
-            variant={tab === t.key ? 'default' : 'ghost'}
+            variant={activeTab === t.key ? 'default' : 'ghost'}
             onClick={() => setTab(t.key)}
           >
             {t.label}
@@ -112,10 +128,10 @@ export function QcManagement() {
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        {tab === 'rules' && <RulesTab />}
-        {tab === 'realtime' && <RealtimePanel />}
-        {tab === 'hits' && <HitsPanel />}
-        {tab === 'config' && <ConfigPanel />}
+        {activeTab === 'rules' && <RulesTab />}
+        {activeTab === 'realtime' && <RealtimePanel />}
+        {activeTab === 'hits' && <HitsPanel />}
+        {activeTab === 'config' && <ConfigPanel />}
       </div>
     </div>
   );

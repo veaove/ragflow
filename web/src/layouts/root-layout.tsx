@@ -11,13 +11,6 @@ import { sidebarMenuItems } from './components/sidebar-nav';
 import SuperUserNotice from './components/super-user-notice';
 import { resolvePermissionRedirect } from './permission-redirect';
 
-/** 把菜单树的「组」虚拟 path 映射到它的第一个子 path。 */
-function resolveGroupPath(p: string): string {
-  if (p === 'console') return Routes.ConsoleOrganization;
-  if (p === 'config-center') return `${Routes.UserSetting}${Routes.Model}`;
-  return p;
-}
-
 /**
  * 非 owner 的权限 redirect + 阻截组件。
  *
@@ -48,7 +41,6 @@ function PermissionGate() {
         isOwner,
         menuItems: sidebarMenuItems,
         overviewPath: Routes.Root,
-        resolveGroupPath,
       }),
     [pathname, perms, isOwner],
   );

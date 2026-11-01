@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConsoleGuard } from '@/components/console-guard';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -72,6 +73,10 @@ export default function ConsoleOrganization() {
   });
   const departments: DepartmentNode[] = deptData?.departments ?? [];
 
+  // 成员列表归「用户管理」模块。只授了「组织架构」的角色不该为了看部门树
+  // 而吃一个 403 —— 无权限时跳过请求，成员区留空。
+  const { canView } = useConsolePermissions();
+
   const { data: memberData, isFetching } = useQuery({
     queryKey: [
       'console/members',
@@ -81,7 +86,7 @@ export default function ConsoleOrganization() {
       page,
       pageSize,
     ],
-    enabled: !!tenantId,
+    enabled: !!tenantId && canView('member'),
     queryFn: async () => {
       const res = await fetchConsoleMembers(tenantId as string, {
         department_id: selectedDept || undefined,
@@ -225,7 +230,7 @@ export default function ConsoleOrganization() {
     });
 
   return (
-    <ConsoleGuard module="member">
+    <ConsoleGuard>
       <section className="flex h-full flex-col p-5">
         <header className="mb-4">
           <h1 className="text-2xl font-medium text-text-primary">

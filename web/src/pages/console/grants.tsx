@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConsoleGuard } from '@/components/console-guard';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -74,9 +75,13 @@ export default function ConsoleGrants() {
   // 新添加的授权给什么级别。默认只读：给编辑权应当是显式动作。
   const [addPermission, setAddPermission] = useState<'read' | 'edit'>('read');
 
+  // 部门树 / 成员列表分别归「组织架构」「用户管理」模块。只授了「资源授权」
+  // 的角色不该为了选主体而吃两个 403 —— 各自无权限时跳过请求，下拉留空。
+  const { canView } = useConsolePermissions();
+
   const { data: deptData } = useQuery({
     queryKey: ['console/departments', tenantId],
-    enabled: !!tenantId,
+    enabled: !!tenantId && canView('organization'),
     queryFn: async () => {
       const res = await fetchDepartments(tenantId as string);
       return res?.data?.data ?? { departments: [] };
@@ -86,7 +91,7 @@ export default function ConsoleGrants() {
 
   const { data: memberData } = useQuery({
     queryKey: ['console/members-for-grant', tenantId],
-    enabled: !!tenantId,
+    enabled: !!tenantId && canView('member'),
     queryFn: async () => {
       const res = await fetchConsoleMembers(tenantId as string, {
         page: 1,
@@ -144,7 +149,15 @@ export default function ConsoleGrants() {
       setDraft((prev) =>
         prev.some((s) => s.kind === 'department' && s.id === dept.id)
           ? prev
-          : [...prev, { kind: 'department', id: dept.id, name: dept.name.trim(), permission: addPermission }],
+          : [
+              ...prev,
+              {
+                kind: 'department',
+                id: dept.id,
+                name: dept.name.trim(),
+                permission: addPermission,
+              },
+            ],
       );
     } else {
       const member = members.find((m) => m.id === addId);
@@ -169,7 +182,10 @@ export default function ConsoleGrants() {
     setDraft((prev) =>
       prev.some((s) => s.kind === 'team')
         ? prev
-        : [...prev, { kind: 'team', id: '', name: '全团队', permission: addPermission }],
+        : [
+            ...prev,
+            { kind: 'team', id: '', name: '全团队', permission: addPermission },
+          ],
     );
   }, [addPermission]);
 
@@ -181,267 +197,278 @@ export default function ConsoleGrants() {
   }, [draft, editing, kind, queryClient, tenantId]);
 
   return (
-    <ConsoleGuard module="role">
+    <ConsoleGuard>
       <section className="flex h-full flex-col p-5">
-      <header className="mb-4">
-        <h1 className="text-2xl font-medium text-text-primary">
-          {t('console.grants')}
-        </h1>
-        <p className="mt-1 text-sm text-text-secondary">
-          配置知识库、智能体、记忆的可见范围
-        </p>
-      </header>
+        <header className="mb-4">
+          <h1 className="text-2xl font-medium text-text-primary">
+            {t('console.grants')}
+          </h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            配置知识库、智能体、记忆的可见范围
+          </p>
+        </header>
 
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <div className="flex gap-1 rounded-md bg-background-second p-1">
-          {KIND_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setKind(tab.key)}
-              className={`rounded px-3 py-1 text-sm ${
-                kind === tab.key
-                  ? 'bg-bg-base text-text-primary shadow-sm'
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="relative ml-auto">
-          <LucideSearch className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
-          <Input
-            value={keywords}
-            onChange={(e) => {
-              setKeywords(e.target.value);
-              setPage(1);
-            }}
-            placeholder="搜索资源名称"
-            className="w-56 pl-8"
-          />
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-auto">
-        <Table rootClassName="max-h-[calc(100vh-280px)]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>资源名称</TableHead>
-              <TableHead>类型</TableHead>
-              <TableHead>所有者</TableHead>
-              <TableHead>可见范围</TableHead>
-              <TableHead>操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {resources.length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="py-10 text-center text-sm text-text-secondary"
-                >
-                  {isFetching ? '…' : '暂无资源'}
-                </TableCell>
-              </TableRow>
-            )}
-            {resources.map((row) => (
-              <TableRow key={row.resource_id}>
-                <TableCell className="text-sm text-text-primary">
-                  {row.resource_name || '-'}
-                </TableCell>
-                <TableCell className="text-xs text-text-secondary">
-                  {KIND_TABS.find((x) => x.key === kind)?.label}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {row.owner_name || row.owner_id || '-'}
-                </TableCell>
-                <TableCell className="text-xs">
-                  {row.grants?.length ? (
-                    <div className="flex flex-wrap gap-1">
-                      {row.grants.map((g, idx) => (
-                        <span
-                          key={`${g.kind}-${g.id}-${idx}`}
-                          className="rounded bg-accent-primary/10 px-1.5 py-0.5 text-accent-primary"
-                        >
-                          {g.name}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-text-secondary">
-                      {defaultScopeLabel(row.default_scope)}
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-xs">
-                  <button
-                    type="button"
-                    className="text-accent-primary hover:underline"
-                    onClick={() => openEdit(row)}
-                  >
-                    设置
-                  </button>
-                </TableCell>
-              </TableRow>
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <div className="flex gap-1 rounded-md bg-background-second p-1">
+            {KIND_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setKind(tab.key)}
+                className={`rounded px-3 py-1 text-sm ${
+                  kind === tab.key
+                    ? 'bg-bg-base text-text-primary shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {tab.label}
+              </button>
             ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="flex items-center justify-end pt-3">
-        <RAGFlowPagination
-          total={total}
-          current={page}
-          pageSize={pageSize}
-          onChange={(nextPage: number, nextSize: number) => {
-            setPage(nextPage);
-            setPageSize(nextSize);
-          }}
-        />
-      </div>
-
-      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>设置可见范围</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="text-sm text-text-secondary">
-              {editing?.resource_name}
-              {editing && !draft.length && (
-                <span className="ml-2 text-xs">
-                  （未设置显式授权，按默认：{defaultScopeLabel(editing.default_scope)}）
-                </span>
-              )}
-            </div>
-
-            <div>
-              <div className="mb-1 text-sm text-text-secondary">已授权</div>
-              <div className="flex min-h-9 flex-wrap items-center gap-2 rounded-md border border-border-default p-2">
-                {draft.length === 0 && (
-                  <span className="text-xs text-text-secondary">
-                    暂无，默认按「{defaultScopeLabel(editing?.default_scope ?? '')}」
-                  </span>
-                )}
-                {draft.map((g, idx) => (
-                  <span
-                    key={`${g.kind}-${g.id}-${idx}`}
-                    className="flex items-center gap-1 rounded bg-accent-primary/10 px-2 py-0.5 text-xs text-accent-primary"
-                  >
-                    {g.name}
-                    {/* 点一下在「可查看 / 可编辑」之间切换：授权列表通常很短，
-                        为每次都开一个下拉不值当。 */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setDraft((prev) =>
-                          prev.map((item, i) =>
-                            i === idx
-                              ? {
-                                  ...item,
-                                  permission:
-                                    item.permission === 'edit' ? 'read' : 'edit',
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                      className="rounded bg-accent-primary/15 px-1 hover:bg-accent-primary/25"
-                      title="点击切换权限级别"
-                    >
-                      {g.permission === 'edit' ? '可编辑' : '可查看'}
-                    </button>
-                    <LucideX
-                      className="size-3 cursor-pointer"
-                      onClick={() =>
-                        setDraft((prev) => prev.filter((_, i) => i !== idx))
-                      }
-                    />
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <div className="mb-1 text-sm text-text-secondary">添加</div>
-                <div className="flex gap-2">
-                  <select
-                    value={addKind}
-                    onChange={(e) => {
-                      setAddKind(e.target.value as 'department' | 'user');
-                      setAddId('');
-                    }}
-                    className="h-9 rounded-md border border-border-default bg-bg-base px-2 text-sm text-text-primary outline-none"
-                  >
-                    <option value="department">指定部门</option>
-                    <option value="user">指定成员</option>
-                  </select>
-                  <select
-                    value={addId}
-                    onChange={(e) => setAddId(e.target.value)}
-                    className="h-9 min-w-0 flex-1 rounded-md border border-border-default bg-bg-base px-2 text-sm text-text-primary outline-none"
-                  >
-                    <option value="">请选择…</option>
-                    {addKind === 'department'
-                      ? flatDepts.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))
-                      : members.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.nickname || m.email}
-                          </option>
-                        ))}
-                  </select>
-                </div>
-              </div>
-              <select
-                value={addPermission}
-                onChange={(e) =>
-                  setAddPermission(e.target.value as 'read' | 'edit')
-                }
-                className="h-9 rounded-md border border-border-default bg-bg-base px-2 text-sm text-text-primary outline-none"
-                title="授予的权限级别"
-              >
-                <option value="read">可查看</option>
-                <option value="edit">可编辑</option>
-              </select>
-              <Button variant="secondary" onClick={addSubject} disabled={!addId}>
-                <LucidePlus className="mr-1 size-4" />
-                添加
-              </Button>
-            </div>
-
-            <p className="text-xs text-text-secondary">
-              可查看：能看到并使用该资源，但不能修改内容、不能删除、不能再授权；
-              可编辑：可以修改内容、删除资源。
-            </p>
-
-            <div>
-              <Button
-                variant="secondary"
-                className="h-8"
-                onClick={addTeam}
-                disabled={draft.some((s) => s.kind === 'team')}
-              >
-                开放给全团队
-              </Button>
-            </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setEditing(null)}>
-              取消
-            </Button>
-            <Button onClick={save}>保存</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="relative ml-auto">
+            <LucideSearch className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
+            <Input
+              value={keywords}
+              onChange={(e) => {
+                setKeywords(e.target.value);
+                setPage(1);
+              }}
+              placeholder="搜索资源名称"
+              className="w-56 pl-8"
+            />
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto">
+          <Table rootClassName="max-h-[calc(100vh-280px)]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>资源名称</TableHead>
+                <TableHead>类型</TableHead>
+                <TableHead>所有者</TableHead>
+                <TableHead>可见范围</TableHead>
+                <TableHead>操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {resources.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={5}
+                    className="py-10 text-center text-sm text-text-secondary"
+                  >
+                    {isFetching ? '…' : '暂无资源'}
+                  </TableCell>
+                </TableRow>
+              )}
+              {resources.map((row) => (
+                <TableRow key={row.resource_id}>
+                  <TableCell className="text-sm text-text-primary">
+                    {row.resource_name || '-'}
+                  </TableCell>
+                  <TableCell className="text-xs text-text-secondary">
+                    {KIND_TABS.find((x) => x.key === kind)?.label}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {row.owner_name || row.owner_id || '-'}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {row.grants?.length ? (
+                      <div className="flex flex-wrap gap-1">
+                        {row.grants.map((g, idx) => (
+                          <span
+                            key={`${g.kind}-${g.id}-${idx}`}
+                            className="rounded bg-accent-primary/10 px-1.5 py-0.5 text-accent-primary"
+                          >
+                            {g.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-text-secondary">
+                        {defaultScopeLabel(row.default_scope)}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-xs">
+                    <button
+                      type="button"
+                      className="text-accent-primary hover:underline"
+                      onClick={() => openEdit(row)}
+                    >
+                      设置
+                    </button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="flex items-center justify-end pt-3">
+          <RAGFlowPagination
+            total={total}
+            current={page}
+            pageSize={pageSize}
+            onChange={(nextPage: number, nextSize: number) => {
+              setPage(nextPage);
+              setPageSize(nextSize);
+            }}
+          />
+        </div>
+
+        <Dialog
+          open={!!editing}
+          onOpenChange={(open) => !open && setEditing(null)}
+        >
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>设置可见范围</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="text-sm text-text-secondary">
+                {editing?.resource_name}
+                {editing && !draft.length && (
+                  <span className="ml-2 text-xs">
+                    （未设置显式授权，按默认：
+                    {defaultScopeLabel(editing.default_scope)}）
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <div className="mb-1 text-sm text-text-secondary">已授权</div>
+                <div className="flex min-h-9 flex-wrap items-center gap-2 rounded-md border border-border-default p-2">
+                  {draft.length === 0 && (
+                    <span className="text-xs text-text-secondary">
+                      暂无，默认按「
+                      {defaultScopeLabel(editing?.default_scope ?? '')}」
+                    </span>
+                  )}
+                  {draft.map((g, idx) => (
+                    <span
+                      key={`${g.kind}-${g.id}-${idx}`}
+                      className="flex items-center gap-1 rounded bg-accent-primary/10 px-2 py-0.5 text-xs text-accent-primary"
+                    >
+                      {g.name}
+                      {/* 点一下在「可查看 / 可编辑」之间切换：授权列表通常很短，
+                        为每次都开一个下拉不值当。 */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDraft((prev) =>
+                            prev.map((item, i) =>
+                              i === idx
+                                ? {
+                                    ...item,
+                                    permission:
+                                      item.permission === 'edit'
+                                        ? 'read'
+                                        : 'edit',
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                        className="rounded bg-accent-primary/15 px-1 hover:bg-accent-primary/25"
+                        title="点击切换权限级别"
+                      >
+                        {g.permission === 'edit' ? '可编辑' : '可查看'}
+                      </button>
+                      <LucideX
+                        className="size-3 cursor-pointer"
+                        onClick={() =>
+                          setDraft((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                      />
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <div className="mb-1 text-sm text-text-secondary">添加</div>
+                  <div className="flex gap-2">
+                    <select
+                      value={addKind}
+                      onChange={(e) => {
+                        setAddKind(e.target.value as 'department' | 'user');
+                        setAddId('');
+                      }}
+                      className="h-9 rounded-md border border-border-default bg-bg-base px-2 text-sm text-text-primary outline-none"
+                    >
+                      <option value="department">指定部门</option>
+                      <option value="user">指定成员</option>
+                    </select>
+                    <select
+                      value={addId}
+                      onChange={(e) => setAddId(e.target.value)}
+                      className="h-9 min-w-0 flex-1 rounded-md border border-border-default bg-bg-base px-2 text-sm text-text-primary outline-none"
+                    >
+                      <option value="">请选择…</option>
+                      {addKind === 'department'
+                        ? flatDepts.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))
+                        : members.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.nickname || m.email}
+                            </option>
+                          ))}
+                    </select>
+                  </div>
+                </div>
+                <select
+                  value={addPermission}
+                  onChange={(e) =>
+                    setAddPermission(e.target.value as 'read' | 'edit')
+                  }
+                  className="h-9 rounded-md border border-border-default bg-bg-base px-2 text-sm text-text-primary outline-none"
+                  title="授予的权限级别"
+                >
+                  <option value="read">可查看</option>
+                  <option value="edit">可编辑</option>
+                </select>
+                <Button
+                  variant="secondary"
+                  onClick={addSubject}
+                  disabled={!addId}
+                >
+                  <LucidePlus className="mr-1 size-4" />
+                  添加
+                </Button>
+              </div>
+
+              <p className="text-xs text-text-secondary">
+                可查看：能看到并使用该资源，但不能修改内容、不能删除、不能再授权；
+                可编辑：可以修改内容、删除资源。
+              </p>
+
+              <div>
+                <Button
+                  variant="secondary"
+                  className="h-8"
+                  onClick={addTeam}
+                  disabled={draft.some((s) => s.kind === 'team')}
+                >
+                  开放给全团队
+                </Button>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setEditing(null)}>
+                取消
+              </Button>
+              <Button onClick={save}>保存</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </section>
     </ConsoleGuard>
   );

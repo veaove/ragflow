@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConsoleGuard } from '@/components/console-guard';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -60,7 +61,8 @@ export default function ConsoleMembers() {
   const [transferTargetId, setTransferTargetId] = useState<string | null>(null);
   const transferMutation = useMutation({
     mutationFn: async () => {
-      if (!tenantId || !transferTargetId) throw new Error('missing tenant or target');
+      if (!tenantId || !transferTargetId)
+        throw new Error('missing tenant or target');
       return transferTenantOwner(tenantId, transferTargetId);
     },
     onSuccess: () => {
@@ -68,8 +70,12 @@ export default function ConsoleMembers() {
       // 关键：tenantInfo 也变了（当前用户 role 从 owner → normal + role_id），
       // 所以除了 members 列表，还要让 useFetchTenantInfo 重新拉。
       queryClient.invalidateQueries({ queryKey: ['tenantInfo'] });
-      queryClient.invalidateQueries({ queryKey: ['console/members', tenantId] });
-      queryClient.invalidateQueries({ queryKey: ['console/my-permissions', tenantId] });
+      queryClient.invalidateQueries({
+        queryKey: ['console/members', tenantId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['console/my-permissions', tenantId],
+      });
       window.location.reload();
     },
   });
@@ -102,9 +108,13 @@ export default function ConsoleMembers() {
   const [pwValue, setPwValue] = useState('');
   const [pwError, setPwError] = useState('');
 
+  // 部门树 / 角色列表分别归「组织架构」「角色权限」。只授了「用户管理」的角色
+  // 不该被这两个筛选源拖出一串 403 —— 无权限时跳过请求，下拉留空。
+  const { canView } = useConsolePermissions();
+
   const { data: deptData } = useQuery({
     queryKey: ['console/departments', tenantId],
-    enabled: !!tenantId,
+    enabled: !!tenantId && canView('organization'),
     queryFn: async () => {
       const res = await fetchDepartments(tenantId as string);
       return res?.data?.data ?? { departments: [] };
@@ -126,7 +136,7 @@ export default function ConsoleMembers() {
 
   const { data: roleData } = useQuery({
     queryKey: ['console/roles', tenantId],
-    enabled: !!tenantId,
+    enabled: !!tenantId && canView('role'),
     queryFn: async () => {
       const res = await fetchConsoleRoles(tenantId as string);
       return res?.data?.data ?? { roles: [], modules: [] };
@@ -179,12 +189,11 @@ export default function ConsoleMembers() {
       },
     });
 
-  const transferTarget =
-    !transferTargetId
-      ? null
-      : (members.find((m) => m.id === transferTargetId) ??
-        transferCandidates.find((m) => m.id === transferTargetId) ??
-        null);
+  const transferTarget = !transferTargetId
+    ? null
+    : (members.find((m) => m.id === transferTargetId) ??
+      transferCandidates.find((m) => m.id === transferTargetId) ??
+      null);
 
   const openEdit = useCallback((m: ConsoleMember) => {
     setEditing(m);
@@ -264,478 +273,487 @@ export default function ConsoleMembers() {
   }, [pwTarget, pwValue, tenantId]);
 
   return (
-    <ConsoleGuard module="member">
+    <ConsoleGuard>
       <section className="flex h-full flex-col p-5">
-      <header className="mb-4 flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-medium text-text-primary">
-            {t('console.members')}
-          </h1>
-          <p className="mt-1 text-sm text-text-secondary">共 {total} 位成员</p>
-        </div>
-        <Button onClick={() => setInviteOpen(true)}>
-          <LucidePlus className="mr-1 size-4" />
-          邀请成员
-        </Button>
-      </header>
+        <header className="mb-4 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-medium text-text-primary">
+              {t('console.members')}
+            </h1>
+            <p className="mt-1 text-sm text-text-secondary">
+              共 {total} 位成员
+            </p>
+          </div>
+          <Button onClick={() => setInviteOpen(true)}>
+            <LucidePlus className="mr-1 size-4" />
+            邀请成员
+          </Button>
+        </header>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <LucideSearch className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
-          <Input
-            value={keywords}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <LucideSearch className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
+            <Input
+              value={keywords}
+              onChange={(e) => {
+                setKeywords(e.target.value);
+                setPage(1);
+              }}
+              placeholder="搜索姓名/邮箱"
+              className="w-56 pl-8"
+            />
+          </div>
+
+          <select
+            value={departmentId}
             onChange={(e) => {
-              setKeywords(e.target.value);
+              setDepartmentId(e.target.value);
               setPage(1);
             }}
-            placeholder="搜索姓名/邮箱"
-            className="w-56 pl-8"
+            className="h-9 rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
+          >
+            <option value="">全部部门</option>
+            {flatDepts.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={roleId}
+            onChange={(e) => {
+              setRoleId(e.target.value);
+              setPage(1);
+            }}
+            className="h-9 rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
+          >
+            <option value="">全部角色</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setPage(1);
+            }}
+            className="h-9 rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
+          >
+            <option value="">全部状态</option>
+            <option value="1">在职</option>
+            <option value="0">停用</option>
+          </select>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto">
+          <Table rootClassName="max-h-[calc(100vh-260px)]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>姓名</TableHead>
+                <TableHead>所属部门</TableHead>
+                <TableHead>岗位</TableHead>
+                <TableHead>角色</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>加入时间</TableHead>
+                <TableHead>操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={7}
+                    className="py-10 text-center text-sm text-text-secondary"
+                  >
+                    {isFetching ? '…' : '暂无成员'}
+                  </TableCell>
+                </TableRow>
+              )}
+              {members.map((m) => (
+                <TableRow key={m.id}>
+                  <TableCell className="text-sm">
+                    <div className="font-medium text-text-primary">
+                      {m.nickname || '-'}
+                    </div>
+                    <div className="text-xs text-text-secondary">{m.email}</div>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {m.department_name || '未分配'}
+                  </TableCell>
+                  <TableCell className="text-xs">{m.position || '-'}</TableCell>
+                  <TableCell className="text-xs">
+                    {m.role_name || m.role || '-'}
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <span
+                      className={
+                        m.status === '1'
+                          ? 'rounded bg-green-50 px-1.5 py-0.5 text-green-700'
+                          : 'rounded bg-background-second px-1.5 py-0.5 text-text-secondary'
+                      }
+                    >
+                      {m.status === '1' ? '在职' : '停用'}
+                    </span>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-xs text-text-secondary">
+                    {m.create_time
+                      ? new Date(m.create_time).toLocaleDateString()
+                      : '-'}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-xs">
+                    <button
+                      type="button"
+                      className="mr-3 text-accent-primary hover:underline"
+                      onClick={() => openEdit(m)}
+                    >
+                      编辑
+                    </button>
+                    {isOwner && m.role !== 'owner' && (
+                      <button
+                        type="button"
+                        className="mr-3 text-state-warning hover:underline"
+                        onClick={() => setTransferTargetId(m.id)}
+                      >
+                        移交 Owner
+                      </button>
+                    )}
+                    {/* owner 自己那一行也要有入口：租户只有一个人时，
+                      上面那条永远渲染不出来，等于没有移交能力。 */}
+                    {isOwner && m.role === 'owner' && (
+                      <button
+                        type="button"
+                        className="mr-3 text-state-warning hover:underline"
+                        onClick={() => setTransferTargetId('')}
+                      >
+                        移交 Owner
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="mr-3 text-text-primary hover:underline"
+                      onClick={() => {
+                        setPwTarget(m);
+                        setPwValue('');
+                        setPwError('');
+                      }}
+                    >
+                      重置密码
+                    </button>
+                    <button
+                      type="button"
+                      className="text-state-error hover:underline"
+                      onClick={() => remove(m)}
+                    >
+                      移除
+                    </button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="flex items-center justify-end pt-3">
+          <RAGFlowPagination
+            total={total}
+            current={page}
+            pageSize={pageSize}
+            onChange={(nextPage: number, nextSize: number) => {
+              setPage(nextPage);
+              setPageSize(nextSize);
+            }}
           />
         </div>
 
-        <select
-          value={departmentId}
-          onChange={(e) => {
-            setDepartmentId(e.target.value);
-            setPage(1);
-          }}
-          className="h-9 rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
+        <Dialog
+          open={!!editing}
+          onOpenChange={(open) => !open && setEditing(null)}
         >
-          <option value="">全部部门</option>
-          {flatDepts.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={roleId}
-          onChange={(e) => {
-            setRoleId(e.target.value);
-            setPage(1);
-          }}
-          className="h-9 rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
-        >
-          <option value="">全部角色</option>
-          {roles.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </select>
-
-        <select
-          value={status}
-          onChange={(e) => {
-            setStatus(e.target.value);
-            setPage(1);
-          }}
-          className="h-9 rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
-        >
-          <option value="">全部状态</option>
-          <option value="1">在职</option>
-          <option value="0">停用</option>
-        </select>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-auto">
-        <Table rootClassName="max-h-[calc(100vh-260px)]">
-          <TableHeader>
-            <TableRow>
-              <TableHead>姓名</TableHead>
-              <TableHead>所属部门</TableHead>
-              <TableHead>岗位</TableHead>
-              <TableHead>角色</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>加入时间</TableHead>
-              <TableHead>操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={7}
-                  className="py-10 text-center text-sm text-text-secondary"
-                >
-                  {isFetching ? '…' : '暂无成员'}
-                </TableCell>
-              </TableRow>
-            )}
-            {members.map((m) => (
-              <TableRow key={m.id}>
-                <TableCell className="text-sm">
-                  <div className="font-medium text-text-primary">
-                    {m.nickname || '-'}
-                  </div>
-                  <div className="text-xs text-text-secondary">{m.email}</div>
-                </TableCell>
-                <TableCell className="text-xs">
-                  {m.department_name || '未分配'}
-                </TableCell>
-                <TableCell className="text-xs">{m.position || '-'}</TableCell>
-                <TableCell className="text-xs">
-                  {m.role_name || m.role || '-'}
-                </TableCell>
-                <TableCell className="text-xs">
-                  <span
-                    className={
-                      m.status === '1'
-                        ? 'rounded bg-green-50 px-1.5 py-0.5 text-green-700'
-                        : 'rounded bg-background-second px-1.5 py-0.5 text-text-secondary'
-                    }
-                  >
-                    {m.status === '1' ? '在职' : '停用'}
-                  </span>
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-xs text-text-secondary">
-                  {m.create_time
-                    ? new Date(m.create_time).toLocaleDateString()
-                    : '-'}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-xs">
-                  <button
-                    type="button"
-                    className="mr-3 text-accent-primary hover:underline"
-                    onClick={() => openEdit(m)}
-                  >
-                    编辑
-                  </button>
-                  {isOwner && m.role !== 'owner' && (
-                    <button
-                      type="button"
-                      className="mr-3 text-state-warning hover:underline"
-                      onClick={() => setTransferTargetId(m.id)}
-                    >
-                      移交 Owner
-                    </button>
-                  )}
-                  {/* owner 自己那一行也要有入口：租户只有一个人时，
-                      上面那条永远渲染不出来，等于没有移交能力。 */}
-                  {isOwner && m.role === 'owner' && (
-                    <button
-                      type="button"
-                      className="mr-3 text-state-warning hover:underline"
-                      onClick={() => setTransferTargetId('')}
-                    >
-                      移交 Owner
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="mr-3 text-text-primary hover:underline"
-                    onClick={() => {
-                      setPwTarget(m);
-                      setPwValue('');
-                      setPwError('');
-                    }}
-                  >
-                    重置密码
-                  </button>
-                  <button
-                    type="button"
-                    className="text-state-error hover:underline"
-                    onClick={() => remove(m)}
-                  >
-                    移除
-                  </button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div className="flex items-center justify-end pt-3">
-        <RAGFlowPagination
-          total={total}
-          current={page}
-          pageSize={pageSize}
-          onChange={(nextPage: number, nextSize: number) => {
-            setPage(nextPage);
-            setPageSize(nextSize);
-          }}
-        />
-      </div>
-
-      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>编辑成员</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="text-sm text-text-secondary">
-              {editing?.nickname || '未设置姓名'} · {editing?.email}
-            </div>
-            <div>
-              <div className="mb-1 text-sm text-text-secondary">姓名</div>
-              <Input
-                value={form.nickname}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, nickname: e.target.value }))
-                }
-                placeholder="留空则显示邮箱"
-                maxLength={100}
-              />
-              {editing?.nickname && form.nickname !== editing.nickname && (
-                <p className="mt-1 text-xs text-text-secondary">
-                  该昵称是账号级别的，改了之后此人在其它租户里的显示名也会一起变。
-                </p>
-              )}
-            </div>
-            <div>
-              <div className="mb-1 text-sm text-text-secondary">所属部门</div>
-              <select
-                value={form.department_id}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, department_id: e.target.value }))
-                }
-                className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
-              >
-                <option value="">未分配</option>
-                {flatDepts.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <div className="mb-1 text-sm text-text-secondary">岗位</div>
-              <Input
-                value={form.position}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, position: e.target.value }))
-                }
-                placeholder="例如：销售主管"
-              />
-            </div>
-            <div>
-              <div className="mb-1 text-sm text-text-secondary">角色</div>
-              {editing?.role === 'owner' ? (
-                // Owner 不是「一个角色」，是租户所有权的持有者。给他留一个下拉
-                // 会让人以为能把 owner 的权限改小，实际改了也只是多一层无效设定。
-                <>
-                  <div className="flex h-9 items-center rounded-md border border-border-default bg-background-second px-3 text-sm text-text-secondary">
-                    Owner（租户所有者）
-                  </div>
-                  <p className="mt-1 text-xs text-text-secondary">
-                    Owner 的权限由租户所有权决定，不能在这里分配角色；需要换人请用「移交 Owner」。
-                  </p>
-                </>
-              ) : (
-                <select
-                  value={form.role_id}
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>编辑成员</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="text-sm text-text-secondary">
+                {editing?.nickname || '未设置姓名'} · {editing?.email}
+              </div>
+              <div>
+                <div className="mb-1 text-sm text-text-secondary">姓名</div>
+                <Input
+                  value={form.nickname}
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, role_id: e.target.value }))
+                    setForm((f) => ({ ...f, nickname: e.target.value }))
+                  }
+                  placeholder="留空则显示邮箱"
+                  maxLength={100}
+                />
+                {editing?.nickname && form.nickname !== editing.nickname && (
+                  <p className="mt-1 text-xs text-text-secondary">
+                    该昵称是账号级别的，改了之后此人在其它租户里的显示名也会一起变。
+                  </p>
+                )}
+              </div>
+              <div>
+                <div className="mb-1 text-sm text-text-secondary">所属部门</div>
+                <select
+                  value={form.department_id}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, department_id: e.target.value }))
                   }
                   className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
                 >
-                  <option value="">跟随成员类型（默认）</option>
+                  <option value="">未分配</option>
+                  {flatDepts.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <div className="mb-1 text-sm text-text-secondary">岗位</div>
+                <Input
+                  value={form.position}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, position: e.target.value }))
+                  }
+                  placeholder="例如：销售主管"
+                />
+              </div>
+              <div>
+                <div className="mb-1 text-sm text-text-secondary">角色</div>
+                {editing?.role === 'owner' ? (
+                  // Owner 不是「一个角色」，是租户所有权的持有者。给他留一个下拉
+                  // 会让人以为能把 owner 的权限改小，实际改了也只是多一层无效设定。
+                  <>
+                    <div className="flex h-9 items-center rounded-md border border-border-default bg-background-second px-3 text-sm text-text-secondary">
+                      Owner（租户所有者）
+                    </div>
+                    <p className="mt-1 text-xs text-text-secondary">
+                      Owner
+                      的权限由租户所有权决定，不能在这里分配角色；需要换人请用「移交
+                      Owner」。
+                    </p>
+                  </>
+                ) : (
+                  <select
+                    value={form.role_id}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, role_id: e.target.value }))
+                    }
+                    className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
+                  >
+                    <option value="">跟随成员类型（默认）</option>
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div>
+                <div className="mb-1 text-sm text-text-secondary">状态</div>
+                <select
+                  value={form.status}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, status: e.target.value }))
+                  }
+                  disabled={editing?.role === 'owner'}
+                  className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none disabled:opacity-60"
+                >
+                  <option value="1">在职</option>
+                  <option value="0">停用</option>
+                </select>
+                {editing?.role === 'owner' && (
+                  <p className="mt-1 text-xs text-text-secondary">
+                    停用 Owner 会让整个租户无人管理，所以这里不能改。
+                  </p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setEditing(null)}>
+                取消
+              </Button>
+              <Button onClick={submit}>保存</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        {/* 邀请成员：直接添加已注册用户，无需对方确认 */}
+        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>邀请成员</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <div className="mb-1 text-sm text-text-secondary">
+                  邮箱（须为已注册用户）
+                </div>
+                <Input
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="name@example.com"
+                />
+              </div>
+              <div>
+                <div className="mb-1 text-sm text-text-secondary">角色</div>
+                <select
+                  value={inviteRoleId}
+                  onChange={(e) => setInviteRoleId(e.target.value)}
+                  className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
+                >
+                  <option value="">普通成员（默认）</option>
                   {roles.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name}
                     </option>
                   ))}
                 </select>
+                <div className="mt-1 text-xs text-text-secondary">
+                  租户管理员拥有租户内全部功能权限，但不转移租户所有权（所有权仍归创建者，不随角色变化）。
+                </div>
+              </div>
+              {inviteError && (
+                <div className="text-xs text-state-error">{inviteError}</div>
               )}
             </div>
-            <div>
-              <div className="mb-1 text-sm text-text-secondary">状态</div>
-              <select
-                value={form.status}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, status: e.target.value }))
-                }
-                disabled={editing?.role === 'owner'}
-                className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none disabled:opacity-60"
-              >
-                <option value="1">在职</option>
-                <option value="0">停用</option>
-              </select>
-              {editing?.role === 'owner' && (
-                <p className="mt-1 text-xs text-text-secondary">
-                  停用 Owner 会让整个租户无人管理，所以这里不能改。
-                </p>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setInviteOpen(false)}>
+                取消
+              </Button>
+              <Button onClick={submitInvite}>添加</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* 重置密码 */}
+        <Dialog
+          open={!!pwTarget}
+          onOpenChange={(open) => !open && setPwTarget(null)}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>重置密码</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="text-sm text-text-secondary">
+                {pwTarget?.nickname} · {pwTarget?.email}
+              </div>
+              <div>
+                <div className="mb-1 text-sm text-text-secondary">新密码</div>
+                <Input
+                  type="password"
+                  value={pwValue}
+                  onChange={(e) => setPwValue(e.target.value)}
+                  placeholder="至少 6 位"
+                />
+              </div>
+              {pwError && (
+                <div className="text-xs text-state-error">{pwError}</div>
               )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setEditing(null)}>
-              取消
-            </Button>
-            <Button onClick={submit}>保存</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* 邀请成员：直接添加已注册用户，无需对方确认 */}
-      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>邀请成员</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <div className="mb-1 text-sm text-text-secondary">
-                邮箱（须为已注册用户）
-              </div>
-              <Input
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="name@example.com"
-              />
-            </div>
-            <div>
-              <div className="mb-1 text-sm text-text-secondary">角色</div>
-              <select
-                value={inviteRoleId}
-                onChange={(e) => setInviteRoleId(e.target.value)}
-                className="h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none"
-              >
-                <option value="">普通成员（默认）</option>
-                {roles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-              <div className="mt-1 text-xs text-text-secondary">
-                租户管理员拥有租户内全部功能权限，但不转移租户所有权（所有权仍归创建者，不随角色变化）。
+              <div className="text-xs text-text-secondary">
+                密码由 RSA 加密后传输，服务端按与登录相同的格式存储。
               </div>
             </div>
-            {inviteError && (
-              <div className="text-xs text-state-error">{inviteError}</div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setInviteOpen(false)}>
-              取消
-            </Button>
-            <Button onClick={submitInvite}>添加</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setPwTarget(null)}>
+                取消
+              </Button>
+              <Button onClick={submitPw}>确定</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      {/* 重置密码 */}
-      <Dialog
-        open={!!pwTarget}
-        onOpenChange={(open) => !open && setPwTarget(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>重置密码</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="text-sm text-text-secondary">
-              {pwTarget?.nickname} · {pwTarget?.email}
-            </div>
-            <div>
-              <div className="mb-1 text-sm text-text-secondary">新密码</div>
-              <Input
-                type="password"
-                value={pwValue}
-                onChange={(e) => setPwValue(e.target.value)}
-                placeholder="至少 6 位"
-              />
-            </div>
-            {pwError && (
-              <div className="text-xs text-state-error">{pwError}</div>
-            )}
-            <div className="text-xs text-text-secondary">
-              密码由 RSA 加密后传输，服务端按与登录相同的格式存储。
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setPwTarget(null)}>
-              取消
-            </Button>
-            <Button onClick={submitPw}>确定</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Owner 移交：两种入口共用一个弹窗 —— 从目标成员行进来是「确认」，
+        {/* Owner 移交：两种入口共用一个弹窗 —— 从目标成员行进来是「确认」，
           从自己那一行进来先是「挑人」。 */}
-      <Dialog
-        open={transferTargetId !== null}
-        onOpenChange={(open) => !open && setTransferTargetId(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>移交 Owner 权限</DialogTitle>
-          </DialogHeader>
-          <div className="py-4 text-sm">
-            {transferTarget ? (
-              <p>
-                您将把 Owner 权限移交给{' '}
-                <span className="font-medium text-text-primary">
-                  {transferTarget.nickname || transferTarget.email}
-                </span>
-                。
-              </p>
-            ) : (
-              <>
-                <p>选择接任 Owner 的成员：</p>
-                <select
-                  value=""
-                  onChange={(e) => setTransferTargetId(e.target.value)}
-                  disabled={loadingCandidates || transferCandidates.length === 0}
-                  className="mt-2 h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none disabled:opacity-60"
-                >
-                  <option value="">
-                    {loadingCandidates ? '加载成员…' : '请选择成员'}
-                  </option>
-                  {transferCandidates.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nickname || c.email}
+        <Dialog
+          open={transferTargetId !== null}
+          onOpenChange={(open) => !open && setTransferTargetId(null)}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>移交 Owner 权限</DialogTitle>
+            </DialogHeader>
+            <div className="py-4 text-sm">
+              {transferTarget ? (
+                <p>
+                  您将把 Owner 权限移交给{' '}
+                  <span className="font-medium text-text-primary">
+                    {transferTarget.nickname || transferTarget.email}
+                  </span>
+                  。
+                </p>
+              ) : (
+                <>
+                  <p>选择接任 Owner 的成员：</p>
+                  <select
+                    value=""
+                    onChange={(e) => setTransferTargetId(e.target.value)}
+                    disabled={
+                      loadingCandidates || transferCandidates.length === 0
+                    }
+                    className="mt-2 h-9 w-full rounded-md border border-border-default bg-bg-base px-3 text-sm text-text-primary outline-none disabled:opacity-60"
+                  >
+                    <option value="">
+                      {loadingCandidates ? '加载成员…' : '请选择成员'}
                     </option>
-                  ))}
-                </select>
-                {!loadingCandidates && transferCandidates.length === 0 && (
-                  <p className="mt-2 text-xs text-state-warning">
-                    本租户只有你一位在职成员，先邀请成员后才能移交。
-                  </p>
-                )}
-              </>
-            )}
-            <p className="mt-2 text-text-secondary">
-              移交后：您将变成「租户管理员」（全权限矩阵但非硬编码 owner），
-              该成员将成为新的 Owner。
-            </p>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setTransferTargetId(null)}
-              disabled={transferMutation.isPending}
-            >
-              取消
-            </Button>
-            {!transferTarget &&
-            !loadingCandidates &&
-            transferCandidates.length === 0 ? (
-              // 没人可交时不要留一个点不动的「确认移交」，直接给出下一步
+                    {transferCandidates.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nickname || c.email}
+                      </option>
+                    ))}
+                  </select>
+                  {!loadingCandidates && transferCandidates.length === 0 && (
+                    <p className="mt-2 text-xs text-state-warning">
+                      本租户只有你一位在职成员，先邀请成员后才能移交。
+                    </p>
+                  )}
+                </>
+              )}
+              <p className="mt-2 text-text-secondary">
+                移交后：您将变成「租户管理员」（全权限矩阵但非硬编码 owner），
+                该成员将成为新的 Owner。
+              </p>
+            </div>
+            <DialogFooter>
               <Button
-                onClick={() => {
-                  setTransferTargetId(null);
-                  setInviteOpen(true);
-                }}
+                variant="outline"
+                onClick={() => setTransferTargetId(null)}
+                disabled={transferMutation.isPending}
               >
-                去邀请成员
+                取消
               </Button>
-            ) : (
-              <Button
-                variant="destructive"
-                onClick={() => transferMutation.mutate()}
-                disabled={transferMutation.isPending || !transferTarget}
-              >
-                {transferMutation.isPending ? '移交中…' : '确认移交'}
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {!transferTarget &&
+              !loadingCandidates &&
+              transferCandidates.length === 0 ? (
+                // 没人可交时不要留一个点不动的「确认移交」，直接给出下一步
+                <Button
+                  onClick={() => {
+                    setTransferTargetId(null);
+                    setInviteOpen(true);
+                  }}
+                >
+                  去邀请成员
+                </Button>
+              ) : (
+                <Button
+                  variant="destructive"
+                  onClick={() => transferMutation.mutate()}
+                  disabled={transferMutation.isPending || !transferTarget}
+                >
+                  {transferMutation.isPending ? '移交中…' : '确认移交'}
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </section>
     </ConsoleGuard>
   );

@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConsoleGuard } from '@/components/console-guard';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -136,12 +137,15 @@ export default function ConsoleRoles() {
   // inline 重命名：哪个 role 处于编辑态 + 当前输入值
   const [renamingId, setRenamingId] = useState<string>('');
   const [renameValue, setRenameValue] = useState('');
+  const { canView } = useConsolePermissions();
+
   // 变更记录：点开才请求，避免每次进页面都拉审计。
   const [auditOpen, setAuditOpen] = useState(false);
 
+  // 审计归「平台审计」模块：没有 audit 权限的角色点开也只会被拒。
   const { data: auditData } = useQuery({
     queryKey: ['console/audits', tenantId],
-    enabled: !!tenantId && auditOpen,
+    enabled: !!tenantId && auditOpen && canView('audit'),
     queryFn: async () => {
       const res = await fetchConsoleAudits({ page: 1, page_size: 100 });
       return res?.data?.data ?? [];
@@ -380,7 +384,7 @@ export default function ConsoleRoles() {
   };
 
   return (
-    <ConsoleGuard module="role">
+    <ConsoleGuard>
       <section className="flex h-full flex-col p-5">
         <header className="mb-4 flex items-start justify-between">
           <div>
@@ -391,9 +395,11 @@ export default function ConsoleRoles() {
               基于 RBAC 的细粒度权限管理
             </p>
           </div>
-          <Button variant="secondary" onClick={() => setAuditOpen(true)}>
-            变更记录
-          </Button>
+          {canView('audit') && (
+            <Button variant="secondary" onClick={() => setAuditOpen(true)}>
+              变更记录
+            </Button>
+          )}
         </header>
 
         <div className="flex min-h-0 flex-1 gap-4">

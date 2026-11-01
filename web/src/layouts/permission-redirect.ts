@@ -1,4 +1,7 @@
-import { filterMenuItems } from '@/hooks/use-console-permissions';
+import {
+  filterMenuItems,
+  moduleListFor,
+} from '@/hooks/use-console-permissions';
 import type { MyPermissions } from '@/services/console-service';
 import type { SidebarMenuItem } from './components/sidebar-nav';
 
@@ -43,8 +46,31 @@ export interface PermissionRedirectInput {
   menuItems: SidebarMenuItem[];
   /** 总览在菜单里的 path，默认 `/`。 */
   overviewPath?: string;
-  /** 菜单「组」虚拟 path 映射到它的第一个子 path。 */
-  resolveGroupPath?: (path: string) => string;
+}
+
+/**
+ * 当前路径归属的权限模块集合，未匹配到菜单则返回空数组。
+ *
+ * 页面守卫必须用它，而不是让每个页面手写模块名：手写会写错，而写错的后果
+ * 就是「菜单能进、页面说没权限」或反过来。聚合页（如会话质检）会返回多个
+ * 模块，调用方按「任一命中即放行」处理。空数组表示该页面不受矩阵约束。
+ */
+export function modulesForPath(
+  pathname: string,
+  menuItems: SidebarMenuItem[],
+): string[] {
+  for (const item of menuItems) {
+    if (item.children?.length) {
+      const hit = modulesForPath(pathname, item.children);
+      if (hit.length) return hit;
+      continue;
+    }
+    if (!item.path) continue;
+    if (pathname === item.path || pathname.startsWith(`${item.path}/`)) {
+      return moduleListFor(item.name);
+    }
+  }
+  return [];
 }
 
 /**
@@ -60,7 +86,6 @@ export function resolvePermissionRedirect({
   isOwner,
   menuItems,
   overviewPath = '/',
-  resolveGroupPath = (path) => path,
 }: PermissionRedirectInput): string | null {
   if (isOwner || !perms) return null;
 
@@ -79,7 +104,7 @@ export function resolvePermissionRedirect({
   );
 
   if ((onOverview && !overviewAllowed) || (inMenu && !hasPermissionHere)) {
-    return resolveGroupPath(firstVisiblePath(visible, overviewPath));
+    return firstVisiblePath(visible, overviewPath);
   }
 
   return null;
