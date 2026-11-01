@@ -26,6 +26,8 @@ import (
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
+	"ragflow/internal/permission"
+	permissionresponse "ragflow/internal/permission/response"
 )
 
 // ArtifactHandler 汇总知识库的编译产物（wiki / tree / graph / mindmap / timeline）。
@@ -79,7 +81,7 @@ func kindLabel(kind string) string {
 
 // ListArtifacts GET /overview/artifacts
 func (h *ArtifactHandler) ListArtifacts(c *gin.Context) {
-	_, code, msg := GetUser(c)
+	user, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
 		return
@@ -125,7 +127,27 @@ func (h *ArtifactHandler) ListArtifacts(c *gin.Context) {
 		return
 	}
 
-	// 2) 编译完成的知识库
+	// 2) 编译完成的知识库。
+	//
+	// 必须叠加知识库级读权限：同一租户里 permission=me 的库只对创建者、租户
+	// 管理员和显式授权对象可见。只按 tenant_id 过滤会把别人的私库名字、文档数
+	// 和产物类型一起汇总到这个跨库列表上——概览页因此成了越权信息的出口。
+	scope, scopeErr := permission.NewDatabaseChecker(dao.DB).QueryScope(
+		ctx,
+		permission.Subject{UserID: user.ID, TenantID: tenantID},
+		permission.ScopeQuery{
+			Kind:      permission.ResourceKindDataset,
+			Operation: permission.OperationRead,
+		},
+	)
+	if scopeErr != nil {
+		permissionCode, permissionErr := permissionresponse.Normalize(scopeErr)
+		common.ErrorWithCode(c, permissionCode, permissionErr.Error())
+		return
+	}
+
+	// 条件里的表名保持 `knowledgebase` 而不是别名：QueryScope 生成的谓词按
+	// 正式表名引用列，起别名会让它和这里的 SELECT/WHERE 对不上。
 	type kbRow struct {
 		ID              string
 		Name            string
@@ -137,14 +159,16 @@ func (h *ArtifactHandler) ListArtifacts(c *gin.Context) {
 	}
 	q := dao.DB.WithContext(ctx).
 		Table("knowledge_compile_docs AS d").
-		Joins("JOIN knowledgebase kb ON kb.id = d.dataset_id").
-		Select(`kb.id AS id, IFNULL(kb.name, '') AS name,
-			IFNULL(kb.doc_num, 0) AS doc_num, IFNULL(kb.chunk_num, 0) AS chunk_num,
-			d.state AS state, kb.create_date AS create_date,
+		Joins("JOIN knowledgebase ON knowledgebase.id = d.dataset_id").
+		Select(`knowledgebase.id AS id, IFNULL(knowledgebase.name, '') AS name,
+			IFNULL(knowledgebase.doc_num, 0) AS doc_num, IFNULL(knowledgebase.chunk_num, 0) AS chunk_num,
+			d.state AS state, knowledgebase.create_date AS create_date,
 			d.last_completed_at AS last_completed_at`).
-		Where("kb.tenant_id = ? AND kb.status = '1'", tenantID)
+		Where("knowledgebase.tenant_id = ? AND knowledgebase.status = '1'", tenantID)
+	// 零值 scope 会 fail closed（追加 1 = 0），不会退化成「什么都可见」。
+	q = scope.Apply(q)
 	if keyword != "" {
-		q = q.Where("kb.name LIKE ?", "%"+keyword+"%")
+		q = q.Where("knowledgebase.name LIKE ?", "%"+keyword+"%")
 	}
 	var kbs []kbRow
 	if err := q.Scan(&kbs).Error; err != nil {
