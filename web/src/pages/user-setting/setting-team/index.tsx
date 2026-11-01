@@ -16,6 +16,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import {
   useFetchUserInfo,
   useListTenantUser,
@@ -38,6 +39,9 @@ import UserTable from './user-table';
 const UserSettingTeam = () => {
   const { data: userInfo } = useFetchUserInfo();
   const { t } = useTranslation();
+  // 邀请 / 直接加人是 team 模块的 create；移除成员由 user-table 单独判定。
+  const { can } = useConsolePermissions();
+  const canInvite = can('team', 'create');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchUser, setSearchUser] = useState('');
   // "Add existing member" dialog: picks from already-registered users instead
@@ -89,18 +93,22 @@ const UserSettingTeam = () => {
                 value={searchUser}
                 onChange={(e) => setSearchUser(e.target.value)}
               />
-              <Button
-                variant="outline"
-                onClick={() => setAddExistingVisible(true)}
-                data-testid="add-existing-member-btn"
-              >
-                <UserRoundPlus className="h-4 w-4" />
-                {t('setting.addExistingMember')}
-              </Button>
-              <Button onClick={showAddingTenantModal}>
-                <UserPlus className=" h-4 w-4" />
-                {t('setting.invite')}
-              </Button>
+              {canInvite && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setAddExistingVisible(true)}
+                    data-testid="add-existing-member-btn"
+                  >
+                    <UserRoundPlus className="h-4 w-4" />
+                    {t('setting.addExistingMember')}
+                  </Button>
+                  <Button onClick={showAddingTenantModal}>
+                    <UserPlus className=" h-4 w-4" />
+                    {t('setting.invite')}
+                  </Button>
+                </>
+              )}
             </section>
           </CardHeader>
 

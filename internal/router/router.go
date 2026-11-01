@@ -350,14 +350,16 @@ func (r *Router) Setup(engine *gin.Engine) {
 			{
 				tenants.GET("", r.tenantHandler.TenantList)
 				tenants.PATCH("/:tenant_id", r.tenantHandler.AcceptTenantInvite)
-				tenants.GET("/:tenant_id/users", r.tenantHandler.ListTenantMembers)
-				tenants.POST("/:tenant_id/users", r.tenantHandler.AddTenantMember)
+				// 团队管理（配置中心 → 团队管理）：成员列表 / 邀请 / 直接添加 / 移除。
+				// 之前只靠菜单隐藏，接口裸奔 —— 任何登录用户直接打这些路径都能增删成员。
+				tenants.GET("/:tenant_id/users", handler.ModulePermission("team"), r.tenantHandler.ListTenantMembers)
+				tenants.POST("/:tenant_id/users", handler.ModulePermission("team"), r.tenantHandler.AddTenantMember)
 				// Direct add (no invitation to accept) and its candidate lookup.
 				// Kept separate from /users so "invite" and "add" never share a
 				// handler with two behaviours.
-				tenants.GET("/:tenant_id/candidate-user", r.tenantHandler.FindCandidateUser)
-				tenants.POST("/:tenant_id/members", r.tenantHandler.AddMemberDirect)
-				tenants.DELETE("/:tenant_id/users", r.tenantHandler.RemoveTenantMember)
+				tenants.GET("/:tenant_id/candidate-user", handler.ModulePermission("team"), r.tenantHandler.FindCandidateUser)
+				tenants.POST("/:tenant_id/members", handler.ModulePermission("team"), r.tenantHandler.AddMemberDirect)
+				tenants.DELETE("/:tenant_id/users", handler.ModulePermission("team"), r.tenantHandler.RemoveTenantMember)
 
 				// 租户控制台：组织架构 / 成员 / 角色权限。
 				// 路径挂在 tenants 下，复用该组的鉴权中间件；租户归属校验在

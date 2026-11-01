@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/table';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import { useClientPagination } from '@/hooks/logic-hooks/use-pagination';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { useListTenantUser } from '@/hooks/use-user-setting-request';
 import { formatDate } from '@/utils/date';
 import { upperFirst } from 'lodash';
@@ -53,6 +54,9 @@ const ColorMap: Record<string, string> = {
 const UserTable = ({ searchUser }: { searchUser: string }) => {
   const { data, loading } = useListTenantUser();
   const { deleteTenantUser } = useHandleDeleteUser();
+  // 移除成员属于 team 模块的 delete。
+  const { can } = useConsolePermissions();
+  const canDelete = can('team', 'delete');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(null);
   const { t } = useTranslation();
   const sortedData = useMemo(() => {
@@ -175,35 +179,37 @@ const UserTable = ({ searchUser }: { searchUser: string }) => {
                     )}
                   </TableCell>
                   <TableCell className="p-4">
-                    <ConfirmDeleteDialog
-                      title={t('deleteModal.delMember')}
-                      onOk={async () => {
-                        await deleteTenantUser({
-                          userId: record.user_id,
-                        });
-                        return;
-                      }}
-                      content={{
-                        node: (
-                          <ConfirmDeleteDialogNode
-                            avatar={{
-                              avatar: record.avatar,
-                              name: record.nickname,
-                              isPerson: true,
-                            }}
-                            name={record.email}
-                          ></ConfirmDeleteDialogNode>
-                        ),
-                      }}
-                    >
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 p-0 hover:bg-state-error-5 hover:text-state-error"
+                    {canDelete && (
+                      <ConfirmDeleteDialog
+                        title={t('deleteModal.delMember')}
+                        onOk={async () => {
+                          await deleteTenantUser({
+                            userId: record.user_id,
+                          });
+                          return;
+                        }}
+                        content={{
+                          node: (
+                            <ConfirmDeleteDialogNode
+                              avatar={{
+                                avatar: record.avatar,
+                                name: record.nickname,
+                                isPerson: true,
+                              }}
+                              name={record.email}
+                            ></ConfirmDeleteDialogNode>
+                          ),
+                        }}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </ConfirmDeleteDialog>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 p-0 hover:bg-state-error-5 hover:text-state-error"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </ConfirmDeleteDialog>
+                    )}
                   </TableCell>
                 </TableRow>
               ))
