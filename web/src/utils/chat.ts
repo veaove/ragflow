@@ -101,15 +101,16 @@ export function mergeAnswerChunk(
 // Preprocess LaTeX equations to be rendered by KaTeX
 // ref: https://github.com/remarkjs/react-markdown/issues/785
 //
-// Delimiter matching: we only treat \] and \) as block/inline endings when they
-// are not part of a LaTeX command (e.g. \right], \big), \left)). Use a negative
-// lookbehind (?<![a-zA-Z]) so that \] or \) preceded by a letter (command name)
-// is not considered the closing delimiter. Use greedy matching so we match up to
-// the last valid delimiter and avoid cutting at the first \] or \) inside the
-// equation (e.g. \frac{1}{|y|} or \right]).
+// Delimiter matching: a `]`/`)` only closes an equation when it is itself
+// preceded by a backslash, so LaTeX commands such as \right], \big) and \left))
+// are never mistaken for one — inside a command the bracket has no backslash in
+// front of it. A lookbehind such as (?<![a-zA-Z]) must NOT be added here: it also
+// rejects the ordinary case where the equation body ends in a letter (`\(x<y\)`).
+// The body stays lazy so several equations in one message are matched one by one
+// instead of being swallowed into a single pair.
 
-const BLOCK_MATH_RE = /\\\[([\s\S]*?)(?<![a-zA-Z])\\\]/g;
-const INLINE_MATH_RE = /\\\(([\s\S]*?)(?<![a-zA-Z])\\\)/g;
+const BLOCK_MATH_RE = /\\\[([\s\S]*?)\\\]/g;
+const INLINE_MATH_RE = /\\\(([\s\S]*?)\\\)/g;
 
 export const preprocessLaTeX = (content: string) => {
   const normalizedContent = content
@@ -117,6 +118,10 @@ export const preprocessLaTeX = (content: string) => {
     .replace(/\\\\\(/g, '\\(')
     .replace(/\\\\\]/g, '\\]')
     .replace(/\\\\\)/g, '\\)')
+    // 双重转义（JSON 与流式拼接常见）会把 `\Delta` 写成 `\\Delta`，归一成单
+    // 反斜杠，否则 KaTeX 会把 `\\` 当成换行而不是命令。`\\` 后跟空格等非字母
+    // 时是真正的 LaTeX 换行，保持原样。
+    .replace(/\\\\(?=[a-zA-Z])/g, '\\')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&');

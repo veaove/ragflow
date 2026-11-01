@@ -95,10 +95,12 @@ describe('isSingleInstanceOperator', () => {
     expect(isSingleInstanceOperator(Operator.TokenChunker)).toBe(true);
     expect(isSingleInstanceOperator(Operator.TitleChunker)).toBe(true);
     expect(isSingleInstanceOperator(Operator.GeneralChunker)).toBe(true);
+    // Go 侧 ValidatePipeline 限制每张画布最多一个 Extractor
+    // （internal/ingestion/pipeline/pipeline.go）。
+    expect(isSingleInstanceOperator(Operator.Extractor)).toBe(true);
   });
 
   it('leaves multi-instance operators unchecked', () => {
-    expect(isSingleInstanceOperator(Operator.Extractor)).toBe(false);
     expect(isSingleInstanceOperator(Operator.Agent)).toBe(false);
   });
 });
@@ -106,12 +108,16 @@ describe('isSingleInstanceOperator', () => {
 describe('buildPipelineNextOperators', () => {
   const noOperator = () => false;
 
-  it('always offers Extractor, which is multi-instance', () => {
+  it('offers Extractor only when none is on the canvas', () => {
+    expect(
+      buildPipelineNextOperators(undefined, noOperator).operators,
+    ).toContain(Operator.Extractor);
+
     const hasExtractor = (operator: Operator) =>
       operator === Operator.Extractor;
     expect(
       buildPipelineNextOperators(undefined, hasExtractor).operators,
-    ).toContain(Operator.Extractor);
+    ).not.toContain(Operator.Extractor);
   });
 
   it('offers Compiler only when none is on the canvas', () => {

@@ -56,12 +56,14 @@ describe('mergeAnswerChunk', () => {
 });
 
 describe('preprocessLaTeX', () => {
+  // 内容原样搬运，不 trim：`\( f(x) + \big) \)` 这类写法必须保留内层空格，
+  // 而 `$$ x $$` 对 KaTeX 完全合法。
   it('converts block \\[ \\] to $$ $$', () => {
-    expect(preprocessLaTeX('\\[ x + y \\]')).toBe('$$x + y$$');
+    expect(preprocessLaTeX('\\[ x + y \\]')).toBe('$$ x + y $$');
   });
 
   it('converts inline \\( \\) to $ $', () => {
-    expect(preprocessLaTeX('\\( a \\)')).toBe('$a$');
+    expect(preprocessLaTeX('\\( a \\)')).toBe('$ a $');
   });
 
   it('does not cut block math at \\right] (Closes #13134)', () => {
@@ -85,7 +87,7 @@ describe('preprocessLaTeX', () => {
   it('handles multiple block equations', () => {
     const content = 'First \\[ a \\] then \\[ b \\right] c \\]';
     const result = preprocessLaTeX(content);
-    expect(result).toBe('First $$a$$ then $$ b \\right] c $$');
+    expect(result).toBe('First $$ a $$ then $$ b \\right] c $$');
   });
 
   it('handles double-escaped inline LaTeX', () => {

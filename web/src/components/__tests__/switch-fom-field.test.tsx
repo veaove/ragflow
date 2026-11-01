@@ -35,13 +35,18 @@ function ErrorHarness() {
 }
 
 describe('SwitchFormField', () => {
-  it('toggles the switch when the label text is clicked', () => {
+  it('keeps the switch independent of the label row', () => {
     render(<Harness />);
     const switchEl = screen.getByRole('switch');
     expect(switchEl).toHaveAttribute('data-state', 'unchecked');
 
+    // components/ui/switch.tsx 有意自己持有 id：FormLabel 的 htmlFor 指向
+    // form item，不会联动到开关，避免点整行 label 就把开关翻掉。
     fireEvent.click(screen.getByText('Enable feature'));
+    expect(switchEl).toHaveAttribute('data-state', 'unchecked');
 
+    // 只有直接点开关才切换。
+    fireEvent.click(switchEl);
     expect(switchEl).toHaveAttribute('data-state', 'checked');
   });
 
