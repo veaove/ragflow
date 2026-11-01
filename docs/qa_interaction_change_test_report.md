@@ -188,7 +188,7 @@ studio-table.tsx  studio-type-tab.tsx  use-studio-type-filter.ts  view-toggle.ts
 - **工作室列表**：两张类型卡（对话流 / 任务流）齐备；卡片含"是什么 / 图长什么样 / 创建对话流 →"三段说明；
   hover 时提示从 `opacity:0 → 1`；三个类型 Tab 带总数（`全部 5 / 任务流 4 / 对话流 1`）
 - **搜索**：无结果提示 `No app matches "__no_such_app_zzz__"`；**Tab 计数搜索前后完全一致**（规格 3.3 的核心要求）
-- **视图切换**：切表格写入 `localStorage['ragflow:list-view-mode']=table`，刷新后保持；
+- **视图切换**：切表格写入 `localStorage['ragflow:list-view-mode:canvas']=table`（按页面作用域分 key，智能体与工作室共用 `canvas`），刷新后保持；
   表头为 `Name / Type / Status / Version / Last run / Updated / Action`，与规格 7 列一致
 - **创建弹窗**：点类型卡能打开且**按点击预选**对应类型（Chatflow 卡带选中勾）；
   含"类型不可更改"说明、含归属兜底提示（`Ingestion pipeline`）；
