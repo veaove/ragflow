@@ -85,12 +85,23 @@ export type SearchSettingFormData = z.infer<typeof SearchSettingFormSchema>;
  * Extends the static schema with an existence check against the added-model
  * list: a persisted value may reference a model that has since been deleted.
  * Only validate selected models when their corresponding feature is enabled.
+ *
+ * A failed lookup (403, unknown tenant) also yields an empty id set; treating
+ * it as authoritative would flag every saved model as deleted, so it disables
+ * the check the same way a pending fetch does.
  */
 export const useSearchSettingFormSchema = () => {
   const { t } = useTranslation();
-  const { validIds: validRerankIds, isFetched: modelsFetched } =
-    useModelValidIds(ModelTypeMap.rerank_id);
-  const { validIds: validLlmIds } = useModelValidIds(ModelTypeMap.llm_id);
+  const {
+    validIds: validRerankIds,
+    isFetched: rerankModelsFetched,
+    isError: rerankModelsError,
+  } = useModelValidIds(ModelTypeMap.rerank_id);
+  const { validIds: validLlmIds, isError: llmModelsError } = useModelValidIds(
+    ModelTypeMap.llm_id,
+  );
+  const modelsFetched =
+    rerankModelsFetched && !rerankModelsError && !llmModelsError;
 
   const formSchema = useMemo(
     () =>

@@ -57,6 +57,24 @@ func CurrentTenantID(c *gin.Context) string {
 	return GetTenantID(c)
 }
 
+// RequestedTenantID 返回客户端**显式**指定的租户（X-Tenant-ID 且调用者确实是
+// 该租户成员），没有显式指定时返回空串。
+//
+// 与 CurrentTenantID 的区别是它不做默认值兜底：某些服务端逻辑需要区分
+// 「客户端说要哪个租户」和「服务端替你挑一个」，前者必须严格校验成员关系，
+// 后者要按可见租户自己回落（见 service.resolveReadTenantID）。
+func RequestedTenantID(c *gin.Context) string {
+	user, _, _ := GetUser(c)
+	if user == nil {
+		return ""
+	}
+	requested := strings.TrimSpace(c.GetHeader(TenantHeader))
+	if requested == "" || !UserBelongsToTenant(c, user.ID, requested) {
+		return ""
+	}
+	return requested
+}
+
 // UserBelongsToTenant 判断用户是否属于某个租户（仅统计 status='1' 的成员关系）。
 func UserBelongsToTenant(c *gin.Context, userID, tenantID string) bool {
 	if strings.TrimSpace(userID) == "" || strings.TrimSpace(tenantID) == "" {

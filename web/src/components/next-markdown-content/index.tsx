@@ -403,36 +403,32 @@ function MarkdownContent({
       // payload ships in retrieval order, which is unrelated to the order
       // the answer cites passages in.
       const keyToDisplay = buildCitationDisplayMap(text);
-      const replacedText = reactStringReplace(
-        text,
-        citationWholeMarkerReg,
-        (match) => {
-          const chunkKey = getChunkKey(match);
-          const displayIndex = keyToDisplay.get(chunkKey) ?? 0;
-          const chunkItem = resolveCitationChunk(reference?.chunks, chunkKey);
-          // The reference lands at message_end, after the answer stream, so an
-          // unresolved marker keeps its chip while loading. Afterwards it
-          // stays as literal text rather than pointing at the wrong chunk.
-          if (!chunkItem && !loading) {
-            return match;
-          }
+      const replacedText = reactStringReplace(text, citationWholeMarkerReg, (match) => {
+        const chunkKey = getChunkKey(match);
+        const displayIndex = keyToDisplay.get(chunkKey) ?? 0;
+        const chunkItem = resolveCitationChunk(reference?.chunks, chunkKey);
+        // The reference lands at message_end, after the answer stream, so an
+        // unresolved marker keeps its chip while loading. Afterwards it
+        // stays as literal text rather than pointing at the wrong chunk.
+        if (!chunkItem && !loading) {
+          return match;
+        }
 
-          return (
-            <HoverCard key={`${String(chunkKey)}-${displayIndex}`}>
-              <HoverCardTrigger>
-                <bdi className="text-text-secondary bg-bg-card rounded-2xl px-1 mx-1 text-nowrap inline-block">
-                  [{displayIndex + 1}]
-                </bdi>
-              </HoverCardTrigger>
-              {chunkItem && (
-                <HoverCardContent className="max-w-3xl">
-                  {renderPopoverContent(chunkKey)}
-                </HoverCardContent>
-              )}
-            </HoverCard>
-          );
-        },
-      );
+        return (
+          <HoverCard key={`${String(chunkKey)}-${displayIndex}`}>
+            <HoverCardTrigger>
+              <bdi className="text-text-secondary bg-bg-card rounded-2xl px-1 mx-1 text-nowrap inline-block">
+                [{displayIndex + 1}]
+              </bdi>
+            </HoverCardTrigger>
+            {chunkItem && (
+              <HoverCardContent className="max-w-3xl">
+                {renderPopoverContent(chunkKey)}
+              </HoverCardContent>
+            )}
+          </HoverCard>
+        );
+      });
 
       return replacedText;
     },

@@ -1711,22 +1711,18 @@ func (m *ModelProviderService) ListTenantAddedModels(ctx context.Context, userID
 }
 
 func (m *ModelProviderService) resolveModelListTenant(ctx context.Context, userID, requestedTenantID string) (*entity.Tenant, common.ErrorCode, error) {
-	tenantID := requestedTenantID
-	if tenantID == "" {
-		var err error
-		tenantID, err = requireOwnedTenantID(ctx, userID)
-		if err != nil {
-			if errors.Is(err, permission.ErrMembershipNotFound) {
-				return nil, common.CodeSuccess, nil
-			}
-			code, normalizedErr := normalizeModelPermissionError(err)
-			return nil, code, normalizedErr
+	// 模型目录是「用」的元数据，不是「配」的开关：成员要能在知识搜索、对话、
+	// Agent 里挑模型，就必须看得见本租户有哪些模型（路由上这条也是任何登录
+	// 用户可用）。所以这里按成员关系解析租户，而不是按 owner 身份 —— 用
+	// requireOwnedTenantID 时，被邀请的普通成员没有 owner 行，拿到的是空列表，
+	// 前端随即把已保存的模型判成「已删除或无权限」。
+	tenantID, err := resolveReadTenantID(ctx, userID, requestedTenantID)
+	if err != nil {
+		if errors.Is(err, permission.ErrMembershipNotFound) {
+			return nil, common.CodeSuccess, nil
 		}
-	} else {
-		if err := permission.NewDatabaseChecker(dao.DB).CheckTenant(ctx, permission.Subject{UserID: userID}, tenantID, permission.TenantMember); err != nil {
-			code, normalizedErr := normalizeModelPermissionError(err)
-			return nil, code, normalizedErr
-		}
+		code, normalizedErr := normalizeModelPermissionError(err)
+		return nil, code, normalizedErr
 	}
 
 	tenant, err := m.tenantDAO.GetByID(ctx, dao.DB, tenantID)

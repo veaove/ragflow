@@ -247,6 +247,14 @@ export const retrievalCompare = (
     top_k?: number;
     similarity_threshold?: number;
     vector_similarity_weight?: number;
+    /**
+     * Rerank model used by *both* sides of the comparison. 相似问模拟只有在
+     * rerank 路径上才成立：候选侧把待生效问法注入 chunk 的 token 列表，
+     * 而那份 token 只在 rerank 打分时才参与计算。不传就等于把对比钉在
+     * 非 rerank 路径上，后端会返回 similar_q_simulated=false，界面就只剩
+     * 那条黄色警告。
+     */
+    rerank_id?: string;
     page?: number;
     size?: number;
     doc_ids?: string[];

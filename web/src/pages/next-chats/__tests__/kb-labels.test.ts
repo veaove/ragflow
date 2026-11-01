@@ -19,10 +19,9 @@ describe('getKnowledgeBaseNames', () => {
   });
 
   test('某个 id 没有对应名称时兜底 "-"，绝不回显 id', () => {
-    expect(getKnowledgeBaseNames(row(['kb-1', 'kb-2'], ['财报知识库']))).toEqual([
-      '财报知识库',
-      EMPTY_LABEL,
-    ]);
+    expect(
+      getKnowledgeBaseNames(row(['kb-1', 'kb-2'], ['财报知识库'])),
+    ).toEqual(['财报知识库', EMPTY_LABEL]);
   });
 
   test('没有关联知识库时返回空数组，由调用方展示「未关联」', () => {
@@ -37,9 +36,7 @@ describe('getKnowledgeBaseNames', () => {
 
   test('字段缺失（undefined）不崩', () => {
     expect(
-      getKnowledgeBaseNames(
-        {} as Pick<IDialog, 'dataset_ids' | 'kb_names'>,
-      ),
+      getKnowledgeBaseNames({} as Pick<IDialog, 'dataset_ids' | 'kb_names'>),
     ).toEqual([]);
   });
 });

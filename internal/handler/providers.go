@@ -1664,7 +1664,12 @@ func (h *ProviderHandler) ListTenantAddedModels(c *gin.Context) {
 	}
 
 	modelType := c.Query("type")
-	tenantID := c.Query("tenant_id")
+	tenantID := strings.TrimSpace(c.Query("tenant_id"))
+	if tenantID == "" {
+		// 前端用 X-Tenant-ID 表达「当前租户」；不认这个头，成员切到团队租户后
+		// 模型列表仍会在服务端回落到他自己的默认租户。
+		tenantID = RequestedTenantID(c)
+	}
 	ctx := c.Request.Context()
 
 	addedModels, code, err := h.modelProviderService.ListTenantAddedModels(ctx, user.ID, tenantID, modelType)

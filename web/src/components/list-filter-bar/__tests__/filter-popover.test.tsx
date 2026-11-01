@@ -13,15 +13,6 @@ const buildFilters = (pdfCount: number): FilterCollection[] => [
   },
 ];
 
-// jsdom does not provide ResizeObserver, which the Radix popover relies on.
-beforeAll(() => {
-  global.ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
-});
-
 // The checkbox has no accessible name; it sits next to its label text.
 const checkboxOf = (label: string) =>
   screen.getByText(label).parentElement!.querySelector('[role="checkbox"]')!;

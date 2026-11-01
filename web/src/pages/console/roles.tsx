@@ -42,6 +42,8 @@ import {
   updateConsoleRole,
 } from '@/services/console-service';
 
+import { ColumnHint } from './column-hint';
+
 /** 矩阵行的中文名。后端只回 module key，文案在前端维护。 */
 const MODULE_LABELS: Record<string, string> = {
   // 顺序与后端 dao.ConsoleModules 一致
@@ -72,13 +74,45 @@ const MODULE_LABELS: Record<string, string> = {
   security: '安全设置',
 };
 
-const ACTION_COLUMNS: { key: keyof RolePermissionRow; label: string }[] = [
-  { key: 'can_view', label: '查看' },
-  { key: 'can_create', label: '创建' },
-  { key: 'can_edit', label: '编辑' },
-  { key: 'can_delete', label: '删除' },
-  { key: 'can_manage', label: '管理' },
+/**
+ * 五个动作列。hint 是列头问号里的说明，按后端的实际判定口径写：
+ * 动作按 HTTP 语义一一映射，矩阵每格独立判定，勾了写动作不会顺带获得查看。
+ */
+const ACTION_COLUMNS: {
+  key: keyof RolePermissionRow;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    key: 'can_view',
+    label: '查看',
+    hint: '可读取该模块的列表与详情（GET/HEAD 请求）。不勾选时该模块的菜单入口与页面会被隐藏或拦截。',
+  },
+  {
+    key: 'can_create',
+    label: '创建',
+    hint: '可在该模块新建资源（POST 请求），如新建知识库、上传文档、新增角色。不包含修改与删除已有资源。',
+  },
+  {
+    key: 'can_edit',
+    label: '编辑',
+    hint: '可修改已有资源（PUT/PATCH，以及「重新解析」这类语义为修改的 POST）。不包含新建与删除。',
+  },
+  {
+    key: 'can_delete',
+    label: '删除',
+    hint: '可删除该模块的资源（DELETE 请求），通常不可恢复。与创建、编辑相互独立。',
+  },
+  {
+    key: 'can_manage',
+    label: '管理',
+    hint: '可执行比普通编辑更敏感的配置类操作：保存权限矩阵、维护资源授权。不会因此获得创建、编辑或删除。',
+  },
 ];
+
+/** 「全选」列头说明：它只是批量开关，本身不产生权限。 */
+const SELECT_ALL_HINT =
+  '把该行的查看/创建/编辑/删除/管理一起勾选或取消，仅批量操作，不额外授予权限。租户 owner 不受本表限制。';
 
 /** 审计里的动作 / 对象 → 中文，仅用于展示。 */
 const ACTION_LABELS: Record<string, string> = {
@@ -474,10 +508,12 @@ export default function ConsoleRoles() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>功能模块</TableHead>
-                    <TableHead className="w-[70px] text-center">全选</TableHead>
+                    <TableHead className="w-[70px] text-center">
+                      <ColumnHint label="全选" hint={SELECT_ALL_HINT} />
+                    </TableHead>
                     {ACTION_COLUMNS.map((c) => (
                       <TableHead key={c.key} className="w-[70px] text-center">
-                        {c.label}
+                        <ColumnHint label={c.label} hint={c.hint} />
                       </TableHead>
                     ))}
                   </TableRow>

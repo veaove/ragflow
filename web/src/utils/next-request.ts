@@ -22,6 +22,7 @@ import authorizationUtil, {
   redirectToLogin,
 } from '@/utils/authorization-util';
 import notification from '@/utils/notification';
+import { getCurrentTenantId, TENANT_HEADER } from '@/utils/tenant-context';
 import axios from 'axios';
 import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
 import { setCachedLlmList } from './llm-cache';
@@ -113,6 +114,14 @@ request.interceptors.request.use(
     // Skip token if explicitly requested
     if (!(newConfig as any).skipToken) {
       newConfig.headers.set(Authorization, getAuthorization());
+    }
+
+    // 当前租户：切换租户后所有请求都带上，后端据此覆盖默认租户。与
+    // utils/request.ts 保持一致 —— 少了这一行，走 axios 的接口（模型目录、
+    // 知识搜索配置等）会被后端按「默认租户」解析，成员看到的是别处的数据。
+    const currentTenantId = getCurrentTenantId();
+    if (currentTenantId) {
+      newConfig.headers.set(TENANT_HEADER, currentTenantId);
     }
 
     return newConfig;
