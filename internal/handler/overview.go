@@ -19,9 +19,13 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
+	"ragflow/internal/entity"
+	"ragflow/internal/permission"
+	permissionresponse "ragflow/internal/permission/response"
 )
 
 // OverviewHandler serves the dashboard's cross-module aggregates. It exists so
@@ -53,7 +57,7 @@ type recentActivity struct {
 // of its own, so it joins knowledgebase — uploading into someone else's KB
 // must not leak into this feed.
 func (h *OverviewHandler) GetRecentActivities(c *gin.Context) {
-	_, code, msg := GetUser(c)
+	user, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
 		return
@@ -89,16 +93,43 @@ func (h *OverviewHandler) GetRecentActivities(c *gin.Context) {
 	// not materialize whole tables just to discard most of them.
 	perSource := limit
 
+	// 文档与知识库两条分支还要叠加知识库级读权限：permission=me 的私库对
+	// 非创建者、非租户管理员不可见，只在 SQL 里按 tenant_id 过滤会让它的名字
+	// 和库内文档名出现在别人的动态流里。canvas / qc_block 与知识库授权无关，
+	// 各自已有 user_id / tenant_id 边界。
+	scope, scopeErr := permission.NewDatabaseChecker(dao.DB).QueryScope(
+		c.Request.Context(),
+		permission.Subject{UserID: user.ID, TenantID: tenantID},
+		permission.ScopeQuery{
+			Kind:      permission.ResourceKindDataset,
+			Operation: permission.OperationRead,
+		},
+	)
+	if scopeErr != nil {
+		permissionCode, permissionErr := permissionresponse.Normalize(scopeErr)
+		common.ErrorWithCode(c, permissionCode, permissionErr.Error())
+		return
+	}
+	// 同一个子查询要被两条分支引用，每次重新构造，避免复用同一个
+	// gorm.Statement 导致条件丢失。
+	visibleKBs := func() *gorm.DB {
+		q := dao.DB.WithContext(c.Request.Context()).
+			Model(&entity.Knowledgebase{}).
+			Select("knowledgebase.id").
+			Where("knowledgebase.tenant_id = ?", tenantID)
+		return scope.Apply(q)
+	}
+
 	const query = `
 (SELECT 'document' AS kind, d.name AS title, d.create_time AS ts
    FROM document d
    JOIN knowledgebase kb ON kb.id = d.kb_id
-  WHERE kb.tenant_id = ? AND d.create_time > 0
+  WHERE kb.tenant_id = ? AND d.create_time > 0 AND d.kb_id IN (?)
   ORDER BY d.create_time DESC LIMIT ?)
 UNION ALL
 (SELECT 'knowledgebase' AS kind, kb.name AS title, kb.create_time AS ts
    FROM knowledgebase kb
-  WHERE kb.tenant_id = ? AND kb.create_time > 0
+  WHERE kb.tenant_id = ? AND kb.create_time > 0 AND kb.id IN (?)
   ORDER BY kb.create_time DESC LIMIT ?)
 UNION ALL
 (SELECT 'canvas' AS kind, c.title AS title, c.update_time AS ts
@@ -116,8 +147,8 @@ LIMIT ?`
 	var rows []recentActivity
 	err := dao.DB.WithContext(c.Request.Context()).Raw(
 		query,
-		tenantID, perSource,
-		tenantID, perSource,
+		tenantID, visibleKBs(), perSource,
+		tenantID, visibleKBs(), perSource,
 		tenantID, perSource,
 		tenantID, perSource,
 		limit,
@@ -146,4 +177,3 @@ LIMIT ?`
 		"has_more":   hasMore,
 	}, "success")
 }
-
