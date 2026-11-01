@@ -290,9 +290,25 @@ def stage_test(api, agent_id):
     return rows
 
 
+def stage_publish(api, agent_id):
+    """发布（上架）智能体：生成一条不可变版本并把父画布置 release=1。
+
+    这一步之前漏了，导致建完的智能体停在草稿态 —— 内部能跑，
+    但对外分享链接/嵌入不可用。幂等：重复调只是多一个版本，不影响可用性。
+    """
+    r = api.post("/api/v1/agents/%s/publish" % agent_id, {
+        "remark": "fund_demo 智能问数上线",
+    })
+    data = r.get("data") or {}
+    ver = data.get("id")
+    print("  [发布] %s  version id=%s  release=%s"
+          % (data.get("title", AGENT_TITLE), ver, data.get("release")))
+    return ver
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["kb", "agent", "test", "all"])
+    ap.add_argument("stage", choices=["kb", "agent", "publish", "test", "all"])
     args = ap.parse_args()
     api = Api()
 
@@ -308,6 +324,13 @@ def main():
         print("\n智能体 id: %s" % agent_id)
         if args.stage == "all":
             stage_test(api, agent_id)
+            # 验收通过才上架：先测后发，避免把没跑通的版本放出去。
+            stage_publish(api, agent_id)
+
+    if args.stage == "publish":
+        a = find_agent(api, AGENT_TITLE)
+        assert a, "还没建智能体"
+        stage_publish(api, a.get("id") or a.get("canvas_id"))
 
     if args.stage == "test":
         a = find_agent(api, AGENT_TITLE)
