@@ -54,7 +54,8 @@ export default function SearchList() {
     setFilterValue,
     handleFilterSubmit,
   } = useFetchSearchList();
-  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
+  const { mode: viewMode, setMode: setViewMode } =
+    useListViewPreference('search');
   const { navigateToSearch } = useNavigatePage();
   const owners = [
     buildOwnersFilter(list?.data?.search_apps ?? [], undefined, tc('owner')),

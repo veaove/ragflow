@@ -51,7 +51,8 @@ export default function Studio() {
   );
 
   const { type, setType, canvasCategoryIds } = useStudioTypeFilter();
-  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
+  const { mode: viewMode, setMode: setViewMode } =
+    useListViewPreference('canvas');
   const { data: agentFilters } = useFetchAgentFilters();
   const {
     sortKey,

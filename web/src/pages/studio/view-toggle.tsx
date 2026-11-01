@@ -4,8 +4,8 @@ import { Segmented } from '@/components/ui/segmented';
 import { ListViewMode } from '@/hooks/use-list-view-preference';
 
 /**
- * 卡片 / 表格视图分段开关。偏好由 useListViewPreference 持久化，
- * 两个列表页共用（产品文档 3.2）。
+ * 卡片 / 表格视图分段开关。偏好由 useListViewPreference 按页面作用域持久化：
+ * 各列表页独立，只有智能体与工作室共用 `canvas`（产品文档 3.2）。
  */
 export function ViewToggle({
   mode,

@@ -74,7 +74,8 @@ export default function Datasets() {
     hideDatasetEditModal,
     showDatasetEditModal,
   } = useEditDataset();
-  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
+  const { mode: viewMode, setMode: setViewMode } =
+    useListViewPreference('dataset');
 
   const filteredKbs = useMemo(() => {
     if (!kbs) return [];
@@ -138,7 +139,8 @@ export default function Datasets() {
     [setPagination],
   );
 
-  const showTable = filteredKbs?.length || searchString || statusFilter !== 'all';
+  const showTable =
+    filteredKbs?.length || searchString || statusFilter !== 'all';
 
   return (
     <>

@@ -38,7 +38,8 @@ export default function ChatList() {
   } = useFetchChatList();
   const { t } = useTranslation();
   const { t: tc } = useTranslation('common');
-  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
+  const { mode: viewMode, setMode: setViewMode } =
+    useListViewPreference('chat');
   const { navigateToChat } = useNavigatePage();
   const owners = [buildOwnersFilter(data?.chats ?? [], undefined, tc('owner'))];
   const {

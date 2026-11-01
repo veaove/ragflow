@@ -28,7 +28,8 @@ import { MemoryTable } from './memory-table';
 export default function MemoryList() {
   // const { data } = useFetchFlowList();
   const { t } = useTranslate('memories');
-  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
+  const { mode: viewMode, setMode: setViewMode } =
+    useListViewPreference('memory');
   const [addOrEditType, setAddOrEditType] = useState<'add' | 'edit'>('add');
   // const [isEdit, setIsEdit] = useState(false);
   const {

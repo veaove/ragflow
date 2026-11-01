@@ -63,7 +63,8 @@ const CompilationGroupCategory = 'compilation_template_group';
 
 export default function Agents() {
   const { t } = useTranslation();
-  const { mode: viewMode, setMode: setViewMode } = useListViewPreference();
+  const { mode: viewMode, setMode: setViewMode } =
+    useListViewPreference('canvas');
 
   // 排序 + 发布状态筛选：与工作室共用同一套规则（产品文档 3.4）。
   const {
@@ -240,42 +241,42 @@ export default function Agents() {
                     <ChevronDown className="size-[1em]" />
                   </Button>
                 </DropdownMenuTrigger>
-              <DropdownMenuContent data-testid="agent-create-menu">
-                <DropdownMenuItem
-                  justifyBetween={false}
-                  onClick={showCreatingModal}
-                >
-                  <Clipboard />
-                  {t('flow.createFromBlank')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  justifyBetween={false}
-                  onClick={() => navigateToAgentTemplates()}
-                >
-                  <ClipboardPlus />
-                  {t('flow.createFromTemplate')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  data-testid="agent-import-json"
-                  justifyBetween={false}
-                  onClick={handleImportJson}
-                >
-                  <FileInput />
-                  {t('flow.importJsonFile')}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  data-testid="agent-create-compiler"
-                  justifyBetween={false}
-                  onClick={() =>
-                    navigate(
-                      `${Routes.CompilationTemplatesEditNext}?source=agents`,
-                    )
-                  }
-                >
-                  <Shapes />
-                  {t('flow.tabList.compilationOperator')}
-                </DropdownMenuItem>
+                <DropdownMenuContent data-testid="agent-create-menu">
+                  <DropdownMenuItem
+                    justifyBetween={false}
+                    onClick={showCreatingModal}
+                  >
+                    <Clipboard />
+                    {t('flow.createFromBlank')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    justifyBetween={false}
+                    onClick={() => navigateToAgentTemplates()}
+                  >
+                    <ClipboardPlus />
+                    {t('flow.createFromTemplate')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    data-testid="agent-import-json"
+                    justifyBetween={false}
+                    onClick={handleImportJson}
+                  >
+                    <FileInput />
+                    {t('flow.importJsonFile')}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    data-testid="agent-create-compiler"
+                    justifyBetween={false}
+                    onClick={() =>
+                      navigate(
+                        `${Routes.CompilationTemplatesEditNext}?source=agents`,
+                      )
+                    }
+                  >
+                    <Shapes />
+                    {t('flow.tabList.compilationOperator')}
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -313,7 +314,8 @@ export default function Agents() {
                     // category 为空时兜底成 agent_canvas，避免拼出 ?category=undefined 打不开画布。
                     navigateToAgent(
                       id,
-                      (item?.canvas_category ?? AgentCategory.AgentCanvas) as AgentCategory,
+                      (item?.canvas_category ??
+                        AgentCategory.AgentCanvas) as AgentCategory,
                     )();
                   }}
                 />
