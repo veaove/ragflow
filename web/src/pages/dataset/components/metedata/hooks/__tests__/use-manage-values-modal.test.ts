@@ -4,13 +4,16 @@ jest.mock('react-i18next', () => ({
 
 import { act, renderHook } from '@testing-library/react';
 import { MetadataType, metadataValueTypeEnum } from '../../constant';
-import { IManageValuesProps, IMetaDataTableData } from '../../interface';
 import { useManageValues } from '../use-manage-values-modal';
 
-function makeProps(
-  overrides: Partial<IManageValuesProps> = {},
-): IManageValuesProps {
-  const data: IMetaDataTableData = {
+/**
+ * 不写 props 的类型注解：本文件顶部的 jest.mock 需要 babel 提升 import，而
+ * 「被导入的绑定出现在类型位置」会让这一步直接抛 SyntaxError（`import type`
+ * 也一样，jest-hoist 不认）。结构由下面的对象字面量保证，交给 useManageValues
+ * 的形参做常规检查。
+ */
+function makeProps(overrides: Record<string, unknown> = {}) {
+  const data = {
     field: '',
     description: '',
     values: [''],
@@ -34,7 +37,7 @@ function makeProps(
     addUpdateValue: jest.fn(),
     addDeleteValue: jest.fn(),
     ...overrides,
-  } as IManageValuesProps;
+  };
 }
 
 describe('useManageValues - add new metadata', () => {

@@ -51,6 +51,24 @@ jest.mock('react-i18next', () => ({
 }));
 
 /**
+ * 菜单过滤来自 useConsolePermissions。这里给全量权限并让 filterMenuItems
+ * 原样返回：真实 hook 会顺 user-service → next-request → locales/config
+ * 走到 `i18n.use(initReactI18next)`，而本文件上面的 react-i18next mock 只
+ * 提供 useTranslation，初始化必抛错。折叠行为与权限无关，直接绕开。
+ */
+jest.mock('@/hooks/use-console-permissions', () => ({
+  useConsolePermissions: () => ({
+    perms: null,
+    tenantId: undefined,
+    roleName: '',
+    isOwner: true,
+    canView: () => true,
+    can: () => true,
+  }),
+  filterMenuItems: (items: unknown[]) => items,
+}));
+
+/**
  * 用可变变量接管 useLocation，这样测试才能在同一个挂载实例上「切换路由」。
  * 只 mock useLocation，Link 仍走真实实现（MemoryRouter 提供 context）。
  */

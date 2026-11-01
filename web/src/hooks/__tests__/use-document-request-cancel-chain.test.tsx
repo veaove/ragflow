@@ -66,6 +66,8 @@ jest.mock('@/hooks/route-hook', () => ({
 
 jest.mock('react-router', () => ({
   useParams: () => ({}),
+  // useFetchDocumentList 会读 ?folder= 做文件分组筛选。
+  useSearchParams: () => [new URLSearchParams(), jest.fn()],
 }));
 
 jest.mock('ahooks', () => ({
