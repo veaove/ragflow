@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { MetricCard } from './metric-card';
 import { SourceDonutChart } from './source-donut-chart';
@@ -66,8 +67,10 @@ export default function Overview() {
   const { t: tRoot } = useTranslation();
   const { data: tenantInfo } = useFetchTenantInfo();
   const tenantId = tenantInfo?.tenant_id as string | undefined;
+  // 部门数走控制台的「组织架构」接口，没这个权限就别请求（否则进总览先吃一个 403）。
+  const { canView } = useConsolePermissions();
   const [datasetsQ, agentQ, statsQ, suffixQ, activityQ, departmentsQ] =
-    useOverviewQueries(TREND_DAYS, tenantId);
+    useOverviewQueries(TREND_DAYS, tenantId, canView('organization'));
 
   // `?? []` 每次渲染都会新建数组：不固定住的话，依赖它的两个 useMemo
   // 会每帧重算，oxlint 的 exhaustive-deps 也会一直报警。

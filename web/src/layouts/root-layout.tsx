@@ -1,41 +1,15 @@
 import { useEffect, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 
-import { filterMenuItems, useConsolePermissions } from '@/hooks/use-console-permissions';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { useSuperUserDenied } from '@/hooks/use-super-user-denied';
 import { Routes } from '@/routes';
 
 import { AppSidebar } from './components/app-sidebar';
 import { Header } from './components/header';
-import { sidebarMenuItems, type SidebarMenuItem } from './components/sidebar-nav';
+import { sidebarMenuItems } from './components/sidebar-nav';
 import SuperUserNotice from './components/super-user-notice';
-
-/**
- * 从过滤后的菜单树里拿到第一个可见叶子节点的 path。
- */
-function firstVisiblePath(items: SidebarMenuItem[]): string {
-  for (const item of items) {
-    if (item.children?.length) {
-      const childFirst = firstVisiblePath(item.children);
-      if (childFirst !== Routes.Root) return childFirst;
-      continue;
-    }
-    if (item.path && item.path !== Routes.Root) return item.path;
-  }
-  return Routes.Root;
-}
-
-/** 递归收集菜单树的所有叶子 path 字符串。 */
-function collectLeafPaths(items: SidebarMenuItem[]): string[] {
-  const out: string[] = [];
-  for (const it of items) {
-    if (it.path && it.path !== 'console' && it.path !== 'config-center') {
-      out.push(it.path);
-    }
-    if (it.children?.length) out.push(...collectLeafPaths(it.children));
-  }
-  return out;
-}
+import { resolvePermissionRedirect } from './permission-redirect';
 
 /** 把菜单树的「组」虚拟 path 映射到它的第一个子 path。 */
 function resolveGroupPath(p: string): string {
@@ -66,29 +40,18 @@ function PermissionGate() {
 
   // --- 所有 Hook 必须在任何条件 return 之前声明 ---
   // 计算是否需要 redirect（返回 null 表示不需要）
-  const redirectTarget = useMemo<string | null>(() => {
-    // owner 或权限未加载 → 不 redirect
-    if (isOwner || !perms) return null;
-
-    const allLeafPaths = collectLeafPaths(sidebarMenuItems);
-    const allowedLeafPaths = collectLeafPaths(
-      filterMenuItems(sidebarMenuItems, perms, { isOwner: false }),
-    );
-
-    const isOverview = pathname === '/' || pathname === '/overview';
-    const inMenu = allLeafPaths.some(
-      (p) => pathname === p || pathname.startsWith(`${p}/`),
-    );
-    const hasPermissionHere = allowedLeafPaths.some(
-      (p) => pathname === p || pathname.startsWith(`${p}/`),
-    );
-
-    if (isOverview || (inMenu && !hasPermissionHere)) {
-      const visible = filterMenuItems(sidebarMenuItems, perms, { isOwner: false });
-      return resolveGroupPath(firstVisiblePath(visible));
-    }
-    return null;
-  }, [pathname, perms, isOwner]);
+  const redirectTarget = useMemo<string | null>(
+    () =>
+      resolvePermissionRedirect({
+        pathname,
+        perms,
+        isOwner,
+        menuItems: sidebarMenuItems,
+        overviewPath: Routes.Root,
+        resolveGroupPath,
+      }),
+    [pathname, perms, isOwner],
+  );
 
   // 无条件 useEffect：只有当 redirectTarget 非空时才执行 navigate
   useEffect(() => {

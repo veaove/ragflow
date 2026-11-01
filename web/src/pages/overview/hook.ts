@@ -193,7 +193,12 @@ async function fetchGlobalSuffixCounter(): Promise<Record<string, number>> {
  *
  * tenantId 只给「部门数」用：控制台接口路径里带租户，缺了它就不发请求。
  */
-export function useOverviewQueries(days = 7, tenantId?: string) {
+export function useOverviewQueries(
+  days = 7,
+  tenantId?: string,
+  /** 当前用户是否有「组织架构」查看权限；没有就别发 departments 请求。 */
+  allowDepartments = true,
+) {
   return useQueries({
     queries: [
       {
@@ -242,8 +247,11 @@ export function useOverviewQueries(days = 7, tenantId?: string) {
       {
         // 部门数：控制台接口要 tenant_id，而 tenant_id 来自租户信息接口，
         // 因此这里按「拿不到 tenantId 就不发请求」处理，卡片显示 —。
+        //
+        // 该接口归「组织架构」模块管：只授了总览的角色去拉会吃 403，弹一条
+        // 「没有组织架构权限」。既然卡片只是展示数量，无权限时直接不发。
         queryKey: ['overview', 'departments', tenantId],
-        enabled: !!tenantId,
+        enabled: !!tenantId && allowDepartments,
         queryFn: async () => {
           const res = await fetchDepartments(tenantId as string);
           const tree = res?.data?.data?.departments ?? [];
