@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { UseRowSelectionType } from '@/hooks/logic-hooks/use-row-selection';
 import { useSetDocumentStatus } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
@@ -46,6 +47,10 @@ export function useDatasetTableColumns({
   const { navigateToChunkParsedResult } = useNavigatePage();
   const { setDocumentStatus } = useSetDocumentStatus();
   const { id: datasetId } = useParams();
+  // 行内「启用」开关打的是 PATCH /datasets/:id/documents/:doc_id，
+  // 后端按 dataset 的 edit 动作拦截；没有该权限时开关只读。
+  const { can } = useConsolePermissions();
+  const canEdit = can('dataset', 'edit');
 
   const columns: ColumnDef<IDocumentInfo>[] = useMemo(
     () => [
@@ -153,6 +158,7 @@ export function useDatasetTableColumns({
           return (
             <Switch
               checked={row.getValue('status') === '1'}
+              disabled={!canEdit}
               onCheckedChange={(e) => {
                 setDocumentStatus({
                   status: e,
@@ -184,6 +190,10 @@ export function useDatasetTableColumns({
             }
             return true;
           }).length;
+          const label = length + ' fields';
+          if (!canEdit) {
+            return <div>{label}</div>;
+          }
           return (
             <Button
               variant="static"
@@ -213,7 +223,7 @@ export function useDatasetTableColumns({
                 });
               }}
             >
-              {length + ' fields'}
+              {label}
             </Button>
           );
         },
@@ -271,6 +281,7 @@ export function useDatasetTableColumns({
       navigateToChunkParsedResult,
       setDocumentStatus,
       datasetId,
+      canEdit,
       showChangeParserModal,
       showRenameModal,
       showManageMetadataModal,

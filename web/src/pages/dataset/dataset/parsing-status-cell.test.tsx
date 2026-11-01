@@ -5,6 +5,20 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+// 解析/取消受 dataset 的 edit 动作控制；默认给足权限，只读场景单独覆盖。
+let mockCanEdit = true;
+jest.mock('@/hooks/use-console-permissions', () => ({
+  useConsolePermissions: () => ({
+    can: (_module: string, action: string) =>
+      action === 'edit' ? mockCanEdit : true,
+    canView: () => true,
+    perms: null,
+    tenantId: undefined,
+    roleName: '',
+    isOwner: false,
+  }),
+}));
+
 jest.mock('./reparse-dialog', () => ({
   ReparseDialog: () => null,
 }));
@@ -83,6 +97,19 @@ describe('ParsingStatusCell', () => {
   beforeEach(() => {
     mockRunDocumentByIds.mockClear();
     mockShowReparseDialog.mockClear();
+    mockCanEdit = true;
+  });
+
+  it('hides the parse action when the role cannot edit the dataset', () => {
+    mockCanEdit = false;
+    const { container } = renderCell({
+      ingestion_status: IngestionTaskStatus.COMPLETED,
+      chunk_count: 3,
+    });
+    expect(getSection(container)).toHaveAttribute('data-state', 'success');
+    expect(
+      screen.queryByTestId('document-parse-toggle'),
+    ).not.toBeInTheDocument();
   });
 
   it('shows the queued chip for CREATED tasks', () => {

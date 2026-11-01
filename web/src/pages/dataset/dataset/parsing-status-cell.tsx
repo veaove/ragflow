@@ -12,6 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { cn } from '@/lib/utils';
 import { CircleQuestionMark, CircleX, Clock3, Loader2 } from 'lucide-react';
@@ -71,36 +72,41 @@ export function ParseDropdownButton({
 } & UseChangeDocumentParserShowType) {
   const { t } = useTranslation();
   const { pipeline_id, pipeline_name, chunk_method } = record;
+  // 换数据管道是编辑动作；没有权限时只保留标签，不给下拉。
+  const { can } = useConsolePermissions();
+  const canEdit = can('dataset', 'edit');
 
   const handleShowChangeParserModal = useCallback(() => {
     showChangeParserModal(record);
   }, [record, showChangeParserModal]);
 
+  const pipelineLabel = pipeline_id
+    ? pipeline_name || pipeline_id
+    : chunk_method === 'naive'
+      ? 'general'
+      : chunk_method;
+
+  const label = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="static" size="auto" className="capitalize">
+          {pipelineLabel}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p className="capitalize">{pipelineLabel}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+
+  if (!canEdit) {
+    return <div>{label}</div>;
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="static" size="auto" className="capitalize">
-                {pipeline_id
-                  ? pipeline_name || pipeline_id
-                  : chunk_method === 'naive'
-                    ? 'general'
-                    : chunk_method}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p className="capitalize">
-                {pipeline_id
-                  ? pipeline_name || pipeline_id
-                  : chunk_method === 'naive'
-                    ? 'general'
-                    : chunk_method}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
+        <div>{label}</div>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
         <DropdownMenuItem onClick={handleShowChangeParserModal}>
@@ -121,6 +127,9 @@ export function ParsingStatusCell({
 } & UseChangeDocumentParserShowType) {
   const { t } = useTranslation();
   const { progress, chunk_count, id } = record;
+  // 解析 / 重新解析 / 取消都是编辑动作，后端按 dataset 的 edit 拦截。
+  const { can } = useConsolePermissions();
+  const canEdit = can('dataset', 'edit');
   // Resolve one effective status for the icon, state attribute and labels.
   const effectiveRun = getDocumentRunningStatus(record);
   const operationIcon = IconMap[effectiveRun];
@@ -222,7 +231,7 @@ export function ParsingStatusCell({
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  disabled={isStopping}
+                  disabled={isStopping || !canEdit}
                   onClick={handleParseClick}
                   data-testid="document-parse-toggle"
                 >
@@ -253,14 +262,16 @@ export function ParsingStatusCell({
             </Button>
           ) : (
             <>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={handleParseClick}
-                data-testid="document-parse-toggle"
-              >
-                {operationIcon}
-              </Button>
+              {canEdit && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={handleParseClick}
+                  data-testid="document-parse-toggle"
+                >
+                  {operationIcon}
+                </Button>
+              )}
 
               <ParsingCard record={record} handleShowLog={handleShowLog} />
             </>
