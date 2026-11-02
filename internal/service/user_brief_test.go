@@ -101,3 +101,57 @@ func TestBatchUserBriefWithoutCallerTenant(t *testing.T) {
 		t.Errorf("briefs = %+v, want empty for a caller without tenants", briefs)
 	}
 }
+
+// TestBatchUserBriefSkipsPendingMemberships pins both ends of the status
+// filter. user_tenant carries rows for invitations that were never accepted:
+// the invitee must not be able to read the inviting tenant's member list, and
+// a pending invitee must not resolve for the members who are already in.
+func TestBatchUserBriefSkipsPendingMemberships(t *testing.T) {
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+
+	for _, u := range []*entity.User{
+		{ID: "caller", Nickname: "已加入", Email: "caller@example.com"},
+		{ID: "pending-caller", Nickname: "受邀未接受", Email: "pending-caller@example.com"},
+		{ID: "member", Nickname: "成员", Email: "member@example.com"},
+		{ID: "pending-member", Nickname: "待接受成员", Email: "pending-member@example.com"},
+	} {
+		if err := db.Create(u).Error; err != nil {
+			t.Fatalf("create user %q: %v", u.ID, err)
+		}
+	}
+
+	active := string(entity.StatusValid)
+	pending := string(entity.StatusInvalid)
+	for _, ut := range []*entity.UserTenant{
+		{ID: "ut-caller", UserID: "caller", TenantID: "tenant-1", Role: string(permission.RoleOwner), Status: &active},
+		{ID: "ut-member", UserID: "member", TenantID: "tenant-1", Role: string(permission.RoleNormal), Status: &active},
+		{ID: "ut-pending-member", UserID: "pending-member", TenantID: "tenant-1", Role: string(permission.RoleNormal), Status: &pending},
+		{ID: "ut-pending-caller", UserID: "pending-caller", TenantID: "tenant-1", Role: string(permission.RoleNormal), Status: &pending},
+	} {
+		if err := db.Create(ut).Error; err != nil {
+			t.Fatalf("create user_tenant %q: %v", ut.ID, err)
+		}
+	}
+
+	briefs, err := NewUserService().BatchUserBrief(context.Background(), "caller",
+		[]string{"member", "pending-member"})
+	if err != nil {
+		t.Fatalf("BatchUserBrief: %v", err)
+	}
+	if got := briefs["member"]; got == nil || got.Email != "member@example.com" {
+		t.Errorf("member = %+v, want resolved", got)
+	}
+	if got, ok := briefs["pending-member"]; ok {
+		t.Errorf("pending member resolved: %+v", got)
+	}
+
+	pendingCallerBriefs, err := NewUserService().BatchUserBrief(context.Background(), "pending-caller",
+		[]string{"member"})
+	if err != nil {
+		t.Fatalf("BatchUserBrief pending caller: %v", err)
+	}
+	if len(pendingCallerBriefs) != 0 {
+		t.Errorf("pending caller resolved %+v, want empty", pendingCallerBriefs)
+	}
+}

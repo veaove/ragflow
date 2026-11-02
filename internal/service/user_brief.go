@@ -44,6 +44,9 @@ const maxUserBriefIDs = 200
 //
 // 只返回与调用者同租户的成员。按 id 任意查人是跨租户枚举的入口，这个接口
 // 不该成为那条路 —— 查不到的 id 直接不出现在结果里，前端显示为占位。
+//
+// 两侧都只认 status=1 的成员关系：user_tenant 里还有「已邀请未接受」的行，
+// 未接受的邀请不该换来一份对方租户全员的昵称和邮箱。
 func (s *UserService) BatchUserBrief(ctx context.Context, callerID string, ids []string) (map[string]*UserBrief, error) {
 	out := make(map[string]*UserBrief, len(ids))
 	unique := dedupeUserIDs(ids)
@@ -57,7 +60,7 @@ func (s *UserService) BatchUserBrief(ctx context.Context, callerID string, ids [
 	var tenantIDs []string
 	if err := dao.DB.WithContext(ctx).
 		Model(&entity.UserTenant{}).
-		Where("user_id = ?", callerID).
+		Where("user_id = ? AND status = ?", callerID, string(entity.StatusValid)).
 		Pluck("tenant_id", &tenantIDs).Error; err != nil {
 		return nil, err
 	}
@@ -75,7 +78,7 @@ func (s *UserService) BatchUserBrief(ctx context.Context, callerID string, ids [
 		Model(&entity.User{}).
 		Select("DISTINCT user.id, user.nickname, user.email").
 		Joins("JOIN user_tenant ut ON ut.user_id = user.id").
-		Where("user.id IN ? AND ut.tenant_id IN ?", unique, tenantIDs).
+		Where("user.id IN ? AND ut.tenant_id IN ? AND ut.status = ?", unique, tenantIDs, string(entity.StatusValid)).
 		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
