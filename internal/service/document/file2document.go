@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
@@ -54,6 +55,9 @@ type File2DocumentService struct {
 	userTenantDAO    *dao.UserTenantDAO
 	documentSvc      *DocumentService
 	documentDAO      *dao.DocumentDAO
+	// folderDAO is used to mirror the source folder tree into the target
+	// dataset when a folder is linked, so the link keeps its structure.
+	folderDAO *dao.DocumentFolderDAO
 }
 
 // NewFile2DocumentService creates a File2DocumentService.
@@ -65,6 +69,7 @@ func NewFile2DocumentService() *File2DocumentService {
 		userTenantDAO:    dao.NewUserTenantDAO(),
 		documentSvc:      NewDocumentService(),
 		documentDAO:      dao.NewDocumentDAO(),
+		folderDAO:        dao.NewDocumentFolderDAO(),
 	}
 }
 
@@ -106,7 +111,7 @@ func (s *File2DocumentService) LinkToDatasets(ctx context.Context, userID string
 		kbMap[kbID] = kb
 	}
 
-	// ── 3. Expand folders to leaf files, then deduplicate ─────────────────────
+	// ── 3. Expand folders into (file, destination folder path) pairs ──────────
 	checker := permission.NewDatabaseChecker(dao.DB)
 	checkFileRead := func(file *entity.File) error {
 		kind := permission.ResourceKindFile
@@ -118,32 +123,58 @@ func (s *File2DocumentService) LinkToDatasets(ctx context.Context, userID string
 			ID:   file.ID,
 		}, permission.OperationRead)
 	}
-	// Mixed folder + direct file inputs (or overlapping folders) can yield the
-	// same leaf file more than once; dedupe so each file is converted exactly
-	// once.
-	expanded := make([]string, 0, len(req.FileIDs))
+
+	// The same leaf file can be reached more than once (a folder and one of its
+	// files both selected, or two folders sharing a sub-folder), so dedupe on
+	// the (file, destination path) pair: each destination gets the file once.
+	expanded := make([]linkedFile, 0, len(req.FileIDs))
+	seen := make(map[string]struct{}, len(req.FileIDs))
+	addExpanded := func(item linkedFile) {
+		key := linkedKey(item)
+		if _, dup := seen[key]; dup {
+			return
+		}
+		seen[key] = struct{}{}
+		expanded = append(expanded, item)
+	}
+	// Top-level folders selected by the user. Tracked separately from expanded
+	// so that an empty folder is still created in the dataset (otherwise the
+	// user links a folder, sees "success", and finds nothing there).
+	var rootFolderPaths [][]string
+
 	for _, id := range req.FileIDs {
 		file := filesSet[id]
-		if file.Type == "folder" {
-			if err := checkFileRead(file); err != nil {
+		if file.Type != "folder" {
+			addExpanded(linkedFile{FileID: id})
+			continue
+		}
+		if err := checkFileRead(file); err != nil {
+			_, permissionErr := permissionresponse.Normalize(err)
+			return permissionErr
+		}
+		// The folder's own name is the first path segment, so a linked folder
+		// shows up as a folder in the dataset instead of a flat dump.
+		path := []string{file.Name}
+		rootFolderPaths = append(rootFolderPaths, path)
+
+		inner, err := s.collectFilesWithPath(ctx, id, path, checkFileRead)
+		if err != nil {
+			if permissionresponse.IsPermissionError(err) {
 				_, permissionErr := permissionresponse.Normalize(err)
 				return permissionErr
 			}
-			inner, err := s.getAllInnermostFileIDs(ctx, id)
-			if err != nil {
-				common.Warn("LinkToDatasets: folder expansion failed", zap.String("fileID", id), zap.Error(err))
-				return ErrLinkInternal
-			}
-			expanded = append(expanded, inner...)
-		} else {
-			expanded = append(expanded, id)
+			common.Warn("LinkToDatasets: folder expansion failed", zap.String("fileID", id), zap.Error(err))
+			return ErrLinkInternal
+		}
+		for _, item := range inner {
+			addExpanded(item)
 		}
 	}
-	allFileIDs := dedupeStrings(expanded)
 
 	// ── 4. Validate expanded file permissions ─────────────────────────────────
-	for _, id := range allFileIDs {
-		file, err := s.fileDAO.GetByID(ctx, dao.DB, id)
+	// Sub-folders were already checked during the walk; only leaves are left.
+	for _, item := range expanded {
+		file, err := s.fileDAO.GetByID(ctx, dao.DB, item.FileID)
 		if err != nil || file == nil {
 			return ErrLinkFileNotFound
 		}
@@ -165,9 +196,11 @@ func (s *File2DocumentService) LinkToDatasets(ctx context.Context, userID string
 	kbIDs := req.KbIDs
 	go func() {
 		newCtx := context.Background()
-		if err = s.convertFiles(newCtx, allFileIDs, kbIDs, userID, mode); err != nil {
+		// Use a local err: the outer err is shared with the request goroutine,
+		// so assigning to it here races with the handler returning.
+		if err := s.convertFiles(newCtx, expanded, rootFolderPaths, kbIDs, userID, mode); err != nil {
 			common.Warn("file2document.convertFiles failed",
-				zap.Strings("file_ids", allFileIDs),
+				zap.Int("files", len(expanded)),
 				zap.Strings("kb_ids", kbIDs),
 				zap.Error(err))
 		}
@@ -178,14 +211,38 @@ func (s *File2DocumentService) LinkToDatasets(ctx context.Context, userID string
 
 // convertFiles mirrors Python _convert_files: keep existing links, remove links
 // outside the requested KBs in replace mode, then add any missing links.
-func (s *File2DocumentService) convertFiles(ctx context.Context, fileIDs, kbIDs []string, userID, mode string) error {
+//
+// items carry the destination folder path so a linked folder is mirrored into
+// the dataset; emptyFolders lists the paths selected by the user that contain
+// no linkable file, so the folder itself still appears after linking.
+func (s *File2DocumentService) convertFiles(
+	ctx context.Context,
+	items []linkedFile,
+	emptyFolders [][]string,
+	kbIDs []string,
+	userID, mode string,
+) error {
 	replaceExisting := mode != "add"
 	kbIDs = dedupeStrings(kbIDs)
 	requestedKBIDs := make(map[string]struct{}, len(kbIDs))
 	for _, kbID := range kbIDs {
 		requestedKBIDs[kbID] = struct{}{}
 	}
-	for _, fileID := range fileIDs {
+
+	// Create the folder tree up front, per target dataset, so an empty linked
+	// folder still shows up. ensureFolderPath is idempotent, so repeating the
+	// paths that do have files costs one indexed lookup each.
+	for _, kbID := range kbIDs {
+		for _, path := range emptyFolders {
+			if _, err := s.ensureFolderPath(ctx, kbID, path, userID); err != nil {
+				common.Warn("convertFiles: ensureFolderPath failed",
+					zap.String("kbID", kbID), zap.Strings("path", path), zap.Error(err))
+			}
+		}
+	}
+
+	for _, item := range items {
+		fileID := item.FileID
 		mappings, err := s.file2DocumentDAO.GetByFileID(ctx, dao.DB, fileID)
 		if err != nil {
 			common.Warn("convertFiles: GetByFileID failed", zap.String("fileID", fileID), zap.Error(err))
@@ -231,6 +288,17 @@ func (s *File2DocumentService) convertFiles(ctx context.Context, fileIDs, kbIDs 
 				continue
 			}
 
+			// Materialise the destination folder before naming the document:
+			// the target folder decides where it lands, and a path that cannot
+			// be created should skip this file rather than drop it at the root.
+			folderID, err := s.ensureFolderPath(ctx, kbID, item.FolderPath, userID)
+			if err != nil {
+				common.Warn("convertFiles: ensureFolderPath failed",
+					zap.String("kbID", kbID), zap.String("fileID", fileID),
+					zap.Strings("path", item.FolderPath), zap.Error(err))
+				continue
+			}
+
 			// Mirror Python duplicate_name: generate a non-colliding document
 			// name within the dataset so that linking does not silently create
 			// duplicate-name documents in the same KB.
@@ -247,6 +315,7 @@ func (s *File2DocumentService) convertFiles(ctx context.Context, fileIDs, kbIDs 
 			doc := &entity.Document{
 				ID:           common.GenerateUUID(),
 				KbID:         kb.ID,
+				FolderID:     folderID,
 				ParserID:     parserID,
 				PipelineID:   pipelineID,
 				ParserConfig: parserConfig,
@@ -284,19 +353,46 @@ func (s *File2DocumentService) convertFiles(ctx context.Context, fileIDs, kbIDs 
 
 // getAllInnermostFileIDs recursively collects all non-folder file IDs under a folder.
 // Mirrors Python FileService.get_all_innermost_file_ids.
-func (s *File2DocumentService) getAllInnermostFileIDs(ctx context.Context, folderID string) ([]string, error) {
+// linkedFile is one source file to link, plus the folder path it should land in
+// inside the target dataset. An empty FolderPath means the dataset root.
+type linkedFile struct {
+	FileID     string
+	FolderPath []string
+}
+
+// collectFilesWithPath walks a source folder recursively and records each leaf
+// file together with the folder names leading to it.
+//
+// prefix is the path of the folder being walked; the top-level call passes the
+// linked folder's own name so that linking a folder reproduces that folder in
+// the dataset instead of dumping its files at the root.
+//
+// checkFolder is applied to every sub-folder met during the walk: the caller
+// only validated the folder the user selected, so without this a user holding
+// read access to a parent folder could pull in sub-folders they cannot read.
+func (s *File2DocumentService) collectFilesWithPath(
+	ctx context.Context,
+	folderID string,
+	prefix []string,
+	checkFolder func(*entity.File) error,
+) ([]linkedFile, error) {
 	children, err := s.fileDAO.ListByParentID(ctx, dao.DB, folderID)
 	if err != nil {
 		return nil, err
 	}
-	var ids []string
+	var out []linkedFile
 	for _, child := range children {
 		if child.Type == "folder" {
-			sub, err := s.getAllInnermostFileIDs(ctx, child.ID)
+			if checkFolder != nil {
+				if err := checkFolder(child); err != nil {
+					return nil, err
+				}
+			}
+			sub, err := s.collectFilesWithPath(ctx, child.ID, appendPath(prefix, child.Name), checkFolder)
 			if err != nil {
 				return nil, err
 			}
-			ids = append(ids, sub...)
+			out = append(out, sub...)
 			continue
 		}
 		// "virtual" files are the zero-byte placeholders that
@@ -308,9 +404,83 @@ func (s *File2DocumentService) getAllInnermostFileIDs(ctx context.Context, folde
 		if child.Type == "virtual" {
 			continue
 		}
-		ids = append(ids, child.ID)
+		out = append(out, linkedFile{FileID: child.ID, FolderPath: prefix})
 	}
-	return ids, nil
+	return out, nil
+}
+
+// appendPath returns a copy of prefix with name appended, so sibling branches
+// never share (and mutate) the same backing array.
+func appendPath(prefix []string, name string) []string {
+	out := make([]string, len(prefix)+1)
+	copy(out, prefix)
+	out[len(prefix)] = name
+	return out
+}
+
+// linkedKey identifies one (file, destination folder) pair for deduplication.
+// The path is joined with NUL so that names containing the separator cannot
+// collide with a different split of the same string.
+func linkedKey(item linkedFile) string {
+	return item.FileID + "|" + strings.Join(item.FolderPath, "\x00")
+}
+
+// ensureFolderPath resolves a folder path inside a dataset, creating the missing
+// segments as it goes, and returns the innermost folder id (nil for the root).
+//
+// Folders are matched by (dataset_id, parent_id, name) — the same tuple as the
+// uni_document_folder_sibling unique index — so linking the same folder twice
+// reuses the existing tree instead of building a parallel one.
+func (s *File2DocumentService) ensureFolderPath(
+	ctx context.Context,
+	datasetID string,
+	path []string,
+	userID string,
+) (*string, error) {
+	if len(path) == 0 {
+		return nil, nil
+	}
+	// document_folder.parent_id is NOT NULL DEFAULT '', so the dataset root is
+	// the empty string (not NULL as document.folder_id uses).
+	parentID := ""
+	for _, name := range path {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		existing, err := s.folderDAO.GetSiblingByName(ctx, dao.DB, datasetID, parentID, name)
+		if err == nil && existing != nil {
+			parentID = existing.ID
+			continue
+		}
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+
+		folder := &entity.DocumentFolder{
+			ID:        common.GenerateUUID(),
+			DatasetID: datasetID,
+			ParentID:  parentID,
+			Name:      name,
+			CreatedBy: userID,
+		}
+		if err := s.folderDAO.Create(ctx, dao.DB, folder); err != nil {
+			// A concurrent link may have created the same sibling between the
+			// lookup and this insert; re-read so the unique index degrades into
+			// reuse instead of a failed link.
+			again, readErr := s.folderDAO.GetSiblingByName(ctx, dao.DB, datasetID, parentID, name)
+			if readErr == nil && again != nil {
+				parentID = again.ID
+				continue
+			}
+			return nil, err
+		}
+		parentID = folder.ID
+	}
+	if parentID == "" {
+		return nil, nil
+	}
+	return &parentID, nil
 }
 
 // dedupeStrings returns the input slice with duplicates removed, preserving the
