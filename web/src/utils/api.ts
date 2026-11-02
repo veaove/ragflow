@@ -26,6 +26,8 @@ export default {
   register: `${restAPIv1}/users`,
   setting: `${restAPIv1}/users/me`,
   userInfo: `${restAPIv1}/users/me`,
+  // 资源列表「资源owner」列：按 id 批量取昵称+邮箱（仅同租户成员）
+  userBatchBrief: `${restAPIv1}/users/batch`,
   tenantInfo: `${restAPIv1}/users/me/models`,
   loginChannels: `${restAPIv1}/auth/login/channels`,
   loginChannel: (channel: string) => `${restAPIv1}/auth/login/${channel}`,

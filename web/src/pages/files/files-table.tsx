@@ -11,6 +11,10 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
+import {
+  ResourceOwnerCell,
+  ResourceOwnerProvider,
+} from '@/components/resource-owner-cell';
 import { ArrowUpDown } from 'lucide-react';
 import * as React from 'react';
 
@@ -252,6 +256,11 @@ export function FilesTable({
       },
     },
     {
+      accessorKey: 'created_by',
+      header: '资源owner',
+      cell: ({ row }) => <ResourceOwnerCell userId={row.original.created_by} />,
+    },
+    {
       id: 'actions',
       header: t('action'),
       meta: {
@@ -313,7 +322,7 @@ export function FilesTable({
   });
 
   return (
-    <>
+    <ResourceOwnerProvider userIds={sortedFiles.map((item) => item.created_by)}>
       <div className="flex-1 min-h-0 size-full">
         <Table rootClassName="max-h-full overflow-auto">
           <TableHeader>
@@ -396,6 +405,6 @@ export function FilesTable({
           forbidSlash
         ></RenameDialog>
       )}
-    </>
+    </ResourceOwnerProvider>
   );
 }

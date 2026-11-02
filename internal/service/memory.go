@@ -1669,6 +1669,12 @@ func (s *MemoryService) ListMemories(ctx context.Context, userID string, tenantI
 		if resp.CreateTime != nil {
 			createDateStr = formatDateToString(*resp.CreateTime)
 		}
+		// Same fallback as the owner_name JOIN: rows written before created_by
+		// existed carry the creator's user id in tenant_id.
+		createdBy := resp.CreatedBy
+		if createdBy == "" {
+			createdBy = resp.TenantID
+		}
 		memoryMap := map[string]interface{}{
 			"id":           resp.ID,
 			"llm_id":       ResolveTenantModelDisplayName(ctx, dao.DB, ptrStringValue(resp.TenantLLMID), resp.LLMID, modelNameCache),
@@ -1676,6 +1682,7 @@ func (s *MemoryService) ListMemories(ctx context.Context, userID string, tenantI
 			"name":         resp.Name,
 			"avatar":       resp.Avatar,
 			"tenant_id":    resp.TenantID,
+			"created_by":   createdBy,
 			"owner_name":   resp.OwnerName,
 			"memory_type":  resp.MemoryType,
 			"storage_type": resp.StorageType,

@@ -4,6 +4,10 @@ import {
   ListColumn,
   formatListTime,
 } from '@/components/list-view/list-data-table';
+import {
+  ResourceOwnerCell,
+  ResourceOwnerProvider,
+} from '@/components/resource-owner-cell';
 import { IDialog } from '@/interfaces/database/chat';
 import {
   formatKnowledgeBaseCell,
@@ -113,6 +117,13 @@ export function ChatTable({
       ),
     },
     {
+      key: 'owner',
+      title: t('common.creator'),
+      // dialog 表没有 created_by：tenant_id 这一列存的本来就是创建人的 user id，
+      // 后端列表的昵称也是按它 join 出来的。
+      render: (row) => <ResourceOwnerCell userId={row.tenant_id} />,
+    },
+    {
       key: 'updated',
       title: t('common.updateTime'),
       render: (row) => (
@@ -132,11 +143,13 @@ export function ChatTable({
   ];
 
   return (
-    <ListDataTable
-      columns={columns}
-      rows={rows}
-      tableTestId="chats-table"
-      rowTestId="chats-table-row"
-    />
+    <ResourceOwnerProvider userIds={rows.map((row) => row.tenant_id)}>
+      <ListDataTable
+        columns={columns}
+        rows={rows}
+        tableTestId="chats-table"
+        rowTestId="chats-table-row"
+      />
+    </ResourceOwnerProvider>
   );
 }

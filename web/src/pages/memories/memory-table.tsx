@@ -3,6 +3,10 @@ import {
   ListColumn,
   ListDataTable,
 } from '@/components/list-view/list-data-table';
+import {
+  ResourceOwnerCell,
+  ResourceOwnerProvider,
+} from '@/components/resource-owner-cell';
 import { useNavigatePage } from '@/hooks/logic-hooks/navigate-hooks';
 import { useTranslation } from 'react-i18next';
 import { IMemory } from './interface';
@@ -122,11 +126,7 @@ export function MemoryTable({
     {
       key: 'owner',
       title: t('common.creator'),
-      render: (row) => (
-        <span className="whitespace-nowrap text-text-secondary">
-          {row.owner_name || '-'}
-        </span>
-      ),
+      render: (row) => <ResourceOwnerCell userId={row.created_by} />,
     },
     {
       key: 'createTime',
@@ -151,11 +151,13 @@ export function MemoryTable({
   ];
 
   return (
-    <ListDataTable
-      columns={columns}
-      rows={rows}
-      tableTestId="memories-table"
-      rowTestId="memories-table-row"
-    />
+    <ResourceOwnerProvider userIds={rows.map((row) => row.created_by)}>
+      <ListDataTable
+        columns={columns}
+        rows={rows}
+        tableTestId="memories-table"
+        rowTestId="memories-table-row"
+      />
+    </ResourceOwnerProvider>
   );
 }

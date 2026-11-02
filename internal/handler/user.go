@@ -402,6 +402,36 @@ func (h *UserHandler) Info(c *gin.Context) {
 	common.SuccessWithData(c, profile, "success")
 }
 
+// BatchUserBrief 按 id 批量取昵称与邮箱，供资源列表的「资源owner」列使用。
+// 只返回与调用者同租户的成员，查不到的 id 不出现在结果里。
+func (h *UserHandler) BatchUserBrief(c *gin.Context) {
+	ctx := c.Request.Context()
+	user, errorCode, errorMessage := GetUser(c)
+	if errorCode != common.CodeSuccess {
+		common.ErrorWithCode(c, errorCode, errorMessage)
+		return
+	}
+
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ResponseWithCodeData(c, common.CodeBadRequest, nil, err.Error())
+		return
+	}
+	if len(req.IDs) == 0 {
+		common.SuccessWithData(c, map[string]interface{}{}, "success")
+		return
+	}
+
+	briefs, err := h.userService.BatchUserBrief(ctx, user.ID, req.IDs)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, briefs, "success")
+}
+
 // Setting update user settings
 // @Summary Update User Settings
 // @Description Update current user's settings

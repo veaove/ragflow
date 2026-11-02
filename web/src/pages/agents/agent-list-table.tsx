@@ -4,6 +4,10 @@ import {
   ListColumn,
   formatListTime,
 } from '@/components/list-view/list-data-table';
+import {
+  ResourceOwnerCell,
+  ResourceOwnerProvider,
+} from '@/components/resource-owner-cell';
 import { AgentListItemType, IFlow } from '@/interfaces/database/agent';
 import { appTypeLabelKey } from '@/pages/analytics/app-type';
 import {
@@ -178,9 +182,7 @@ export function AgentListTable({
     {
       key: 'owner',
       title: t('common.creator'),
-      render: (row) => (
-        <span className="text-text-secondary">{row.nickname || '-'}</span>
-      ),
+      render: (row) => <ResourceOwnerCell userId={row.user_id} />,
     },
     {
       key: 'updated',
@@ -218,11 +220,13 @@ export function AgentListTable({
   ];
 
   return (
-    <ListDataTable
-      columns={columns}
-      rows={rows}
-      tableTestId="agents-table"
-      rowTestId="agents-table-row"
-    />
+    <ResourceOwnerProvider userIds={rows.map((row) => row.user_id)}>
+      <ListDataTable
+        columns={columns}
+        rows={rows}
+        tableTestId="agents-table"
+        rowTestId="agents-table-row"
+      />
+    </ResourceOwnerProvider>
   );
 }

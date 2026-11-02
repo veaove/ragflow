@@ -336,6 +336,10 @@ func (r *Router) Setup(engine *gin.Engine) {
 				// User set tenant info endpoint
 				users.PATCH("/me/models", r.userHandler.SetTenantInfo)
 
+				// 资源列表的「资源owner」列：按 id 批量取昵称+邮箱。
+				// 只解析同租户成员，避免变成跨租户的用户枚举接口。
+				users.POST("/batch", r.userHandler.BatchUserBrief)
+
 				// For EE
 				users.GET("/me/admin", r.userHandler.IsAdmin)
 				users.GET("/me/meta", r.userHandler.GetMeta)

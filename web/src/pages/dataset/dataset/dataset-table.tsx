@@ -16,6 +16,7 @@ import * as React from 'react';
 import { EmptyType } from '@/components/empty/constant';
 import Empty from '@/components/empty/empty';
 import { RenameDialog } from '@/components/rename-dialog';
+import { ResourceOwnerProvider } from '@/components/resource-owner-cell';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -144,6 +145,8 @@ export function DatasetTable({
   });
 
   return (
+    // 整页文件的 owner id 一次查完，行内单元格从 context 取昵称/邮箱。
+    <ResourceOwnerProvider userIds={documents.map((item) => item.created_by)}>
     <div className="w-full">
       <Table
         rootClassName={
@@ -319,5 +322,6 @@ export function DatasetTable({
         />
       )}
     </div>
+    </ResourceOwnerProvider>
   );
 }

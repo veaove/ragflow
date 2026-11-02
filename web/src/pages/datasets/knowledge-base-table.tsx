@@ -13,6 +13,7 @@ import * as React from 'react';
 
 import { EmptyType } from '@/components/empty/constant';
 import Empty from '@/components/empty/empty';
+import { ResourceOwnerProvider } from '@/components/resource-owner-cell';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import {
   Table,
@@ -89,7 +90,9 @@ export function KnowledgeBaseTable({
   });
 
   return (
-    <div className="flex flex-col gap-4">
+    // 整页的 owner id 只查一次，行内单元格从 context 取昵称/邮箱。
+    <ResourceOwnerProvider userIds={data.map((item) => item.created_by)}>
+      <div className="flex flex-col gap-4">
       <Table rootClassName="max-h-[calc(100vh-280px)]">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -143,6 +146,7 @@ export function KnowledgeBaseTable({
           }}
         />
       </div>
-    </div>
+      </div>
+    </ResourceOwnerProvider>
   );
 }

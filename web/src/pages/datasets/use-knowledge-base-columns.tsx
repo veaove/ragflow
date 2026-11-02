@@ -15,6 +15,7 @@ import {
   useUpdateKnowledge,
   fetchDatasetReferences,
 } from '@/hooks/use-knowledge-request';
+import { ResourceOwnerCell } from '@/components/resource-owner-cell';
 import { IDataset, IDatasetReference } from '@/interfaces/database/dataset';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/date';
@@ -190,6 +191,13 @@ export function useKnowledgeBaseColumns({
             </span>
           );
         },
+      },
+      {
+        id: 'created_by',
+        header: '资源owner',
+        cell: ({ row }) => (
+          <ResourceOwnerCell userId={row.original.created_by} />
+        ),
       },
       {
         id: 'actions',

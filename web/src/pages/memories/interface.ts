@@ -28,6 +28,8 @@ export interface IMemory extends ICreateMemoryProps {
   avatar: string;
   tenant_id: string;
   owner_name: string;
+  /** 创建人 user id；历史数据可能为空，此时列表回退到 owner_name。 */
+  created_by?: string;
   storage_type: StorageType;
   permissions: Permissions;
   description: string;

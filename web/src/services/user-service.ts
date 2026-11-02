@@ -142,4 +142,11 @@ export const listTenant = () => request.get(api.listTenant);
 export const agreeTenant = (tenantId: string) =>
   request.patch(api.agreeTenant(tenantId));
 
+/**
+ * 按 id 批量取昵称与邮箱，供列表的「资源owner」列使用。
+ * 后端只返回同租户成员，跨租户的 id 不会出现在结果里。
+ */
+export const batchUserBrief = (ids: string[]) =>
+  request.post(api.userBatchBrief, { data: { ids } });
+
 export default userService;

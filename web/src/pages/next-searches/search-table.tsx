@@ -5,6 +5,10 @@ import {
   formatListTime,
 } from '@/components/list-view/list-data-table';
 import {
+  ResourceOwnerCell,
+  ResourceOwnerProvider,
+} from '@/components/resource-owner-cell';
+import {
   formatKnowledgeBaseCell,
   getKnowledgeBaseNames,
 } from '@/utils/kb-labels';
@@ -93,9 +97,7 @@ export function SearchTable({
     {
       key: 'owner',
       title: t('common.creator'),
-      render: (row) => (
-        <span className="text-text-secondary">{row.nickname || '-'}</span>
-      ),
+      render: (row) => <ResourceOwnerCell userId={row.created_by} />,
     },
     {
       key: 'created',
@@ -129,11 +131,13 @@ export function SearchTable({
   ];
 
   return (
-    <ListDataTable
-      columns={columns}
-      rows={rows}
-      tableTestId="searches-table"
-      rowTestId="searches-table-row"
-    />
+    <ResourceOwnerProvider userIds={rows.map((row) => row.created_by)}>
+      <ListDataTable
+        columns={columns}
+        rows={rows}
+        tableTestId="searches-table"
+        rowTestId="searches-table-row"
+      />
+    </ResourceOwnerProvider>
   );
 }

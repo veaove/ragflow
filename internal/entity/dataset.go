@@ -297,6 +297,7 @@ type KnowledgebaseListItem struct {
 	Category               *string    `json:"category"`
 	TenantID               string     `json:"tenant_id"`
 	Permission             string     `json:"permission"`
+	CreatedBy              string     `json:"created_by"`
 	DocNum                 int64      `json:"doc_num"`
 	TokenNum               int64      `json:"token_num"`
 	ChunkNum               int64      `json:"chunk_num"`

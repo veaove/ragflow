@@ -14,6 +14,7 @@ import { useSetDocumentStatus } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/date';
+import { ResourceOwnerCell } from '@/components/resource-owner-cell';
 import { ColumnDef } from '@tanstack/table-core';
 import { ArrowUpDown } from 'lucide-react';
 import { useMemo } from 'react';
@@ -227,6 +228,13 @@ export function useDatasetTableColumns({
             </Button>
           );
         },
+      },
+      {
+        id: 'created_by',
+        header: '资源owner',
+        cell: ({ row }) => (
+          <ResourceOwnerCell userId={row.original.created_by} />
+        ),
       },
       {
         accessorKey: 'run',

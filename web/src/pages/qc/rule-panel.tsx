@@ -16,6 +16,10 @@
 
 import Empty from '@/components/empty/empty';
 import { EmptyType } from '@/components/empty/constant';
+import {
+  ResourceOwnerCell,
+  ResourceOwnerProvider,
+} from '@/components/resource-owner-cell';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -297,6 +301,7 @@ export function QcRulePanel({
   };
 
   return (
+    <ResourceOwnerProvider userIds={rules.map((rule) => rule.created_by)}>
     <div className="flex h-full flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-text-secondary">
@@ -324,6 +329,7 @@ export function QcRulePanel({
                 <TableHead className="h-10 text-text-title">严重级</TableHead>
                 <TableHead className="h-10 text-text-title">动作</TableHead>
                 <TableHead className="h-10 text-text-title">状态</TableHead>
+                <TableHead className="h-10 text-text-title">资源owner</TableHead>
                 <TableHead className="h-10 w-40 text-text-secondary">
                   操作
                 </TableHead>
@@ -380,6 +386,9 @@ export function QcRulePanel({
                     >
                       {rule.enabled ? '启用' : '停用'}
                     </span>
+                  </TableCell>
+                  <TableCell>
+                    <ResourceOwnerCell userId={rule.created_by} />
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-2">
@@ -441,6 +450,7 @@ export function QcRulePanel({
 
       <RuleReferencesDialog rule={refsRule} onClose={() => setRefsRule(null)} />
     </div>
+    </ResourceOwnerProvider>
   );
 }
 
