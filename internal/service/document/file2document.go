@@ -249,7 +249,9 @@ func (s *File2DocumentService) convertFiles(
 			common.Warn("convertFiles: GetByFileID failed", zap.String("fileID", fileID), zap.Error(err))
 		}
 
-		existingKBIDs := make(map[string]struct{})
+		// kbID -> 该文件在目标知识库里已经存在的文档。留着文档本身，
+		// 因为重复链接时要把它的 folder_id 对齐到本次链接的目录。
+		existingDocs := make(map[string]*entity.Document)
 		for _, m := range mappings {
 			if m.DocumentID == nil {
 				continue
@@ -258,7 +260,7 @@ func (s *File2DocumentService) convertFiles(
 			if getErr != nil || doc == nil {
 				continue
 			}
-			existingKBIDs[doc.KbID] = struct{}{}
+			existingDocs[doc.KbID] = doc
 			if replaceExisting {
 				if _, exists := requestedKBIDs[doc.KbID]; exists {
 					continue
@@ -281,7 +283,32 @@ func (s *File2DocumentService) convertFiles(
 
 		// Create a document + mapping in each target KB.
 		for _, kbID := range kbIDs {
-			if _, exists := existingKBIDs[kbID]; exists {
+			if existing, linked := existingDocs[kbID]; linked {
+				// 文件本来就在这个知识库里：不新建文档，但要按本次链接的目录
+				// 结构归位。少了这一步，"链接文件夹"只会建出一串空目录——
+				// 目录树到位了，文档还留在原地，用户看到的就是空文件夹。
+				folderID, folderErr := s.ensureFolderPath(ctx, kbID, item.FolderPath, userID)
+				if folderErr != nil {
+					common.Warn("convertFiles: ensureFolderPath failed for linked document",
+						zap.String("kbID", kbID), zap.String("fileID", fileID),
+						zap.Strings("path", item.FolderPath), zap.Error(folderErr))
+					continue
+				}
+				if sameFolderRef(existing.FolderID, folderID) {
+					continue
+				}
+				var folderValue interface{}
+				if folderID == nil {
+					folderValue = gorm.Expr("NULL")
+				} else {
+					folderValue = *folderID
+				}
+				if updateErr := s.documentDAO.UpdateByID(ctx, dao.DB, existing.ID, map[string]interface{}{
+					"folder_id": folderValue,
+				}); updateErr != nil {
+					common.Warn("convertFiles: reposition linked document failed",
+						zap.String("docID", existing.ID), zap.Error(updateErr))
+				}
 				continue
 			}
 			kb, err := s.kbDAO.GetByID(ctx, dao.DB, kbID)
@@ -491,6 +518,15 @@ func (s *File2DocumentService) ensureFolderPath(
 		return nil, nil
 	}
 	return &parentID, nil
+}
+
+// sameFolderRef reports whether two folder_id references point at the same
+// directory. nil is the dataset root, so nil/nil is the only nil match.
+func sameFolderRef(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // dedupeStrings returns the input slice with duplicates removed, preserving the

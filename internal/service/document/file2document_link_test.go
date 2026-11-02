@@ -16,7 +16,12 @@
 
 package document
 
-import "testing"
+import (
+	"testing"
+
+	"ragflow/internal/dao"
+	"ragflow/internal/entity"
+)
 
 // 链接文件夹时，路径靠 appendPath 逐层拼出来。如果它复用了同一个底层数组，
 // 兄弟分支会互相覆盖 —— 表现为「A 文件夹里的文件全跑到 B 文件夹下」，
@@ -71,5 +76,73 @@ func TestLinkedKeySeparatesPaths(t *testing.T) {
 	// 相同路径要稳定命中同一个键，去重才有意义
 	if linkedKey(a) != linkedKey(linkedFile{FileID: "f1", FolderPath: []string{"A"}}) {
 		t.Fatal("same (file, path) must produce the same key")
+	}
+}
+
+// 重复链接同一个文件夹时，文件本来就在知识库里，不能只建出空目录：
+// 已存在的文档必须按本次链接的目录结构归位，否则用户看到的是
+// 「一个空的顶层文件夹」，而文档还留在原来那一层。
+func TestConvertFilesRepositionsAlreadyLinkedDocuments(t *testing.T) {
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+	if err := db.AutoMigrate(
+		&entity.DocumentFolder{},
+		&entity.File{},
+		&entity.File2Document{},
+	); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	insertTestKB(t, "kb-1", "tenant-1", 0, 0, 0)
+	insertTestDoc(t, "doc-1", "kb-1", 0, 0)
+
+	fileID := "file-1"
+	location := "华夏基金/2026/投教.pdf"
+	if err := db.Create(&entity.File{
+		ID:        fileID,
+		Name:      "投教.pdf",
+		Type:      "pdf",
+		Location:  &location,
+		CreatedBy: "user-1",
+		TenantID:  "tenant-1",
+	}).Error; err != nil {
+		t.Fatalf("create file: %v", err)
+	}
+	docID := "doc-1"
+	if err := db.Create(&entity.File2Document{
+		ID:         "f2d-1",
+		FileID:     &fileID,
+		DocumentID: &docID,
+	}).Error; err != nil {
+		t.Fatalf("create mapping: %v", err)
+	}
+
+	ctx := t.Context()
+	svc := NewFile2DocumentService()
+	if err := svc.convertFiles(
+		ctx,
+		[]linkedFile{{FileID: fileID, FolderPath: []string{"华夏基金", "2026"}}},
+		nil,
+		[]string{"kb-1"},
+		"user-1",
+		"add",
+	); err != nil {
+		t.Fatalf("convertFiles: %v", err)
+	}
+
+	doc, err := dao.NewDocumentDAO().GetByID(ctx, dao.DB, "doc-1")
+	if err != nil || doc == nil {
+		t.Fatalf("reload document: %v", err)
+	}
+	folderDAO := dao.NewDocumentFolderDAO()
+	parent, err := folderDAO.GetSiblingByName(ctx, dao.DB, "kb-1", "", "华夏基金")
+	if err != nil || parent == nil {
+		t.Fatalf("顶层目录 华夏基金 没有建出来: %v", err)
+	}
+	child, err := folderDAO.GetSiblingByName(ctx, dao.DB, "kb-1", parent.ID, "2026")
+	if err != nil || child == nil {
+		t.Fatalf("子目录 2026 没有建出来: %v", err)
+	}
+	if doc.FolderID == nil || *doc.FolderID != child.ID {
+		t.Fatalf("document folder_id = %v, want %s", doc.FolderID, child.ID)
 	}
 }
