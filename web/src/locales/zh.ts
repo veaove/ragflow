@@ -314,6 +314,9 @@ export default {
       welcome: '欢迎来到',
       dataset: '知识库',
       memories: '记忆',
+      // 导航与页面标题用「记忆中心」；`memories` 保留为概念名词（检索来源、
+      // 智能体的记忆字段等），不要在那些地方显示成「记忆中心」。
+      memoryCenter: '记忆中心',
       qc: '会话质检',
       discord: 'Discord',
       github: 'GitHub',
@@ -488,7 +491,7 @@ export default {
       episodic: '情景',
       procedural: '程序',
       editName: '编辑名称',
-      memory: '记忆',
+      memory: '记忆中心',
       createMemory: '创建记忆',
       name: '名称',
       memoryNamePlaceholder: '记忆名称',

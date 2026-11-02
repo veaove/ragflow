@@ -90,7 +90,7 @@ export const sidebarMenuItems: SidebarMenuItem[] = [
   } as SidebarMenuItem,
   {
     path: Routes.Memories,
-    name: 'header.memories',
+    name: 'header.memoryCenter',
     icon: MenuItemsIcon,
     icon_name: 'memory',
   },

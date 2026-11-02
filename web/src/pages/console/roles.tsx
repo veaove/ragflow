@@ -53,7 +53,7 @@ const MODULE_LABELS: Record<string, string> = {
   search: '知识搜索',
   agent: '智能体',
   studio: '工作室',
-  memory: '记忆',
+  memory: '记忆中心',
   qc_rule: '质检规则',
   qc_realtime: '实时质检',
   qc_hit: '命中记录',

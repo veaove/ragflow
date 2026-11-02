@@ -337,6 +337,9 @@ export default {
       welcome: 'Welcome to',
       dataset: 'Dataset',
       memories: 'Memory',
+      // Nav / page title say "Memory Center"; `memories` stays the concept
+      // noun used by retrieval sources and the agent memory field.
+      memoryCenter: 'Memory Center',
       qc: 'QC',
       discord: 'Discord',
       github: 'GitHub',
@@ -520,7 +523,7 @@ Procedural Memory: Learned skills, habits, and automated procedures.`,
       episodic: 'episodic',
       procedural: 'procedural',
       editName: 'Edit name',
-      memory: 'Memory',
+      memory: 'Memory Center',
       createMemory: 'Create memory',
       name: 'Name',
       memoryNamePlaceholder: 'memory name',

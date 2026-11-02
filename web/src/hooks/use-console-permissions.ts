@@ -16,7 +16,7 @@ export const MENU_MODULE: Record<string, string | string[]> = {
   'header.chat': 'chat',
   'header.knowledgeSearch': 'search',
   'header.flow': 'agent',
-  'header.memories': 'memory',
+  'header.memoryCenter': 'memory',
   // 会话质检是聚合页：规则 / 实时 / 命中 / 配置是四个独立模块，
   // 只授其中任何一个都应该能进这个菜单（否则授了权却没有入口）。
   'header.qc': ['qc_rule', 'qc_realtime', 'qc_hit', 'qc_config'],
