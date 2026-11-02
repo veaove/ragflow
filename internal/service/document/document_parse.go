@@ -16,6 +16,7 @@ import (
 	"ragflow/internal/entity"
 	"ragflow/internal/ingestion/knowledge_compile"
 	ingestionpipeline "ragflow/internal/ingestion/pipeline"
+	"ragflow/internal/permission"
 	"ragflow/internal/storage"
 
 	"gorm.io/gorm"
@@ -301,6 +302,16 @@ func (s *DocumentService) ParseDocuments(ctx context.Context, datasetID, userID 
 			responses = append(responses, &service.ParseDocumentResponse{
 				DocumentID: docID,
 				Result:     errorMessage,
+			})
+			continue
+		}
+
+		// 文件级授权：被排除的文件不允许触发解析。
+		if err := permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: userID},
+			datasetID, docID, permission.OperationRun); err != nil {
+			responses = append(responses, &service.ParseDocumentResponse{
+				DocumentID: docID,
+				Result:     "permission denied",
 			})
 			continue
 		}

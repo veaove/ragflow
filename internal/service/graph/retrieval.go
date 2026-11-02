@@ -55,20 +55,23 @@ func indexName(tenantID string) string {
 }
 
 // searchTypeSamples searches for ty2ents data.
-func searchTypeSamples(ctx context.Context, docEngine engine.DocEngine, idxnms []string, kbIDs []string) (map[string][]string, error) {
+func (p *Pipeline) searchTypeSamples(ctx context.Context) (map[string][]string, error) {
 	req := &types.SearchRequest{
-		IndexNames:   idxnms,
-		KbIDs:        kbIDs,
-		SelectFields: []string{"content_with_weight"},
+		IndexNames:   p.idxnms,
+		KbIDs:        p.kbIDs,
+		SelectFields: []string{"content_with_weight", "doc_id", "source_doc_ids"},
 		Limit:        10000,
 		Filter:       map[string]interface{}{"knowledge_graph_kwd": "ty2ents"},
 	}
-	result, err := docEngine.Search(ctx, req)
+	result, err := p.docEngine.Search(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 	typeMap := make(map[string][]string)
 	for _, chunk := range result.Chunks {
+		if !p.kgRowVisible(chunk) {
+			continue
+		}
 		content, ok := chunk["content_with_weight"].(string)
 		if !ok || content == "" {
 			continue
@@ -85,7 +88,7 @@ func searchTypeSamples(ctx context.Context, docEngine engine.DocEngine, idxnms [
 }
 
 // searchCommunityContent searches for community reports and formats them.
-func searchCommunityContent(ctx context.Context, docEngine engine.DocEngine, idxnms []string, kbIDs []string, scoredEnts []ScoredEntity, topN int, maxToken *int) string {
+func (p *Pipeline) searchCommunityContent(ctx context.Context, scoredEnts []ScoredEntity, topN int, maxToken *int) string {
 	if maxToken == nil || len(scoredEnts) == 0 || *maxToken <= 0 {
 		return ""
 	}
@@ -94,9 +97,9 @@ func searchCommunityContent(ctx context.Context, docEngine engine.DocEngine, idx
 		entityNames[i] = e.Entity
 	}
 	req := &types.SearchRequest{
-		IndexNames:   idxnms,
-		KbIDs:        kbIDs,
-		SelectFields: []string{"docnm_kwd", "content_with_weight", "weight_flt", "entities_kwd"},
+		IndexNames:   p.idxnms,
+		KbIDs:        p.kbIDs,
+		SelectFields: []string{"docnm_kwd", "content_with_weight", "weight_flt", "entities_kwd", "doc_id", "source_doc_ids"},
 		Limit:        topN,
 		Filter:       map[string]interface{}{"knowledge_graph_kwd": "community_report"},
 		OrderBy:      (&types.OrderByExpr{}).Desc("weight_flt"),
@@ -108,13 +111,17 @@ func searchCommunityContent(ctx context.Context, docEngine engine.DocEngine, idx
 		}
 		req.Filter["entities_kwd"] = filters
 	}
-	result, err := docEngine.Search(ctx, req)
+	result, err := p.docEngine.Search(ctx, req)
 	if err != nil || len(result.Chunks) == 0 || *maxToken <= 0 {
 		return ""
 	}
 
 	var bld string
 	for idx, chunk := range result.Chunks {
+		// 社区报告是多文档聚合出来的，只要有一条来源文档被排除就整条不给。
+		if !p.kgRowVisible(chunk) {
+			continue
+		}
 		title, _ := chunk["docnm_kwd"].(string)
 		raw, _ := chunk["content_with_weight"].(string)
 		if title == "" && raw == "" {

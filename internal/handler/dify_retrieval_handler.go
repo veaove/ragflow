@@ -306,6 +306,7 @@ func (h *DifyRetrievalHandler) Retrieval(c *gin.Context) {
 				req.Query,
 			)
 			kgPipeline.SetChatModel(chatModel)
+			kgPipeline.SetUserID(user.ID)
 			kgPipeline.SetEmbModel(embModel)
 			if kgResult, kgErr := kgPipeline.Retrieval(c.Request.Context()); kgErr == nil {
 				if content, ok := kgResult["content_with_weight"].(string); ok && content != "" {

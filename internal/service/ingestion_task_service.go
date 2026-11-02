@@ -11,6 +11,7 @@ import (
 	"ragflow/internal/dao"
 	"ragflow/internal/engine/kvrocks"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -111,6 +112,15 @@ func (s *IngestionTaskService) CreateForDocuments(ctx context.Context, datasetID
 	// Populate this cache lazily so a batch avoids repeated knowledge-base reads.
 	kbCache := make(map[string]*entity.Knowledgebase)
 
+	// 文件级授权：只有带规则的文件才逐条判定。被排除的文件不能建入库任务
+	// （解析会改写它的切片与索引）。
+	restrictedSet := make(map[string]bool)
+	if restricted, err := permission.RestrictedDocumentIDs(ctx, dao.DB, uniqueDocIDs); err == nil {
+		for _, id := range restricted {
+			restrictedSet[id] = true
+		}
+	}
+
 	responses := make([]*ParseDocumentResponse, 0, len(uniqueDocIDs))
 	for _, docID := range uniqueDocIDs {
 		// Validate dataset membership before creating or reusing a task.
@@ -121,6 +131,16 @@ func (s *IngestionTaskService) CreateForDocuments(ctx context.Context, datasetID
 				Result:     err.Error(),
 			})
 			continue
+		}
+		if restrictedSet[docID] {
+			if grantErr := permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: userID},
+				datasetID, docID, permission.OperationRun); grantErr != nil {
+				responses = append(responses, &ParseDocumentResponse{
+					DocumentID: docID,
+					Result:     "permission denied",
+				})
+				continue
+			}
 		}
 		task := &entity.IngestionTask{
 			DocumentID: docID,

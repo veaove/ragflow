@@ -134,7 +134,7 @@ func TestSearchTypeSamples_Success(t *testing.T) {
 			}},
 		},
 	}
-	result, err := searchTypeSamples(t.Context(), mock, []string{"ragflow_tenant1"}, []string{"kb1"})
+	result, err := NewPipeline(mock, []string{"kb1"}, []string{"tenant1"}, "").searchTypeSamples(t.Context())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestSearchTypeSamples_Success(t *testing.T) {
 
 func TestSearchTypeSamples_Empty(t *testing.T) {
 	mock := &mockRetrievalEngine{}
-	result, err := searchTypeSamples(t.Context(), mock, []string{"ragflow_tenant1"}, []string{"kb1"})
+	result, err := NewPipeline(mock, []string{"kb1"}, []string{"tenant1"}, "").searchTypeSamples(t.Context())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -515,7 +515,7 @@ func TestIndexName_Empty(t *testing.T) {
 
 func TestSearchKGCommunityContent_EmptyEntities(t *testing.T) {
 	mock := &mockRetrievalEngine{}
-	result := searchCommunityContent(t.Context(), mock, []string{"ragflow_t1"}, []string{"kb1"}, nil, 1, intPtr(100))
+	result := NewPipeline(mock, []string{"kb1"}, []string{"t1"}, "").searchCommunityContent(t.Context(), nil, 1, intPtr(100))
 	if result != "" {
 		t.Errorf("expected empty, got %q", result)
 	}
@@ -532,7 +532,7 @@ func TestSearchKGCommunityContent_WithContent(t *testing.T) {
 			}},
 		},
 	}
-	result := searchCommunityContent(t.Context(), mock, []string{"ragflow_t1"}, []string{"kb1"}, []ScoredEntity{{Entity: "E1"}}, 1, intPtr(500))
+	result := NewPipeline(mock, []string{"kb1"}, []string{"t1"}, "").searchCommunityContent(t.Context(), []ScoredEntity{{Entity: "E1"}}, 1, intPtr(500))
 	if result == "" {
 		t.Fatal("expected non-empty result")
 	}
@@ -552,7 +552,7 @@ func TestSearchKGCommunityContent_WithContent(t *testing.T) {
 
 func TestSearchKGCommunityContent_NilMaxToken(t *testing.T) {
 	mock := &mockRetrievalEngine{}
-	result := searchCommunityContent(t.Context(), mock, []string{"ragflow_t1"}, []string{"kb1"}, []ScoredEntity{{Entity: "E1"}}, 1, nil)
+	result := NewPipeline(mock, []string{"kb1"}, []string{"t1"}, "").searchCommunityContent(t.Context(), []ScoredEntity{{Entity: "E1"}}, 1, nil)
 	if result != "" {
 		t.Errorf("expected empty when maxToken is nil, got %q", result)
 	}
@@ -560,7 +560,7 @@ func TestSearchKGCommunityContent_NilMaxToken(t *testing.T) {
 
 func TestSearchKGCommunityContent_ZeroMaxToken(t *testing.T) {
 	mock := &mockRetrievalEngine{}
-	result := searchCommunityContent(t.Context(), mock, []string{"ragflow_t1"}, []string{"kb1"}, []ScoredEntity{{Entity: "E1"}}, 1, intPtr(0))
+	result := NewPipeline(mock, []string{"kb1"}, []string{"t1"}, "").searchCommunityContent(t.Context(), []ScoredEntity{{Entity: "E1"}}, 1, intPtr(0))
 	if result != "" {
 		t.Errorf("expected empty when maxToken=0, got %q", result)
 	}

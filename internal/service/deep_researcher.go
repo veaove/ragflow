@@ -145,6 +145,9 @@ type DeepResearcher struct {
 	KbIDs     []string
 	TenantIDs []string
 	EmbModel  *modelModule.EmbeddingModel
+	// UserID scopes the KG walk to the caller so file-level grants can remove
+	// the rows derived from documents they may not see.
+	UserID string
 
 	maxDepth  int // default 3
 	mu        sync.Mutex
@@ -161,6 +164,7 @@ func NewDeepResearcher(
 	kbIDs []string,
 	tenantIDs []string,
 	embModel *modelModule.EmbeddingModel,
+	userID string,
 ) *DeepResearcher {
 	return &DeepResearcher{
 		ChatModel:       chatModel,
@@ -172,6 +176,7 @@ func NewDeepResearcher(
 		KbIDs:           kbIDs,
 		TenantIDs:       tenantIDs,
 		EmbModel:        embModel,
+		UserID:          userID,
 		maxDepth:        3,
 		tavilyURL:       "https://api.tavily.com/search",
 	}
@@ -392,6 +397,7 @@ func (dr *DeepResearcher) retrieveInformation(ctx context.Context, query string)
 	if useKG, _ := dr.PromptConfig["use_kg"].(bool); useKG && dr.ChatModel != nil && len(dr.KbIDs) > 0 {
 		kgPipeline := graph.NewPipeline(dr.DocEngine, dr.KbIDs, dr.TenantIDs, query)
 		kgPipeline.SetChatModel(dr.ChatModel)
+		kgPipeline.SetUserID(dr.UserID)
 		if dr.EmbModel != nil {
 			kgPipeline.SetEmbModel(dr.EmbModel)
 		}

@@ -89,7 +89,7 @@ func TestDeepResearcherCancelDrainsSubResearch(t *testing.T) {
 			}
 			return &nlp.RetrievalResult{}, nil
 		},
-		false, nil, nil, nil, nil,
+		false, nil, nil, nil, nil, "",
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())

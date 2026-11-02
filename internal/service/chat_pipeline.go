@@ -882,6 +882,8 @@ func (s *ChatPipelineService) AsyncChat(
 				if len(kgIDs) > 0 {
 					kgPipeline := graph.NewPipeline(engine.Get(), kgIDs, kbTenantIDStrings(kbs), searchQuestion)
 					kgPipeline.SetChatModel(chatModel)
+					// 文件级授权：知识图谱同样要摘掉被拒绝文件的产物。
+					kgPipeline.SetUserID(userID)
 					if embModel != nil {
 						kgPipeline.SetEmbModel(embModel)
 					}

@@ -14,7 +14,48 @@ import (
 )
 
 func (s *DocumentService) ListIngestionTasks(ctx context.Context, userID string, datasetID *string, page, pageSize int) ([]*entity.IngestionTask, error) {
-	return s.ingestionTaskSvc.ListByUser(ctx, userID, datasetID, page, pageSize)
+	tasks, err := s.ingestionTaskSvc.ListByUser(ctx, userID, datasetID, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return filterHiddenIngestionTasks(ctx, userID, tasks), nil
+}
+
+// filterHiddenIngestionTasks 摘掉落在文件级授权排除名单里的文件的解析任务。
+// 任务行带 document_id 与进度，被拒绝的文件不该在列表里露名字。
+func filterHiddenIngestionTasks(ctx context.Context, userID string, tasks []*entity.IngestionTask) []*entity.IngestionTask {
+	if len(tasks) == 0 {
+		return tasks
+	}
+	datasetIDs := make([]string, 0, len(tasks))
+	seen := make(map[string]bool, len(tasks))
+	for _, task := range tasks {
+		if task == nil || task.DatasetID == "" || seen[task.DatasetID] {
+			continue
+		}
+		seen[task.DatasetID] = true
+		datasetIDs = append(datasetIDs, task.DatasetID)
+	}
+	hiddenByKB, err := permission.HiddenDocumentIDs(ctx, dao.DB,
+		permission.Subject{UserID: userID}, datasetIDs)
+	if err != nil || len(hiddenByKB) == 0 {
+		// 判定不出来时不额外收紧：任务列表本身已按用户过滤。
+		return tasks
+	}
+	hidden := make(map[string]bool, len(hiddenByKB))
+	for _, ids := range hiddenByKB {
+		for _, id := range ids {
+			hidden[id] = true
+		}
+	}
+	out := make([]*entity.IngestionTask, 0, len(tasks))
+	for _, task := range tasks {
+		if task == nil || hidden[task.DocumentID] {
+			continue
+		}
+		out = append(out, task)
+	}
+	return out
 }
 
 func (s *DocumentService) IngestDocuments(ctx context.Context, datasetID, userID string, docIDs []string) ([]*service.ParseDocumentResponse, error) {
@@ -67,6 +108,12 @@ func (s *DocumentService) Ingest(ctx context.Context, userID string, req *Ingest
 			return common.CodeDataError, fmt.Errorf("dataset not found")
 		}
 		if err := service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, kb.ID, permission.OperationRun); err != nil {
+			code, permissionErr := permissionresponse.Normalize(err)
+			return code, permissionErr
+		}
+		// 文件级授权：被排除的文件不允许解析/入库（解析会改写它的切片与索引）。
+		if err := permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: userID},
+			kb.ID, docID, permission.OperationRun); err != nil {
 			code, permissionErr := permissionresponse.Normalize(err)
 			return code, permissionErr
 		}
