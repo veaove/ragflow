@@ -157,6 +157,76 @@ func (s *DatasetArtifactService) HasSkill(ctx context.Context, tenantID, dataset
 	return total > 0, nil
 }
 
+// HasArtifact reports whether the dataset actually holds rows for one of the
+// artifact types the overview lists ("wiki" | "tree" | "graph" | "mindmap" |
+// "timeline").
+//
+// The overview used to answer this with "the dataset is compiled × the tenant
+// configured these template kinds", which cannot tell a generated artifact from a
+// configured-but-never-produced one: a base compiled only as a graph still
+// produced wiki/mindmap/timeline cards that opened onto empty views. MySQL keeps
+// no per-kind record of what was produced, so the rows themselves are the only
+// ground truth. Each predicate below mirrors the reader behind that view, so
+// "present" means the view has something to render.
+func (s *DatasetArtifactService) HasArtifact(ctx context.Context, tenantID, datasetID, artifactType string) (bool, error) {
+	switch artifactType {
+	case "wiki":
+		// ListWikiPages reads merged dataset rows only (available_int=1), so the
+		// per-document source rows must not count as a wiki artifact.
+		return s.hasCompiledRow(ctx, tenantID, datasetID, map[string]interface{}{
+			"type_kwd":      []string{CompileKwdWikiPage},
+			"available_int": 1,
+		}, false)
+	case "tree":
+		// Tree/PageIndex renders the dataset navigation tree; nav rows are
+		// written with available_int=0, which Infinity would otherwise filter out.
+		return s.hasCompiledRow(ctx, tenantID, datasetID, map[string]interface{}{
+			"compile_kwd": []string{CompileKwdDatasetNav},
+		}, true)
+	case "graph", "mindmap", "timeline":
+		kind := resolveDatasetStructureKind(artifactType)
+		if kind == "" {
+			return false, nil
+		}
+		// Same predicate GetDatasetStructure counts with: dataset-scope entity
+		// rows of that compilation kind.
+		return s.hasCompiledRow(ctx, tenantID, datasetID, map[string]interface{}{
+			"knowledge_graph_kwd": []string{"entity"},
+			"scope_kwd":           []string{"dataset"},
+			"compile_kwd":         []string{types.CanonicalCompilationKind(kind)},
+		}, false)
+	}
+	return false, nil
+}
+
+// hasCompiledRow runs a one-row probe for the given filter inside a dataset.
+func (s *DatasetArtifactService) hasCompiledRow(ctx context.Context, tenantID, datasetID string, filter map[string]interface{}, includeUnavailable bool) (bool, error) {
+	docEngine := engine.Get()
+	if docEngine == nil {
+		return false, fmt.Errorf("document engine is not initialized")
+	}
+	merged := make(map[string]interface{}, len(filter)+1)
+	for k, v := range filter {
+		merged[k] = v
+	}
+	merged["kb_id"] = []string{datasetID}
+	res, err := docEngine.Search(ctx, &types.SearchRequest{
+		IndexNames:         []string{wikiIndexName(tenantID)},
+		KbIDs:              []string{datasetID},
+		Limit:              1,
+		SelectFields:       []string{"id"},
+		Filter:             merged,
+		IncludeUnavailable: includeUnavailable,
+	})
+	if err != nil {
+		return false, err
+	}
+	if res == nil {
+		return false, nil
+	}
+	return res.Total > 0 || len(res.Chunks) > 0, nil
+}
+
 // WikiPageItem is a single wiki page summary returned by ListWikiPages.
 type WikiPageItem struct {
 	Slug     string `json:"slug"`

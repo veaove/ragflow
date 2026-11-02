@@ -93,8 +93,9 @@ function formatTime(ms: number) {
  * Artifacts 面板：把各知识库的编译产物（wiki / tree / graph / mindmap / timeline）
  * 汇总成一张卡片列表。
  *
- * 数据来自 /overview/artifacts —— 后端把 knowledgebase 表上的
- * xxx_task_id / xxx_task_finish_at 展开成「一行一个产物」。
+ * 数据来自 /overview/artifacts：后端先算候选（编译过的知识库 × 本租户配置的编译
+ * 模板类型），再逐对向检索引擎确认该库是否真的产出了这一种产物。因此列表里
+ * 不会出现「类型配置了、但这个库没生成」的空卡片——点进去只会有真实内容。
  */
 export function ArtifactsPanel({ embedded }: { embedded?: boolean }) {
   const navigate = useNavigate();

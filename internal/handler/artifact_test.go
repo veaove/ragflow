@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -133,8 +135,13 @@ type artifactListResponse struct {
 func listArtifactsAs(t *testing.T, userID string) artifactListResponse {
 	t.Helper()
 
+	return listArtifactsWith(t, NewArtifactHandler(), userID)
+}
+
+func listArtifactsWith(t *testing.T, handler *ArtifactHandler, userID string) artifactListResponse {
+	t.Helper()
+
 	gin.SetMode(gin.TestMode)
-	handler := NewArtifactHandler()
 	r := gin.New()
 	r.GET("/api/v1/overview/artifacts", func(c *gin.Context) {
 		c.Set("user", &entity.User{ID: userID})
@@ -196,5 +203,72 @@ func TestListArtifactsKeepsEveryKnowledgeBaseForTheTenantOwner(t *testing.T) {
 		if !seen[want] {
 			t.Fatalf("owner is missing %q in %#v", want, seen)
 		}
+	}
+}
+
+// fakeArtifactPresence answers the per-(dataset, type) existence probe without a
+// document engine.
+type fakeArtifactPresence struct {
+	present map[string]bool
+	err     error
+}
+
+func (f fakeArtifactPresence) HasArtifact(_ context.Context, _ string, datasetID, artifactType string) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	return f.present[datasetID+":"+artifactType], nil
+}
+
+// seedArtifactTestTemplateKinds makes the tenant look like a deployment that
+// configured every compilation template kind.
+func seedArtifactTestTemplateKinds(t *testing.T) {
+	t.Helper()
+	for i, kind := range []string{"tree", "page_index", "graph", "mind_map", "timeline"} {
+		if err := dao.DB.Create(&entity.CompilationTemplate{
+			ID:       fmt.Sprintf("tpl-%d", i),
+			TenantID: artifactTestStrPtr(artifactTestTenant),
+			Name:     kind,
+			Kind:     kind,
+			Config:   entity.JSONMap{},
+		}).Error; err != nil {
+			t.Fatalf("insert %s template: %v", kind, err)
+		}
+	}
+}
+
+// A base compiled only as a graph must not advertise wiki / tree / mindmap /
+// timeline cards: those views open empty because nothing was ever produced for
+// them. The list is per (dataset, kind), not per dataset.
+func TestListArtifactsDropsArtifactTypesTheDatasetNeverProduced(t *testing.T) {
+	setupArtifactTestDB(t)
+	seedArtifactTestTemplateKinds(t)
+
+	handler := &ArtifactHandler{presence: fakeArtifactPresence{present: map[string]bool{
+		artifactTestTeamKBID + ":graph": true,
+	}}}
+	body := listArtifactsWith(t, handler, artifactTestOwnerUser)
+
+	if body.Data.Total != 1 || len(body.Data.Artifacts) != 1 {
+		t.Fatalf("want only the produced graph artifact, got total=%d items=%#v", body.Data.Total, body.Data.Artifacts)
+	}
+	item := body.Data.Artifacts[0]
+	if item.KnowledgeBaseID != artifactTestTeamKBID || item.Type != "graph" {
+		t.Fatalf("unexpected artifact %#v", item)
+	}
+}
+
+// A probe failure must degrade to the previous behaviour (list what the tenant
+// configured) instead of blanking the overview.
+func TestListArtifactsKeepsConfiguredTypesWhenTheProbeFails(t *testing.T) {
+	setupArtifactTestDB(t)
+	seedArtifactTestTemplateKinds(t)
+
+	handler := &ArtifactHandler{presence: fakeArtifactPresence{err: fmt.Errorf("document engine is not initialized")}}
+	body := listArtifactsWith(t, handler, artifactTestOwnerUser)
+
+	// wiki, tree (tree+page_index collapse), graph, mindmap, timeline for 2 bases.
+	if body.Data.Total != 10 {
+		t.Fatalf("probe failure should keep every configured type, got total=%d", body.Data.Total)
 	}
 }

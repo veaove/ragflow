@@ -17,17 +17,21 @@
 package handler
 
 import (
+	"context"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/permission"
 	permissionresponse "ragflow/internal/permission/response"
+	"ragflow/internal/service"
 )
 
 // ArtifactHandler 汇总知识库的编译产物（wiki / tree / graph / mindmap / timeline）。
@@ -40,13 +44,28 @@ import (
 //   - knowledgebase 上那堆 wiki_task_id / graphrag_task_id 在现网全是空值，
 //     不能拿来判断「有没有产物」。
 //
-// 所以这里用：编译完成的库 × 租户已配置的模板类型。
-// 局限：只能表达「这个库编译过，而本租户配置了这些类型」，
-// 精确到「这个库实际生成了哪几种」需要查检索引擎的字段统计。
-type ArtifactHandler struct{}
+// 「有哪些类型」分两步：先用 MySQL 得到候选（编译过的库 × 租户配置的模板类型），
+// 再逐对向检索引擎确认这一对是否真有行（DatasetArtifactService.HasArtifact）。
+// 少第二步就会出现「只编译了 graph 的库也列出 wiki/mindmap/timeline 卡片，
+// 点进去四个空视图」。探测谓词与各视图的读取谓词一致，失败时按「存在」处理：
+// 引擎抖动只该让列表退化到旧行为，不该把概览整页清空。
+type ArtifactHandler struct {
+	// presence 回答「这个库真的有这一种产物吗」。抽成接口是为了让单测能在
+	// 不启动检索引擎的前提下覆盖空类型的过滤（见 artifact_test.go）。
+	presence artifactPresence
+}
+
+// artifactPresence is the per-(dataset, type) existence probe.
+type artifactPresence interface {
+	HasArtifact(ctx context.Context, tenantID, datasetID, artifactType string) (bool, error)
+}
+
+// artifactProbeConcurrency 限制并发探测数：一个租户可能有几十个知识库，
+// 每个最多五种类型，串行探测会让首屏多出几百毫秒。
+const artifactProbeConcurrency = 8
 
 func NewArtifactHandler() *ArtifactHandler {
-	return &ArtifactHandler{}
+	return &ArtifactHandler{presence: service.NewDatasetArtifactService()}
 }
 
 type ArtifactItem struct {
@@ -183,8 +202,56 @@ func (h *ArtifactHandler) ListArtifacts(c *gin.Context) {
 	}
 	sort.Strings(labels)
 
-	items := make([]ArtifactItem, 0, len(kbs)*len(labels))
+	type candidate struct {
+		kb    kbRow
+		label string
+	}
+	candidates := make([]candidate, 0, len(kbs)*len(labels))
 	for _, kb := range kbs {
+		for _, label := range labels {
+			if typeFilter != "" && typeFilter != label {
+				continue
+			}
+			candidates = append(candidates, candidate{kb: kb, label: label})
+		}
+	}
+
+	// 4) 逐对确认引擎里真有这一种产物，去掉「配置了但没生成」的空卡片。
+	presence := h.presence
+	if presence == nil {
+		presence = service.NewDatasetArtifactService()
+	}
+	present := make([]bool, len(candidates))
+	sem := make(chan struct{}, artifactProbeConcurrency)
+	var wg sync.WaitGroup
+	for i := range candidates {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			ok, err := presence.HasArtifact(ctx, tenantID, candidates[i].kb.ID, candidates[i].label)
+			if err != nil {
+				// 探测失败不能把整页清空：退回到「有配置即展示」的老行为，
+				// 并在日志里留下原因。
+				common.Warn("artifact presence probe failed; keeping the card",
+					zap.String("dataset_id", candidates[i].kb.ID),
+					zap.String("type", candidates[i].label),
+					zap.Error(err))
+				present[i] = true
+				return
+			}
+			present[i] = ok
+		}(i)
+	}
+	wg.Wait()
+
+	items := make([]ArtifactItem, 0, len(candidates))
+	for i, cand := range candidates {
+		if !present[i] {
+			continue
+		}
+		kb := cand.kb
 		createdAt := int64(0)
 		if kb.CreateDate != nil {
 			createdAt = kb.CreateDate.UnixMilli()
@@ -193,22 +260,17 @@ func (h *ArtifactHandler) ListArtifacts(c *gin.Context) {
 		if kb.LastCompletedAt != nil {
 			updatedAt = kb.LastCompletedAt.UnixMilli()
 		}
-		for _, label := range labels {
-			if typeFilter != "" && typeFilter != label {
-				continue
-			}
-			items = append(items, ArtifactItem{
-				ID:              kb.ID + ":" + label,
-				KnowledgeBaseID: kb.ID,
-				Name:            kb.Name,
-				Type:            label,
-				DocNum:          kb.DocNum,
-				ChunkNum:        kb.ChunkNum,
-				State:           kb.State,
-				CreatedAt:       createdAt,
-				UpdatedAt:       updatedAt,
-			})
-		}
+		items = append(items, ArtifactItem{
+			ID:              kb.ID + ":" + cand.label,
+			KnowledgeBaseID: kb.ID,
+			Name:            kb.Name,
+			Type:            cand.label,
+			DocNum:          kb.DocNum,
+			ChunkNum:        kb.ChunkNum,
+			State:           kb.State,
+			CreatedAt:       createdAt,
+			UpdatedAt:       updatedAt,
+		})
 	}
 
 	sort.SliceStable(items, func(i, j int) bool {

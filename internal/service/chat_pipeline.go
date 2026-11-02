@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"ragflow/internal/agent/canvas"
@@ -28,6 +29,7 @@ import (
 	"ragflow/internal/engine"
 	"ragflow/internal/entity"
 	modelModule "ragflow/internal/entity/models"
+	"ragflow/internal/permission"
 	ragprompts "ragflow/internal/rag/prompts"
 	"ragflow/internal/service/file"
 	"ragflow/internal/service/graph"
@@ -231,6 +233,12 @@ func (s *ChatPipelineService) AsyncChat(
 ) (<-chan AsyncChatResult, error) {
 
 	common.Info("AsyncChat started", zap.String("chat_id", chat.ID))
+
+	// 会话能检索的库必须同时受「会话绑定」和「调用者的知识库权限」约束。
+	// 放在分流之前：后面每个分支（含 agentic）都直接读 chat.KBIDs。
+	if err := s.requireChatKBsForUser(ctx, userID, chat); err != nil {
+		return nil, err
+	}
 
 	// === Phase 1: Entry Validation ===
 	// Guard: messages must be non-empty and the last role must be "user".
@@ -2193,6 +2201,43 @@ func (s *ChatPipelineService) buildLLMModelConfig(info *modelModule.ModelInfo) (
 		"llm_factory": info.ProviderName,
 	}
 	return cfg, info.Name, info.ProviderName, "", nil
+}
+
+// requireChatKBsForUser refuses a turn whose chat is bound to datasets the
+// caller may not retrieve from.
+//
+// Running an assistant and reading a dataset are two independent decisions:
+// chats are tenant-level assets (chatResource grants Run to every member), while
+// datasets are 私有 / 团队 / 部门 / 显式授权 (datasetResource). Retrieval used to
+// take chat.kb_ids at face value, so a member who could open an assistant could
+// read every dataset bound to it — including datasets that never appear in their
+// 知识库 list. The agentic path and /api/v1/retrieval already authorize their
+// datasets as the caller; this brings the naive RAG path in line.
+//
+// The turn is refused rather than narrowed to the datasets the caller happens to
+// hold, because a partial corpus answers a different question than the assistant
+// was configured to. Bindings that no longer resolve (deleted, or disabled) are
+// left alone: getModels already skips them, and they cannot leak anything.
+func (s *ChatPipelineService) requireChatKBsForUser(ctx context.Context, userID string, chat *entity.Chat) error {
+	if chat == nil || len(chat.KBIDs) == 0 {
+		return nil
+	}
+	subject := permission.Subject{UserID: userID}
+	for _, raw := range chat.KBIDs {
+		kbID, ok := raw.(string)
+		if !ok || kbID == "" {
+			continue
+		}
+		err := CheckDatasetAccess(ctx, subject, kbID, permission.OperationUse)
+		if err == nil || errors.Is(err, permission.ErrResourceNotFound) {
+			continue
+		}
+		common.Warn("Chat retrieval denied by dataset permission",
+			zap.String("chat_id", chat.ID), zap.String("user_id", userID),
+			zap.String("kb_id", kbID), zap.Error(err))
+		return fmt.Errorf("no permission to retrieve from the knowledge bases bound to this assistant")
+	}
+	return nil
 }
 
 // getModels resolves all models needed for the RAG pipeline.
