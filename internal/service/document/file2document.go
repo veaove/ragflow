@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"go.uber.org/zap"
@@ -419,10 +420,19 @@ func appendPath(prefix []string, name string) []string {
 }
 
 // linkedKey identifies one (file, destination folder) pair for deduplication.
-// The path is joined with NUL so that names containing the separator cannot
-// collide with a different split of the same string.
+// Path segments are length-prefixed so a folder name that happens to contain
+// the separator cannot alias a different split of the same string
+// ("A\x00B" as one segment vs "A","B" as two).
 func linkedKey(item linkedFile) string {
-	return item.FileID + "|" + strings.Join(item.FolderPath, "\x00")
+	var b strings.Builder
+	b.WriteString(item.FileID)
+	b.WriteByte('|')
+	for _, seg := range item.FolderPath {
+		b.WriteString(strconv.Itoa(len(seg)))
+		b.WriteByte(':')
+		b.WriteString(seg)
+	}
+	return b.String()
 }
 
 // ensureFolderPath resolves a folder path inside a dataset, creating the missing
