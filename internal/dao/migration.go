@@ -101,6 +101,11 @@ func RunMigrations(ctx context.Context, db *gorm.DB) error {
 		return fmt.Errorf("failed to backfill memory.created_by: %w", err)
 	}
 
+	// Backfill dialog.created_by (column added alongside this change).
+	if err := migrateChatCreatedBy(ctx, db); err != nil {
+		return fmt.Errorf("failed to backfill dialog.created_by: %w", err)
+	}
+
 	// Keep the raw layer in memory.memory_type so settings stay editable.
 	if err := migrateMemoryRawType(ctx, db); err != nil {
 		return fmt.Errorf("failed to backfill memory.memory_type raw bit: %w", err)
@@ -194,6 +199,61 @@ func migrateMemoryCreatedBy(ctx context.Context, db *gorm.DB) error {
 	}
 	if backfilled+res.RowsAffected > 0 {
 		common.Info("Backfilled memory.created_by",
+			zap.Int64("rows", backfilled+res.RowsAffected))
+	}
+	return nil
+}
+
+// migrateChatCreatedBy backfills dialog.created_by, the column the chat list's
+// "创建人" column and the owner filter read.
+//
+// The same two shapes as memory.created_by live in dialog: rows written before
+// the column existed keep the creator's user id in tenant_id, and rows written
+// after it keep a real tenant there. The first pass copies tenant_id only when
+// it still resolves to a user row; the second credits the tenant's owner.
+//
+// Readers do not depend on this backfill — the chat DAO COALESCEs
+// dialog.created_by with dialog.tenant_id and the permission layer falls back
+// the same way — but paths that read the column raw (the grant console's owner
+// column) would otherwise show an empty owner for every legacy chat.
+func migrateChatCreatedBy(ctx context.Context, db *gorm.DB) error {
+	migrator := db.WithContext(ctx).Migrator()
+	if !migrator.HasTable(&entity.Chat{}) {
+		return nil
+	}
+	if !migrator.HasColumn(&entity.Chat{}, "created_by") {
+		if err := migrator.AddColumn(&entity.Chat{}, "CreatedBy"); err != nil {
+			return err
+		}
+	}
+
+	// Pass 1: tenant_id still holds the creator's user id.
+	res := db.WithContext(ctx).Exec(`
+		UPDATE dialog SET created_by = tenant_id
+		WHERE (created_by IS NULL OR created_by = '')
+		  AND EXISTS (SELECT 1 FROM user u WHERE u.id = dialog.tenant_id)`)
+	if res.Error != nil {
+		return res.Error
+	}
+	backfilled := res.RowsAffected
+
+	// Pass 2: tenant_id is a real tenant, so credit that tenant's owner.
+	res = db.WithContext(ctx).Exec(`
+		UPDATE dialog SET created_by = (
+			SELECT ut.user_id FROM user_tenant ut
+			WHERE ut.tenant_id = dialog.tenant_id
+			  AND ut.role = 'owner'
+			  AND (ut.status IS NULL OR ut.status = '1')
+			ORDER BY ut.create_time ASC
+			LIMIT 1
+		)
+		WHERE (created_by IS NULL OR created_by = '')
+		  AND NOT EXISTS (SELECT 1 FROM user u WHERE u.id = dialog.tenant_id)`)
+	if res.Error != nil {
+		return res.Error
+	}
+	if backfilled+res.RowsAffected > 0 {
+		common.Info("Backfilled dialog.created_by",
 			zap.Int64("rows", backfilled+res.RowsAffected))
 	}
 	return nil
