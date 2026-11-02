@@ -1,4 +1,4 @@
-//
+﻿//
 //  Copyright 2026 The InfiniFlow Authors. All Rights Reserved.
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,8 +23,6 @@ import (
 	"fmt"
 	"net/http"
 	"ragflow/internal/engine"
-	"ragflow/internal/engine/types"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -40,10 +38,11 @@ import (
 
 // DatasetsHandler handles the RESTful dataset endpoints.
 type DatasetsHandler struct {
-	datasetsService       *dataset.DatasetService
-	metadataService       *service.MetadataService
-	searchDatasetsService searchDatasetsService
-	searchDatasetService  searchDatasetService
+	datasetsService        *dataset.DatasetService
+	metadataService        *service.MetadataService
+	searchDatasetsService  searchDatasetsService
+	searchDatasetService   searchDatasetService
+	knowledgeGraphService  *service.KnowledgeGraphService
 }
 
 type searchDatasetsService interface {
@@ -57,8 +56,9 @@ type searchDatasetService interface {
 // NewDatasetsHandler creates a new datasets' handler.
 func NewDatasetsHandler(datasetsService *dataset.DatasetService, metadataService *service.MetadataService) *DatasetsHandler {
 	h := &DatasetsHandler{
-		datasetsService: datasetsService,
-		metadataService: metadataService,
+		datasetsService:       datasetsService,
+		metadataService:       metadataService,
+		knowledgeGraphService: service.NewKnowledgeGraphService(),
 	}
 	if datasetsService != nil {
 		h.searchDatasetsService = datasetsService
@@ -913,6 +913,17 @@ func (h *DatasetsHandler) DeleteDatasets(c *gin.Context) {
 }
 
 // GetKnowledgeGraph handles GET /api/v1/datasets/:dataset_id/graph.
+//
+// It serves the browseable knowledge graph: typed entities, typed directed
+// relations with confidence and provenance, legend/filter counts and — when
+// `keywords` is supplied — the highlight set for one of the three search
+// entries (entity / relation / natural language intent).
+//
+// The old implementation read a single pre-aggregated JSON blob and returned it
+// nearly verbatim: no entity types, no relation types, no confidence, no
+// evidence, no search, and a silent 256/128 truncation. Those rows are not
+// written by this build any more, which is why the endpoint now reads the
+// compiled entity/relation rows instead.
 func (h *DatasetsHandler) GetKnowledgeGraph(c *gin.Context) {
 	user, errorCode, errorMessage := GetUser(c)
 	if errorCode != common.CodeSuccess {
@@ -939,80 +950,32 @@ func (h *DatasetsHandler) GetKnowledgeGraph(c *gin.Context) {
 		return
 	}
 
-	docEngine := engine.Get()
-	if docEngine == nil {
-		common.ResponseWithCodeData(c, common.CodeServerError, nil, "Document engine is not initialized")
-		return
-	}
-
-	indexName := fmt.Sprintf("ragflow_%s", tenantID)
-	exists, err := docEngine.ChunkStoreExists(c.Request.Context(), indexName, datasetID)
-	if err != nil {
-		jsonInternalError(c, err)
-		return
-	}
-
-	result := gin.H{
-		"graph":    map[string]interface{}{},
-		"mind_map": map[string]interface{}{},
-	}
-	if !exists {
-		common.SuccessWithData(c, result, "success")
-		return
-	}
-
-	searchResult, err := docEngine.Search(c.Request.Context(), &types.SearchRequest{
-		IndexNames:   []string{indexName},
-		KbIDs:        []string{datasetID},
-		Offset:       0,
-		Limit:        1,
-		SelectFields: []string{"content_with_weight", "type_kwd", "knowledge_graph_kwd"},
-		Filter: map[string]interface{}{
-			"kb_id":               []string{datasetID},
-			"knowledge_graph_kwd": []string{"graph"},
-		},
+	payload, err := h.knowledgeGraphService.Load(ctx, tenantID, datasetID, service.KnowledgeGraphOptions{
+		Keywords: strings.TrimSpace(c.Query("keywords")),
+		Mode:     strings.TrimSpace(c.Query("mode")),
+		MaxNodes: parsePositiveIntQuery(c, "max_nodes"),
+		MaxEdges: parsePositiveIntQuery(c, "max_edges"),
 	})
 	if err != nil {
-		jsonInternalError(c, err)
-		return
-	}
-	if searchResult == nil || len(searchResult.Chunks) == 0 {
-		common.SuccessWithData(c, result, "success")
+		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
 		return
 	}
 
-	chunk := searchResult.Chunks[0]
-	graphType := firstStringValue(chunk["type_kwd"])
-	if graphType == "" {
-		graphType = firstStringValue(chunk["knowledge_graph_kwd"])
-	}
-	contentWithWeight, _ := chunk["content_with_weight"].(string)
-	if strings.TrimSpace(contentWithWeight) == "" {
-		common.SuccessWithData(c, result, "success")
-		return
-	}
+	common.SuccessWithData(c, payload, "success")
+}
 
-	var graphData map[string]interface{}
-	if err = json.Unmarshal([]byte(contentWithWeight), &graphData); err != nil {
-		common.SuccessWithData(c, result, "success")
-		return
+// parsePositiveIntQuery reads an optional positive integer query parameter,
+// returning 0 (meaning "use the default") for anything else.
+func parsePositiveIntQuery(c *gin.Context, name string) int {
+	raw := strings.TrimSpace(c.Query(name))
+	if raw == "" {
+		return 0
 	}
-	if len(graphData) == 0 {
-		common.SuccessWithData(c, result, "success")
-		return
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 0
 	}
-
-	if graphType == "" {
-		graphType = "graph"
-	}
-	if graphType == "graph" {
-		sortKnowledgeGraph(graphData)
-		result["graph"] = graphData
-	} else {
-		result[graphType] = graphData
-	}
-
-	common.SuccessWithData(c, result, "success")
+	return value
 }
 
 // DeleteKnowledgeGraph handles DELETE /api/v1/datasets/:dataset_id/graph.
@@ -1049,12 +1012,25 @@ func (h *DatasetsHandler) DeleteKnowledgeGraph(c *gin.Context) {
 	}
 
 	indexName := fmt.Sprintf("ragflow_%s", tenantID)
-	if _, err := docEngine.DeleteChunks(c.Request.Context(), map[string]interface{}{
-		"knowledge_graph_kwd": []interface{}{"graph", "subgraph", "entity", "relation", "community_report"},
-		"kb_id":               datasetID,
-	}, indexName, datasetID); err != nil {
-		jsonInternalError(c, err)
-		return
+	// Two conditions, because the two graph generations store the row kind in
+	// different columns: legacy rows only carry knowledge_graph_kwd, rows written
+	// by the compiler carry type_kwd. A single condition would leave the other
+	// generation behind and the graph would reappear after a reload.
+	conditions := []map[string]interface{}{
+		{
+			"knowledge_graph_kwd": []interface{}{"graph", "subgraph", "entity", "relation", "community_report"},
+			"kb_id":               datasetID,
+		},
+		{
+			"type_kwd": []interface{}{"entity", "relation"},
+			"kb_id":    datasetID,
+		},
+	}
+	for _, condition := range conditions {
+		if _, err := docEngine.DeleteChunks(c.Request.Context(), condition, indexName, datasetID); err != nil {
+			jsonInternalError(c, err)
+			return
+		}
 	}
 
 	common.SuccessWithData(c, true, "success")
@@ -1486,81 +1462,4 @@ func firstStringValue(value interface{}) string {
 		}
 	}
 	return ""
-}
-
-func sortKnowledgeGraph(graphData map[string]interface{}) {
-	nodes := mapSlice(graphData["nodes"])
-	if len(nodes) > 0 {
-		sort.Slice(nodes, func(i, j int) bool {
-			return numericValue(nodes[i]["pagerank"]) > numericValue(nodes[j]["pagerank"])
-		})
-		if len(nodes) > 256 {
-			nodes = nodes[:256]
-		}
-		graphData["nodes"] = nodes
-	}
-
-	edges := mapSlice(graphData["edges"])
-	if len(edges) > 0 {
-		nodeIDSet := make(map[string]struct{}, len(nodes))
-		for _, node := range nodes {
-			if id, ok := node["id"].(string); ok {
-				nodeIDSet[id] = struct{}{}
-			}
-		}
-		filteredEdges := make([]map[string]interface{}, 0, len(edges))
-		for _, edge := range edges {
-			source, _ := edge["source"].(string)
-			target, _ := edge["target"].(string)
-			if source == "" || target == "" || source == target {
-				continue
-			}
-			if _, ok := nodeIDSet[source]; !ok {
-				continue
-			}
-			if _, ok := nodeIDSet[target]; !ok {
-				continue
-			}
-			filteredEdges = append(filteredEdges, edge)
-		}
-		sort.Slice(filteredEdges, func(i, j int) bool {
-			return numericValue(filteredEdges[i]["weight"]) > numericValue(filteredEdges[j]["weight"])
-		})
-		if len(filteredEdges) > 128 {
-			filteredEdges = filteredEdges[:128]
-		}
-		graphData["edges"] = filteredEdges
-	}
-}
-
-func mapSlice(value interface{}) []map[string]interface{} {
-	raw, ok := value.([]interface{})
-	if !ok {
-		return nil
-	}
-	result := make([]map[string]interface{}, 0, len(raw))
-	for _, item := range raw {
-		if m, ok := item.(map[string]interface{}); ok {
-			result = append(result, m)
-		}
-	}
-	return result
-}
-
-func numericValue(value interface{}) float64 {
-	switch v := value.(type) {
-	case float64:
-		return v
-	case float32:
-		return float64(v)
-	case int:
-		return float64(v)
-	case int64:
-		return float64(v)
-	case json.Number:
-		f, _ := v.Float64()
-		return f
-	default:
-		return 0
-	}
 }

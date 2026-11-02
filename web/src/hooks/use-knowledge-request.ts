@@ -30,7 +30,6 @@ import {
   IDatasetFilter,
   IDatasetListResult,
   IDatasetReference,
-  IKnowledgeGraph,
   INextTestingResult,
   IRenameTag,
   ITestingResult,
@@ -39,8 +38,10 @@ import {
   IWikiCommitListResponse,
 } from '@/interfaces/database/dataset';
 import { type IStructureGraphResponse } from '@/interfaces/database/document-structure';
+import { type IKnowledgeGraph } from '@/interfaces/database/knowledge-graph';
 import {
   IFetchArtifactGraphRequestParams,
+  IFetchKnowledgeGraphRequestParams,
   ITestRetrievalRequestBody,
   IUpdateArtifactPageRequestParams,
 } from '@/interfaces/request/knowledge';
@@ -818,16 +819,34 @@ export const useUpdateArtifactPage = () => {
   return { data, loading, updateArtifactPage: mutateAsync };
 };
 
-export function useFetchKnowledgeGraph() {
+/**
+ * Loads the browseable knowledge graph. `params.keywords` runs the server-side
+ * search (entity / relation / natural-language intent) and the response carries
+ * the highlight set, so typing re-queries instead of filtering a stale snapshot.
+ */
+export function useFetchKnowledgeGraph(
+  params?: IFetchKnowledgeGraphRequestParams,
+) {
   const knowledgeBaseId = useKnowledgeBaseId();
+  const keywords = params?.keywords ?? '';
+  const mode = params?.mode ?? 'auto';
 
   const { data, isFetching: loading } = useQuery<IKnowledgeGraph>({
-    queryKey: [KnowledgeApiAction.FetchKnowledgeGraph, knowledgeBaseId],
-    initialData: { graph: {}, mind_map: {} } as IKnowledgeGraph,
+    queryKey: [
+      KnowledgeApiAction.FetchKnowledgeGraph,
+      knowledgeBaseId,
+      keywords,
+      mode,
+    ],
     enabled: !!knowledgeBaseId,
     gcTime: 0,
+    placeholderData: keepPreviousData,
     queryFn: async () => {
-      const { data } = await getKnowledgeGraph(knowledgeBaseId);
+      const { data } = await getKnowledgeGraph(knowledgeBaseId, {
+        ...params,
+        keywords: keywords || undefined,
+        mode: keywords ? mode : undefined,
+      });
       return data?.data;
     },
   });

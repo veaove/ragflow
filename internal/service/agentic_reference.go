@@ -161,7 +161,9 @@ func fetchChunksByIDs(ctx context.Context, tenantID string, datasetIDs, ids []st
 		IndexNames:   []string{fmt.Sprintf("ragflow_%s", tenantID)},
 		KbIDs:        datasetIDs,
 		Filter:       map[string]interface{}{"id": ids},
-		SelectFields: []string{"content_with_weight", "docnm_kwd", "doc_id", "kb_id", "img_id", "position_int"},
+		// id/page_num_int are needed by callers that key the rows again (the
+		// knowledge-graph evidence pass); the citation path ignores them.
+		SelectFields: []string{"id", "content_with_weight", "docnm_kwd", "doc_id", "kb_id", "img_id", "position_int", "page_num_int"},
 		Limit:        len(ids),
 	}
 	res, err := de.Search(ctx, req)

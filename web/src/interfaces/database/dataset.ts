@@ -235,11 +235,6 @@ export interface INextTestingResult {
 
 export type IRenameTag = { fromTag: string; toTag: string };
 
-export interface IKnowledgeGraph {
-  graph: Record<string, any>;
-  mind_map: import('@antv/g6/lib/types').TreeData;
-}
-
 export interface IArtifact {
   slug: string;
   title: string;

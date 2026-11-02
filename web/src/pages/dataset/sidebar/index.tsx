@@ -10,6 +10,7 @@ import {
   LucideListChecks,
   LucideLibrary,
   LucideGitCompareArrows,
+  LucideShare2,
 } from 'lucide-react';
 
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
@@ -43,6 +44,11 @@ export function SideBar({ dataset: data }: PropType) {
         icon: <LucideTextSearch className="size-[1em]" />,
         label: t(`knowledgeDetails.testing`),
         key: Routes.DatasetTesting,
+      },
+      {
+        icon: <LucideShare2 className="size-[1em]" />,
+        label: t(`knowledgeGraph.nav`),
+        key: Routes.KnowledgeGraph,
       },
       {
         icon: <LucideLibrary className="size-[1em]" />,

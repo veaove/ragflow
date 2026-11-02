@@ -453,7 +453,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 				datasets.GET("/:dataset_id", r.datasetsHandler.GetDataset)
 				datasets.PUT("/:dataset_id", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.datasetsHandler.UpdateDataset)
 				datasets.GET("/:dataset_id/references", r.datasetsHandler.ListDatasetReferences)
-				datasets.GET("/:dataset_id/graph", r.datasetsHandler.GetKnowledgeGraph)
+				// Knowledge graph (browseable entity/relation view).
+				datasets.GET("/:dataset_id/graph", handler.ModulePermissionAction("dataset", handler.ActionView), r.datasetsHandler.GetKnowledgeGraph)
+				datasets.DELETE("/:dataset_id/graph", handler.ModulePermissionAction("dataset", handler.ActionDelete), r.datasetsHandler.DeleteKnowledgeGraph)
 				datasets.POST("/:dataset_id/embedding/check", r.datasetsHandler.CheckEmbedding)
 				datasets.POST("/:dataset_id/documents/batch-update-status", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.BatchUpdateDocumentStatus)
 				// 目录树：知识库内的真目录（嵌套 + 批量归组 + 递归解析）

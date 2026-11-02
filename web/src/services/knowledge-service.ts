@@ -21,6 +21,7 @@ import {
   IFetchArtifactListRequestParams,
   IFetchArtifactTopicListRequestParams,
   IFetchDocumentListRequestBody,
+  IFetchKnowledgeGraphRequestParams,
   IFetchKnowledgeListRequestParams,
   IUpdateArtifactPageRequestBody,
 } from '@/interfaces/request/knowledge';
@@ -335,8 +336,11 @@ export const renameTag = (
   { fromTag, toTag }: IRenameTag,
 ) => request.put(api.renameTag(knowledgeId), { data: { fromTag, toTag } });
 
-export function getKnowledgeGraph(knowledgeId: string) {
-  return request.get(api.getKnowledgeGraph(knowledgeId));
+export function getKnowledgeGraph(
+  knowledgeId: string,
+  params?: IFetchKnowledgeGraphRequestParams,
+) {
+  return request.get(api.getKnowledgeGraph(knowledgeId), { params });
 }
 
 export function deleteKnowledgeGraph(knowledgeId: string) {

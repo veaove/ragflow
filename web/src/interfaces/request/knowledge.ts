@@ -71,6 +71,14 @@ export interface IFetchArtifactGraphRequestParams {
   top_n?: number;
 }
 
+/** Knowledge graph browse/search. `keywords` drives one of the three entries. */
+export interface IFetchKnowledgeGraphRequestParams {
+  keywords?: string;
+  mode?: 'auto' | 'entity' | 'relation' | 'nl';
+  max_nodes?: number;
+  max_edges?: number;
+}
+
 export interface IUpdateArtifactPageRequestBody {
   content_md: string;
   comments: string;
