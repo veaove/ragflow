@@ -9,12 +9,37 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"ragflow/internal/entity"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
+
+// allowResource 给成员补一条逐人「可查看」授权。
+//
+// 可见范围收窄后，普通成员不再随 permission=team 自动可见；测试里要表达
+//「这个资源已经对成员开放」，就得显式造出这条授权，而不是靠 team 值。
+func allowResource(t *testing.T, db *gorm.DB, tenantID string, kind ResourceKind, resourceID, userID string, permission ...string) {
+	t.Helper()
+	level := "read"
+	if len(permission) > 0 && permission[0] != "" {
+		level = permission[0]
+	}
+	now := time.Now().UnixMilli()
+	row := &entity.ResourceGrant{
+		ID:           "grant-" + string(kind) + "-" + resourceID + "-" + userID,
+		TenantID:     tenantID,
+		ResourceKind: string(kind), ResourceID: resourceID,
+		SubjectKind: entity.GrantSubjectUser, SubjectID: userID,
+		Permission: level, Effect: entity.GrantEffectAllow,
+		BaseModel: entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+	}
+	if err := db.Create(row).Error; err != nil {
+		t.Fatalf("allow %s/%s for %s: %v", kind, resourceID, userID, err)
+	}
+}
 
 func TestDatabaseCheckerAuthorizesDatasetFromPersistedRows(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -47,6 +72,7 @@ func TestDatabaseCheckerAuthorizesDatasetFromPersistedRows(t *testing.T) {
 	if err := db.Create(&ownerMembership).Error; err != nil {
 		t.Fatalf("create owner membership: %v", err)
 	}
+	allowResource(t, db, dataset.TenantID, ResourceKindDataset, dataset.ID, membership.UserID, "edit")
 
 	checker := NewDatabaseChecker(db)
 	subject := Subject{UserID: membership.UserID}
@@ -93,8 +119,8 @@ func TestDatabaseCheckerAuthorizesDatasetFromPersistedRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveAccess(dataset) error = %v", err)
 	}
-	if access.TenantID != dataset.TenantID || access.Source != AccessSourceTenant {
-		t.Fatalf("dataset access = %+v, want tenant access", access)
+	if access.TenantID != dataset.TenantID || access.Source != AccessSourceShared {
+		t.Fatalf("dataset access = %+v, want explicit-grant access", access)
 	}
 }
 
@@ -159,6 +185,8 @@ func TestDatabaseCheckerScopesDatasetsToMembershipAndVisibility(t *testing.T) {
 			t.Fatalf("create dataset %q: %v", datasets[i].ID, err)
 		}
 	}
+	// 收窄后 team 值只到租户管理层；普通成员要看得到，必须有一条逐人授权。
+	allowResource(t, db, "member-tenant", ResourceKindDataset, "team-visible", "member-user")
 	memberships := []entity.UserTenant{
 		{ID: "member", UserID: "member-user", TenantID: "member-tenant", Role: string(RoleNormal), Status: &valid},
 		{ID: "admin", UserID: "admin-user", TenantID: "member-tenant", Role: string(RoleAdmin), Status: &valid},
@@ -270,7 +298,7 @@ func TestDatabaseCheckerSharedCanvasRestrictsOwnerOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.UserCanvas{}, &entity.UserTenant{}); err != nil {
+	if err := db.AutoMigrate(&entity.UserCanvas{}, &entity.UserTenant{}, &entity.ResourceGrant{}); err != nil {
 		t.Fatalf("migrate permission tables: %v", err)
 	}
 	valid := string(entity.StatusValid)
@@ -298,6 +326,8 @@ func TestDatabaseCheckerSharedCanvasRestrictsOwnerOperations(t *testing.T) {
 	if err := db.Create(&adminMembership).Error; err != nil {
 		t.Fatalf("create admin membership: %v", err)
 	}
+	// 收窄后普通成员不再随 team 值自动可见，测试里显式开一条可编辑授权。
+	allowResource(t, db, "owner-1", ResourceKindCanvas, "team-canvas", membership.UserID, "edit")
 	checker := NewDatabaseChecker(db)
 	teamCanvas := ResourceRef{Kind: ResourceKindCanvas, ID: "team-canvas"}
 	privateCanvas := ResourceRef{Kind: ResourceKindCanvas, ID: "private-canvas"}
@@ -317,8 +347,10 @@ func TestDatabaseCheckerSharedCanvasRestrictsOwnerOperations(t *testing.T) {
 			t.Errorf("canvas owner CheckResource(%s) error = %v, want nil", operation, err)
 		}
 	}
-	if err := checker.CheckResource(context.Background(), Subject{UserID: adminMembership.UserID}, teamCanvas, OperationRead); err != nil {
-		t.Errorf("tenant admin CheckResource(read) error = %v, want nil", err)
+	// team 值收窄成「租户管理层可见」后，由角色分配的租户管理员（role_id 而非
+	// enum owner）仍按普通成员处理：没有显式授权就进不来。
+	if err := checker.CheckResource(context.Background(), Subject{UserID: adminMembership.UserID}, teamCanvas, OperationRead); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("tenant admin CheckResource(read) error = %v, want %v", err, ErrPermissionDenied)
 	}
 	if err := checker.CheckResource(context.Background(), Subject{UserID: "owner-1"}, privateCanvas, OperationDelete); err != nil {
 		t.Errorf("owner CheckResource(delete) error = %v, want nil", err)
@@ -380,7 +412,7 @@ func TestDatabaseCheckerAuthorizesMemoryFromPersistedRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.Memory{}, &entity.UserTenant{}); err != nil {
+	if err := db.AutoMigrate(&entity.Memory{}, &entity.UserTenant{}, &entity.ResourceGrant{}); err != nil {
 		t.Fatalf("migrate permission tables: %v", err)
 	}
 
@@ -406,6 +438,8 @@ func TestDatabaseCheckerAuthorizesMemoryFromPersistedRows(t *testing.T) {
 	if err := db.Create(&membership).Error; err != nil {
 		t.Fatalf("create membership: %v", err)
 	}
+	// 收窄后 team 值只到租户管理层；成员要读写这条记忆，得有一条可编辑授权。
+	allowResource(t, db, "team-1", ResourceKindMemory, "team-memory", membership.UserID, "edit")
 
 	checker := NewDatabaseChecker(db)
 	teamRef := ResourceRef{Kind: ResourceKindMemory, ID: "team-memory"}
@@ -464,7 +498,7 @@ func TestDatabaseCheckerScopesMemoriesToOwnerAndTeamMembership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.Memory{}, &entity.UserTenant{}); err != nil {
+	if err := db.AutoMigrate(&entity.Memory{}, &entity.UserTenant{}, &entity.ResourceGrant{}); err != nil {
 		t.Fatalf("migrate permission tables: %v", err)
 	}
 
@@ -493,6 +527,8 @@ func TestDatabaseCheckerScopesMemoriesToOwnerAndTeamMembership(t *testing.T) {
 			t.Fatalf("create membership %q: %v", memberships[i].ID, err)
 		}
 	}
+	// 别人的 team 记忆现在要靠逐人授权才会出现在 scope 里。
+	allowResource(t, db, "team-1", ResourceKindMemory, "team-visible", "member-1")
 
 	scope, err := NewDatabaseChecker(db).Scope(context.Background(), Subject{UserID: "member-1"}, ScopeQuery{
 		Kind: ResourceKindMemory, Operation: OperationRead,
@@ -524,7 +560,7 @@ func TestDatabaseCheckerAuthorizesFilesThroughLinkedDatasetAccess(t *testing.T) 
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.File{}, &entity.File2Document{}, &entity.Document{}, &entity.Knowledgebase{}, &entity.UserTenant{}); err != nil {
+	if err := db.AutoMigrate(&entity.File{}, &entity.File2Document{}, &entity.Document{}, &entity.Knowledgebase{}, &entity.UserTenant{}, &entity.ResourceGrant{}); err != nil {
 		t.Fatalf("migrate permission tables: %v", err)
 	}
 
@@ -574,6 +610,9 @@ func TestDatabaseCheckerAuthorizesFilesThroughLinkedDatasetAccess(t *testing.T) 
 			t.Fatalf("create membership %q: %v", memberships[i].ID, err)
 		}
 	}
+	// 文件跟着关联库走；收窄后普通成员要靠这条授权才能读到团队库里的文件。
+	// 授权的租户维度用文件自己的 tenant（file-owner），判定链按 resource.TenantID 查。
+	allowResource(t, db, "file-owner", ResourceKindFile, "team-file", "team-member")
 
 	checker := NewDatabaseChecker(db)
 	teamFile := ResourceRef{Kind: ResourceKindFile, ID: "team-file"}
@@ -604,8 +643,10 @@ func TestDatabaseCheckerAuthorizesFilesThroughLinkedDatasetAccess(t *testing.T) 
 	if resource.TenantID != "file-owner" || resource.OwnerUserID != "file-owner" || resource.CreatedBy != "file-creator" {
 		t.Errorf("file authorization facts = %+v, want tenant/owner file-owner and creator file-creator", resource)
 	}
-	if resource.Visibility != VisibilityShared || len(resource.SharedWithTenantIDs) != 1 || resource.SharedWithTenantIDs[0] != "team-tenant" || len(resource.SharedWithUserIDs) != 1 || resource.SharedWithUserIDs[0] != "team-owner" {
-		t.Errorf("file sharing facts = %+v, want team tenant and its owner", resource)
+	// 库收窄成「租户管理层可见」后，文件不再对整个租户共享：共享名单里只留
+	// 库的所有者，普通成员改为逐人授权。
+	if resource.Visibility != VisibilityShared || len(resource.SharedWithTenantIDs) != 0 || len(resource.SharedWithUserIDs) != 1 || resource.SharedWithUserIDs[0] != "team-owner" {
+		t.Errorf("file sharing facts = %+v, want only the dataset owner", resource)
 	}
 }
 
@@ -662,16 +703,15 @@ func TestDatabaseCheckerScopesFilesAndFoldersToOwnedFolder(t *testing.T) {
 	}
 }
 
-// 知识问答应用是租户级资产：dialog 表没有 permission 列，表达不了"谁的私有
-// 应用"。原版一个用户一个租户，所以"同租户"就等于"自己"；多成员租户里按
-// owner 判私有会让除创建者外全员看不到，所以可见性留在租户一级，created_by
-// 只用于展示创建人和 owner 过滤。
+// 知识问答应用有自己的可见性列（owner / tenant_owner / platform），默认
+// owner：只有创建者与平台超管可见，其他成员要逐人授权。测试用一条可编辑
+// 授权模拟"这个问答应用已经对成员开放"。
 func TestDatabaseCheckerSharesChatsAcrossTenant(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.Chat{}, &entity.UserTenant{}); err != nil {
+	if err := db.AutoMigrate(&entity.Chat{}, &entity.UserTenant{}, &entity.ResourceGrant{}); err != nil {
 		t.Fatalf("migrate permission tables: %v", err)
 	}
 	valid := string(entity.StatusValid)
@@ -698,6 +738,7 @@ func TestDatabaseCheckerSharesChatsAcrossTenant(t *testing.T) {
 	if err := db.Create(&inviteMembership).Error; err != nil {
 		t.Fatalf("create invite membership: %v", err)
 	}
+	allowResource(t, db, "team-tenant", ResourceKindChat, "team-chat", membership.UserID, "edit")
 
 	checker := NewDatabaseChecker(db)
 	teamChat := ResourceRef{Kind: ResourceKindChat, ID: "team-chat"}
@@ -815,15 +856,14 @@ func TestDatabaseCheckerScopesChatSessionsAndRestrictsMutations(t *testing.T) {
 	}
 }
 
-// 知识搜索是团队共用的检索入口：同租户成员能看、能用来检索，但配置和删除
-// 仍归创建者。以前这里是"仅创建者可见"——那是"一个用户一个租户"时代的
-// 残留，团队租户里表现为"别人建的搜索应用我一条都看不到"。
+// 知识搜索默认 owner 档，分享靠逐人授权：只读授权能看、能用来检索，但配置
+// 和删除仍归创建者。
 func TestDatabaseCheckerSharesSearchAppsAcrossTenantButKeepsEditingToCreator(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.Search{}, &entity.UserTenant{}); err != nil {
+	if err := db.AutoMigrate(&entity.Search{}, &entity.UserTenant{}, &entity.ResourceGrant{}); err != nil {
 		t.Fatalf("migrate permission tables: %v", err)
 	}
 	valid := string(entity.StatusValid)
@@ -849,6 +889,7 @@ func TestDatabaseCheckerSharesSearchAppsAcrossTenantButKeepsEditingToCreator(t *
 			t.Fatalf("create membership %q: %v", memberships[i].ID, err)
 		}
 	}
+	allowResource(t, db, "team-tenant", ResourceKindSearchApp, "team-search", "member-1")
 
 	checker := NewDatabaseChecker(db)
 	teamSearch := ResourceRef{Kind: ResourceKindSearchApp, ID: "team-search"}

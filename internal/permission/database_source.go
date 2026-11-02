@@ -966,15 +966,21 @@ func (s *databaseSource) loadDatasets(ctx context.Context, ids []string) (map[st
 	return datasetsByID, ownerIDsByTenant, nil
 }
 
+// visibilityFromStored 把资源表的可见性列（含历史的 me / team）映射成判定用的
+// 枚举。收窄语义见 internal/entity/visibility.go：me → owner、team → tenant_owner。
+func visibilityFromStored(value string) Visibility {
+	switch entity.NormalizeResourceVisibility(value) {
+	case entity.ResourceVisibilityTenantOwner:
+		return VisibilityTenantOwner
+	case entity.ResourceVisibilityPlatform:
+		return VisibilityPlatform
+	}
+	return VisibilityOwner
+}
+
 func datasetResource(dataset *entity.Knowledgebase, ownerIDsByTenant map[string]string) Resource {
 	ownerUserID := ownerIDsByTenant[dataset.TenantID]
-	visibility := VisibilityPrivate
-	switch dataset.Permission {
-	case string(entity.TenantPermissionMe):
-		visibility = VisibilityPrivate
-	case string(entity.TenantPermissionTeam):
-		visibility = VisibilityTenant
-	}
+	visibility := visibilityFromStored(dataset.Permission)
 	return Resource{
 		Ref:               ResourceRef{Kind: ResourceKindDataset, ID: dataset.ID},
 		TenantID:          dataset.TenantID,
@@ -989,10 +995,7 @@ func datasetResource(dataset *entity.Knowledgebase, ownerIDsByTenant map[string]
 }
 
 func canvasResource(canvas *entity.UserCanvas) Resource {
-	visibility := VisibilityPrivate
-	if canvas.Permission == string(entity.TenantPermissionTeam) {
-		visibility = VisibilityTenant
-	}
+	visibility := visibilityFromStored(canvas.Permission)
 	// tenant_id was added later; rows written before it exist have it empty, so
 	// fall back to user_id to keep their behaviour identical.
 	tenantID := canvas.TenantID
@@ -1025,10 +1028,7 @@ func agentSessionResource(session *entity.API4Conversation, canvas *entity.UserC
 }
 
 func memoryResource(memory *entity.Memory) Resource {
-	visibility := VisibilityPrivate
-	if memory.Permissions == string(entity.TenantPermissionTeam) {
-		visibility = VisibilityTenant
-	}
+	visibility := visibilityFromStored(memory.Permissions)
 	// The owner is the creator, not the tenant: tenant_id says who may share the
 	// memory, created_by says who owns it. Rows predating created_by stored the
 	// creator's user id in tenant_id, so falling back to it keeps them working.
@@ -1050,9 +1050,9 @@ func memoryResource(memory *entity.Memory) Resource {
 }
 
 func chatResource(chat *entity.Chat) Resource {
-	// 知识问答应用是租户级资产：dialog 表没有 permission 列，表达不了
-	// "谁的私有应用"，所以整租户可见、成员可改。created_by 只用于展示创建人
-	// 和 owner 过滤；行写于 created_by 之前时创建人存在 tenant_id 里，回落即可。
+	// 知识问答应用现在有自己的可见性列（owner / tenant_owner / platform）。
+	// 默认 owner：普通成员看不到别人的问答应用，要看到必须逐人授权。
+	// created_by 行写于该列之前时创建人存在 tenant_id 里，回落即可。
 	operations := []Operation{OperationRead, OperationCreate, OperationUpdate, OperationDelete, OperationRun, OperationUse}
 	creator := chat.CreatedBy
 	if creator == "" {
@@ -1063,7 +1063,7 @@ func chatResource(chat *entity.Chat) Resource {
 		TenantID:          chat.TenantID,
 		CreatedBy:         creator,
 		OwnerUserID:       creator,
-		Visibility:        VisibilityTenant,
+		Visibility:        visibilityFromStored(chat.Permission),
 		TenantRequirement: TenantNormalMember,
 		OwnerOperations:   operations,
 		TenantOperations:  operations,
@@ -1072,14 +1072,14 @@ func chatResource(chat *entity.Chat) Resource {
 }
 
 func searchAppResource(searchApp *entity.Search) Resource {
-	// 同理：知识搜索是团队共用的检索入口。创建者保留完整操作，其他成员
-	// 能看、能用来检索，但不能改别人的配置。
+	// 知识搜索同样有自己的可见性列，默认 owner：创建者保留完整操作，其他
+	// 成员要看到必须逐人授权（授权为 read 时只能用于检索、不能改配置）。
 	return Resource{
 		Ref:               ResourceRef{Kind: ResourceKindSearchApp, ID: searchApp.ID},
 		TenantID:          searchApp.TenantID,
 		CreatedBy:         searchApp.CreatedBy,
 		OwnerUserID:       searchApp.CreatedBy,
-		Visibility:        VisibilityTenant,
+		Visibility:        visibilityFromStored(searchApp.Permission),
 		TenantRequirement: TenantNormalMember,
 		OwnerOperations:   []Operation{OperationRead, OperationUpdate, OperationDelete, OperationRun, OperationUse},
 		TenantOperations:  []Operation{OperationRead, OperationRun, OperationUse},
@@ -1162,6 +1162,8 @@ func fileResource(kind ResourceKind, file *entity.File, datasetIDs []string, dat
 		}
 		datasetAccess := datasetResource(dataset, ownerIDsByTenant)
 		sharedWithUserIDs = append(sharedWithUserIDs, datasetAccess.OwnerUserID)
+		// 只有"全租户可见"的库才把租户写进共享名单：库收窄到租户管理层后，
+		// 文件跟着收窄，成员改为逐人授权（见 resource_grant）。
 		if datasetAccess.Visibility == VisibilityTenant {
 			sharedWithTenantIDs = append(sharedWithTenantIDs, datasetAccess.TenantID)
 		}

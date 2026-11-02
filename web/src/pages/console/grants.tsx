@@ -19,24 +19,40 @@ import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import {
   ConsoleMember,
   DepartmentNode,
+  GrantKindOption,
   GrantResource,
   GrantSubject,
+  GrantVisibility,
   fetchConsoleMembers,
   fetchDepartments,
+  fetchGrantKinds,
   fetchGrants,
   setGrants,
+  setGrantVisibility,
 } from '@/services/console-service';
 
-import { GrantDialog, GrantTarget, defaultScopeLabel } from './grant-dialog';
+import {
+  GrantDialog,
+  GrantTarget,
+  VISIBILITY_OPTIONS,
+  defaultScopeLabel,
+} from './grant-dialog';
 import { GrantDocumentRows } from './grant-document-rows';
 import { GrantKeys } from './grant-keys';
 
-type GrantKind = 'dataset' | 'canvas' | 'memory';
+type GrantKind = string;
 
-const KIND_TABS: { key: GrantKind; label: string }[] = [
-  { key: 'dataset', label: '知识库' },
-  { key: 'canvas', label: '智能体' },
-  { key: 'memory', label: '记忆中心' },
+/**
+ * 后端 grant-kinds 不可用时的兜底清单。正常情况下 Tab 全部由接口给出
+ *（知识库 / 知识问答 / 知识搜索 / 智能体 / 记忆中心 / 文件 / 文件夹 / …），
+ * 这里只保证老后端上页面不至于空掉。
+ */
+const FALLBACK_KINDS: GrantKindOption[] = [
+  { kind: 'dataset', label: '知识库', supports_visibility: true },
+  { kind: 'chat', label: '知识问答', supports_visibility: true },
+  { kind: 'search_app', label: '知识搜索', supports_visibility: true },
+  { kind: 'canvas', label: '智能体', supports_visibility: true },
+  { kind: 'memory', label: '记忆中心', supports_visibility: true },
 ];
 
 const PAGE_SIZE = 20;
@@ -44,18 +60,24 @@ const PAGE_SIZE = 20;
 interface ResourceRowProps {
   row: GrantResource;
   kind: GrantKind;
+  kindLabel: string;
+  supportsVisibility: boolean;
   expanded: boolean;
   onToggle: (resourceId: string) => void;
   onEdit: (row: GrantResource) => void;
+  onVisibilityChange: (row: GrantResource, next: GrantVisibility) => void;
 }
 
 /** 资源行。知识库行可展开，展开后下面接它自己的文件列表。 */
 function ResourceRow({
   row,
   kind,
+  kindLabel,
+  supportsVisibility,
   expanded,
   onToggle,
   onEdit,
+  onVisibilityChange,
 }: ResourceRowProps) {
   const handleToggle = useCallback(() => {
     onToggle(row.resource_id);
@@ -64,6 +86,13 @@ function ResourceRow({
   const handleEdit = useCallback(() => {
     onEdit(row);
   }, [onEdit, row]);
+
+  const handleVisibilityChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      onVisibilityChange(row, e.target.value as GrantVisibility);
+    },
+    [onVisibilityChange, row],
+  );
 
   return (
     <TableRow>
@@ -87,28 +116,46 @@ function ResourceRow({
         )}
       </TableCell>
       <TableCell className="text-xs text-text-secondary">
-        {KIND_TABS.find((x) => x.key === kind)?.label}
+        {kindLabel}
       </TableCell>
       <TableCell className="text-xs">
         {row.owner_name || row.owner_id || '-'}
       </TableCell>
       <TableCell className="text-xs">
-        {row.grants?.length ? (
-          <div className="flex flex-wrap gap-1">
-            {row.grants.map((g, idx) => (
-              <span
-                key={`${g.kind}-${g.id}-${idx}`}
-                className="rounded bg-accent-primary/10 px-1.5 py-0.5 text-accent-primary"
-              >
-                {g.name}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <span className="text-text-secondary">
-            {defaultScopeLabel(row.default_scope)}
-          </span>
-        )}
+        <div className="flex flex-col gap-1">
+          {row.visibility ? (
+            <select
+              value={row.visibility}
+              onChange={handleVisibilityChange}
+              disabled={!supportsVisibility}
+              title="可见范围：收窄档位，普通成员需逐人授权"
+              className="w-36 rounded border border-border-default bg-bg-base px-1.5 py-0.5 text-xs text-text-primary"
+            >
+              {VISIBILITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {row.grants?.length ? (
+            <div className="flex flex-wrap gap-1">
+              {row.grants.map((g, idx) => (
+                <span
+                  key={`${g.kind}-${g.id}-${idx}`}
+                  className="rounded bg-accent-primary/10 px-1.5 py-0.5 text-accent-primary"
+                >
+                  {g.name}
+                  {g.permission === 'read' ? '·只读' : ''}
+                </span>
+              ))}
+            </div>
+          ) : row.visibility ? null : (
+            <span className="text-text-secondary">
+              {defaultScopeLabel(row.default_scope)}
+            </span>
+          )}
+        </div>
       </TableCell>
       <TableCell className="whitespace-nowrap text-xs">
         <button
@@ -192,6 +239,21 @@ export default function ConsoleGrants() {
     members: members.map((m) => ({ id: m.id, name: m.nickname || m.email })),
   };
 
+  // Tab 清单来自后端注册表：新增一类可授权资源只需后端登记，前端自动出现。
+  const { data: kindData } = useQuery({
+    queryKey: ['console/grant-kinds', tenantId],
+    enabled: !!tenantId,
+    queryFn: async () => {
+      const res = await fetchGrantKinds(tenantId as string);
+      return res?.data?.data ?? { kinds: [] as GrantKindOption[] };
+    },
+  });
+  const kinds: GrantKindOption[] =
+    kindData?.kinds?.length ? kindData.kinds : FALLBACK_KINDS;
+  const activeKind = kinds.find((x) => x.kind === kind);
+  const kindLabel = activeKind?.label ?? '';
+  const supportsVisibility = activeKind?.supports_visibility ?? false;
+
   const { data, isFetching } = useQuery({
     queryKey: GrantKeys.resources(
       tenantId ?? '',
@@ -256,7 +318,7 @@ export default function ConsoleGrants() {
         resourceId: row.resource_id,
         name: row.resource_name || '未命名资源',
         grants: row.grants ?? [],
-        defaultScope: row.default_scope,
+        defaultScope: row.visibility || row.default_scope,
       });
     },
     [kind],
@@ -265,6 +327,19 @@ export default function ConsoleGrants() {
   const handleCloseDialog = useCallback(() => {
     setEditing(null);
   }, []);
+
+  const handleVisibilityChange = useCallback(
+    async (row: GrantResource, next: GrantVisibility) => {
+      if (!tenantId) return;
+      try {
+        await setGrantVisibility(tenantId, kind, row.resource_id, next);
+      } finally {
+        // 成功或失败都以服务端为准重新拉一次，避免下拉停在没保存成功的值上。
+        queryClient.invalidateQueries({ queryKey: GrantKeys.resourcesRoot });
+      }
+    },
+    [kind, queryClient, tenantId],
+  );
 
   const handleSubmit = useCallback(
     async (target: GrantTarget, subjects: GrantSubject[]) => {
@@ -293,20 +368,21 @@ export default function ConsoleGrants() {
             {t('console.grants')}
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            配置知识库、智能体、记忆中心的可见范围；知识库可展开到单个文件
+            配置知识库、知识问答、知识搜索、智能体、记忆中心等资源的可见范围；
+            可见范围分「仅所有者 / 租户管理层 / 平台管理员」三档，普通成员需逐人授权
           </p>
         </header>
 
         <div className="mb-3 flex flex-wrap items-center gap-3">
-          <div className="flex gap-1 rounded-md bg-background-second p-1">
-            {KIND_TABS.map((tab) => (
+          <div className="flex flex-wrap gap-1 rounded-md bg-background-second p-1">
+            {kinds.map((tab) => (
               <button
-                key={tab.key}
+                key={tab.kind}
                 type="button"
-                value={tab.key}
+                value={tab.kind}
                 onClick={handleKindChange}
                 className={`rounded px-3 py-1 text-sm ${
-                  kind === tab.key
+                  kind === tab.kind
                     ? 'bg-bg-base text-text-primary shadow-sm'
                     : 'text-text-secondary hover:text-text-primary'
                 }`}
@@ -354,9 +430,12 @@ export default function ConsoleGrants() {
                   <ResourceRow
                     row={row}
                     kind={kind}
+                    kindLabel={kindLabel}
+                    supportsVisibility={supportsVisibility}
                     expanded={expandedId === row.resource_id}
                     onToggle={handleToggleExpand}
                     onEdit={handleEditResource}
+                    onVisibilityChange={handleVisibilityChange}
                   />
                   {kind === 'dataset' && expandedId === row.resource_id && (
                     <GrantDocumentRows

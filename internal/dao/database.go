@@ -451,6 +451,33 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 	if err := ensureTenantEnabledColumn(ctx, db); err != nil {
 		return err
 	}
+
+	// dialog / search 的可见性列：知识问答与知识搜索纳入三级可见性。
+	if err := ensureAppVisibilityColumns(ctx, db); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ensureAppVisibilityColumns 幂等地给 dialog、search 补 permission 列。
+//
+// 存量行回填 'owner'：收窄语义下最严的一档就是"只有创建者和超管可见"。
+// 回填 'team' 会让知识问答 / 知识搜索维持"全租户可见"，与本次改版相反。
+func ensureAppVisibilityColumns(ctx context.Context, db *gorm.DB) error {
+	for _, model := range []interface{}{&entity.Chat{}, &entity.Search{}} {
+		added, err := ensureColumn(ctx, db, model, "permission", "Permission")
+		if err != nil {
+			return err
+		}
+		if !added {
+			continue
+		}
+		if err := db.WithContext(ctx).Model(model).
+			Where("permission IS NULL OR permission = ''").
+			Update("permission", entity.ResourceVisibilityOwner).Error; err != nil {
+			return fmt.Errorf("backfill %T.permission: %w", model, err)
+		}
+	}
 	return nil
 }
 

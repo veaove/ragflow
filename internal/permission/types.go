@@ -137,6 +137,15 @@ const (
 	VisibilityPrivate Visibility = "private"
 	VisibilityTenant  Visibility = "tenant"
 	VisibilityShared  Visibility = "shared"
+
+	// 三级收窄可见性（见 internal/entity/visibility.go）：
+	//   owner        仅资源 owner（创建者）与平台超级管理员
+	//   tenant_owner 资源 owner + 本租户 owner / 租户管理员 + 平台超级管理员
+	//   platform     同 tenant_owner，另供平台侧跨租户视图与审计
+	// 普通成员不在任何一档里，要看到别人的资源必须走显式授权（resource_grant）。
+	VisibilityOwner       Visibility = "owner"
+	VisibilityTenantOwner Visibility = "tenant_owner"
+	VisibilityPlatform    Visibility = "platform"
 )
 
 // Resource contains normalized authorization and attribution facts loaded from
@@ -168,6 +177,9 @@ const (
 	AccessSourceTenant  AccessSource = "tenant"
 	AccessSourceCreator AccessSource = "creator"
 	AccessSourceShared  AccessSource = "shared"
+	// AccessSourcePlatformAdmin 是平台超级管理员（user.is_superuser）的判定来源。
+	// 它不受租户边界约束，只用于平台运维与审计。
+	AccessSourcePlatformAdmin AccessSource = "platform_admin"
 )
 
 // Access describes the operations a subject can perform on a resource.

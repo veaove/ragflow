@@ -80,13 +80,21 @@ func installGrantDB(t *testing.T) {
 			t.Fatalf("seed membership %s: %v", m.id, err)
 		}
 	}
-	// permission=team: the member already sees the whole dataset, so only a
-	// file-level rule can tighten anything.
+	// 收窄语义：库对普通成员默认不可见，先给一条库级「可查看」授权，文件级
+	// 规则才有"继续收紧"的意义。
 	if err := db.Create(&entity.Knowledgebase{
 		ID: grantKbID, TenantID: grantTenantID, Name: "kb", CreatedBy: grantOwnerID,
-		Permission: string(entity.TenantPermissionTeam), Status: &valid,
+		Permission: entity.ResourceVisibilityTenantOwner, Status: &valid,
 	}).Error; err != nil {
 		t.Fatalf("seed kb: %v", err)
+	}
+	if err := db.Create(&entity.ResourceGrant{
+		ID: "g-kb-member", TenantID: grantTenantID,
+		ResourceKind: string(permission.ResourceKindDataset), ResourceID: grantKbID,
+		SubjectKind: entity.GrantSubjectUser, SubjectID: grantMemberID,
+		Permission: "read", Effect: entity.GrantEffectAllow,
+	}).Error; err != nil {
+		t.Fatalf("seed kb grant: %v", err)
 	}
 	for _, id := range []string{grantDeniedDoc, grantReadableDoc} {
 		name := id + ".txt"

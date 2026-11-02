@@ -11,7 +11,12 @@ import {
 } from '@/components/ui/dialog';
 import type { GrantSubject } from '@/services/console-service';
 
-export type GrantKind = 'dataset' | 'canvas' | 'memory' | 'document';
+/**
+ * 可授权的资源类型。取值由后端 grant-kind 注册表决定
+ *（dataset / chat / search_app / canvas / memory / file / folder / …），
+ * 前端不再维护第二份清单，避免两边漂移。
+ */
+export type GrantKind = string;
 
 /** 一次授权编辑的目标：可以是资源（知识库 / 智能体 / 记忆），也可以是库内文件。 */
 export interface GrantTarget {
@@ -40,12 +45,23 @@ interface GrantDialogProps {
   onSubmit: (target: GrantTarget, subjects: GrantSubject[]) => Promise<void>;
 }
 
-/** 旧二值字段的可读名，用于没有显式规则时的回退展示。 */
+/**
+ * 可见范围的可读名。三级是收窄语义：普通成员不在任何一档里，必须逐人 /
+ * 逐部门授权；me / team 是升级前的历史值，按同一套文案展示。
+ */
 export function defaultScopeLabel(scope: string) {
   if (scope === 'inherit') return '继承自知识库';
-  if (scope === 'team') return '全团队（默认）';
-  return '仅自己（默认）';
+  if (scope === 'tenant_owner' || scope === 'team') return '租户管理层可见';
+  if (scope === 'platform') return '平台管理员可见';
+  return '仅所有者可见';
 }
+
+/** 三级可见性的下拉选项（顺序由窄到宽）。 */
+export const VISIBILITY_OPTIONS: { value: string; label: string }[] = [
+  { value: 'owner', label: '仅所有者可见' },
+  { value: 'tenant_owner', label: '租户管理层可见' },
+  { value: 'platform', label: '平台管理员可见' },
+];
 
 function permissionLabel(permission: string | undefined) {
   return permission === 'edit' ? '可编辑' : '可查看';

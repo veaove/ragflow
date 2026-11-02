@@ -142,8 +142,9 @@ func inferModuleAction(path, method string) (string, string) {
 		module = moduleMember
 	case strings.Contains(path, "/roles"):
 		module = moduleRole
-	case strings.Contains(path, "/grants"):
-		// 资源授权是独立模块，和「角色管理」分开授权
+	case strings.Contains(path, "/grants"), strings.Contains(path, "/grant-kinds"):
+		// 资源授权是独立模块，和「角色管理」分开授权。grant-kinds 是同一
+		// 页面的 Tab 清单，必须跟着同一个模块走，否则它会绕过 grant.view。
 		module = "grant"
 	default:
 		return "", ""
@@ -613,6 +614,61 @@ func (h *ConsoleHandler) ListResourceGrants(c *gin.Context) {
 		return
 	}
 	common.SuccessWithData(c, gin.H{"resources": rows, "total": total}, "success")
+}
+
+// ListResourceGrantKinds handles GET /tenants/:tenant_id/grants/kinds.
+//
+// 返回资源授权页支持的全部资源类型（顺序即 Tab 顺序）。清单只由后端注册表
+// 维护，前端不再自带一份会与后端漂移的硬编码列表。
+func (h *ConsoleHandler) ListResourceGrantKinds(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	tenantID := consoleTenantID(c)
+	if err := requireTenantAccess(c, user.ID, tenantID, false); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{"kinds": service.GrantKindOptions()}, "success")
+}
+
+// SetResourceGrantVisibility handles
+// PUT /tenants/:tenant_id/grants/:kind/:resource_id/visibility.
+//
+// 三级可见性（owner / tenant_owner / platform）写在资源自己的列上，与判定链
+// 读的是同一列，因此不会出现"控制台改了、实际判定没变"。
+func (h *ConsoleHandler) SetResourceGrantVisibility(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	tenantID := consoleTenantID(c)
+	if err := requireTenantAccess(c, user.ID, tenantID, true); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
+		return
+	}
+
+	var req struct {
+		Visibility string `json:"visibility"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, err.Error())
+		return
+	}
+
+	got, err := service.NewResourceGrantService().SetVisibility(
+		c.Request.Context(), tenantID, c.Param("kind"), c.Param("resource_id"), req.Visibility,
+	)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
+	auditConsoleChange(c, user, tenantID, "update", "resource_grant_visibility", c.Param("resource_id"), nil,
+		entity.JSONMap{"kind": c.Param("kind"), "visibility": got})
+	common.SuccessWithData(c, gin.H{"resource_id": c.Param("resource_id"), "visibility": got}, "success")
 }
 
 // ListResourceGrantDocuments handles

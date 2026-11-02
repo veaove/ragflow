@@ -380,11 +380,18 @@ func (r *Router) Setup(engine *gin.Engine) {
 				tenants.PUT("/:tenant_id/roles/:id", r.consoleHandler.UpdateConsoleRole)
 				tenants.DELETE("/:tenant_id/roles/:id", r.consoleHandler.DeleteConsoleRole)
 				tenants.PUT("/:tenant_id/roles/:id/permissions", r.consoleHandler.SaveConsolePermissions)
-				// 资源授权：知识库 / 智能体 / 记忆的可见范围
+				// 资源授权：知识库 / 知识问答 / 知识搜索 / 智能体 / 记忆中心等全部
+				// 已登记的资源类型
 				tenants.GET("/:tenant_id/grants", r.consoleHandler.ListResourceGrants)
+				// 资源授权页的 Tab 清单（后端注册表是唯一事实来源）。单独一条
+				// 路径而不是 /grants/kinds：后者会和 /grants/:kind/... 抢同一
+				// 段通配，路由树上静态段优先但不值得赌框架行为。
+				tenants.GET("/:tenant_id/grant-kinds", r.consoleHandler.ListResourceGrantKinds)
 				// 文件级授权：展开某个知识库时按需拉取库内文件及其规则
 				tenants.GET("/:tenant_id/grants/:kind/:resource_id/documents", r.consoleHandler.ListResourceGrantDocuments)
 				tenants.PUT("/:tenant_id/grants/:kind/:resource_id", r.consoleHandler.SetResourceGrants)
+				// 三级可见性：owner / tenant_owner / platform
+				tenants.PUT("/:tenant_id/grants/:kind/:resource_id/visibility", r.consoleHandler.SetResourceGrantVisibility)
 				// Owner 移交给本租户里的另一个成员
 				tenants.POST("/:tenant_id/console/owner/transfer", r.consoleHandler.TransferTenantOwner)
 				// 当前用户在租户内的有效权限（前端据此隐藏菜单 / 守卫路由）

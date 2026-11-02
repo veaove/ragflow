@@ -201,22 +201,61 @@ export interface GrantSubject {
   effect?: 'allow' | 'deny';
 }
 
+/**
+ * 三级可见性（收窄语义）。
+ *
+ * - owner：仅资源所有者与平台超级管理员可见
+ * - tenant_owner：资源所有者 + 本租户 owner / 管理员 + 平台超级管理员
+ * - platform：同 tenant_owner，另供平台侧跨租户视图
+ *
+ * 普通成员不在任何一档里，要看到别人的资源必须逐人 / 逐部门授权。
+ */
+export type GrantVisibility = 'owner' | 'tenant_owner' | 'platform';
+
 /** 一行资源 + 它当前的授权规则。 */
 export interface GrantResource {
   resource_id: string;
   resource_name: string;
   owner_id: string;
   owner_name: string;
-  /** 旧二值语义：private（仅自己）/ team（全团队），没有显式规则时由它决定。 */
+  /** 三级可见性；空串表示这类资源不参与三档（仅逐人授权）。 */
+  visibility?: GrantVisibility | '';
+  /** 旧二值语义：private（仅自己）/ team（全团队），保留给未升级的读法。 */
   default_scope: string;
   grants: GrantSubject[];
   update_time: number;
 }
 
+/** 资源授权页的一个 Tab：由后端注册表给出，前端不再硬编码。 */
+export interface GrantKindOption {
+  kind: string;
+  label: string;
+  supports_visibility: boolean;
+}
+
+/** 后端登记的全部可授权资源类型（顺序即 Tab 顺序）。 */
+export const fetchGrantKinds = (tenantId: string) =>
+  request.get<ApiEnvelope<{ kinds: GrantKindOption[] }>>(
+    api.tenantGrantKinds(tenantId),
+  );
+
+/** 写入三级可见性；不支持三档的资源会返回错误。 */
+export const setGrantVisibility = (
+  tenantId: string,
+  kind: string,
+  resourceId: string,
+  visibility: GrantVisibility,
+) =>
+  request.put<
+    ResponseData<{ resource_id: string; visibility: GrantVisibility }>
+  >(api.tenantGrantVisibility(tenantId, kind, resourceId), {
+    data: { visibility },
+  });
+
 export const fetchGrants = (
   tenantId: string,
   params: {
-    kind: 'dataset' | 'canvas' | 'memory';
+    kind: string;
     keywords?: string;
     page?: number;
     page_size?: number;
@@ -260,7 +299,7 @@ export const fetchGrantDocuments = (
  */
 export const setGrants = (
   tenantId: string,
-  kind: 'dataset' | 'canvas' | 'memory' | 'document',
+  kind: string,
   resourceId: string,
   subjects: GrantSubject[],
   parentId?: string,

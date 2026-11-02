@@ -55,6 +55,10 @@ type Chat struct {
 	TenantRerankID         *string   `gorm:"column:tenant_rerank_id;size:32;index" json:"tenant_rerank_id,omitempty"`
 	KBIDs                  JSONSlice `gorm:"column:kb_ids;type:longtext;not null" json:"kb_ids"`
 	Status                 *string   `gorm:"column:status;size:1;index" json:"status,omitempty"`
+	// Permission 是可见性三档（owner / tenant_owner / platform），见
+	// entity/visibility.go。知识问答应用默认只对创建者与超管可见，其他成员
+	// 要看到必须逐人 / 逐部门授权。
+	Permission string `gorm:"column:permission;size:16;not null;default:owner;index" json:"permission"`
 	BaseModel
 }
 

@@ -26,6 +26,7 @@ import (
 	"ragflow/internal/entity"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type communityPolicy struct {
@@ -53,6 +54,10 @@ type evaluation struct {
 	// tenantAdmins caches "does this user administer this tenant", keyed by
 	// "userID\x00tenantID". A listing touches the same tenant over and over.
 	tenantAdmins map[string]bool
+	// platformAdmins caches "is this user a platform super admin". The flag lives
+	// on the user row and never changes mid-evaluation, so one read per user is
+	// enough even when a listing walks hundreds of resources.
+	platformAdmins map[string]bool
 }
 
 func newPolicy(source Source) policy {
@@ -342,6 +347,7 @@ func newEvaluation(source Source) *evaluation {
 		departmentScope:    make(map[string][]string),
 		creatorDepartments: make(map[string]string),
 		tenantAdmins:       make(map[string]bool),
+		platformAdmins:     make(map[string]bool),
 	}
 }
 
@@ -529,6 +535,73 @@ func (e *evaluation) grantLevel(ctx context.Context, subject Subject, resource R
 	return "read", nil
 }
 
+// tieredAccess 判定三级收窄档位（owner / tenant_owner / platform）里「租户
+// 管理层之外」的可见性：创建者始终可用，部门管理员只读可见，其余人只能靠
+// resource_grant 显式授权。
+//
+// 与 VisibilityPrivate 的差别只有一处：租户管理员由调用方在进这一支之前判定
+// （owner 档不放行、tenant_owner / platform 档放行），这里不再放行租户管理员。
+func (e *evaluation) tieredAccess(ctx context.Context, subject Subject, resource Resource) (Access, error) {
+	if resource.CreatedBy != "" && subject.UserID == resource.CreatedBy {
+		return resourceAccess(resource, AccessSourceOwner), nil
+	}
+	level, err := e.grantLevel(ctx, subject, resource)
+	if err != nil {
+		return Access{}, err
+	}
+	if level != "" {
+		operations := resource.TenantOperations
+		if operations == nil {
+			operations = resource.OwnerOperations
+		}
+		if level == "read" {
+			operations = readOnlyOperations(operations)
+		}
+		return resourceAccessWithOperations(resource, AccessSourceShared, operations), nil
+	}
+	// 部门管理员看得到本部门（含子部门）成员创建的内容：只给「看 + 用」，
+	// 改 / 删 / 再授权仍归创建者与租户管理层。与 VisibilityPrivate 一致。
+	if covered, err := e.departmentAdminCovers(ctx, subject, resource); err != nil {
+		return Access{}, err
+	} else if covered {
+		operations := resource.TenantOperations
+		if operations == nil {
+			operations = resource.OwnerOperations
+		}
+		return resourceAccessWithOperations(resource, AccessSourceTenant, readOnlyOperations(operations)), nil
+	}
+	return Access{}, ErrPermissionDenied
+}
+
+// isPlatformAdmin reports whether userID is a platform super administrator.
+//
+// 平台超管（user.is_superuser）与租户内 owner / 管理员是三件不同的事：前者
+// 不受租户边界约束，只用于平台运维与审计。读不到标志位时按「不是」处理 ——
+// 收紧比放开安全。
+func (e *evaluation) isPlatformAdmin(ctx context.Context, userID string) bool {
+	if strings.TrimSpace(userID) == "" {
+		return false
+	}
+	if cached, ok := e.platformAdmins[userID]; ok {
+		return cached
+	}
+	admin := false
+	if source, ok := e.source.(*databaseSource); ok && source.db != nil {
+		var row struct {
+			IsSuperuser *bool `gorm:"column:is_superuser"`
+		}
+		// 判定用的查询不写日志：user 表缺失（老库 / 精简测试库）属于"不是超管"
+		// 的常规分支，不该在每次权限判定时刷一条 SQL 错误。
+		if err := source.db.Session(&gorm.Session{Logger: logger.Discard}).WithContext(ctx).
+			Model(&entity.User{}).
+			Select("is_superuser").Where("id = ?", userID).Take(&row).Error; err == nil {
+			admin = row.IsSuperuser != nil && *row.IsSuperuser
+		}
+	}
+	e.platformAdmins[userID] = admin
+	return admin
+}
+
 func (e *evaluation) resolveAccess(ctx context.Context, subject Subject, ref ResourceRef) (Access, error) {
 	if err := validateSubject(subject); err != nil {
 		return Access{}, err
@@ -557,12 +630,29 @@ func (e *evaluation) resolveResource(ctx context.Context, subject Subject, resou
 		return Access{}, fmt.Errorf("%w: invalid delegated operations", ErrInvalidPermission)
 	}
 	switch resource.Visibility {
-	case VisibilityPrivate, VisibilityTenant, VisibilityShared:
+	case VisibilityPrivate, VisibilityTenant, VisibilityShared,
+		VisibilityOwner, VisibilityTenantOwner, VisibilityPlatform:
 	default:
 		return Access{}, fmt.Errorf("%w: unknown resource visibility %q", ErrInvalidPermission, resource.Visibility)
 	}
 	if subject.UserID == resource.OwnerUserID {
 		return resourceAccess(resource, AccessSourceOwner), nil
+	}
+	// 平台超级管理员是跨租户的运维 / 审计身份：任何一档可见性下都能看，
+	// 但来源被单独标记，排障时能和「资源 owner」区分开。
+	if e.isPlatformAdmin(ctx, subject.UserID) {
+		return resourceAccess(resource, AccessSourcePlatformAdmin), nil
+	}
+	// 收窄档位：租户管理员只在 tenant_owner / platform 里可见。owner 档连
+	// 租户管理员都不放行 —— 否则「仅资源 owner 可见」会被管理层无声穿透。
+	switch resource.Visibility {
+	case VisibilityOwner:
+		return e.tieredAccess(ctx, subject, resource)
+	case VisibilityTenantOwner, VisibilityPlatform:
+		if e.isTenantAdmin(ctx, subject.UserID, resource.TenantID) {
+			return resourceAccess(resource, AccessSourceTenant), nil
+		}
+		return e.tieredAccess(ctx, subject, resource)
 	}
 	// 租户管理员看得到本租户的一切。枚举 owner 由上面那条命中（知识库的
 	// OwnerUserID 就是租户 owner 的 user id），但控制台分配的「租户管理员」
@@ -646,6 +736,20 @@ func (e *evaluation) resolveResource(ctx context.Context, subject Subject, resou
 				return Access{}, err
 			}
 			return resourceAccess(resource, AccessSourceShared), nil
+		}
+		// 共享资源同样接受逐人 / 逐部门授权：文件这类资源没法把"给某个成员
+		// 单独开权限"写进共享名单，只能落在 resource_grant 上。
+		if level, err := e.grantLevel(ctx, subject, resource); err != nil {
+			return Access{}, err
+		} else if level != "" {
+			operations := resource.TenantOperations
+			if operations == nil {
+				operations = resource.OwnerOperations
+			}
+			if level == "read" {
+				operations = readOnlyOperations(operations)
+			}
+			return resourceAccessWithOperations(resource, AccessSourceShared, operations), nil
 		}
 		return Access{}, ErrPermissionDenied
 	default:

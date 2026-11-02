@@ -534,6 +534,12 @@ export default {
     `${restAPIv1}/tenants/${tenantId}/grants/${kind}/${resourceId}`,
   tenantGrantDocuments: (tenantId: string, datasetId: string) =>
     `${restAPIv1}/tenants/${tenantId}/grants/dataset/${datasetId}/documents`,
+  /** 资源授权页支持的资源类型（后端注册表是唯一事实来源） */
+  tenantGrantKinds: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/grant-kinds`,
+  /** 三级可见性：owner / tenant_owner / platform */
+  tenantGrantVisibility: (tenantId: string, kind: string, resourceId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/grants/${kind}/${resourceId}/visibility`,
   adminCreateTenant: `${restAPIv1}/admin/tenants`,
   adminCreateUser: `${restAPIv1}/admin/users`,
   adminUpdateUser: (username: string) => `${restAPIv1}/admin/users/${username}`,

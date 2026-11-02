@@ -79,12 +79,23 @@ func setupDocumentScopeFixture(t *testing.T) (*gorm.DB, string) {
 			t.Fatalf("seed membership %s: %v", m.id, err)
 		}
 	}
-	// permission=team：普通成员本来就能看整个库，文件级规则才会有"收紧"的意义。
+	// 可见范围收窄后，普通成员默认看不到别人的库；这里给成员一条库级「可查看」
+	// 授权，模拟"库已对本人开放"，文件级规则才有"继续收紧"的意义。
 	if err := db.Create(&entity.Knowledgebase{
 		ID: kbID, TenantID: tenantID, Name: "kb", CreatedBy: ownerID,
-		Permission: string(entity.TenantPermissionTeam), Status: &valid,
+		Permission: entity.ResourceVisibilityTenantOwner, Status: &valid,
 	}).Error; err != nil {
 		t.Fatalf("seed kb: %v", err)
+	}
+	for _, grantee := range []string{memberID, otherID} {
+		if err := db.Create(&entity.ResourceGrant{
+			ID: "g-kb-" + grantee, TenantID: tenantID,
+			ResourceKind: string(ResourceKindDataset), ResourceID: kbID,
+			SubjectKind: entity.GrantSubjectUser, SubjectID: grantee,
+			Permission: "read", Effect: entity.GrantEffectAllow,
+		}).Error; err != nil {
+			t.Fatalf("seed kb grant: %v", err)
+		}
 	}
 
 	docs := []string{"doc-inherit", "doc-allow", "doc-deny", "doc-others", "doc-team-deny"}

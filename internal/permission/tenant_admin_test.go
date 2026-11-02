@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -117,6 +118,30 @@ func (f teamFixture) check(t *testing.T, userID string, kind ResourceKind, id st
 		ResourceRef{Kind: kind, ID: id}, operation)
 }
 
+// setVisibility 直接改资源表的可见性列，模拟控制台把资源调成某一档。
+func (f teamFixture) setVisibility(t *testing.T, table, id, visibility string) {
+	t.Helper()
+	if err := f.db.Table(table).Where("id = ?", id).Update("permission", visibility).Error; err != nil {
+		t.Fatalf("set visibility %s/%s: %v", table, id, err)
+	}
+}
+
+// grant 写一条逐人授权，模拟控制台给普通成员开权限。
+func (f teamFixture) grant(t *testing.T, kind, resourceID, userID, level string) {
+	t.Helper()
+	now := time.Now().UnixMilli()
+	row := &entity.ResourceGrant{
+		ID:       "grant-" + kind + "-" + resourceID + "-" + userID,
+		TenantID: "team-a", ResourceKind: kind, ResourceID: resourceID,
+		SubjectKind: entity.GrantSubjectUser, SubjectID: userID,
+		Permission: level, Effect: entity.GrantEffectAllow,
+		BaseModel: entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+	}
+	if err := f.db.Create(row).Error; err != nil {
+		t.Fatalf("grant %s/%s to %s: %v", kind, resourceID, userID, err)
+	}
+}
+
 func (f teamFixture) scopeIDs(t *testing.T, userID string, kind ResourceKind, operation Operation) []string {
 	t.Helper()
 	scope, err := f.checker.Scope(context.Background(), Subject{UserID: userID}, ScopeQuery{Kind: kind, Operation: operation})
@@ -128,59 +153,115 @@ func (f teamFixture) scopeIDs(t *testing.T, userID string, kind ResourceKind, op
 	return ids
 }
 
-// 线上现象：控制台把成员设成「租户管理员」（只写 role_id），他在数据面上
-// 却仍是普通成员 —— 知识库列表空、问答和搜索也空。
-func TestTenantAdminAssignedByRoleIDSeesWholeTenant(t *testing.T) {
+// 收窄语义下，租户管理员（控制台只写 role_id）只进得了「租户管理层可见」
+// 这一档：私有资源仍归资源所有者，知识问答 / 知识搜索默认也是所有者档。
+func TestTenantAdminSeesTenantOwnerTierOnly(t *testing.T) {
 	fixture := newTeamFixture(t)
 
-	if err := fixture.check(t, "u-admin", ResourceKindDataset, "ds-private", OperationRead); err != nil {
-		t.Errorf("租户管理员读私有知识库 error = %v, want nil", err)
+	if err := fixture.check(t, "u-admin", ResourceKindDataset, "ds-private", OperationRead); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("租户管理员读私有知识库 error = %v, want %v", err, ErrPermissionDenied)
 	}
-	if err := fixture.check(t, "u-admin", ResourceKindDataset, "ds-private", OperationDelete); err != nil {
-		t.Errorf("租户管理员删私有知识库 error = %v, want nil", err)
+	if err := fixture.check(t, "u-admin", ResourceKindDataset, "ds-private", OperationDelete); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("租户管理员删私有知识库 error = %v, want %v", err, ErrPermissionDenied)
 	}
-	if ids := fixture.scopeIDs(t, "u-admin", ResourceKindDataset, OperationRead); len(ids) != 2 {
-		t.Errorf("租户管理员知识库列表 = %v, want both datasets", ids)
+	if err := fixture.check(t, "u-admin", ResourceKindDataset, "ds-team", OperationRead); err != nil {
+		t.Errorf("租户管理员读团队知识库 error = %v, want nil", err)
 	}
+	if ids := fixture.scopeIDs(t, "u-admin", ResourceKindDataset, OperationRead); len(ids) != 1 || ids[0] != "ds-team" {
+		t.Errorf("租户管理员知识库列表 = %v, want [ds-team]", ids)
+	}
+
+	// 问答 / 搜索默认 owner 档，租户管理员也进不去，除非把它调成管理层可见。
+	if err := fixture.check(t, "u-admin", ResourceKindChat, "chat-1", OperationRead); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("租户管理员读默认档知识问答 error = %v, want %v", err, ErrPermissionDenied)
+	}
+	if err := fixture.check(t, "u-admin", ResourceKindSearchApp, "search-1", OperationUpdate); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("租户管理员改默认档知识搜索 error = %v, want %v", err, ErrPermissionDenied)
+	}
+
+	fixture.setVisibility(t, "dialog", "chat-1", entity.ResourceVisibilityTenantOwner)
+	fixture.setVisibility(t, "search", "search-1", entity.ResourceVisibilityTenantOwner)
 	if err := fixture.check(t, "u-admin", ResourceKindChat, "chat-1", OperationRead); err != nil {
-		t.Errorf("租户管理员读知识问答 error = %v, want nil", err)
+		t.Errorf("租户管理员读管理层可见知识问答 error = %v, want nil", err)
 	}
 	if err := fixture.check(t, "u-admin", ResourceKindSearchApp, "search-1", OperationUpdate); err != nil {
-		t.Errorf("租户管理员改知识搜索 error = %v, want nil", err)
+		t.Errorf("租户管理员改管理层可见知识搜索 error = %v, want nil", err)
 	}
 }
 
-func TestPlainMemberSeesTenantAppsButNotPrivateDatasets(t *testing.T) {
+// 普通成员不在任何一档里：即使资源是「租户管理层可见」，也要显式授权才看得到。
+func TestPlainMemberNeedsExplicitGrant(t *testing.T) {
 	fixture := newTeamFixture(t)
 
-	// 问答与搜索是租户级资产：成员看得到、用得了。
-	if err := fixture.check(t, "u-member", ResourceKindChat, "chat-1", OperationRead); err != nil {
-		t.Errorf("普通成员读知识问答 error = %v, want nil", err)
+	if err := fixture.check(t, "u-member", ResourceKindChat, "chat-1", OperationRead); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("普通成员读知识问答 error = %v, want %v", err, ErrPermissionDenied)
 	}
-	if ids := fixture.scopeIDs(t, "u-member", ResourceKindChat, OperationRead); len(ids) != 1 || ids[0] != "chat-1" {
-		t.Errorf("普通成员问答列表 = %v, want [chat-1]", ids)
+	if ids := fixture.scopeIDs(t, "u-member", ResourceKindChat, OperationRead); len(ids) != 0 {
+		t.Errorf("普通成员问答列表 = %v, want []", ids)
 	}
-	if err := fixture.check(t, "u-member", ResourceKindSearchApp, "search-1", OperationRun); err != nil {
-		t.Errorf("普通成员用知识搜索 error = %v, want nil", err)
+	if err := fixture.check(t, "u-member", ResourceKindSearchApp, "search-1", OperationRun); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("普通成员用知识搜索 error = %v, want %v", err, ErrPermissionDenied)
 	}
-	// 改别人的搜索配置仍然不放行。
-	if err := fixture.check(t, "u-member", ResourceKindSearchApp, "search-1", OperationUpdate); !errors.Is(err, ErrPermissionDenied) {
-		t.Errorf("普通成员改他人搜索 error = %v, want %v", err, ErrPermissionDenied)
-	}
-	// 私有知识库仍归租户管理员和创建者。
 	if err := fixture.check(t, "u-member", ResourceKindDataset, "ds-private", OperationRead); !errors.Is(err, ErrPermissionDenied) {
 		t.Errorf("普通成员读私有知识库 error = %v, want %v", err, ErrPermissionDenied)
 	}
-	// team 可见的知识库成员能看。
-	if err := fixture.check(t, "u-member", ResourceKindDataset, "ds-team", OperationRead); err != nil {
-		t.Errorf("普通成员读团队知识库 error = %v, want nil", err)
+	// team 值归一到「租户管理层可见」，普通成员仍不在内。
+	if err := fixture.check(t, "u-member", ResourceKindDataset, "ds-team", OperationRead); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("普通成员读团队知识库 error = %v, want %v", err, ErrPermissionDenied)
 	}
 
-	// 跨租户一律拒绝。
+	// 逐人授权后按级别放行：只读授权只能看和检索，不能改。
+	fixture.grant(t, "dataset", "ds-team", "u-member", "read")
+	fixture.grant(t, "chat", "chat-1", "u-member", "read")
+	if err := fixture.check(t, "u-member", ResourceKindDataset, "ds-team", OperationRead); err != nil {
+		t.Errorf("授权后普通成员读团队知识库 error = %v, want nil", err)
+	}
+	if err := fixture.check(t, "u-member", ResourceKindChat, "chat-1", OperationRead); err != nil {
+		t.Errorf("授权后普通成员读知识问答 error = %v, want nil", err)
+	}
+	if err := fixture.check(t, "u-member", ResourceKindChat, "chat-1", OperationUpdate); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("只读授权改知识问答 error = %v, want %v", err, ErrPermissionDenied)
+	}
+	if ids := fixture.scopeIDs(t, "u-member", ResourceKindChat, OperationRead); len(ids) != 1 || ids[0] != "chat-1" {
+		t.Errorf("授权后普通成员问答列表 = %v, want [chat-1]", ids)
+	}
+
+	// 跨租户一律拒绝：租户边界不参与授权。
 	if err := fixture.check(t, "outsider", ResourceKindChat, "chat-1", OperationRead); !errors.Is(err, ErrPermissionDenied) {
 		t.Errorf("外部租户读知识问答 error = %v, want %v", err, ErrPermissionDenied)
 	}
 	if err := fixture.check(t, "outsider", ResourceKindSearchApp, "search-1", OperationRead); !errors.Is(err, ErrPermissionDenied) {
 		t.Errorf("外部租户读知识搜索 error = %v, want %v", err, ErrPermissionDenied)
+	}
+}
+
+// 平台超级管理员（user.is_superuser）跨租户可见，且来源单独标记。
+func TestPlatformAdminSeesEveryTier(t *testing.T) {
+	fixture := newTeamFixture(t)
+
+	flag := true
+	if err := fixture.db.Model(&entity.User{}).Where("id = ?", "outsider").
+		Update("is_superuser", flag).Error; err != nil {
+		t.Fatalf("promote superuser: %v", err)
+	}
+
+	for _, tc := range []struct {
+		kind ResourceKind
+		id   string
+	}{
+		{ResourceKindDataset, "ds-private"},
+		{ResourceKindDataset, "ds-team"},
+		{ResourceKindChat, "chat-1"},
+		{ResourceKindSearchApp, "search-1"},
+	} {
+		access, err := fixture.checker.ResolveAccess(context.Background(), Subject{UserID: "outsider"},
+			ResourceRef{Kind: tc.kind, ID: tc.id})
+		if err != nil {
+			t.Errorf("超管读 %s/%s error = %v, want nil", tc.kind, tc.id, err)
+			continue
+		}
+		if access.Source != AccessSourcePlatformAdmin {
+			t.Errorf("超管读 %s/%s source = %q, want %q", tc.kind, tc.id, access.Source, AccessSourcePlatformAdmin)
+		}
 	}
 }

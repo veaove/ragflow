@@ -26,6 +26,9 @@ type Search struct {
 	CreatedBy    string  `gorm:"column:created_by;size:32;not null;index" json:"created_by"`
 	SearchConfig JSONMap `gorm:"column:search_config;type:longtext;not null" json:"search_config"`
 	Status       *string `gorm:"column:status;size:1;index" json:"status,omitempty"`
+	// Permission 是可见性三档（owner / tenant_owner / platform），见
+	// entity/visibility.go。知识搜索应用默认只对创建者与超管可见。
+	Permission string `gorm:"column:permission;size:16;not null;default:owner;index" json:"permission"`
 	BaseModel
 }
 

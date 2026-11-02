@@ -34,7 +34,7 @@ func (s *ResourceGrantService) ListDocuments(ctx context.Context, tenantID, data
 	if strings.TrimSpace(datasetID) == "" {
 		return nil, 0, errors.New("缺少知识库 id")
 	}
-	if err := s.assertResourceInTenant(ctx, tenantID, "dataset", datasetID); err != nil {
+	if err := s.assertResourceInTenant(ctx, tenantID, grantKindSpecs["dataset"], datasetID); err != nil {
 		return nil, 0, err
 	}
 	if limit <= 0 {
