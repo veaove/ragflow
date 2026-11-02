@@ -27,6 +27,7 @@ import (
 
 	"strconv"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -243,20 +244,80 @@ func (dao *KnowledgebaseDAO) Count(ctx context.Context, db *gorm.DB, filters map
 	return count, err
 }
 
+// DatasetListFilter 是知识库列表的服务端筛选条件；零值表示"该维度不过滤"。
+// 维度之间是 AND：分类多选走 IN，状态走等值，时间区间是闭区间。
+//
+// 时间比较落在 create_date/update_date（datetime 列），与列表展示的创建时间/
+// 更新时间同源——datasetListItemToMap 优先返回 *_date，只写了 *_time 的历史行
+// 会让这两个列的时间筛选口径与展示不一致，因此不要改成比较 *_time（Go 写的是
+// 毫秒、历史 Python 数据是秒，单位不统一）。
+type DatasetListFilter struct {
+	Categories []string
+	Enabled    *bool
+	CreateFrom *time.Time
+	CreateTo   *time.Time
+	UpdateFrom *time.Time
+	UpdateTo   *time.Time
+}
+
+// apply adds the filter predicates to a knowledgebase list query.
+func (f DatasetListFilter) apply(query *gorm.DB) *gorm.DB {
+	if len(f.Categories) > 0 {
+		query = query.Where("knowledgebase.category IN ?", f.Categories)
+	}
+	if f.Enabled != nil {
+		query = query.Where("knowledgebase.enabled = ?", *f.Enabled)
+	}
+	if f.CreateFrom != nil {
+		query = query.Where("knowledgebase.create_date >= ?", *f.CreateFrom)
+	}
+	if f.CreateTo != nil {
+		query = query.Where("knowledgebase.create_date <= ?", *f.CreateTo)
+	}
+	if f.UpdateFrom != nil {
+		query = query.Where("knowledgebase.update_date >= ?", *f.UpdateFrom)
+	}
+	if f.UpdateTo != nil {
+		query = query.Where("knowledgebase.update_date <= ?", *f.UpdateTo)
+	}
+	return query
+}
+
 // ListByResourceIDs retrieves knowledge bases within a permission-filtered ID scope.
-func (dao *KnowledgebaseDAO) ListByResourceIDs(ctx context.Context, db *gorm.DB, resourceIDs, ownerIDs []string, pageNumber, itemsPerPage int, terms []OrderTerm, keywords, parserID, name string) ([]*entity.KnowledgebaseListItem, int64, error) {
+func (dao *KnowledgebaseDAO) ListByResourceIDs(ctx context.Context, db *gorm.DB, resourceIDs, ownerIDs []string, pageNumber, itemsPerPage int, terms []OrderTerm, keywords, parserID, name string, filter DatasetListFilter) ([]*entity.KnowledgebaseListItem, int64, error) {
 	if len(resourceIDs) == 0 {
 		return []*entity.KnowledgebaseListItem{}, 0, nil
 	}
 	query := db.WithContext(ctx).Model(&entity.Knowledgebase{}).
 		Where("knowledgebase.id IN ?", resourceIDs)
-	return dao.ListByQuery(ctx, query, ownerIDs, pageNumber, itemsPerPage, terms, keywords, parserID, name)
+	return dao.ListByQuery(ctx, query, ownerIDs, pageNumber, itemsPerPage, terms, keywords, parserID, name, filter)
+}
+
+// ListCategories returns the distinct non-empty categories inside an already
+// permission-scoped knowledgebase query. Callers must apply their
+// permission.QueryScope to `query` before handing it over: this returns names,
+// and an unscoped call would leak categories of inaccessible datasets.
+func (dao *KnowledgebaseDAO) ListCategories(ctx context.Context, query *gorm.DB) ([]string, error) {
+	if query == nil {
+		return []string{}, errors.New("dataset category query is nil")
+	}
+	categories := make([]string, 0)
+	err := query.WithContext(ctx).
+		Where("knowledgebase.status = ?", string(entity.StatusValid)).
+		Where("knowledgebase.category IS NOT NULL AND knowledgebase.category <> ''").
+		Distinct("knowledgebase.category").
+		Order("knowledgebase.category ASC").
+		Pluck("knowledgebase.category", &categories).Error
+	if err != nil {
+		return nil, err
+	}
+	return categories, nil
 }
 
 // ListByQuery lists knowledge bases using an already-scoped base query. The
 // caller can apply a permission.QueryScope before calling this method, keeping
 // authorization filtering in the same SQL query as count and pagination.
-func (dao *KnowledgebaseDAO) ListByQuery(ctx context.Context, query *gorm.DB, ownerIDs []string, pageNumber, itemsPerPage int, terms []OrderTerm, keywords, parserID, name string) ([]*entity.KnowledgebaseListItem, int64, error) {
+func (dao *KnowledgebaseDAO) ListByQuery(ctx context.Context, query *gorm.DB, ownerIDs []string, pageNumber, itemsPerPage int, terms []OrderTerm, keywords, parserID, name string, filter DatasetListFilter) ([]*entity.KnowledgebaseListItem, int64, error) {
 	if query == nil {
 		return nil, 0, errors.New("dataset list query is nil")
 	}
@@ -265,6 +326,7 @@ func (dao *KnowledgebaseDAO) ListByQuery(ctx context.Context, query *gorm.DB, ow
 
 	query = query.WithContext(ctx).
 		Select(`knowledgebase.id, knowledgebase.avatar, knowledgebase.name,
+			knowledgebase.category,
 			knowledgebase.language, knowledgebase.description, knowledgebase.tenant_id,
 			knowledgebase.permission, knowledgebase.doc_num, knowledgebase.token_num,
 			knowledgebase.chunk_num, knowledgebase.similarity_threshold,
@@ -292,6 +354,8 @@ func (dao *KnowledgebaseDAO) ListByQuery(ctx context.Context, query *gorm.DB, ow
 	if parserID != "" {
 		query = query.Where("knowledgebase.parser_id = ?", parserID)
 	}
+
+	query = filter.apply(query)
 
 	// Route the requested terms through knowledgebaseQualifiedOrderClause so a
 	// user-supplied query param can never reach Order() verbatim: the helper

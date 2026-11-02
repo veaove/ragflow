@@ -505,7 +505,7 @@ func datasetNameAndID(kb *entity.Knowledgebase) string {
 	return fmt.Sprintf("%s (%s)", kb.Name, kb.ID)
 }
 
-func (d *DatasetService) ListDatasets(ctx context.Context, id, name string, page, pageSize int, terms []dao.OrderTerm, keywords string, ownerIDs []string, parserID, userID string, ids []string, canvasID string) ([]map[string]interface{}, int64, common.ErrorCode, error) {
+func (d *DatasetService) ListDatasets(ctx context.Context, id, name string, page, pageSize int, terms []dao.OrderTerm, keywords string, ownerIDs []string, parserID, userID string, ids []string, canvasID string, filter dao.DatasetListFilter) ([]map[string]interface{}, int64, common.ErrorCode, error) {
 	id = strings.TrimSpace(id)
 	canvasID = strings.TrimSpace(canvasID)
 	if id != "" && len(ids) > 0 {
@@ -609,7 +609,7 @@ func (d *DatasetService) ListDatasets(ctx context.Context, id, name string, page
 			}
 			listQuery = scope.Apply(listQuery)
 		}
-		listed, count, err := d.kbDAO.ListByQuery(ctx, listQuery, filteredOwnerIDs, page, pageSize, terms, keywords, parserID, name)
+		listed, count, err := d.kbDAO.ListByQuery(ctx, listQuery, filteredOwnerIDs, page, pageSize, terms, keywords, parserID, name, filter)
 		if err != nil {
 			return err
 		}
@@ -649,6 +649,39 @@ func (d *DatasetService) ListDatasets(ctx context.Context, id, name string, page
 	}
 
 	return data, total, common.CodeSuccess, nil
+}
+
+// ListDatasetCategories returns the distinct categories the caller may read, so
+// the dataset list can offer them as filter options instead of asking users to
+// retype a free-text value. The aggregate is permission scoped: grouping over
+// every row would hand out category names of datasets the caller cannot open.
+func (d *DatasetService) ListDatasetCategories(ctx context.Context, userID string) ([]string, common.ErrorCode, error) {
+	categories := make([]string, 0)
+	err := dao.DB.Transaction(func(tx *gorm.DB) error {
+		scope, scopeErr := permission.NewDatabaseChecker(tx).QueryScope(ctx,
+			permission.Subject{UserID: userID},
+			permission.ScopeQuery{Kind: permission.ResourceKindDataset, Operation: permission.OperationRead},
+		)
+		if scopeErr != nil {
+			return scopeErr
+		}
+		// 零值 QueryScope 会编译成 "1 = 0"，因此没有权限时聚合结果天然为空。
+		listed, listErr := d.kbDAO.ListCategories(ctx, scope.Apply(tx.WithContext(ctx).Model(&entity.Knowledgebase{})))
+		if listErr != nil {
+			return listErr
+		}
+		categories = listed
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, permission.ErrUnauthenticated) || errors.Is(err, permission.ErrPermissionDenied) ||
+			errors.Is(err, permission.ErrMembershipNotFound) || errors.Is(err, permission.ErrResourceNotFound) {
+			code, permissionErr := permissionresponse.Normalize(err)
+			return nil, code, permissionErr
+		}
+		return nil, common.CodeServerError, errors.New("database operation failed")
+	}
+	return categories, common.CodeSuccess, nil
 }
 
 func (d *DatasetService) ListDatasetFilters(ctx context.Context, userID, canvasID string) (map[string]interface{}, common.ErrorCode, error) {

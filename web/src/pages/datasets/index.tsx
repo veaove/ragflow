@@ -20,10 +20,24 @@ import { ListDeletionKey } from '@/constants/list-deletion';
 import { useGoToPreviousPageOnEmpty } from '@/hooks/logic-hooks';
 import {
   KnowledgeApiAction,
+  useFetchDatasetCategories,
   useFetchNextKnowledgeListByPage,
 } from '@/hooks/use-knowledge-request';
+import { FilterValue } from '@/components/list-filter-bar/interface';
+import { hasActiveFilter } from '@/components/list-filter-bar/utils';
+import { MultiSelect } from '@/components/ui/multi-select';
+import { DateRangeFilter } from '@/components/date-range-filter';
+import {
+  DatasetCategoryFilter,
+  DatasetCreateTimeFilter,
+  DatasetStatusFilter,
+  DatasetUpdateTimeFilter,
+  buildDateRangeFilterValue,
+  parseDateRangeFilterValue,
+} from '@/utils/dataset-filter';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, RefreshCw, ChevronDown } from 'lucide-react';
+import { DateRange } from 'react-day-picker';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -42,9 +56,21 @@ import { DatasetEditDialog } from './dataset-edit-dialog';
 
 type StatusFilter = 'all' | 'enabled' | 'disabled';
 
+const StatusFilterOptions: { label: string; value: StatusFilter }[] = [
+  { label: '全部', value: 'all' },
+  { label: '启用', value: 'enabled' },
+  { label: '停用', value: 'disabled' },
+];
+
 export default function Datasets() {
   const { t } = useTranslation();
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+
+  // 分类 / 状态 / 时间范围先落在草稿上，点「查询」才提交：这些条件常要一次
+  // 调好几项，边改边查会打出一串互相覆盖的请求。
+  const [statusDraft, setStatusDraft] = useState<StatusFilter>('all');
+  const [categoryDraft, setCategoryDraft] = useState<string[]>([]);
+  const [createTimeDraft, setCreateTimeDraft] = useState<DateRange>();
+  const [updateTimeDraft, setUpdateTimeDraft] = useState<DateRange>();
 
   const {
     visible,
@@ -63,7 +89,16 @@ export default function Datasets() {
     searchString,
     setSearchString,
     loading,
+    filterValue,
+    setFilterValue,
+    handleFilterSubmit,
   } = useFetchNextKnowledgeListByPage();
+
+  const { categories } = useFetchDatasetCategories();
+  const categoryOptions = useMemo(
+    () => categories.map((category) => ({ label: category, value: category })),
+    [categories],
+  );
 
   const {
     datasetEditLoading,
@@ -79,35 +114,92 @@ export default function Datasets() {
     useListViewPreference('dataset');
   const { can } = useConsolePermissions();
 
-  const filteredKbs = useMemo(() => {
-    if (!kbs) return [];
-    if (statusFilter === 'all') return kbs;
-    const isEnabled = (dataset: IDataset) => dataset.enabled !== false;
-    if (statusFilter === 'enabled') return kbs.filter(isEnabled);
-    return kbs.filter((dataset) => !isEnabled(dataset));
-  }, [kbs, statusFilter]);
-
   const currentPageSize = pagination.pageSize || 10;
 
-  const handleSearch = useCallback(() => {
-    setPagination({ page: 1, pageSize: currentPageSize });
-  }, [currentPageSize, setPagination]);
+  // filterValue 是"已提交"的筛选。删除或翻页导致列表回退时它会被清空，
+  // 草稿要跟着清，否则筛选条还显示着已经不再生效的条件。
+  useEffect(() => {
+    const applied = filterValue ?? {};
+    setStatusDraft(
+      ((applied[DatasetStatusFilter] as string[])?.[0] as StatusFilter) ??
+        'all',
+    );
+    setCategoryDraft((applied[DatasetCategoryFilter] as string[]) ?? []);
+    setCreateTimeDraft(
+      parseDateRangeFilterValue(applied[DatasetCreateTimeFilter] as string[]),
+    );
+    setUpdateTimeDraft(
+      parseDateRangeFilterValue(applied[DatasetUpdateTimeFilter] as string[]),
+    );
+  }, [filterValue]);
+
+  const handleStatusChange = useCallback((value: string) => {
+    setStatusDraft(value as StatusFilter);
+  }, []);
+
+  const handleCategoryChange = useCallback((value: string[]) => {
+    setCategoryDraft(value);
+  }, []);
+
+  const handleCreateTimeChange = useCallback((range?: DateRange) => {
+    setCreateTimeDraft(range);
+  }, []);
+
+  const handleUpdateTimeChange = useCallback((range?: DateRange) => {
+    setUpdateTimeDraft(range);
+  }, []);
+
+  const handleQuery = useCallback(() => {
+    const filter: FilterValue = {};
+    if (categoryDraft.length) {
+      filter[DatasetCategoryFilter] = categoryDraft;
+    }
+    if (statusDraft !== 'all') {
+      filter[DatasetStatusFilter] = [statusDraft];
+    }
+    const createTime = buildDateRangeFilterValue(
+      createTimeDraft?.from,
+      createTimeDraft?.to,
+    );
+    if (createTime) {
+      filter[DatasetCreateTimeFilter] = createTime;
+    }
+    const updateTime = buildDateRangeFilterValue(
+      updateTimeDraft?.from,
+      updateTimeDraft?.to,
+    );
+    if (updateTime) {
+      filter[DatasetUpdateTimeFilter] = updateTime;
+    }
+    // 所属人筛选由别处写入 filterValue，查询动作不该顺手把它清掉。
+    if (filterValue.owner) {
+      filter.owner = filterValue.owner;
+    }
+    handleFilterSubmit(filter);
+  }, [
+    categoryDraft,
+    createTimeDraft,
+    filterValue,
+    handleFilterSubmit,
+    statusDraft,
+    updateTimeDraft,
+  ]);
 
   const handleReset = useCallback(() => {
     setSearchString('');
-    setStatusFilter('all');
-    setPagination({ page: 1, pageSize: currentPageSize });
-  }, [currentPageSize, setPagination, setSearchString]);
+    setStatusDraft('all');
+    setCategoryDraft([]);
+    setCreateTimeDraft(undefined);
+    setUpdateTimeDraft(undefined);
+    handleFilterSubmit({});
+  }, [handleFilterSubmit, setSearchString]);
 
-  useGoToPreviousPageOnEmpty(filteredKbs?.length, loading, {
+  useGoToPreviousPageOnEmpty(kbs?.length, loading, {
     deletionKey: ListDeletionKey.KnowledgeList,
     searchString,
     setSearchString,
-    filterValue: { status: [statusFilter] },
-    setFilterValue: (value) => {
-      const v = value as { status?: string[] };
-      setStatusFilter((v?.status?.[0] as StatusFilter) ?? 'all');
-    },
+    filterValue,
+    setFilterValue,
   });
 
   const [searchUrl, setSearchUrl] = useSearchParams();
@@ -141,8 +233,7 @@ export default function Datasets() {
     [setPagination],
   );
 
-  const showTable =
-    filteredKbs?.length || searchString || statusFilter !== 'all';
+  const showTable = kbs?.length || searchString || hasActiveFilter(filterValue);
 
   return (
     <>
@@ -164,73 +255,91 @@ export default function Datasets() {
                 {t('header.dataset')}
               </h1>
 
-              <div className="flex w-full flex-wrap items-center gap-3 md:w-auto md:flex-nowrap">
-                <SearchInput
-                  value={searchString}
-                  onChange={handleInputChange}
-                  placeholder="请输入知识库名称"
-                  className="w-60"
-                />
-
-                <Select
-                  value={statusFilter}
-                  onValueChange={(value) => {
-                    setStatusFilter(value as StatusFilter);
-                    setPagination({ page: 1, pageSize: currentPageSize });
-                  }}
-                >
-                  <SelectTrigger className="w-32">
-                    <SelectValue placeholder="状态" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部</SelectItem>
-                    <SelectItem value="enabled">
-                      {t('knowledgeDetails.enabled')}
-                    </SelectItem>
-                    <SelectItem value="disabled">
-                      {t('knowledgeDetails.disabled')}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Button variant="accent" onClick={handleSearch}>
-                  查询
-                </Button>
-                <Button variant="outline" onClick={handleReset}>
-                  {t('common.reset')}
-                </Button>
-
-                <div className="ml-auto flex items-center gap-3">
-                  <ViewToggle mode={viewMode} onChange={setViewMode} />
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" className="gap-1">
-                        同步
-                        <ChevronDown className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={handleRefresh}>
-                        <RefreshCw className="mr-2 size-4" />
-                        刷新列表
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-
-                  {can('dataset', 'create') && (
-                    <Button variant="accent" onClick={showModal}>
-                      <Plus className="size-[1em]" />
-                      {t('knowledgeList.createKnowledgeBase')}
+              <div className="ml-auto flex items-center gap-3">
+                <ViewToggle mode={viewMode} onChange={setViewMode} />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="gap-1">
+                      同步
+                      <ChevronDown className="size-4" />
                     </Button>
-                  )}
-                </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleRefresh}>
+                      <RefreshCw className="mr-2 size-4" />
+                      刷新列表
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {can('dataset', 'create') && (
+                  <Button variant="accent" onClick={showModal}>
+                    <Plus className="size-[1em]" />
+                    {t('knowledgeList.createKnowledgeBase')}
+                  </Button>
+                )}
               </div>
+            </div>
+
+            {/* 筛选行：名称即时搜索（防抖），其余条件点「查询」统一提交。
+                全部条件都是服务端筛选，分页总数与筛选结果保持一致。 */}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <SearchInput
+                value={searchString}
+                onChange={handleInputChange}
+                placeholder="请输入知识库名称"
+                className="w-60"
+              />
+
+              <Select value={statusDraft} onValueChange={handleStatusChange}>
+                <SelectTrigger className="w-28">
+                  <SelectValue placeholder="状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  {StatusFilterOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <MultiSelect
+                className="w-40"
+                options={categoryOptions}
+                value={categoryDraft}
+                onValueChange={handleCategoryChange}
+                placeholder="分类"
+                maxCount={2}
+                showSelectAll={false}
+                modalPopover
+              />
+
+              <DateRangeFilter
+                className="w-36"
+                placeholder="创建时间"
+                value={createTimeDraft}
+                onChange={handleCreateTimeChange}
+              />
+              <DateRangeFilter
+                className="w-36"
+                placeholder="更新时间"
+                value={updateTimeDraft}
+                onChange={handleUpdateTimeChange}
+              />
+
+              <Button variant="accent" onClick={handleQuery}>
+                查询
+              </Button>
+              <Button variant="outline" onClick={handleReset}>
+                {t('common.reset')}
+              </Button>
             </div>
           </header>
 
-          {filteredKbs?.length && viewMode === 'card' ? (
+          {kbs?.length && viewMode === 'card' ? (
             <CardContainer className="flex-1 overflow-auto px-5">
-              {filteredKbs.map((kb) => (
+              {kbs.map((kb) => (
                 <DatasetCard
                   key={kb.id}
                   dataset={kb}
@@ -238,9 +347,9 @@ export default function Datasets() {
                 />
               ))}
             </CardContainer>
-          ) : filteredKbs?.length ? (
+          ) : kbs?.length ? (
             <KnowledgeBaseTable
-              data={filteredKbs}
+              data={kbs}
               pagination={{
                 current: pagination.current,
                 pageSize: currentPageSize,

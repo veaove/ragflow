@@ -441,6 +441,9 @@ func (r *Router) Setup(engine *gin.Engine) {
 			{
 				datasets.GET("", r.datasetsHandler.ListDatasets)
 				datasets.GET("/tags/aggregation", r.datasetsHandler.AggregateTags)
+				// 分类选项（知识库列表的分类筛选下拉）：必须压在其他
+				// /:dataset_id 之前注册，避免被别名路由吞掉。
+				datasets.GET("/categories", r.datasetsHandler.ListDatasetCategories)
 				datasets.GET("/:dataset_id", r.datasetsHandler.GetDataset)
 				datasets.PUT("/:dataset_id", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.datasetsHandler.UpdateDataset)
 				datasets.GET("/:dataset_id/references", r.datasetsHandler.ListDatasetReferences)

@@ -33,6 +33,14 @@ export interface IFetchKnowledgeListRequestParams {
   parser_id?: string;
   // Filter to datasets usable by both the canvas owner and the current user.
   canvas_id?: string;
+  // 服务端筛选维度，与后端 GET /datasets 的 querystring 一一对应：
+  // 分类多选（IN）、启用状态、创建/更新时间闭区间（YYYY-MM-DD）。
+  category?: string[];
+  enabled?: boolean;
+  create_time_from?: string;
+  create_time_to?: string;
+  update_time_from?: string;
+  update_time_to?: string;
 }
 
 export interface IFetchDocumentListRequestBody {

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -189,6 +190,113 @@ func TestDatasetsHandlerListDatasetsAcceptsSort(t *testing.T) {
 	}
 	if body.TotalDatasets != 1 {
 		t.Fatalf("expected the dataset to be listed, got total=%d", body.TotalDatasets)
+	}
+}
+
+// The category and status filters are part of the querystring contract, so the
+// key gate and the coercions have to agree with them before the service runs.
+func TestDatasetsHandlerListDatasetsRejectsInvalidFilters(t *testing.T) {
+	cases := []struct {
+		name     string
+		rawQuery string
+		wantMsg  string
+	}{
+		{
+			name:     "an unparseable enabled is rejected",
+			rawQuery: "enabled=maybe",
+			wantMsg:  "Input should be a valid boolean, unable to interpret input",
+		},
+		{
+			name:     "an unparseable time bound is rejected",
+			rawQuery: "create_time_from=2026-13-01",
+			wantMsg:  `create_time_from is invalid: expected YYYY-MM-DD or YYYY-MM-DD HH:mm:ss, got "2026-13-01"`,
+		},
+		{
+			name:     "an inverted range is rejected",
+			rawQuery: "update_time_from=2026-02-01&update_time_to=2026-01-01",
+			wantMsg:  "update_time_from must not be after update_time_to",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupListDatasetsTestDB(t)
+
+			body := getListDatasets(t, newListDatasetsTestRouter(), tc.rawQuery)
+
+			if body.Code != int(common.CodeArgumentError) {
+				t.Fatalf("code=%d want=%d message=%q", body.Code, common.CodeArgumentError, body.Message)
+			}
+			if body.Message != tc.wantMsg {
+				t.Fatalf("message=%q want=%q", body.Message, tc.wantMsg)
+			}
+		})
+	}
+}
+
+func TestDatasetsHandlerListDatasetsFiltersByCategoryAndStatus(t *testing.T) {
+	const betaKBID = "323e4567e89b12d3a456426614174000"
+	setupListDatasetsTestDB(t)
+	insertListDatasetsTestKB(t, listDatasetsTestKBID, "user-1", "Alpha")
+	insertListDatasetsTestKB(t, betaKBID, "user-1", "Beta")
+	if err := dao.DB.Model(&entity.Knowledgebase{}).
+		Where("id = ?", listDatasetsTestKBID).
+		Update("category", "产品资料").Error; err != nil {
+		t.Fatalf("seed category: %v", err)
+	}
+
+	router := newListDatasetsTestRouter()
+	body := getListDatasets(t, router, "category="+url.QueryEscape("产品资料"))
+	if body.Code != int(common.CodeSuccess) {
+		t.Fatalf("code=%d message=%q", body.Code, body.Message)
+	}
+	if body.TotalDatasets != 1 || len(body.Data) != 1 || body.Data[0]["id"] != listDatasetsTestKBID {
+		t.Fatalf("category filter = %#v (total=%d), want only the categorized dataset", body.Data, body.TotalDatasets)
+	}
+
+	// Multi-select: a comma separated list behaves like repeated parameters.
+	body = getListDatasets(t, router, "category="+url.QueryEscape("产品资料,合规制度"))
+	if body.TotalDatasets != 1 {
+		t.Fatalf("multi-category filter total=%d, want 1", body.TotalDatasets)
+	}
+
+	if err := dao.DB.Model(&entity.Knowledgebase{}).
+		Where("id = ?", listDatasetsTestKBID).
+		Update("enabled", false).Error; err != nil {
+		t.Fatalf("disable dataset: %v", err)
+	}
+	body = getListDatasets(t, router, "enabled=false")
+	if body.TotalDatasets != 1 || body.Data[0]["id"] != listDatasetsTestKBID {
+		t.Fatalf("enabled=false = %#v (total=%d)", body.Data, body.TotalDatasets)
+	}
+	// Dimensions combine with AND: a disabled dataset does not match enabled=true.
+	body = getListDatasets(t, router, "category="+url.QueryEscape("产品资料")+"&enabled=true")
+	if body.TotalDatasets != 0 || len(body.Data) != 0 {
+		t.Fatalf("category + enabled=true = %#v (total=%d), want no rows", body.Data, body.TotalDatasets)
+	}
+}
+
+// A date-only upper bound covers the whole day: 2026-01-31 has to include a row
+// created at 18:00 that day, otherwise range filtering silently drops today.
+func TestDatasetsHandlerListDatasetsCreateTimeRangeCoversWholeDay(t *testing.T) {
+	setupListDatasetsTestDB(t)
+	insertListDatasetsTestKB(t, listDatasetsTestKBID, "user-1", "Alpha")
+	createdAt := time.Date(2026, 1, 31, 18, 0, 0, 0, time.Local)
+	if err := dao.DB.Model(&entity.Knowledgebase{}).
+		Where("id = ?", listDatasetsTestKBID).
+		Update("create_date", createdAt).Error; err != nil {
+		t.Fatalf("seed create_date: %v", err)
+	}
+
+	router := newListDatasetsTestRouter()
+	body := getListDatasets(t, router, "create_time_from=2026-01-31&create_time_to=2026-01-31")
+	if body.TotalDatasets != 1 {
+		t.Fatalf("same-day range total=%d, want 1", body.TotalDatasets)
+	}
+
+	body = getListDatasets(t, router, "create_time_from=2026-02-01")
+	if body.TotalDatasets != 0 {
+		t.Fatalf("create_time_from=2026-02-01 total=%d, want 0", body.TotalDatasets)
 	}
 }
 

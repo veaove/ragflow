@@ -164,6 +164,8 @@ export default {
   checkEmbedding: (datasetId: string) =>
     `${restAPIv1}/datasets/${datasetId}/embedding/check`,
   kbList: `${restAPIv1}/datasets`,
+  // 分类选项：知识库列表的分类筛选下拉用它，返回调用者可读知识库里出现过的分类。
+  datasetCategories: `${restAPIv1}/datasets/categories`,
   datasetFilter: `${restAPIv1}/datasets?type=filter`,
   createKb: `${restAPIv1}/datasets`,
   updateKb: (datasetId: string) => `${restAPIv1}/datasets/${datasetId}`,

@@ -346,9 +346,22 @@ export function deleteKnowledgeGraph(knowledgeId: string) {
 export const listDataset = (params?: IFetchKnowledgeListRequestParams) =>
   request.get(api.kbList, {
     params: params
-      ? { ...params, owner_ids: params.owner_ids?.join(',') }
+      ? {
+          ...params,
+          owner_ids: params.owner_ids?.join(','),
+          // 分类多选按逗号拼接（后端也接受重复参数）；空数组不要发出去，
+          // 否则后端会当成"筛一个空分类"，结果为空。
+          category: params.category?.length
+            ? params.category.join(',')
+            : undefined,
+        }
       : params,
   });
+
+/**
+ * 分类筛选项：返回当前用户可读知识库里出现过的分类名（去重、升序）。
+ */
+export const listDatasetCategories = () => request.get(api.datasetCategories);
 
 // Fetch datasets by a set of IDs via the `ids` query param (comma-joined).
 // Used to echo back already-selected datasets whose names are not present

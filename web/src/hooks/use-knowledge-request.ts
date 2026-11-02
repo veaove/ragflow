@@ -45,6 +45,7 @@ import {
   IUpdateArtifactPageRequestParams,
 } from '@/interfaces/request/knowledge';
 import i18n from '@/locales/config';
+import { buildDatasetListFilterParams } from '@/utils/dataset-filter';
 import kbService, {
   checkEmbedding,
   clearWiki,
@@ -61,6 +62,7 @@ import kbService, {
   datasetFilter,
   listDataset,
   listDatasetByIds,
+  listDatasetCategories,
   listTag,
   listWikiCommits,
   removeTag,
@@ -90,6 +92,14 @@ import {
   normalizeParserConfig,
 } from './parser-config-utils';
 import { useSetPaginationParams } from './route-hook';
+
+/**
+ * 知识库查询的 key 工厂。useQuery 和 invalidateQueries 必须引用同一个函数，
+ * 否则改的是一份缓存、刷的是另一份。
+ */
+export const DatasetKeys = {
+  datasetCategories: () => ['datasetCategories'] as const,
+};
 
 export const enum KnowledgeApiAction {
   FetchKnowledgeListByPage = 'fetchKnowledgeListByPage',
@@ -234,6 +244,9 @@ export const useFetchNextKnowledgeListByPage = () => {
         page: pagination.current,
         keywords: debouncedSearchString,
         owner_ids: filterValue.owner as string[],
+        // 分类 / 状态 / 时间范围都交给服务端筛：分页和 total 必须与筛选条件
+        // 一致，在前端过滤会把"筛选后只有 2 条"显示成"共 16 条"。
+        ...buildDatasetListFilterParams(filterValue),
       });
 
       return { kbs: data?.data, total_datasets: data?.total_datasets };
@@ -260,6 +273,23 @@ export const useFetchNextKnowledgeListByPage = () => {
     setFilterValue,
     handleFilterSubmit,
   };
+};
+
+/**
+ * 分类筛选选项。来源是当前用户可读知识库里出现过的分类（后端按读权限聚合），
+ * 因此下拉里不会出现别人私有库的分类名。
+ */
+export const useFetchDatasetCategories = (): { categories: string[] } => {
+  const { data } = useQuery({
+    queryKey: DatasetKeys.datasetCategories(),
+    queryFn: async () => {
+      const { data } = await listDatasetCategories();
+      return (data?.data ?? []) as string[];
+    },
+    staleTime: 60 * 1000,
+  });
+
+  return { categories: data ?? [] };
 };
 
 export const useGetDatasetFilter = (): { filter: IDatasetFilter } => {
@@ -403,6 +433,10 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
       const { data = {} } = await updateKb(kbId, requestBody);
       if (data.code === 0) {
         message.success(i18n.t(`message.updated`));
+        // 保存分类后立刻刷新筛选项，新填的分类不用等缓存过期才出现。
+        queryClient.invalidateQueries({
+          queryKey: DatasetKeys.datasetCategories(),
+        });
         if (shouldFetchList) {
           queryClient.invalidateQueries({
             queryKey: [KnowledgeApiAction.FetchKnowledgeListByPage],

@@ -27,10 +27,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"ragflow/internal/common"
+	"ragflow/internal/dao"
 	"ragflow/internal/permission"
 	"ragflow/internal/service"
 	dataset "ragflow/internal/service/dataset"
@@ -204,6 +206,12 @@ func (h *DatasetsHandler) ListDatasets(c *gin.Context) {
 		}
 	}
 
+	filter, filterErr := parseDatasetListFilter(c)
+	if filterErr != nil {
+		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, filterErr.Error())
+		return
+	}
+
 	ctx := c.Request.Context()
 	data, total, code, err := h.datasetsService.ListDatasets(
 		ctx,
@@ -218,6 +226,7 @@ func (h *DatasetsHandler) ListDatasets(c *gin.Context) {
 		user.ID,
 		ids,
 		c.Query("canvas_id"),
+		filter,
 	)
 	if err != nil {
 		common.ErrorWithCode(c, code, err.Error())
@@ -316,6 +325,117 @@ func parsePythonBool(s string) (bool, bool) {
 	return false, false
 }
 
+// 知识库列表的时间筛选只接受这几种写法；带时间的按原值比较，只有日期的
+// 下界取当天 00:00:00、上界取 23:59:59，好让 to=2026-01-31 覆盖整月最后一天。
+const (
+	datasetListTimeLayoutDate     = "2006-01-02"
+	datasetListTimeLayoutMinutes  = "2006-01-02 15:04"
+	datasetListTimeLayoutDateTime = "2006-01-02 15:04:05"
+)
+
+// parseDatasetCategoryFilter reads the multi-select category filter. Both
+// ?category=a&category=b and ?category=a,b are accepted so a caller can pick
+// whichever is easier; blank and duplicate values are dropped.
+func parseDatasetCategoryFilter(c *gin.Context) []string {
+	categories := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, item := range c.QueryArray("category") {
+		for _, value := range strings.Split(item, ",") {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				continue
+			}
+			if _, exists := seen[value]; exists {
+				continue
+			}
+			seen[value] = struct{}{}
+			categories = append(categories, value)
+		}
+	}
+	return categories
+}
+
+// parseDatasetListTime parses one bound of a time range. `upper` widens a
+// date-only value to the end of that day, so the range stays inclusive.
+func parseDatasetListTime(raw string, upper bool) (*time.Time, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, nil
+	}
+	for _, layout := range []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+		datasetListTimeLayoutDateTime,
+		datasetListTimeLayoutMinutes,
+	} {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return &parsed, nil
+		}
+	}
+	if parsed, err := time.ParseInLocation(datasetListTimeLayoutDate, value, time.Local); err == nil {
+		if upper {
+			parsed = parsed.Add(24*time.Hour - time.Second)
+		}
+		return &parsed, nil
+	}
+	return nil, fmt.Errorf("expected YYYY-MM-DD or YYYY-MM-DD HH:mm:ss, got %q", raw)
+}
+
+// parseDatasetListTimeRange reads "<prefix>_from" and "<prefix>_to".
+func parseDatasetListTimeRange(c *gin.Context, prefix string) (from, to *time.Time, err error) {
+	from, err = parseDatasetListTime(c.Query(prefix+"_from"), false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s_from is invalid: %w", prefix, err)
+	}
+	to, err = parseDatasetListTime(c.Query(prefix+"_to"), true)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s_to is invalid: %w", prefix, err)
+	}
+	if from != nil && to != nil && from.After(*to) {
+		return nil, nil, fmt.Errorf("%s_from must not be after %s_to", prefix, prefix)
+	}
+	return from, to, nil
+}
+
+// parseDatasetListFilter builds the server-side list filter. Every dimension is
+// optional and the dimensions combine with AND; an empty result filters nothing.
+func parseDatasetListFilter(c *gin.Context) (dao.DatasetListFilter, error) {
+	filter := dao.DatasetListFilter{Categories: parseDatasetCategoryFilter(c)}
+
+	if raw := strings.TrimSpace(c.Query("enabled")); raw != "" {
+		parsed, ok := parsePythonBool(raw)
+		if !ok {
+			return filter, errors.New("Input should be a valid boolean, unable to interpret input")
+		}
+		filter.Enabled = &parsed
+	}
+
+	var err error
+	if filter.CreateFrom, filter.CreateTo, err = parseDatasetListTimeRange(c, "create_time"); err != nil {
+		return filter, err
+	}
+	if filter.UpdateFrom, filter.UpdateTo, err = parseDatasetListTimeRange(c, "update_time"); err != nil {
+		return filter, err
+	}
+	return filter, nil
+}
+
+// ListDatasetCategories handles GET /api/v1/datasets/categories.
+func (h *DatasetsHandler) ListDatasetCategories(c *gin.Context) {
+	user, errorCode, errorMessage := GetUser(c)
+	if errorCode != common.CodeSuccess {
+		common.ErrorWithCode(c, errorCode, errorMessage)
+		return
+	}
+	categories, code, err := h.datasetsService.ListDatasetCategories(c.Request.Context(), user.ID)
+	if err != nil {
+		common.ErrorWithCode(c, code, err.Error())
+		return
+	}
+	common.SuccessNoMessage(c, categories)
+}
+
 // parseJSONRequestObject mirrors Python's validate_and_parse_json_request:
 // content-type check first, then JSON syntax, then object shape. On failure it
 // writes the error response and returns ok=false.
@@ -384,6 +504,11 @@ var listDatasetsAllowedParams = map[string]bool{
 	"orderby": true, "desc": true, "sort": true, "include_parsing_status": true,
 	"keywords": true, "owner_ids": true, "parser_id": true, "type": true,
 	"canvas_id": true,
+	// 分类 / 状态 / 时间范围筛选。category 可重复传，也可用逗号分隔多选；
+	// enabled 是 true/false；*_from / *_to 是闭区间边界。
+	"category": true, "enabled": true,
+	"create_time_from": true, "create_time_to": true,
+	"update_time_from": true, "update_time_to": true,
 }
 
 var createDatasetAllowedFields = map[string]bool{

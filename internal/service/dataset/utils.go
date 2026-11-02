@@ -24,6 +24,7 @@ func datasetListItemToMap(kb *entity.KnowledgebaseListItem) map[string]interface
 		"avatar":                     stringPointerValue(kb.Avatar),
 		"language":                   stringPointerValue(kb.Language),
 		"description":                stringPointerValue(kb.Description),
+		"category":                   stringPointerValue(kb.Category),
 		"tenant_id":                  kb.TenantID,
 		"permission":                 kb.Permission,
 		"document_count":             kb.DocNum,

@@ -209,7 +209,7 @@ func TestKnowledgebaseDAOListByResourceIDsOrderByExpressionFallsBack(t *testing.
 
 	for _, orderby := range knowledgebaseQualifiedOrderExpressions {
 		t.Run(orderby, func(t *testing.T) {
-			rows, _, err := d.ListByResourceIDs(ctx, db, []string{"kb-1", "kb-2", "kb-3"}, nil, 1, 10, []OrderTerm{{Column: orderby}}, "", "", "")
+			rows, _, err := d.ListByResourceIDs(ctx, db, []string{"kb-1", "kb-2", "kb-3"}, nil, 1, 10, []OrderTerm{{Column: orderby}}, "", "", "", DatasetListFilter{})
 			if err != nil {
 				t.Fatalf("ListByResourceIDs with orderby %q: %v", orderby, err)
 			}
@@ -234,7 +234,7 @@ func TestKnowledgebaseDAOOrderByAllowedColumn(t *testing.T) {
 	ctx := t.Context()
 	d := NewKnowledgebaseDAO()
 
-	rows, _, err := d.ListByResourceIDs(ctx, db, []string{"kb-1", "kb-2", "kb-3"}, nil, 1, 10, []OrderTerm{{Column: "name"}}, "", "", "")
+	rows, _, err := d.ListByResourceIDs(ctx, db, []string{"kb-1", "kb-2", "kb-3"}, nil, 1, 10, []OrderTerm{{Column: "name"}}, "", "", "", DatasetListFilter{})
 	if err != nil {
 		t.Fatalf("ListByResourceIDs ascending by name: %v", err)
 	}
