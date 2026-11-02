@@ -32,6 +32,7 @@ import (
 // DocumentService document service
 type DocumentService struct {
 	documentDAO         *dao.DocumentDAO
+	documentFolderDAO   *dao.DocumentFolderDAO
 	kbDAO               *dao.KnowledgebaseDAO
 	ingestionTaskDAO    *dao.IngestionTaskDAO
 	ingestionTaskLogDAO *dao.IngestionTaskLogDAO
@@ -56,6 +57,7 @@ func NewDocumentService() *DocumentService {
 	knowledge_compile.InitializePublisher(dao.DB, engine.GetMessageQueueEngine())
 	return &DocumentService{
 		documentDAO:         dao.NewDocumentDAO(),
+		documentFolderDAO:   dao.NewDocumentFolderDAO(),
 		ingestionTaskDAO:    dao.NewIngestionTaskDAO(),
 		ingestionTaskLogDAO: dao.NewIngestionTaskLogDAO(),
 		ingestionTaskSvc:    ingestionTaskSvc,

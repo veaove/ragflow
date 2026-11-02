@@ -131,9 +131,9 @@ type DocumentListOptions struct {
 	CreateTimeTo       int64
 	OrderBy            string
 	Desc               bool
-	// Folder 为 nil 表示不按文件夹筛选；指向空串表示只看"未分类"；
-	// 指向普通字符串表示只看该文件夹。
-	Folder *string
+	// FolderID 为 nil 表示不按文件夹筛选；指向空串表示只看"未分类"；
+	// 指向普通字符串表示只看该目录直属的文件。
+	FolderID *string
 	Offset int
 	Limit  int
 }
@@ -328,12 +328,12 @@ func applyDocumentListFilters(query *gorm.DB, opts DocumentListOptions, qualifie
 	if opts.Name != "" {
 		query = query.Where(column("name")+" = ?", opts.Name)
 	}
-	if opts.Folder != nil {
-		if *opts.Folder == "" {
-			// 未分类：folder 列是老库新增的，历史数据都是 NULL。
-			query = query.Where("(" + column("folder") + " IS NULL OR " + column("folder") + " = '')")
+	if opts.FolderID != nil {
+		if *opts.FolderID == "" {
+			// 未分类：folder_id 是新增列，历史数据都是 NULL。
+			query = query.Where("(" + column("folder_id") + " IS NULL OR " + column("folder_id") + " = '')")
 		} else {
-			query = query.Where(column("folder")+" = ?", *opts.Folder)
+			query = query.Where(column("folder_id")+" = ?", *opts.FolderID)
 		}
 	}
 	// The document ID clause is not gated on DocIDFilterApplied here: with the

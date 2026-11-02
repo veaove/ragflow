@@ -85,3 +85,33 @@ export type IDocumentInfoFilter = {
   suffix: Record<string, number>;
   metadata: Record<string, Record<string, number>>;
 };
+
+/** 知识库目录节点。doc_count 是直属文件数，file_count 是整棵子树。 */
+export interface IDocumentFolder {
+  id: string;
+  parent_id: string;
+  name: string;
+  doc_count: number;
+  file_count: number;
+  folder_count: number;
+  created_by: string;
+  create_time?: number;
+  update_time?: number;
+}
+
+export interface IDocumentFolderList {
+  folders: IDocumentFolder[];
+  unfiled: number;
+  total: number;
+}
+
+export interface IDocumentFolderParseSummary {
+  folder_id: string;
+  total: number;
+  pending: number;
+  parsed: number;
+  in_progress: number;
+  sub_folders: number;
+  folder_count: number;
+  path: string;
+}

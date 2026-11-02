@@ -22,6 +22,8 @@ import { ResponseType } from '@/interfaces/database/base';
 import { IReferenceChunk } from '@/interfaces/database/chat';
 import { IChunk } from '@/interfaces/database/dataset';
 import {
+  IDocumentFolderList,
+  IDocumentFolderParseSummary,
   IDocumentInfo,
   IDocumentInfoFilter,
 } from '@/interfaces/database/document';
@@ -47,6 +49,11 @@ import kbService, {
   changeDocumentsStatus,
   setDocumentFolder as requestSetDocumentFolder,
   listDocumentFolders,
+  createDocumentFolder as requestCreateDocumentFolder,
+  updateDocumentFolder as requestUpdateDocumentFolder,
+  deleteDocumentFolder as requestDeleteDocumentFolder,
+  getDocumentFolderParseSummary,
+  parseDocumentFolder as requestParseDocumentFolder,
   createDocument,
   deleteDocument,
   documentFilter,
@@ -189,30 +196,43 @@ export const useUploadDocument = () => {
   return { uploadDocument: upload, loading, data };
 };
 
-/** 拉取当前知识库里已用的文件夹（含每个文件夹的文件数）。 */
+/** 拉取当前知识库的目录树（扁平列表 + 未分类文件数）。 */
 export const useFetchDocumentFolders = (datasetId?: string) => {
   const { knowledgeId } = useGetKnowledgeSearchParams();
   const { id } = useParams();
   const kbId = datasetId || knowledgeId || (id as string);
 
-  const { data } = useQuery<Array<{ folder: string; doc_count: number; unfiled: boolean }>>({
+  const { data, isFetching, refetch } = useQuery<IDocumentFolderList>({
     queryKey: ['document-folders', kbId],
     enabled: !!kbId,
+    initialData: { folders: [], unfiled: 0, total: 0 },
     queryFn: async () => {
       const { data } = await listDocumentFolders(kbId);
-      return data?.data ?? [];
+      return data?.data ?? { folders: [], unfiled: 0, total: 0 };
     },
   });
 
-  return { folders: data ?? [] };
+  return {
+    folders: data?.folders ?? [],
+    unfiled: data?.unfiled ?? 0,
+    total: data?.total ?? 0,
+    loading: isFetching,
+    refetchFolders: refetch,
+  };
 };
 
-export const useFetchDocumentList = (loop = true) => {
+export const useFetchDocumentList = (
+  loop = true,
+  folderIdOverride?: string,
+) => {
   const { knowledgeId } = useGetKnowledgeSearchParams();
-  // 文件夹筛选走 URL query（?folder=xxx），刷新后仍保留。
-  // 没有该参数 = 不过滤；folder= 空串 = 只看未分类。
+  // 目录筛选默认走 URL query（?folder_id=xxx），刷新后仍保留；
+  // 传入 folderIdOverride 时以参数为准（知识库根目录用空串表示"未分类"）。
   const [searchParams] = useSearchParams();
-  const folderFilter = searchParams.get('folder');
+  const folderFilter =
+    folderIdOverride !== undefined
+      ? folderIdOverride
+      : searchParams.get('folder_id');
   const { searchString, handleInputChange } = useHandleSearchChange();
   const { pagination, setPagination } = useGetPaginationWithRouter();
   const { id } = useParams();
@@ -232,7 +252,7 @@ export const useFetchDocumentList = (loop = true) => {
   }>({
     queryKey: [
       ...DocumentKeys.list(debouncedSearchString, pagination, filterValue),
-      'folder',
+      'folder_id',
       folderFilter,
     ],
     initialData: { docs: [], total: 0, has_active_tasks: false },
@@ -280,7 +300,7 @@ export const useFetchDocumentList = (loop = true) => {
           run_status: adaptDocumentRunStatusFilter(run as string[] | undefined),
           return_empty_metadata: returnEmptyMetadata,
           metadata: filterValue.metadata as Record<string, string[]>,
-          ...(folderFilter !== null ? { folder: folderFilter } : {}),
+          ...(folderFilter !== null ? { folder_id: folderFilter } : {}),
         },
       );
       if (ret.data.code === 0) {
@@ -476,10 +496,10 @@ export const useSetDocumentStatus = () => {
 };
 
 /**
- * 把一批文档移入 / 移出文件夹。
+ * 把一批文档移入 / 移出目录。
  *
- * 文件夹是 document.folder 上的字符串分组，不做独立的表：
- * 这里的"新建文件夹"就是把选中的文件写入一个新的 folder 值。
+ * 目录是真目录（document_folder），文档通过 folder_id 归属；
+ * folder_id 传空串表示移出目录。
  */
 export const useSetDocumentFolder = () => {
   const queryClient = useQueryClient();
@@ -487,23 +507,158 @@ export const useSetDocumentFolder = () => {
   const { mutateAsync } = useMutation<
     any,
     Error,
-    { kb_id: string; doc_ids: string[]; folder: string }
+    { kb_id: string; doc_ids: string[]; folder_id: string; folderName?: string }
   >({
-    mutationFn: async ({ kb_id, doc_ids, folder }) => {
+    mutationFn: async ({ kb_id, doc_ids, folder_id, folderName }) => {
       const { data } = await requestSetDocumentFolder({
         kb_id,
         doc_ids,
-        folder,
+        folder_id,
       });
       if (data.code === 0) {
-        message.success(folder ? `已移动到「${folder}」` : '已移出文件夹');
+        message.success(
+          folder_id ? `已移动到「${folderName ?? '目标目录'}」` : '已移出目录',
+        );
         queryClient.invalidateQueries({ queryKey: DocumentKeys.all() });
+        queryClient.invalidateQueries({ queryKey: ['document-folders'] });
       }
       return data;
     },
   });
 
   return { setDocumentFolder: mutateAsync };
+};
+
+/** 新建目录。 */
+export const useCreateDocumentFolder = () => {
+  const queryClient = useQueryClient();
+
+  const { mutateAsync, isPending } = useMutation<
+    any,
+    Error,
+    { kb_id: string; parent_id: string; name: string }
+  >({
+    mutationFn: async ({ kb_id, parent_id, name }) => {
+      const { data } = await requestCreateDocumentFolder(kb_id, {
+        parent_id,
+        name,
+      });
+      if (data.code === 0) {
+        message.success('目录已创建');
+        queryClient.invalidateQueries({ queryKey: ['document-folders'] });
+      }
+      return data;
+    },
+  });
+
+  return { createDocumentFolder: mutateAsync, loading: isPending };
+};
+
+/** 重命名 / 移动目录。 */
+export const useUpdateDocumentFolder = () => {
+  const queryClient = useQueryClient();
+
+  const { mutateAsync, isPending } = useMutation<
+    any,
+    Error,
+    { kb_id: string; folder_id: string; name?: string; parent_id?: string }
+  >({
+    mutationFn: async ({ kb_id, folder_id, ...payload }) => {
+      const { data } = await requestUpdateDocumentFolder(
+        kb_id,
+        folder_id,
+        payload,
+      );
+      if (data.code === 0) {
+        queryClient.invalidateQueries({ queryKey: ['document-folders'] });
+        queryClient.invalidateQueries({ queryKey: DocumentKeys.all() });
+      }
+      return data;
+    },
+  });
+
+  return { updateDocumentFolder: mutateAsync, loading: isPending };
+};
+
+/** 删除目录（非空目录需要 recursive）。 */
+export const useDeleteDocumentFolder = () => {
+  const queryClient = useQueryClient();
+
+  const { mutateAsync, isPending } = useMutation<
+    any,
+    Error,
+    { kb_id: string; folder_id: string; recursive?: boolean }
+  >({
+    mutationFn: async ({ kb_id, folder_id, recursive }) => {
+      const { data } = await requestDeleteDocumentFolder(
+        kb_id,
+        folder_id,
+        recursive,
+      );
+      if (data.code === 0) {
+        message.success('目录已删除');
+        queryClient.invalidateQueries({ queryKey: ['document-folders'] });
+        queryClient.invalidateQueries({ queryKey: DocumentKeys.all() });
+      }
+      return data;
+    },
+  });
+
+  return { deleteDocumentFolder: mutateAsync, loading: isPending };
+};
+
+/** 目录解析预览：多少待解析、多少已解析。 */
+export const useFetchDocumentFolderParseSummary = (
+  folderId: string | null,
+  enabled: boolean,
+) => {
+  const { knowledgeId } = useGetKnowledgeSearchParams();
+  const { id } = useParams();
+  const kbId = knowledgeId || (id as string);
+
+  const { data, isFetching } = useQuery<IDocumentFolderParseSummary>({
+    queryKey: ['document-folder-parse-summary', kbId, folderId],
+    enabled: enabled && !!kbId && !!folderId,
+    queryFn: async () => {
+      const { data } = await getDocumentFolderParseSummary(
+        kbId,
+        folderId as string,
+      );
+      return data?.data;
+    },
+  });
+
+  return { summary: data, loading: isFetching };
+};
+
+/** 开始解析（或全部重新解析）一个目录。 */
+export const useParseDocumentFolder = () => {
+  const queryClient = useQueryClient();
+
+  const { mutateAsync, isPending } = useMutation<
+    any,
+    Error,
+    { kb_id: string; folder_id: string; include_parsed?: boolean }
+  >({
+    mutationFn: async ({ kb_id, folder_id, include_parsed }) => {
+      const { data } = await requestParseDocumentFolder(
+        kb_id,
+        folder_id,
+        include_parsed,
+      );
+      if (data.code === 0) {
+        const started = data?.data?.started ?? 0;
+        message.success(
+          started > 0 ? `已创建 ${started} 个解析任务` : '没有需要解析的文件',
+        );
+        queryClient.invalidateQueries({ queryKey: DocumentKeys.all() });
+        queryClient.invalidateQueries({ queryKey: ['document-folders'] });
+      }
+      return data;
+    },
+  });
+
+  return { parseDocumentFolder: mutateAsync, loading: isPending };
 };
 
 // This hook is used to run a document by its IDs

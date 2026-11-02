@@ -46,9 +46,9 @@ func RunMigrations(ctx context.Context, db *gorm.DB) error {
 		return fmt.Errorf("failed to rename document.process_duation: %w", err)
 	}
 
-	// Add document.folder for the knowledge-base file grouping feature
-	if err := migrateDocumentFolderColumn(ctx, db); err != nil {
-		return fmt.Errorf("failed to add document.folder: %w", err)
+	// Knowledge-base folder tree: document_folder table + document.folder_id
+	if err := migrateDocumentFolderTree(ctx, db); err != nil {
+		return fmt.Errorf("failed to migrate knowledge-base folders: %w", err)
 	}
 
 	// Add unique index on user.email
@@ -1371,28 +1371,100 @@ WHERE v.version_seq = 0`).Error; err != nil {
 	return nil
 }
 
-// migrateDocumentFolderColumn adds document.folder for grouping files into
-// virtual folders inside a knowledge base.
+// migrateDocumentFolderTree introduces the knowledge-base folder tree:
+// a document_folder table for the directories and document.folder_id for
+// membership.
+//
+// 老的 document.folder 是一个字符串分组，没有嵌套，也没有"解析整个文件夹"
+// 这类能力。迁移把它转成真目录：同名的字符串在根目录下生成一个文件夹，
+// 文档改为指向它的 id，然后删掉旧列 —— 两条路径不能同时存在，否则
+// "改一个文件夹名"要同时改两处，迟早不一致。
 //
 // Like knowledgebase.enabled, the document table is not touched by the runtime
 // AutoMigrate path, so a database created before this feature would fail with
 // Error 1054 as soon as a query names the column.
-func migrateDocumentFolderColumn(ctx context.Context, db *gorm.DB) error {
+func migrateDocumentFolderTree(ctx context.Context, db *gorm.DB) error {
 	migrator := db.WithContext(ctx).Migrator()
 	if !migrator.HasTable(&entity.Document{}) {
 		return nil
 	}
-	if migrator.HasColumn(&entity.Document{}, "folder") {
+	if err := autoMigrateSafely(ctx, db, &entity.DocumentFolder{}); err != nil {
+		return fmt.Errorf("failed to create document_folder: %w", err)
+	}
+	if !migrator.HasColumn(&entity.Document{}, "folder_id") {
+		if err := db.WithContext(ctx).Exec(
+			"ALTER TABLE document ADD COLUMN folder_id varchar(32) NULL",
+		).Error; err != nil {
+			if !isDuplicateColumnError(err) {
+				return fmt.Errorf("failed to add document.folder_id: %w", err)
+			}
+		} else {
+			common.Info("Added document.folder_id")
+		}
+	}
+	// 旧列已经删掉：既没有要搬的数据，也不能再搬一次。
+	if !migrator.HasColumn(&entity.Document{}, "folder") {
 		return nil
 	}
-	if err := db.WithContext(ctx).Exec(
-		"ALTER TABLE document ADD COLUMN folder varchar(128) NULL",
-	).Error; err != nil {
-		if isDuplicateColumnError(err) {
-			return nil
-		}
-		return fmt.Errorf("failed to add document.folder: %w", err)
+	if err := backfillDocumentFolders(ctx, db); err != nil {
+		return err
 	}
-	common.Info("Added document.folder")
+	if err := migrator.DropColumn(&entity.Document{}, "folder"); err != nil {
+		return fmt.Errorf("failed to drop document.folder: %w", err)
+	}
+	common.Info("Dropped document.folder after migrating to document_folder")
 	return nil
+}
+
+// backfillDocumentFolders turns each distinct legacy folder name of a knowledge
+// base into a root-level document_folder row and repoints its documents.
+func backfillDocumentFolders(ctx context.Context, db *gorm.DB) error {
+	type legacyFolder struct {
+		KbID      string
+		Folder    string
+		CreatedBy string
+	}
+	var sources []legacyFolder
+	if err := db.WithContext(ctx).
+		Model(&entity.Document{}).
+		Select("kb_id AS kb_id, folder AS folder, MIN(created_by) AS created_by").
+		Where("folder IS NOT NULL AND folder <> ''").
+		Group("kb_id, folder").
+		Scan(&sources).Error; err != nil {
+		return fmt.Errorf("failed to read legacy document.folder: %w", err)
+	}
+	if len(sources) == 0 {
+		return nil
+	}
+
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, source := range sources {
+			folderID := ""
+			existing, err := NewDocumentFolderDAO().GetSiblingByName(ctx, tx, source.KbID, "", source.Folder)
+			switch {
+			case err == nil:
+				folderID = existing.ID
+			case IsNotFoundErr(err):
+				folderID = common.GenerateUUID()
+				folder := &entity.DocumentFolder{
+					ID:        folderID,
+					DatasetID: source.KbID,
+					ParentID:  "",
+					Name:      source.Folder,
+					CreatedBy: source.CreatedBy,
+				}
+				if err := tx.Create(folder).Error; err != nil {
+					return fmt.Errorf("failed to create folder %q: %w", source.Folder, err)
+				}
+			default:
+				return fmt.Errorf("failed to look up folder %q: %w", source.Folder, err)
+			}
+			if err := tx.Model(&entity.Document{}).
+				Where("kb_id = ? AND folder = ?", source.KbID, source.Folder).
+				Update("folder_id", folderID).Error; err != nil {
+				return fmt.Errorf("failed to repoint documents of folder %q: %w", source.Folder, err)
+			}
+		}
+		return nil
+	})
 }

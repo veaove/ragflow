@@ -16,6 +16,15 @@ import * as React from 'react';
 import { EmptyType } from '@/components/empty/constant';
 import Empty from '@/components/empty/empty';
 import { RenameDialog } from '@/components/rename-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { IDocumentFolder } from '@/interfaces/database/document';
+import { LucideFolder, LucideMoreVertical } from 'lucide-react';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import {
   Table,
@@ -45,6 +54,13 @@ export type DatasetTableProps = Pick<
   Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> & {
     showManageMetadataModal: (config: ShowManageMetadataModalProps) => void;
     bulkOperateBarVisible?: boolean;
+    /** 当前目录下的子目录，渲染在文件行之前。 */
+    folders?: IDocumentFolder[];
+    onEnterFolder?: (folderId: string) => void;
+    onParseFolder?: (folder: IDocumentFolder) => void;
+    onRenameFolder?: (folder: IDocumentFolder) => void;
+    onMoveFolder?: (folder: IDocumentFolder) => void;
+    onDeleteFolder?: (folder: IDocumentFolder) => void;
   };
 
 export function DatasetTable({
@@ -55,6 +71,12 @@ export function DatasetTable({
   setRowSelection,
   showManageMetadataModal,
   bulkOperateBarVisible = false,
+  folders = [],
+  onEnterFolder,
+  onParseFolder,
+  onRenameFolder,
+  onMoveFolder,
+  onDeleteFolder,
 }: DatasetTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -152,6 +174,78 @@ export function DatasetTable({
           ))}
         </TableHeader>
         <TableBody className="relative">
+          {folders.map((folder) => (
+            <TableRow key={folder.id} className="group">
+              <TableCell />
+              <TableCell>
+                <div className="flex items-center gap-2">
+                  <LucideFolder className="size-4 shrink-0 text-state-warning" />
+                  <div className="min-w-0">
+                    <button
+                      type="button"
+                      className="block max-w-[300px] truncate text-left font-medium hover:text-text-accent hover:underline"
+                      title="进入文件夹"
+                      onClick={() => onEnterFolder?.(folder.id)}
+                    >
+                      {folder.name}
+                    </button>
+                    <div className="text-[10.5px] text-text-secondary">
+                      {folder.file_count} 个文件
+                    </div>
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell className="text-text-secondary">
+                {folder.create_time
+                  ? new Date(folder.create_time).toLocaleString()
+                  : '-'}
+              </TableCell>
+              <TableCell className="text-text-secondary">—</TableCell>
+              <TableCell className="text-text-secondary">—</TableCell>
+              <TableCell className="text-text-secondary">—</TableCell>
+              <TableCell>
+                <button
+                  type="button"
+                  className="text-sm text-text-accent hover:underline"
+                  onClick={() => onParseFolder?.(folder)}
+                >
+                  解析全部
+                </button>
+              </TableCell>
+              <TableCell>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      title="更多操作"
+                      className="rounded p-1 text-text-secondary hover:bg-bg-card"
+                    >
+                      <LucideMoreVertical className="size-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-36">
+                    <DropdownMenuItem onClick={() => onParseFolder?.(folder)}>
+                      解析文件夹
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onRenameFolder?.(folder)}>
+                      重命名
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onMoveFolder?.(folder)}>
+                      移动到…
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-state-error"
+                      onClick={() => onDeleteFolder?.(folder)}
+                    >
+                      删除
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>
+          ))}
+
           {table.getRowModel().rows?.length ? (
             table.getRowModel().rows.map((row) => (
               <TableRow
@@ -172,11 +266,16 @@ export function DatasetTable({
               </TableRow>
             ))
           ) : (
-            <TableRow>
-              <TableCell colSpan={columns.length} className="h-24 text-center">
-                <Empty type={EmptyType.Data} />
-              </TableCell>
-            </TableRow>
+            folders.length === 0 && (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
+                  <Empty type={EmptyType.Data} />
+                </TableCell>
+              </TableRow>
+            )
           )}
         </TableBody>
       </Table>

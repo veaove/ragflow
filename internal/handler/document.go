@@ -81,9 +81,14 @@ type documentServiceIface interface {
 	Ingest(ctx context.Context, userID string, req *document.IngestDocumentRequest) (common.ErrorCode, error)
 	RemoveIngestionTasks(ctx context.Context, tasks []string, userID string) ([]map[string]string, error)
 	BatchUpdateDocumentStatus(ctx context.Context, userID, datasetID, status string, DocumentIDs []string) (map[string]interface{}, common.ErrorCode, error)
-	// 知识库内的文件分组
-	ListDocumentFolders(ctx context.Context, userID, datasetID string) ([]map[string]interface{}, common.ErrorCode, error)
-	BatchSetDocumentFolder(ctx context.Context, userID, datasetID string, documentIDs []string, folder string) (int64, common.ErrorCode, error)
+	// 知识库内的目录树
+	ListDocumentFolders(ctx context.Context, userID, datasetID string) (*document.DocumentFolderListResponse, common.ErrorCode, error)
+	CreateDocumentFolder(ctx context.Context, userID, datasetID, parentID, name string) (*document.DocumentFolderNode, common.ErrorCode, error)
+	UpdateDocumentFolder(ctx context.Context, userID, datasetID, folderID string, name, parentID *string) (*document.DocumentFolderNode, common.ErrorCode, error)
+	DeleteDocumentFolder(ctx context.Context, userID, datasetID, folderID string, recursive bool) (map[string]interface{}, common.ErrorCode, error)
+	MoveDocumentsToFolder(ctx context.Context, userID, datasetID string, documentIDs []string, folderID string) (int64, common.ErrorCode, error)
+	GetDocumentFolderParseSummary(ctx context.Context, userID, datasetID, folderID string) (*document.DocumentFolderParseSummary, common.ErrorCode, error)
+	ParseDocumentFolder(ctx context.Context, userID, datasetID, folderID string, includeParsed bool) (map[string]interface{}, common.ErrorCode, error)
 	HasActiveIngestionTasks(ctx context.Context, datasetID string) (bool, error)
 }
 
@@ -727,11 +732,11 @@ func parseDocumentListOptions(c *gin.Context, datasetID string) (dao.DocumentLis
 		Suffixes: queryValues(c, "suffix"),
 		Types:    queryValues(c, "types"),
 	}
-	// 文件夹筛选：传 folder=xxx 只看该文件夹；传 folder=（空）只看未分类；
+	// 目录筛选：传 folder_id=xxx 只看该目录；传 folder_id=（空）只看未分类；
 	// 不传则不过滤。用 GetQuery 区分"没传"和"传了空串"。
-	if folderValue, exists := c.GetQuery("folder"); exists {
+	if folderValue, exists := c.GetQuery("folder_id"); exists {
 		folderCopy := folderValue
-		opts.Folder = &folderCopy
+		opts.FolderID = &folderCopy
 	}
 
 	opts.RunStatuses = normalizeRunStatusFilter(queryValues(c, "run", "run_status", "ingestion_status"))
@@ -1906,7 +1911,7 @@ func pythonJSONKindName(typeErr *json.UnmarshalTypeError) string {
 }
 
 // ListDocumentFolders GET /datasets/:dataset_id/document-folders
-// 返回该知识库下已使用的文件夹及文件数（folder 为空表示未分类）。
+// 返回该知识库的目录扁平列表 + 每个目录的文件数，由前端组树。
 func (h *DocumentHandler) ListDocumentFolders(c *gin.Context) {
 	user, code, errorMessage := GetUser(c)
 	if code != common.CodeSuccess {
@@ -1914,10 +1919,6 @@ func (h *DocumentHandler) ListDocumentFolders(c *gin.Context) {
 		return
 	}
 	datasetID := strings.TrimSpace(c.Param("dataset_id"))
-	if datasetID == "" {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "dataset_id is required")
-		return
-	}
 
 	folders, code, err := h.documentService.ListDocumentFolders(c.Request.Context(), user.ID, datasetID)
 	if err != nil {
@@ -1927,23 +1928,167 @@ func (h *DocumentHandler) ListDocumentFolders(c *gin.Context) {
 	common.SuccessWithData(c, folders, "success")
 }
 
-// BatchSetDocumentFolder POST /datasets/:dataset_id/documents/batch-folder
-// body: {"doc_ids": [...], "folder": "合同"}；folder 为空表示移出文件夹。
-func (h *DocumentHandler) BatchSetDocumentFolder(c *gin.Context) {
+// CreateDocumentFolder POST /datasets/:dataset_id/document-folders
+// body: {"parent_id": "", "name": "投教材料"}；parent_id 为空表示建在根目录。
+func (h *DocumentHandler) CreateDocumentFolder(c *gin.Context) {
 	user, code, errorMessage := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ResponseWithCodeData(c, code, nil, errorMessage)
 		return
 	}
 	datasetID := strings.TrimSpace(c.Param("dataset_id"))
-	if datasetID == "" {
-		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "dataset_id is required")
+
+	var req struct {
+		ParentID string `json:"parent_id"`
+		Name     string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
+
+	folder, code, err := h.documentService.CreateDocumentFolder(
+		c.Request.Context(), user.ID, datasetID, req.ParentID, req.Name)
+	if err != nil {
+		common.ResponseWithCodeData(c, code, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, folder, "success")
+}
+
+// UpdateDocumentFolder PUT /datasets/:dataset_id/document-folders/:folder_id
+// body: {"name": "新名字", "parent_id": "..."}，两个字段都可省略。
+func (h *DocumentHandler) UpdateDocumentFolder(c *gin.Context) {
+	user, code, errorMessage := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ResponseWithCodeData(c, code, nil, errorMessage)
+		return
+	}
+	datasetID := strings.TrimSpace(c.Param("dataset_id"))
+	folderID := strings.TrimSpace(c.Param("folder_id"))
+	if folderID == "" {
+		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "folder_id is required")
 		return
 	}
 
 	var req struct {
+		Name     *string `json:"name"`
+		ParentID *string `json:"parent_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
+	if req.Name == nil && req.ParentID == nil {
+		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "nothing to update: pass name or parent_id")
+		return
+	}
+
+	folder, code, err := h.documentService.UpdateDocumentFolder(
+		c.Request.Context(), user.ID, datasetID, folderID, req.Name, req.ParentID)
+	if err != nil {
+		common.ResponseWithCodeData(c, code, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, folder, "success")
+}
+
+// DeleteDocumentFolder DELETE /datasets/:dataset_id/document-folders/:folder_id
+// 非空目录必须显式带 ?recursive=true，否则拒绝。
+func (h *DocumentHandler) DeleteDocumentFolder(c *gin.Context) {
+	user, code, errorMessage := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ResponseWithCodeData(c, code, nil, errorMessage)
+		return
+	}
+	datasetID := strings.TrimSpace(c.Param("dataset_id"))
+	folderID := strings.TrimSpace(c.Param("folder_id"))
+	if folderID == "" {
+		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "folder_id is required")
+		return
+	}
+	recursive := strings.EqualFold(c.Query("recursive"), "true")
+
+	result, code, err := h.documentService.DeleteDocumentFolder(
+		c.Request.Context(), user.ID, datasetID, folderID, recursive)
+	if err != nil {
+		common.ResponseWithCodeData(c, code, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, result, "success")
+}
+
+// GetDocumentFolderParseSummary GET /datasets/:dataset_id/document-folders/:folder_id/parse-summary
+func (h *DocumentHandler) GetDocumentFolderParseSummary(c *gin.Context) {
+	user, code, errorMessage := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ResponseWithCodeData(c, code, nil, errorMessage)
+		return
+	}
+	datasetID := strings.TrimSpace(c.Param("dataset_id"))
+	folderID := strings.TrimSpace(c.Param("folder_id"))
+	if folderID == "" {
+		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "folder_id is required")
+		return
+	}
+
+	summary, code, err := h.documentService.GetDocumentFolderParseSummary(
+		c.Request.Context(), user.ID, datasetID, folderID)
+	if err != nil {
+		common.ResponseWithCodeData(c, code, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, summary, "success")
+}
+
+// ParseDocumentFolder POST /datasets/:dataset_id/document-folders/:folder_id/parse
+// body: {"include_parsed": false}；false 跳过已解析的文件，true 全部重新解析。
+func (h *DocumentHandler) ParseDocumentFolder(c *gin.Context) {
+	user, code, errorMessage := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ResponseWithCodeData(c, code, nil, errorMessage)
+		return
+	}
+	datasetID := strings.TrimSpace(c.Param("dataset_id"))
+	folderID := strings.TrimSpace(c.Param("folder_id"))
+	if folderID == "" {
+		common.ResponseWithCodeData(c, common.CodeArgumentError, nil, "folder_id is required")
+		return
+	}
+
+	var req struct {
+		IncludeParsed bool `json:"include_parsed"`
+	}
+	// 允许空 body：默认跳过已解析文件是更安全的那个方向。
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+			return
+		}
+	}
+
+	result, code, err := h.documentService.ParseDocumentFolder(
+		c.Request.Context(), user.ID, datasetID, folderID, req.IncludeParsed)
+	if err != nil {
+		common.ResponseWithCodeData(c, code, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, result, "success")
+}
+
+// MoveDocumentsToFolder POST /datasets/:dataset_id/documents/batch-folder
+// body: {"doc_ids": [...], "folder_id": "..."}；folder_id 为空表示移出目录。
+func (h *DocumentHandler) MoveDocumentsToFolder(c *gin.Context) {
+	user, code, errorMessage := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ResponseWithCodeData(c, code, nil, errorMessage)
+		return
+	}
+	datasetID := strings.TrimSpace(c.Param("dataset_id"))
+
+	var req struct {
 		DocumentIDs []string `json:"doc_ids"`
-		Folder      string   `json:"folder"`
+		FolderID    string   `json:"folder_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
@@ -1954,8 +2099,8 @@ func (h *DocumentHandler) BatchSetDocumentFolder(c *gin.Context) {
 		return
 	}
 
-	affected, code, err := h.documentService.BatchSetDocumentFolder(
-		c.Request.Context(), user.ID, datasetID, req.DocumentIDs, req.Folder)
+	affected, code, err := h.documentService.MoveDocumentsToFolder(
+		c.Request.Context(), user.ID, datasetID, req.DocumentIDs, req.FolderID)
 	if err != nil {
 		common.ResponseWithCodeData(c, code, nil, err.Error())
 		return

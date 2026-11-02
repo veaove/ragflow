@@ -33,8 +33,11 @@ export function useBulkOperateDataset({
   rowSelection,
   setRowSelection,
   documents,
+  onMoveToFolder,
 }: Pick<UseRowSelectionType, 'rowSelection' | 'setRowSelection'> & {
   documents: IDocumentInfo[];
+  /** 打开"移动到目录"弹窗；不传时退回按名称输入的旧交互。 */
+  onMoveToFolder?: (docIds: string[]) => void;
 }) {
   const { t } = useTranslation();
   const { selectedIds: selectedRowKeys } = useSelectedIds(
@@ -198,20 +201,17 @@ export function useBulkOperateDataset({
 
     {
       id: 'batch-folder',
-      // 把选中的文件归到某个文件夹；输入新名字即"新建文件夹"。
-      // 文件夹是 document.folder 上的字符串分组，空名表示移出文件夹。
-      label: '移动到文件夹',
+      label: '移动到目录',
       icon: <LucideFolderInput />,
       onClick: async () => {
-        const folder = window.prompt(
-          '输入文件夹名称（留空表示移出文件夹）',
-          '',
-        );
-        if (folder === null) return;
+        if (onMoveToFolder) {
+          onMoveToFolder(selectedRowKeys);
+          return;
+        }
         const code = await setDocumentFolder({
           kb_id: id as string,
           doc_ids: selectedRowKeys,
-          folder: folder.trim(),
+          folder_id: '',
         });
         if (code === 0) {
           setRowSelection({});

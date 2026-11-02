@@ -527,21 +527,62 @@ export const changeDocumentsStatus = ({
 }) =>
   request.post(api.documentChangeStatus(kb_id), { data: { doc_ids, status } });
 
-/** 把一批文档移入指定文件夹；folder 传空字符串表示移出文件夹。 */
+/** 把一批文档移入指定目录；folder_id 传空字符串表示移出目录。 */
 export const setDocumentFolder = ({
   kb_id,
   doc_ids,
-  folder,
+  folder_id,
 }: {
   kb_id: string;
   doc_ids: string[];
-  folder: string;
+  folder_id: string;
 }) =>
-  request.post(api.documentSetFolder(kb_id), { data: { doc_ids, folder } });
+  request.post(api.documentSetFolder(kb_id), {
+    data: { doc_ids, folder_id },
+  });
 
-/** 列出该知识库已使用的文件夹及文件数。 */
+/** 列出该知识库的目录（扁平，含 parent_id 与递归文件数）。 */
 export const listDocumentFolders = (kb_id: string) =>
   request.get(api.documentFolders(kb_id), {});
+
+/** 新建目录；parent_id 为空表示建在根目录。 */
+export const createDocumentFolder = (
+  kb_id: string,
+  payload: { parent_id: string; name: string },
+) => request.post(api.documentFolders(kb_id), { data: payload });
+
+/** 重命名 / 移动目录。 */
+export const updateDocumentFolder = (
+  kb_id: string,
+  folder_id: string,
+  payload: { name?: string; parent_id?: string },
+) => request.put(api.documentFolder(kb_id, folder_id), { data: payload });
+
+/** 删除目录；非空目录必须带 recursive=true。 */
+export const deleteDocumentFolder = (
+  kb_id: string,
+  folder_id: string,
+  recursive = false,
+) =>
+  request.delete(api.documentFolder(kb_id, folder_id), {
+    params: recursive ? { recursive: 'true' } : undefined,
+  });
+
+/** 解析预览：目录下有多少文件、多少已解析、多少待解析。 */
+export const getDocumentFolderParseSummary = (
+  kb_id: string,
+  folder_id: string,
+) => request.get(api.documentFolderParseSummary(kb_id, folder_id), {});
+
+/** 开始解析（或全部重新解析）一个目录。 */
+export const parseDocumentFolder = (
+  kb_id: string,
+  folder_id: string,
+  includeParsed = false,
+) =>
+  request.post(api.documentFolderParse(kb_id, folder_id), {
+    data: { include_parsed: includeParsed },
+  });
 
 export const listDataPipelineLogDocument = (
   datasetId: string,

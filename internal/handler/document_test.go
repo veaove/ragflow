@@ -230,16 +230,34 @@ func (f *fakeDocumentService) GetDocumentPreview(ctx context.Context, userID, do
 	}, nil
 }
 
-// BatchSetDocumentFolder was added by the folder-grouping work. Handler tests
-// stub the service, so the fake must satisfy the interface again.
-func (f *fakeDocumentService) BatchSetDocumentFolder(ctx context.Context, userID, datasetID string, documentIDs []string, folder string) (int64, common.ErrorCode, error) {
-	return 0, common.CodeSuccess, nil
+// 目录树方法：handler 测试用假服务，接口新增方法后这里必须补齐。
+
+func (f *fakeDocumentService) ListDocumentFolders(ctx context.Context, userID, datasetID string) (*document.DocumentFolderListResponse, common.ErrorCode, error) {
+	return &document.DocumentFolderListResponse{}, common.CodeSuccess, nil
 }
 
-// ListDocumentFolders came from the same work and is also referenced by tests
-// that stub the service.
-func (f *fakeDocumentService) ListDocumentFolders(ctx context.Context, userID, datasetID string) ([]map[string]interface{}, common.ErrorCode, error) {
-	return nil, common.CodeSuccess, nil
+func (f *fakeDocumentService) CreateDocumentFolder(ctx context.Context, userID, datasetID, parentID, name string) (*document.DocumentFolderNode, common.ErrorCode, error) {
+	return &document.DocumentFolderNode{ID: "folder-1", ParentID: parentID, Name: name}, common.CodeSuccess, nil
+}
+
+func (f *fakeDocumentService) UpdateDocumentFolder(ctx context.Context, userID, datasetID, folderID string, name, parentID *string) (*document.DocumentFolderNode, common.ErrorCode, error) {
+	return &document.DocumentFolderNode{ID: folderID}, common.CodeSuccess, nil
+}
+
+func (f *fakeDocumentService) DeleteDocumentFolder(ctx context.Context, userID, datasetID, folderID string, recursive bool) (map[string]interface{}, common.ErrorCode, error) {
+	return map[string]interface{}{"deleted_folders": 1}, common.CodeSuccess, nil
+}
+
+func (f *fakeDocumentService) MoveDocumentsToFolder(ctx context.Context, userID, datasetID string, documentIDs []string, folderID string) (int64, common.ErrorCode, error) {
+	return int64(len(documentIDs)), common.CodeSuccess, nil
+}
+
+func (f *fakeDocumentService) GetDocumentFolderParseSummary(ctx context.Context, userID, datasetID, folderID string) (*document.DocumentFolderParseSummary, common.ErrorCode, error) {
+	return &document.DocumentFolderParseSummary{FolderID: folderID}, common.CodeSuccess, nil
+}
+
+func (f *fakeDocumentService) ParseDocumentFolder(ctx context.Context, userID, datasetID, folderID string, includeParsed bool) (map[string]interface{}, common.ErrorCode, error) {
+	return map[string]interface{}{"started": 0}, common.CodeSuccess, nil
 }
 
 func (f *fakeDocumentService) DownloadDocument(ctx context.Context, datasetID, docID string) (*document.DownloadDocumentResp, error) {

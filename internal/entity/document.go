@@ -30,12 +30,8 @@ type Document struct {
 	Type         string  `gorm:"column:type;size:32;not null;index" json:"type"`
 	CreatedBy    string  `gorm:"column:created_by;size:32;not null;index" json:"created_by"`
 	Name         *string `gorm:"column:name;size:255;index" json:"name,omitempty"`
-	// Folder 是文件所属的虚拟文件夹名（NULL = 未分类）。
-	//
-	// 刻意不做成 folder 表 + folder_id：这里只需要「分组 + 按组批量操作」，
-	// 一个字符串列就够，既不用 join，也不影响已有的检索/解析链路。
-	// 重命名文件夹时按名称批量更新即可。
-	Folder          *string    `gorm:"column:folder;size:128;index" json:"folder,omitempty"`
+	// FolderID 是文件所在目录（NULL = 未分类）。目录本身见 DocumentFolder。
+	FolderID        *string    `gorm:"column:folder_id;size:32;index" json:"folder_id,omitempty"`
 	Location        *string    `gorm:"column:location;size:255;index" json:"location,omitempty"`
 	Size            int64      `gorm:"column:size;default:0;index" json:"size"`
 	TokenNum        int64      `gorm:"column:token_num;default:0;index" json:"token_num"`

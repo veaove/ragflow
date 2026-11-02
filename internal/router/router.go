@@ -450,9 +450,14 @@ func (r *Router) Setup(engine *gin.Engine) {
 				datasets.GET("/:dataset_id/graph", r.datasetsHandler.GetKnowledgeGraph)
 				datasets.POST("/:dataset_id/embedding/check", r.datasetsHandler.CheckEmbedding)
 				datasets.POST("/:dataset_id/documents/batch-update-status", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.BatchUpdateDocumentStatus)
-				// 文件夹：知识库内的文件分组 + 批量归组
+				// 目录树：知识库内的真目录（嵌套 + 批量归组 + 递归解析）
 				datasets.GET("/:dataset_id/document-folders", r.documentHandler.ListDocumentFolders)
-				datasets.POST("/:dataset_id/documents/batch-folder", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.BatchSetDocumentFolder)
+				datasets.POST("/:dataset_id/document-folders", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.CreateDocumentFolder)
+				datasets.PUT("/:dataset_id/document-folders/:folder_id", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.UpdateDocumentFolder)
+				datasets.DELETE("/:dataset_id/document-folders/:folder_id", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.DeleteDocumentFolder)
+				datasets.GET("/:dataset_id/document-folders/:folder_id/parse-summary", r.documentHandler.GetDocumentFolderParseSummary)
+				datasets.POST("/:dataset_id/document-folders/:folder_id/parse", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.ParseDocumentFolder)
+				datasets.POST("/:dataset_id/documents/batch-folder", handler.ModulePermissionAction("dataset", handler.ActionEdit), r.documentHandler.MoveDocumentsToFolder)
 				// Scheduler compile-status contract; replaces the retired
 				// RunIndex/TraceIndex/DeleteIndex /index routes.
 				datasets.GET("/:dataset_id/compilation/status", r.datasetsHandler.GetCompilationStatus)
