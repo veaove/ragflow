@@ -75,6 +75,9 @@ func setupServiceTestDB(t *testing.T) *gorm.DB {
 		&entity.ChatSession{},
 		&entity.ConversationMessage{},
 		&entity.ConversationReference{},
+		// resource_grant backs the per-resource grant check every list path now
+		// runs, so the table has to exist even in tests that seed no grants.
+		&entity.ResourceGrant{},
 	); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
