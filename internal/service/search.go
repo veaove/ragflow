@@ -93,6 +93,9 @@ func (s *SearchService) ListSearches(ctx context.Context, userID string, keyword
 	// Convert to response format
 	searchApps := make([]map[string]interface{}, len(searches))
 	for i, search := range searches {
+		// Same creator rule as the DAO filter, so the column, the owner filter
+		// and the nickname all name the same person.
+		search.CreatedBy = searchCreator(search)
 		searchApps[i] = s.toSearchAppResponse(search)
 
 		// 知识库列：搜索应用把 kb_ids 存在 search_config 里（chat 有独立列），
@@ -111,6 +114,16 @@ func (s *SearchService) ListSearches(ctx context.Context, userID string, keyword
 	}, nil
 }
 
+// searchCreator mirrors the DAO's searchCreatorExpr: created_by is
+// authoritative, and rows written before it existed keep the creator's user id
+// in tenant_id.
+func searchCreator(search *entity.SearchListItem) string {
+	if creator := strings.TrimSpace(search.CreatedBy); creator != "" {
+		return creator
+	}
+	return search.TenantID
+}
+
 // toSearchAppResponse converts search model to response format
 func (s *SearchService) toSearchAppResponse(search *entity.SearchListItem) map[string]interface{} {
 	result := map[string]interface{}{
@@ -123,7 +136,7 @@ func (s *SearchService) toSearchAppResponse(search *entity.SearchListItem) map[s
 		"create_time":   search.CreateTime,
 		"update_time":   search.UpdateTime,
 		"search_config": BuildSearchConfigResponse(map[string]interface{}(search.SearchConfig)),
-		"nickname":      ownerNickname(search.Nickname, search.TenantID),
+		"nickname":      ownerNickname(search.Nickname, search.CreatedBy),
 	}
 
 	if search.Avatar != nil {

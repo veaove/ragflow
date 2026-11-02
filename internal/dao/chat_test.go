@@ -313,6 +313,85 @@ func TestChatDAOListByResourceIDsKeepsJoinedOwnerColumnsWhenPaginated(t *testing
 	}
 }
 
+// TestChatDAOListByResourceIDsResolvesCreator pins the owner semantics of the
+// list: nickname and the owner filter both follow dialog.created_by, so a team
+// chat is named after the member who created it instead of the tenant owner.
+// Legacy rows keep the creator's user id in tenant_id and resolve through the
+// same COALESCE fallback.
+func TestChatDAOListByResourceIDsResolvesCreator(t *testing.T) {
+	db := setupChatTestDB(t)
+	pushDB(t, db)
+
+	for _, user := range []entity.User{
+		{ID: "tenant-1", Nickname: "租户", Status: stringPtr("1")},
+		{ID: "creator-1", Nickname: "创建人", Status: stringPtr("1")},
+	} {
+		if err := db.Create(&user).Error; err != nil {
+			t.Fatalf("failed to create user %s: %v", user.ID, err)
+		}
+	}
+
+	chats := []entity.Chat{
+		{ID: "c-team", TenantID: "tenant-1", CreatedBy: "creator-1", Name: stringPtr("team")},
+		{ID: "c-legacy", TenantID: "creator-1", Name: stringPtr("legacy")},
+	}
+	for i := range chats {
+		chats[i].LLMID = "llm-1"
+		chats[i].LLMSetting = entity.JSONMap{}
+		chats[i].PromptType = "simple"
+		chats[i].PromptConfig = entity.JSONMap{}
+		chats[i].DoRefer = "1"
+		chats[i].KBIDs = entity.JSONSlice{}
+		chats[i].Status = stringPtr("1")
+		chats[i].BaseModel.CreateTime = int64Ptr(int64(100 * (i + 1)))
+		if err := db.Create(&chats[i]).Error; err != nil {
+			t.Fatalf("failed to create chat %s: %v", chats[i].ID, err)
+		}
+	}
+
+	ctx := t.Context()
+	terms := []OrderTerm{{Column: "create_time"}}
+	d := NewChatDAO()
+
+	rows, _, err := d.ListByResourceIDs(ctx, db, []string{"c-team", "c-legacy"}, nil, 0, 0, terms, "", "", "")
+	if err != nil {
+		t.Fatalf("ListByResourceIDs: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	for _, row := range rows {
+		if row.Nickname == nil || *row.Nickname != "创建人" {
+			t.Fatalf("chat %s nickname = %v, want 创建人 (the creator, not the tenant owner)", row.ID, row.Nickname)
+		}
+		switch row.ID {
+		case "c-team":
+			if row.CreatedBy != "creator-1" {
+				t.Fatalf("chat %s created_by = %q, want creator-1", row.ID, row.CreatedBy)
+			}
+		case "c-legacy":
+			// The DAO returns the raw column; the service adds the tenant_id
+			// fallback, which is where the legacy row is covered.
+			if row.CreatedBy != "" {
+				t.Fatalf("legacy chat created_by = %q, want empty", row.CreatedBy)
+			}
+		}
+	}
+
+	// The filter is the creator id, so both generations match one id — the
+	// tenant id matches nothing, since it is not who created the chat.
+	byCreator, creatorTotal, err := d.ListByResourceIDs(ctx, db, []string{"c-team", "c-legacy"}, []string{"creator-1"}, 0, 0, terms, "", "", "")
+	if err != nil {
+		t.Fatalf("ListByResourceIDs(owner=creator-1): %v", err)
+	}
+	assertChatRows(t, byCreator, creatorTotal, []string{"c-team", "c-legacy"})
+	byTenant, total, err := d.ListByResourceIDs(ctx, db, []string{"c-team", "c-legacy"}, []string{"tenant-1"}, 0, 0, terms, "", "", "")
+	if err != nil {
+		t.Fatalf("ListByResourceIDs(owner=tenant-1): %v", err)
+	}
+	assertChatRows(t, byTenant, total, []string{})
+}
+
 // TestChatDAOListByResourceIDsKeywordMatchesDisplayedNames checks that the
 // keyword search covers every name the list actually renders: the chat name,
 // the model / rerank model stored in llm_id and rerank_id, and the knowledge

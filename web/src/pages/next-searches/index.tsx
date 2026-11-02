@@ -58,7 +58,12 @@ export default function SearchList() {
     useListViewPreference('search');
   const { navigateToSearch } = useNavigatePage();
   const owners = [
-    buildOwnersFilter(list?.data?.search_apps ?? [], undefined, tc('owner')),
+    buildOwnersFilter(
+      list?.data?.search_apps ?? [],
+      undefined,
+      tc('owner'),
+      'created_by',
+    ),
   ];
   const {
     openCreateModal,

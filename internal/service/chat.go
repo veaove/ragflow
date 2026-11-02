@@ -131,11 +131,12 @@ func (s *ChatService) ListChats(ctx context.Context, userID, status, keywords, i
 	chatsWithKBNames := make([]*ChatWithKBNames, 0, len(chats))
 	for _, chat := range chats {
 		kbNames, datasetIDs := s.getDatasetNamesAndIDs(ctx, chat.KBIDs)
+		chat.CreatedBy = chatCreator(&chat.Chat)
 		chatsWithKBNames = append(chatsWithKBNames, &ChatWithKBNames{
 			Chat:         &chat.Chat,
 			KBNames:      kbNames,
 			DatasetIDs:   datasetIDs,
-			Nickname:     ownerNickname(chat.Nickname, chat.TenantID),
+			Nickname:     ownerNickname(chat.Nickname, chat.CreatedBy),
 			TenantAvatar: chat.TenantAvatar,
 		})
 	}
@@ -146,11 +147,21 @@ func (s *ChatService) ListChats(ctx context.Context, userID, status, keywords, i
 	}, nil
 }
 
-func ownerNickname(nickname *string, tenantID string) string {
+// chatCreator returns the user id that counts as the chat's creator. Rows
+// written before dialog.created_by existed keep the creator's user id in
+// tenant_id, so an empty created_by falls back to it.
+func chatCreator(chat *entity.Chat) string {
+	if creator := strings.TrimSpace(chat.CreatedBy); creator != "" {
+		return creator
+	}
+	return chat.TenantID
+}
+
+func ownerNickname(nickname *string, fallback string) string {
 	if nickname != nil && strings.TrimSpace(*nickname) != "" {
 		return *nickname
 	}
-	return tenantID
+	return fallback
 }
 
 type CreateChatRequest struct {
@@ -199,10 +210,15 @@ func (s *ChatService) Create(ctx context.Context, tenantID, userID string, req m
 		delete(req, "dataset_ids")
 	}
 
+	// Models resolve against the tenant the app will belong to, not the caller's
+	// personal tenant: the stored tenant_llm_id / tenant_rerank_id has to point
+	// at a row the chat's own tenant can use at run time.
+	modelAccess := ModelAccess{UserID: userID, TenantID: tenantID}
+
 	if llmIDValue, ok := req["llm_id"]; ok {
 		llmID := stringFromValue(llmIDValue)
 		llmSetting, _ := mapFromValue(req["llm_setting"])
-		tenantLLMID, err := resolveCreateLLMID(ctx, llmID, userID, llmSetting)
+		tenantLLMID, err := resolveCreateLLMID(ctx, llmID, modelAccess, llmSetting)
 		if err != nil {
 			return nil, common.CodeDataError, err
 		}
@@ -213,7 +229,7 @@ func (s *ChatService) Create(ctx context.Context, tenantID, userID string, req m
 
 	if rerankIDValue, ok := req["rerank_id"]; ok {
 		rerankID := stringFromValue(rerankIDValue)
-		tenantRerankID, err := resolveCreateRerankID(ctx, rerankID, userID)
+		tenantRerankID, err := resolveCreateRerankID(ctx, rerankID, modelAccess)
 		if err != nil {
 			return nil, common.CodeDataError, err
 		}
@@ -249,7 +265,7 @@ func (s *ChatService) Create(ctx context.Context, tenantID, userID string, req m
 	}
 	if stringFromValue(req["llm_id"]) != "" && !isTruthy(req["tenant_llm_id"]) {
 		llmSetting, _ := mapFromValue(req["llm_setting"])
-		tenantLLMID, err := resolveCreateLLMID(ctx, stringFromValue(req["llm_id"]), userID, llmSetting)
+		tenantLLMID, err := resolveCreateLLMID(ctx, stringFromValue(req["llm_id"]), modelAccess, llmSetting)
 		if err != nil {
 			return nil, common.CodeDataError, err
 		}
@@ -296,14 +312,14 @@ func (s *ChatService) Create(ctx context.Context, tenantID, userID string, req m
 	filterCreateChatPersistedFields(req)
 
 	name, err = common.UniqueName(name, 255, func(candidate string) (bool, error) {
-		return s.chatDAO.ExistsByNameTenantStatus(ctx, dao.DB, candidate, userID, string(entity.StatusValid))
+		return s.chatDAO.ExistsByNameTenantStatus(ctx, dao.DB, candidate, tenantID, string(entity.StatusValid))
 	})
 	if err != nil {
 		return nil, common.CodeServerError, err
 	}
 	req["name"] = name
 
-	chat := buildCreateChatEntity(req, userID)
+	chat := buildCreateChatEntity(req, tenantID, userID)
 	if err = s.chatDAO.Create(ctx, dao.DB, chat); err != nil {
 		return nil, common.CodeDataError, fmt.Errorf("failed to create chat: %w", err)
 	}
@@ -378,7 +394,7 @@ func (s *ChatService) validateCreateDatasetIDs(ctx context.Context, value interf
 	return normalizedIDs, nil
 }
 
-func resolveCreateLLMID(ctx context.Context, llmID, tenantID string, llmSetting map[string]interface{}) (string, error) {
+func resolveCreateLLMID(ctx context.Context, llmID string, access ModelAccess, llmSetting map[string]interface{}) (string, error) {
 	if llmID == "" {
 		return "", nil
 	}
@@ -404,14 +420,14 @@ func resolveCreateLLMID(ctx context.Context, llmID, tenantID string, llmSetting 
 		}
 	}
 	modelFactory := NewModelFactory()
-	target, err := modelFactory.ResolveInfo(ctx, ModelAccess{TenantID: tenantID}, modelType, llmID)
+	target, err := modelFactory.ResolveInfo(ctx, access, modelType, llmID)
 	if err != nil {
 		return "", fmt.Errorf("`llm_id` %s doesn't exist", llmID)
 	}
 	return target.ID, nil
 }
 
-func resolveCreateRerankID(ctx context.Context, rerankID, tenantID string) (string, error) {
+func resolveCreateRerankID(ctx context.Context, rerankID string, access ModelAccess) (string, error) {
 	if rerankID == "" {
 		return "", nil
 	}
@@ -420,7 +436,7 @@ func resolveCreateRerankID(ctx context.Context, rerankID, tenantID string) (stri
 		return "", nil
 	}
 	modelFactory := NewModelFactory()
-	target, err := modelFactory.ResolveInfo(ctx, ModelAccess{TenantID: tenantID}, entity.ModelTypeRerank, rerankID)
+	target, err := modelFactory.ResolveInfo(ctx, access, entity.ModelTypeRerank, rerankID)
 	if err != nil {
 		return "", fmt.Errorf("`rerank_id` %s doesn't exist", rerankID)
 	}
@@ -486,7 +502,7 @@ func filterCreateChatPersistedFields(req map[string]interface{}) {
 	}
 }
 
-func buildCreateChatEntity(req map[string]interface{}, tenantID string) *entity.Chat {
+func buildCreateChatEntity(req map[string]interface{}, tenantID, createdBy string) *entity.Chat {
 	name := stringFromValue(req["name"])
 	description := stringFromValue(req["description"])
 	icon := stringFromValue(req["icon"])
@@ -510,6 +526,7 @@ func buildCreateChatEntity(req map[string]interface{}, tenantID string) *entity.
 	chat := &entity.Chat{
 		ID:                     common.GenerateUUID(),
 		TenantID:               tenantID,
+		CreatedBy:              createdBy,
 		Name:                   &name,
 		Description:            &description,
 		Icon:                   &icon,
@@ -809,6 +826,10 @@ func (s *ChatService) updateChatREST(ctx context.Context, userID, chatID string,
 	if err != nil {
 		return nil, err
 	}
+	// Same rule as create: the model row has to belong to the tenant the chat
+	// lives in, so resolve against that tenant and let the factory check that
+	// the caller is a member of it.
+	modelAccess := ModelAccess{UserID: userID, TenantID: currentChat.TenantID}
 
 	if !patch && isTruthy(req["tenant_id"]) {
 		return nil, errors.New("`tenant_id` must not be provided")
@@ -851,7 +872,7 @@ func (s *ChatService) updateChatREST(ctx context.Context, userID, chatID string,
 
 	if value, ok := req["llm_id"]; ok {
 		llmID := fmt.Sprint(value)
-		tenantLLMID, err := s.resolveRESTLLMID(ctx, llmID, userID, llmSetting)
+		tenantLLMID, err := s.resolveRESTLLMID(ctx, llmID, modelAccess, llmSetting)
 		if err != nil {
 			return nil, err
 		}
@@ -862,7 +883,7 @@ func (s *ChatService) updateChatREST(ctx context.Context, userID, chatID string,
 
 	if value, ok := req["rerank_id"]; ok {
 		rerankID := fmt.Sprint(value)
-		tenantRerankID, err := s.resolveRESTRerankID(ctx, rerankID, userID)
+		tenantRerankID, err := s.resolveRESTRerankID(ctx, rerankID, modelAccess)
 		if err != nil {
 			return nil, err
 		}
@@ -1034,7 +1055,7 @@ func (s *ChatService) validateRESTDatasetIDs(ctx context.Context, value interfac
 	return kbIDs, nil
 }
 
-func (s *ChatService) resolveRESTLLMID(ctx context.Context, llmID, tenantID string, llmSetting map[string]interface{}) (string, error) {
+func (s *ChatService) resolveRESTLLMID(ctx context.Context, llmID string, access ModelAccess, llmSetting map[string]interface{}) (string, error) {
 	if llmID == "" {
 		return "", nil
 	}
@@ -1055,14 +1076,14 @@ func (s *ChatService) resolveRESTLLMID(ctx context.Context, llmID, tenantID stri
 		}
 	}
 	modelFactory := NewModelFactory()
-	target, err := modelFactory.ResolveInfo(ctx, ModelAccess{TenantID: tenantID}, modelType, llmID)
+	target, err := modelFactory.ResolveInfo(ctx, access, modelType, llmID)
 	if err != nil {
 		return "", fmt.Errorf("`llm_id` %s doesn't exist", llmID)
 	}
 	return target.ID, nil
 }
 
-func (s *ChatService) resolveRESTRerankID(ctx context.Context, rerankID, tenantID string) (string, error) {
+func (s *ChatService) resolveRESTRerankID(ctx context.Context, rerankID string, access ModelAccess) (string, error) {
 	if rerankID == "" {
 		return "", nil
 	}
@@ -1071,7 +1092,7 @@ func (s *ChatService) resolveRESTRerankID(ctx context.Context, rerankID, tenantI
 		return "", nil
 	}
 	modelFactory := NewModelFactory()
-	target, err := modelFactory.ResolveInfo(ctx, ModelAccess{TenantID: tenantID}, entity.ModelTypeRerank, rerankID)
+	target, err := modelFactory.ResolveInfo(ctx, access, entity.ModelTypeRerank, rerankID)
 	if err != nil {
 		return "", fmt.Errorf("`rerank_id` %s doesn't exist", rerankID)
 	}
@@ -1108,6 +1129,7 @@ func (s *ChatService) buildRESTChatResponse(ctx context.Context, chat *entity.Ch
 	return map[string]interface{}{
 		"id":                         chat.ID,
 		"tenant_id":                  chat.TenantID,
+		"created_by":                 chatCreator(chat),
 		"name":                       chat.Name,
 		"description":                chat.Description,
 		"icon":                       chat.Icon,

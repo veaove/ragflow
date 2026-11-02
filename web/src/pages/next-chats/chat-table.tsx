@@ -119,9 +119,8 @@ export function ChatTable({
     {
       key: 'owner',
       title: t('common.creator'),
-      // dialog 表没有 created_by：tenant_id 这一列存的本来就是创建人的 user id，
-      // 后端列表的昵称也是按它 join 出来的。
-      render: (row) => <ResourceOwnerCell userId={row.tenant_id} />,
+      // 创建人取 created_by；没有这一列的历史数据由后端回落到 tenant_id。
+      render: (row) => <ResourceOwnerCell userId={row.created_by} />,
     },
     {
       key: 'updated',
@@ -143,7 +142,7 @@ export function ChatTable({
   ];
 
   return (
-    <ResourceOwnerProvider userIds={rows.map((row) => row.tenant_id)}>
+    <ResourceOwnerProvider userIds={rows.map((row) => row.created_by)}>
       <ListDataTable
         columns={columns}
         rows={rows}

@@ -48,8 +48,13 @@ type SearchDetailRow struct {
 	TenantAvatar *string        `gorm:"column:tenant_avatar"`
 }
 
+// searchCreatorExpr is "who created this search app", shared by the nickname
+// JOIN, the owner filter and the detail query. search.created_by is
+// authoritative; rows predating it keep the creator's user id in tenant_id.
+const searchCreatorExpr = "COALESCE(NULLIF(search.created_by, ''), search.tenant_id)"
+
 // ListByResourceIDs lists only the authorized Search Apps, with optional
-// tenant-owner filtering and pagination.
+// creator filtering and pagination.
 func (dao *SearchDAO) ListByResourceIDs(ctx context.Context, db *gorm.DB, resourceIDs, ownerIDs []string, page, pageSize int, terms []OrderTerm, keywords string) ([]*entity.SearchListItem, int64, error) {
 	var searches []*entity.SearchListItem
 	var total int64
@@ -64,11 +69,11 @@ func (dao *SearchDAO) ListByResourceIDs(ctx context.Context, db *gorm.DB, resour
 			user.nickname,
 			user.avatar as tenant_avatar
 		`).
-		Joins("LEFT JOIN user ON search.tenant_id = user.id")
+		Joins("LEFT JOIN user ON user.id = " + searchCreatorExpr)
 
 	query = query.Where("search.id IN ? AND search.status = ?", resourceIDs, "1")
 	if len(ownerIDs) > 0 {
-		query = query.Where("search.tenant_id IN ?", ownerIDs)
+		query = query.Where(searchCreatorExpr+" IN ?", ownerIDs)
 	}
 
 	// Apply keyword filter
@@ -130,7 +135,7 @@ func (dao *SearchDAO) GetDetailByID(ctx context.Context, db *gorm.DB, searchID s
 			user.nickname,
 			user.avatar AS tenant_avatar
 		`).
-		Joins("JOIN user ON user.id = search.tenant_id AND user.status = ?", "1").
+		Joins("JOIN user ON user.id = "+searchCreatorExpr+" AND user.status = ?", "1").
 		Where("search.id = ? AND search.status = ?", searchID, "1").
 		Scan(&detail).Error
 	if err != nil {

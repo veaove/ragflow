@@ -65,8 +65,11 @@ export function buildOwnersFilter<T extends Record<string, any>>(
   list: T[],
   nickName?: string,
   label?: string,
+  // 归属 id 取哪一列：知识搜索按租户分组，知识问答按创建人分组。
+  // 必须和列表的 owner 列取自同一字段，否则筛选结果和表格对不上。
+  ownerField = 'tenant_id',
 ) {
-  const owners = groupListByType(list, 'tenant_id', nickName || 'nickname');
+  const owners = groupListByType(list, ownerField, nickName || 'nickname');
 
   return { field: 'owner', list: owners, label: label ?? 'Owner' };
 }

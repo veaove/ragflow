@@ -19,9 +19,16 @@ package entity
 import "encoding/json"
 
 // Chat chat model (mapped to dialog table)
+//
+// TenantID names the owning tenant and drives visibility plus model lookup;
+// CreatedBy names the member who created the app and drives the "创建人" column
+// and the owner filter. Rows written before created_by existed leave it empty
+// and carry the creator's user id in tenant_id, so every reader falls back to
+// tenant_id when created_by is empty.
 type Chat struct {
 	ID             string   `gorm:"column:id;primaryKey;size:32" json:"id"`
 	TenantID       string   `gorm:"column:tenant_id;size:32;not null;index" json:"tenant_id"`
+	CreatedBy      string   `gorm:"column:created_by;size:32;index" json:"created_by,omitempty"`
 	Name           *string  `gorm:"column:name;size:255;index" json:"name,omitempty"`
 	Description    *string  `gorm:"column:description;type:longtext" json:"description,omitempty"`
 	Icon           *string  `gorm:"column:icon;type:longtext" json:"icon,omitempty"`

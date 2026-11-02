@@ -1050,15 +1050,19 @@ func memoryResource(memory *entity.Memory) Resource {
 }
 
 func chatResource(chat *entity.Chat) Resource {
-	// 知识问答应用是租户级资产：dialog 表没有 created_by，也没有 permission
-	// 列，无法表达"谁的私有应用"。原版 RAGFlow 一个用户一个租户，同租户即
-	// 同一个人，所以"租户可见"就是当时的语义。多成员租户下继续按 owner
-	// （tenant_id）判私有，会让除租户创建者外的成员一条都看不到。
+	// 知识问答应用是租户级资产：dialog 表没有 permission 列，表达不了
+	// "谁的私有应用"，所以整租户可见、成员可改。created_by 只用于展示创建人
+	// 和 owner 过滤；行写于 created_by 之前时创建人存在 tenant_id 里，回落即可。
 	operations := []Operation{OperationRead, OperationCreate, OperationUpdate, OperationDelete, OperationRun, OperationUse}
+	creator := chat.CreatedBy
+	if creator == "" {
+		creator = chat.TenantID
+	}
 	return Resource{
 		Ref:               ResourceRef{Kind: ResourceKindChat, ID: chat.ID},
 		TenantID:          chat.TenantID,
-		OwnerUserID:       chat.TenantID,
+		CreatedBy:         creator,
+		OwnerUserID:       creator,
 		Visibility:        VisibilityTenant,
 		TenantRequirement: TenantNormalMember,
 		OwnerOperations:   operations,

@@ -77,6 +77,8 @@ export interface IDialog {
   prompt_type: string;
   status: string;
   tenant_id: string;
+  /** 创建人 user id；历史数据没有这一列，后端会用 tenant_id 兜底。 */
+  created_by?: string;
   update_date: string;
   update_time: number;
   keywords_similarity_weight?: number;

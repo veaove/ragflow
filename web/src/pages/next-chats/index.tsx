@@ -41,7 +41,10 @@ export default function ChatList() {
   const { mode: viewMode, setMode: setViewMode } =
     useListViewPreference('chat');
   const { navigateToChat } = useNavigatePage();
-  const owners = [buildOwnersFilter(data?.chats ?? [], undefined, tc('owner'))];
+  // 知识问答按创建人分组，和列表的 owner 列一致。
+  const owners = [
+    buildOwnersFilter(data?.chats ?? [], undefined, tc('owner'), 'created_by'),
+  ];
   const {
     initialChatName,
     chatRenameVisible,

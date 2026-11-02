@@ -35,6 +35,12 @@ func NewChatDAO() *ChatDAO {
 	return &ChatDAO{}
 }
 
+// chatCreatorExpr is "who created this chat", shared by every read path so the
+// displayed owner, the nickname JOIN and the owner filter never disagree.
+// dialog.created_by is authoritative; rows written before it existed store the
+// creator's user id in tenant_id.
+const chatCreatorExpr = "COALESCE(NULLIF(dialog.created_by, ''), dialog.tenant_id)"
+
 // ListByResourceIDs lists chats that have already been authorized by the
 // permission layer, with the same filters and pagination as the chat list API.
 func (dao *ChatDAO) ListByResourceIDs(ctx context.Context, db *gorm.DB, resourceIDs, ownerIDs []string, page, pageSize int, terms []OrderTerm, keywords, id, name string) ([]*entity.ChatListItem, int64, error) {
@@ -50,10 +56,10 @@ func (dao *ChatDAO) ListByResourceIDs(ctx context.Context, db *gorm.DB, resource
 			user.nickname,
 			user.avatar as tenant_avatar
 		`).
-		Joins("LEFT JOIN user ON dialog.tenant_id = user.id").
+		Joins("LEFT JOIN user ON user.id = " + chatCreatorExpr).
 		Where("dialog.id IN ? AND dialog.status = ?", resourceIDs, "1")
 	if ownerIDs != nil {
-		query = query.Where("dialog.tenant_id IN ?", ownerIDs)
+		query = query.Where(chatCreatorExpr+" IN ?", ownerIDs)
 	}
 	if keywords != "" {
 		// 列表里展示的是模型、重排模型、知识库的**名称**，所以搜索也必须按

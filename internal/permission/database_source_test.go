@@ -662,9 +662,10 @@ func TestDatabaseCheckerScopesFilesAndFoldersToOwnedFolder(t *testing.T) {
 	}
 }
 
-// 知识问答应用是租户级资产：dialog 表没有 created_by、没有 permission 列，
-// 表达不了"谁的私有应用"。原版一个用户一个租户，所以"同租户"就等于"自己"。
-// 多成员租户里若继续按 owner(=tenant_id) 判私有，除租户创建者外全员看不到。
+// 知识问答应用是租户级资产：dialog 表没有 permission 列，表达不了"谁的私有
+// 应用"。原版一个用户一个租户，所以"同租户"就等于"自己"；多成员租户里按
+// owner 判私有会让除创建者外全员看不到，所以可见性留在租户一级，created_by
+// 只用于展示创建人和 owner 过滤。
 func TestDatabaseCheckerSharesChatsAcrossTenant(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
