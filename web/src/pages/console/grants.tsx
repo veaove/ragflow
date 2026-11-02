@@ -40,7 +40,7 @@ type GrantKind = 'dataset' | 'canvas' | 'memory';
 const KIND_TABS: { key: GrantKind; label: string }[] = [
   { key: 'dataset', label: '知识库' },
   { key: 'canvas', label: '智能体' },
-  { key: 'memory', label: '记忆' },
+  { key: 'memory', label: '记忆中心' },
 ];
 
 const PAGE_SIZE = 20;
@@ -204,7 +204,7 @@ export default function ConsoleGrants() {
             {t('console.grants')}
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            配置知识库、智能体、记忆的可见范围
+            配置知识库、智能体、记忆中心的可见范围
           </p>
         </header>
 
