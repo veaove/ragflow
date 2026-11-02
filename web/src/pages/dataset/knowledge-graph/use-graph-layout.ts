@@ -23,7 +23,7 @@ import {
   forceX,
   forceY,
 } from 'd3-force';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { LayoutMode, Point, RadialRing, radialLayout, seedPositions } from './layout';
 
 interface SimNode extends Point {
@@ -31,6 +31,9 @@ interface SimNode extends Point {
   degree: number;
   vx?: number;
   vy?: number;
+  /** d3's pin: when set, the node stops being moved by the forces. */
+  fx?: number | null;
+  fy?: number | null;
 }
 
 interface SimLink {
@@ -51,7 +54,12 @@ interface UseGraphLayoutParams {
 export interface GraphLayoutState {
   positions: Record<string, Point>;
   rings: RadialRing[];
+  /** Moves a node and pins it, so the simulation cannot pull it back. */
   moveNode: (id: string, point: Point) => void;
+  /** Freezes the simulation so a drag is not overwritten by the next tick. */
+  beginDrag: (id: string) => void;
+  /** Unfreezes the simulation; the dragged node stays pinned. */
+  endDrag: (id: string) => void;
 }
 
 /**
@@ -70,6 +78,10 @@ export function useGraphLayout({
 }: UseGraphLayoutParams): GraphLayoutState {
   const [positions, setPositions] = useState<Record<string, Point>>({});
   const [rings, setRings] = useState<RadialRing[]>([]);
+  // Live simulation nodes, keyed by id: dragging writes straight into them so
+  // the layout that renders next frame and the physics agree on one position.
+  const simNodesRef = useRef<Map<string, SimNode>>(new Map());
+  const pausedRef = useRef(false);
 
   useEffect(() => {
     if (width <= 0 || height <= 0 || nodes.length === 0) {
@@ -92,6 +104,8 @@ export function useGraphLayout({
       degree: node.degree ?? 0,
       ...(seed[node.id] ?? { x: width / 2, y: height / 2 }),
     }));
+    simNodesRef.current = new Map(simNodes.map((node) => [node.id, node]));
+    pausedRef.current = false;
     const known = new Set(simNodes.map((node) => node.id));
     const links: SimLink[] = edges
       .filter((edge) => known.has(edge.source) && known.has(edge.target))
@@ -118,6 +132,12 @@ export function useGraphLayout({
       if (cancelled) {
         return;
       }
+      // Keep the loop alive while a node is being dragged: the graph must not
+      // jump back under the cursor, and it should resume from here on release.
+      if (pausedRef.current) {
+        frame = requestAnimationFrame(step);
+        return;
+      }
       // Two ticks per frame: the graph settles in about a second without the
       // simulation outrunning what the browser can paint.
       simulation.tick(2);
@@ -136,12 +156,42 @@ export function useGraphLayout({
       cancelled = true;
       cancelAnimationFrame(frame);
       simulation.stop();
+      simNodesRef.current = new Map();
     };
   }, [nodes, edges, mode, width, height, runId]);
 
   const moveNode = useCallback((id: string, point: Point) => {
+    const node = simNodesRef.current.get(id);
+    if (node) {
+      // fx/fy pin the node: without it the next tick snaps it back to where
+      // the physics wanted it, which is what made dragging look broken.
+      node.x = point.x;
+      node.y = point.y;
+      node.fx = point.x;
+      node.fy = point.y;
+    }
     setPositions((previous) => ({ ...previous, [id]: point }));
   }, []);
 
-  return { positions, rings, moveNode };
+  const beginDrag = useCallback((id: string) => {
+    pausedRef.current = true;
+    const node = simNodesRef.current.get(id);
+    if (node) {
+      node.fx = node.x;
+      node.fy = node.y;
+    }
+  }, []);
+
+  const endDrag = useCallback((id: string) => {
+    pausedRef.current = false;
+    // The node stays pinned where it was dropped; "重置布局" rebuilds the
+    // simulation and clears every pin.
+    const node = simNodesRef.current.get(id);
+    if (node) {
+      node.fx = null;
+      node.fy = null;
+    }
+  }, []);
+
+  return { positions, rings, moveNode, beginDrag, endDrag };
 }

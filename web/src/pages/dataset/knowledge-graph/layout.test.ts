@@ -16,6 +16,9 @@
 
 import { IKGGraphEdge, IKGGraphNode } from '@/interfaces/database/knowledge-graph';
 import {
+  MAX_ZOOM,
+  MIN_ZOOM,
+  clampZoom,
   confidenceLabel,
   edgeEndpoints,
   filterGraph,
@@ -24,6 +27,9 @@ import {
   nodeRadius,
   radialLayout,
   seedPositions,
+  toLayoutPoint,
+  wheelZoomFactor,
+  zoomAt,
 } from './layout';
 
 const makeNode = (id: string, degree: number): IKGGraphNode => ({
@@ -172,5 +178,65 @@ describe('confidenceLabel', () => {
   test('renders a rounded percentage', () => {
     expect(confidenceLabel(0.944)).toBe('94%');
     expect(confidenceLabel(0)).toBe('0%');
+  });
+});
+
+describe('clampZoom', () => {
+  test('keeps zoom inside the readable range', () => {
+    expect(clampZoom(0.01)).toBe(MIN_ZOOM);
+    expect(clampZoom(99)).toBe(MAX_ZOOM);
+    expect(clampZoom(1.4)).toBe(1.4);
+  });
+
+  test('falls back to 1:1 on a broken value', () => {
+    expect(clampZoom(Number.NaN)).toBe(1);
+  });
+});
+
+describe('wheelZoomFactor', () => {
+  test('wheel up zooms in and wheel down zooms out', () => {
+    expect(wheelZoomFactor(-120)).toBeGreaterThan(1);
+    expect(wheelZoomFactor(120)).toBeLessThan(1);
+  });
+
+  test('is symmetric and neutral at zero', () => {
+    expect(wheelZoomFactor(0)).toBe(1);
+    expect(wheelZoomFactor(-100) * wheelZoomFactor(100)).toBeCloseTo(1, 5);
+  });
+});
+
+describe('zoomAt', () => {
+  const pointer = { x: 200, y: 120 };
+
+  test('keeps the layout point under the pointer', () => {
+    const before = { k: 1, x: 0, y: 0 };
+    const after = zoomAt(before, pointer, 1.5);
+    const layoutBefore = toLayoutPoint(before, pointer);
+    const layoutAfter = toLayoutPoint(after, pointer);
+    expect(after.k).toBeCloseTo(1.5, 5);
+    expect(layoutAfter.x).toBeCloseTo(layoutBefore.x, 5);
+    expect(layoutAfter.y).toBeCloseTo(layoutBefore.y, 5);
+  });
+
+  test('anchors around the pointer, not the origin', () => {
+    const after = zoomAt({ k: 1, x: 0, y: 0 }, pointer, 2);
+    expect(after.x).toBeCloseTo(-200, 5);
+    expect(after.y).toBeCloseTo(-120, 5);
+  });
+
+  test('stops at the bounds instead of drifting', () => {
+    const atMax = { k: MAX_ZOOM, x: 10, y: 20 };
+    expect(zoomAt(atMax, pointer, 4)).toBe(atMax);
+  });
+
+  test('round-trips through toLayoutPoint', () => {
+    const viewport = { k: 2.5, x: -80, y: 40 };
+    const layout = toLayoutPoint(viewport, { x: 300, y: 200 });
+    const back = {
+      x: layout.x * viewport.k + viewport.x,
+      y: layout.y * viewport.k + viewport.y,
+    };
+    expect(back.x).toBeCloseTo(300, 5);
+    expect(back.y).toBeCloseTo(200, 5);
   });
 });

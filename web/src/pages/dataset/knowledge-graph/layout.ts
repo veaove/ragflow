@@ -182,6 +182,72 @@ export interface Selection {
   id: string;
 }
 
+/** Below this the labels are unreadable; above it a node fills the canvas. */
+export const MIN_ZOOM = 0.3;
+export const MAX_ZOOM = 3;
+
+/**
+ * Canvas pan/zoom. `k` scales the whole graph, `x`/`y` shift it in screen
+ * pixels; node coordinates are always layout coordinates and never change when
+ * the view is zoomed.
+ */
+export interface Viewport {
+  k: number;
+  x: number;
+  y: number;
+}
+
+export const IDENTITY_VIEWPORT: Viewport = { k: 1, x: 0, y: 0 };
+
+export function clampZoom(k: number): number {
+  if (!Number.isFinite(k)) {
+    return 1;
+  }
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, k));
+}
+
+/**
+ * Zooms around a pointer given in canvas (screen) pixels, so the layout point
+ * under the cursor stays under the cursor.
+ */
+export function zoomAt(
+  viewport: Viewport,
+  pointer: Point,
+  factor: number,
+): Viewport {
+  const k = clampZoom(viewport.k * factor);
+  if (k === viewport.k) {
+    return viewport;
+  }
+  const ratio = k / viewport.k;
+  return {
+    k,
+    x: pointer.x - (pointer.x - viewport.x) * ratio,
+    y: pointer.y - (pointer.y - viewport.y) * ratio,
+  };
+}
+
+/** Canvas (screen) pixel to layout coordinate under the current viewport. */
+export function toLayoutPoint(viewport: Viewport, point: Point): Point {
+  const k = viewport.k || 1;
+  return {
+    x: (point.x - viewport.x) / k,
+    y: (point.y - viewport.y) / k,
+  };
+}
+
+/**
+ * Wheel delta to zoom factor. Wheel up (negative delta) zooms in, wheel down
+ * zooms out; the exponential keeps a trackpad's many small deltas and a mouse
+ * wheel's single 100px delta feeling like the same gesture.
+ */
+export function wheelZoomFactor(deltaY: number): number {
+  if (!Number.isFinite(deltaY) || deltaY === 0) {
+    return 1;
+  }
+  return Math.exp(-deltaY * 0.0015);
+}
+
 /**
  * What the canvas dims around: the server-side search hit set when a query is
  * active, otherwise the neighbourhood of the current selection. An empty result
