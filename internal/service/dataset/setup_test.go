@@ -38,6 +38,9 @@ func setupServiceTestDB(t *testing.T) *gorm.DB {
 		&entity.User{},
 		&entity.Tenant{},
 		&entity.UserTenant{},
+		// 可见范围收窄后"共享给某个成员"靠 resource_grant 表达，测试 fixture
+		// 需要这张表。
+		&entity.ResourceGrant{},
 		&entity.API4Conversation{},
 		&entity.Connector{},
 		&entity.Connector2Kb{},
