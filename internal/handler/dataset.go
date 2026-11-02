@@ -379,7 +379,7 @@ func parseDatasetListTime(raw string, upper bool) (*time.Time, error) {
 		}
 		return &parsed, nil
 	}
-	return nil, fmt.Errorf("expected YYYY-MM-DD or YYYY-MM-DD HH:mm:ss, got %q", raw)
+	return nil, fmt.Errorf("expected YYYY-MM-DD, YYYY-MM-DD HH:mm or YYYY-MM-DD HH:mm:ss, got %q", raw)
 }
 
 // parseDatasetListTimeRange reads "<prefix>_from" and "<prefix>_to".

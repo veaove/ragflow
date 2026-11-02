@@ -1,6 +1,7 @@
 import {
   buildDatasetListFilterParams,
   buildDateRangeFilterValue,
+  formatFilterDateTime,
   parseDateRangeFilterValue,
 } from '@/utils/dataset-filter';
 
@@ -54,14 +55,20 @@ describe('buildDatasetListFilterParams', () => {
 describe('buildDateRangeFilterValue', () => {
   it('keeps a single bound when only the start is picked', () => {
     expect(buildDateRangeFilterValue(new Date(2026, 0, 5))).toEqual([
-      '2026-01-05',
+      '2026-01-05 00:00',
     ]);
+  });
+
+  it('expands a day range to whole days: 00:00 → 23:59:59', () => {
+    expect(
+      buildDateRangeFilterValue(new Date(2026, 0, 1), new Date(2026, 0, 31)),
+    ).toEqual(['2026-01-01 00:00', '2026-01-31 23:59:59']);
   });
 
   it('normalises a reversed range to [earlier, later]', () => {
     expect(
       buildDateRangeFilterValue(new Date(2026, 1, 1), new Date(2026, 0, 1)),
-    ).toEqual(['2026-01-01', '2026-02-01']);
+    ).toEqual(['2026-01-01 00:00', '2026-02-01 23:59:59']);
   });
 
   it('returns undefined without a start date', () => {
@@ -80,8 +87,36 @@ describe('parseDateRangeFilterValue', () => {
     expect(range?.to?.getDate()).toBe(31);
   });
 
+  it('parses the minute/second form the filter actually sends', () => {
+    const range = parseDateRangeFilterValue([
+      '2026-10-02 00:00',
+      '2026-11-02 23:59:59',
+    ]);
+
+    expect(range?.from.getHours()).toBe(0);
+    expect(range?.from.getMinutes()).toBe(0);
+    expect(range?.to?.getHours()).toBe(23);
+    expect(range?.to?.getMinutes()).toBe(59);
+  });
+
   it('ignores empty and malformed values', () => {
     expect(parseDateRangeFilterValue([])).toBeUndefined();
     expect(parseDateRangeFilterValue(['not-a-date'])).toBeUndefined();
+  });
+});
+
+describe('formatFilterDateTime', () => {
+  it('renders both bounds as YYYY-MM-DD HH:mm', () => {
+    expect(formatFilterDateTime(new Date(2026, 9, 2, 0, 0))).toBe(
+      '2026-10-02 00:00',
+    );
+    // 上界存的是 23:59:59，展示到分钟，避免两个字段出现不同精度。
+    expect(formatFilterDateTime(new Date(2026, 10, 2, 23, 59, 59))).toBe(
+      '2026-11-02 23:59',
+    );
+  });
+
+  it('renders an empty string without a date', () => {
+    expect(formatFilterDateTime(undefined)).toBe('');
   });
 });

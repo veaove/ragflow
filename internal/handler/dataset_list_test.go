@@ -209,7 +209,7 @@ func TestDatasetsHandlerListDatasetsRejectsInvalidFilters(t *testing.T) {
 		{
 			name:     "an unparseable time bound is rejected",
 			rawQuery: "create_time_from=2026-13-01",
-			wantMsg:  `create_time_from is invalid: expected YYYY-MM-DD or YYYY-MM-DD HH:mm:ss, got "2026-13-01"`,
+			wantMsg:  `create_time_from is invalid: expected YYYY-MM-DD, YYYY-MM-DD HH:mm or YYYY-MM-DD HH:mm:ss, got "2026-13-01"`,
 		},
 		{
 			name:     "an inverted range is rejected",

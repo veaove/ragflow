@@ -35,8 +35,12 @@ export type DatasetListFilterParams = Pick<
   | 'update_time_to'
 >;
 
-/** 与后端 *_from / *_to 的 YYYY-MM-DD 约定保持一致。 */
+/** 与后端 *_from / *_to 约定一致：日期到分钟，接口另外接受秒与 ISO 写法。 */
 const FilterDateFormat = 'YYYY-MM-DD';
+const FilterDateTimeFormat = 'YYYY-MM-DD HH:mm';
+/** 区间取整天：下界 00:00:00，上界 23:59:59。 */
+const FilterDayStartTime = '00:00';
+const FilterDayEndTime = '23:59:59';
 
 const asStringList = (value?: FilterValue[string]): string[] =>
   Array.isArray(value) ? value : [];
@@ -82,10 +86,12 @@ export function buildDatasetListFilterParams(
 }
 
 /**
- * 日历范围 → 筛选值（YYYY-MM-DD 起止）。
+ * 日历范围 → 筛选值（`YYYY-MM-DD HH:mm` 起止）。
  *
- * 只选了一端时保留单值：后端把它当成「从该天起」/「截止该天」，不会伪造一个
- * 结束日期。用户反向拖拽（起晚于止）时统一成 [早, 晚]，否则后端会拒绝。
+ * 日历选的是"日"，接口要的是"时刻"，所以下界补 00:00、上界补 23:59:59：
+ * 只发日期会让上界丢掉当天最后一分钟的数据。只选了一端时保留单值，后端按
+ * 「从该天起」/「截止该天」处理，不会伪造结束时间。反向选择（起晚于止）统一
+ * 成 [早, 晚]，否则后端会拒绝。
  */
 export function buildDateRangeFilterValue(
   from?: Date,
@@ -95,11 +101,22 @@ export function buildDateRangeFilterValue(
   if (!start) {
     return undefined;
   }
-  const startValue = dayjs(start).format(FilterDateFormat);
-  return end ? [startValue, dayjs(end).format(FilterDateFormat)] : [startValue];
+  const startValue = `${dayjs(start).format(FilterDateFormat)} ${FilterDayStartTime}`;
+  if (!end) {
+    return [startValue];
+  }
+  return [
+    startValue,
+    `${dayjs(end).format(FilterDateFormat)} ${FilterDayEndTime}`,
+  ];
 }
 
-/** 筛选值（YYYY-MM-DD 起止）→ 日历的 DateRange，用于回填选择器。 */
+/** 控件里展示的时间：`YYYY-MM-DD HH:mm`，创建时间与更新时间共用。 */
+export function formatFilterDateTime(date?: Date): string {
+  return date ? dayjs(date).format(FilterDateTimeFormat) : '';
+}
+
+/** 筛选值（`YYYY-MM-DD HH:mm[:ss]` 起止）→ 日历的 DateRange，用于回填。 */
 export function parseDateRangeFilterValue(
   value?: string[],
 ): { from: Date; to?: Date } | undefined {

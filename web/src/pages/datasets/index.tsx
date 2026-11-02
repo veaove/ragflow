@@ -149,6 +149,21 @@ export default function Datasets() {
     setUpdateTimeDraft(range);
   }, []);
 
+  // 叉掉时间条件 = 取消这个筛选，立即重查；没提交的其他草稿不动。
+  const handleCreateTimeClear = useCallback(() => {
+    setCreateTimeDraft(undefined);
+    const filter: FilterValue = { ...filterValue };
+    delete filter[DatasetCreateTimeFilter];
+    handleFilterSubmit(filter);
+  }, [filterValue, handleFilterSubmit]);
+
+  const handleUpdateTimeClear = useCallback(() => {
+    setUpdateTimeDraft(undefined);
+    const filter: FilterValue = { ...filterValue };
+    delete filter[DatasetUpdateTimeFilter];
+    handleFilterSubmit(filter);
+  }, [filterValue, handleFilterSubmit]);
+
   const handleQuery = useCallback(() => {
     const filter: FilterValue = {};
     if (categoryDraft.length) {
@@ -316,16 +331,16 @@ export default function Datasets() {
               />
 
               <DateRangeFilter
-                className="w-36"
-                placeholder="创建时间"
+                label="创建时间"
                 value={createTimeDraft}
                 onChange={handleCreateTimeChange}
+                onClear={handleCreateTimeClear}
               />
               <DateRangeFilter
-                className="w-36"
-                placeholder="更新时间"
+                label="更新时间"
                 value={updateTimeDraft}
                 onChange={handleUpdateTimeChange}
+                onClear={handleUpdateTimeClear}
               />
 
               <Button variant="accent" onClick={handleQuery}>
