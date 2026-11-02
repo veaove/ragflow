@@ -138,10 +138,12 @@ func (s *File2DocumentService) LinkToDatasets(ctx context.Context, userID string
 		seen[key] = struct{}{}
 		expanded = append(expanded, item)
 	}
-	// Top-level folders selected by the user. Tracked separately from expanded
-	// so that an empty folder is still created in the dataset (otherwise the
-	// user links a folder, sees "success", and finds nothing there).
-	var rootFolderPaths [][]string
+	// Every folder path the link has to materialise in the dataset: the folders
+	// the user selected plus every sub-folder below them. Kept apart from
+	// expanded because a folder with no linkable file never shows up in the file
+	// list — without this the user links a tree, sees "success", and the empty
+	// branches are simply gone.
+	var folderPaths [][]string
 
 	for _, id := range req.FileIDs {
 		file := filesSet[id]
@@ -156,9 +158,9 @@ func (s *File2DocumentService) LinkToDatasets(ctx context.Context, userID string
 		// The folder's own name is the first path segment, so a linked folder
 		// shows up as a folder in the dataset instead of a flat dump.
 		path := []string{file.Name}
-		rootFolderPaths = append(rootFolderPaths, path)
+		folderPaths = append(folderPaths, path)
 
-		inner, err := s.collectFilesWithPath(ctx, id, path, checkFileRead)
+		inner, subFolders, err := s.collectFilesWithPath(ctx, id, path, checkFileRead)
 		if err != nil {
 			if permissionresponse.IsPermissionError(err) {
 				_, permissionErr := permissionresponse.Normalize(err)
@@ -170,7 +172,9 @@ func (s *File2DocumentService) LinkToDatasets(ctx context.Context, userID string
 		for _, item := range inner {
 			addExpanded(item)
 		}
+		folderPaths = append(folderPaths, subFolders...)
 	}
+	folderPaths = dedupePaths(folderPaths)
 
 	// ── 4. Validate expanded file permissions ─────────────────────────────────
 	// Sub-folders were already checked during the walk; only leaves are left.
@@ -199,7 +203,7 @@ func (s *File2DocumentService) LinkToDatasets(ctx context.Context, userID string
 		newCtx := context.Background()
 		// Use a local err: the outer err is shared with the request goroutine,
 		// so assigning to it here races with the handler returning.
-		if err := s.convertFiles(newCtx, expanded, rootFolderPaths, kbIDs, userID, mode); err != nil {
+		if err := s.convertFiles(newCtx, expanded, folderPaths, kbIDs, userID, mode); err != nil {
 			common.Warn("file2document.convertFiles failed",
 				zap.Int("files", len(expanded)),
 				zap.Strings("kb_ids", kbIDs),
@@ -214,12 +218,12 @@ func (s *File2DocumentService) LinkToDatasets(ctx context.Context, userID string
 // outside the requested KBs in replace mode, then add any missing links.
 //
 // items carry the destination folder path so a linked folder is mirrored into
-// the dataset; emptyFolders lists the paths selected by the user that contain
-// no linkable file, so the folder itself still appears after linking.
+// the dataset; folderPaths lists every folder of the source tree, so branches
+// without a linkable file are created too.
 func (s *File2DocumentService) convertFiles(
 	ctx context.Context,
 	items []linkedFile,
-	emptyFolders [][]string,
+	folderPaths [][]string,
 	kbIDs []string,
 	userID, mode string,
 ) error {
@@ -234,7 +238,7 @@ func (s *File2DocumentService) convertFiles(
 	// folder still shows up. ensureFolderPath is idempotent, so repeating the
 	// paths that do have files costs one indexed lookup each.
 	for _, kbID := range kbIDs {
-		for _, path := range emptyFolders {
+		for _, path := range folderPaths {
 			if _, err := s.ensureFolderPath(ctx, kbID, path, userID); err != nil {
 				common.Warn("convertFiles: ensureFolderPath failed",
 					zap.String("kbID", kbID), zap.Strings("path", path), zap.Error(err))
@@ -398,29 +402,38 @@ type linkedFile struct {
 // checkFolder is applied to every sub-folder met during the walk: the caller
 // only validated the folder the user selected, so without this a user holding
 // read access to a parent folder could pull in sub-folders they cannot read.
+// collectFilesWithPath walks a source folder and returns every linkable file
+// together with the sub-folder paths it passed through.
+//
+// 目录列表必须一起返回：空文件夹里没有文件，只靠文件反推路径就会把它整条丢掉，
+// 用户链接完发现源里的空目录不见了。
 func (s *File2DocumentService) collectFilesWithPath(
 	ctx context.Context,
 	folderID string,
 	prefix []string,
 	checkFolder func(*entity.File) error,
-) ([]linkedFile, error) {
+) ([]linkedFile, [][]string, error) {
 	children, err := s.fileDAO.ListByParentID(ctx, dao.DB, folderID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var out []linkedFile
+	var folders [][]string
 	for _, child := range children {
 		if child.Type == "folder" {
 			if checkFolder != nil {
 				if err := checkFolder(child); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
-			sub, err := s.collectFilesWithPath(ctx, child.ID, appendPath(prefix, child.Name), checkFolder)
+			childPath := appendPath(prefix, child.Name)
+			folders = append(folders, childPath)
+			sub, subFolders, err := s.collectFilesWithPath(ctx, child.ID, childPath, checkFolder)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			out = append(out, sub...)
+			folders = append(folders, subFolders...)
 			continue
 		}
 		// "virtual" files are the zero-byte placeholders that
@@ -434,7 +447,7 @@ func (s *File2DocumentService) collectFilesWithPath(
 		}
 		out = append(out, linkedFile{FileID: child.ID, FolderPath: prefix})
 	}
-	return out, nil
+	return out, folders, nil
 }
 
 // appendPath returns a copy of prefix with name appended, so sibling branches
@@ -518,6 +531,23 @@ func (s *File2DocumentService) ensureFolderPath(
 		return nil, nil
 	}
 	return &parentID, nil
+}
+
+// dedupePaths removes duplicate folder paths while keeping the first-seen
+// order. Selecting a folder and one of its sub-folders yields the sub-folder
+// path twice; ensureFolderPath tolerates that but each repeat costs a lookup.
+func dedupePaths(in [][]string) [][]string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([][]string, 0, len(in))
+	for _, path := range in {
+		key := strings.Join(path, "\x00")
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, path)
+	}
+	return out
 }
 
 // sameFolderRef reports whether two folder_id references point at the same

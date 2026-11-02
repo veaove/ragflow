@@ -17,6 +17,7 @@
 package document
 
 import (
+	"strings"
 	"testing"
 
 	"ragflow/internal/dao"
@@ -144,5 +145,85 @@ func TestConvertFilesRepositionsAlreadyLinkedDocuments(t *testing.T) {
 	}
 	if doc.FolderID == nil || *doc.FolderID != child.ID {
 		t.Fatalf("document folder_id = %v, want %s", doc.FolderID, child.ID)
+	}
+}
+
+// 源文件夹里的空子目录也必须出现在知识库里。
+// 只用"文件反推路径"会漏掉它们：法务部、质检部这类 0 字节目录链接完就没了。
+func TestCollectFilesWithPathKeepsEmptyFolders(t *testing.T) {
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+	if err := db.AutoMigrate(&entity.File{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	create := func(id, parentID, name, typ string) {
+		if err := db.Create(&entity.File{
+			ID: id, ParentID: parentID, Name: name, Type: typ,
+			CreatedBy: "user-1", TenantID: "tenant-1",
+		}).Error; err != nil {
+			t.Fatalf("create file %s: %v", id, err)
+		}
+	}
+	create("root", "", "华夏基金", "folder")
+	create("legal", "root", "法务部", "folder")   // 空目录
+	create("tech", "root", "科技部", "folder")    // 有文件
+	create("pdf", "tech", "手册.pdf", "pdf")      // 叶子
+
+	ctx := t.Context()
+	svc := NewFile2DocumentService()
+	files, folders, err := svc.collectFilesWithPath(ctx, "root", []string{"华夏基金"}, nil)
+	if err != nil {
+		t.Fatalf("collectFilesWithPath: %v", err)
+	}
+
+	if len(files) != 1 || files[0].FileID != "pdf" {
+		t.Fatalf("files = %+v, want the single pdf leaf", files)
+	}
+	if len(files[0].FolderPath) != 2 || files[0].FolderPath[1] != "科技部" {
+		t.Fatalf("pdf FolderPath = %v, want [华夏基金 科技部]", files[0].FolderPath)
+	}
+
+	paths := make(map[string]bool, len(folders))
+	for _, path := range folders {
+		paths[strings.Join(path, "/")] = true
+	}
+	if !paths["华夏基金/法务部"] {
+		t.Fatalf("empty folder 法务部 missing from collected paths: %v", folders)
+	}
+	if !paths["华夏基金/科技部"] {
+		t.Fatalf("folder 科技部 missing from collected paths: %v", folders)
+	}
+}
+
+// collect 出来的目录路径要真的在知识库里建出记录，否则前端还是看不到空目录。
+func TestConvertFilesCreatesFoldersWithoutFiles(t *testing.T) {
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+	if err := db.AutoMigrate(&entity.DocumentFolder{}, &entity.File2Document{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	insertTestKB(t, "kb-1", "tenant-1", 0, 0, 0)
+
+	ctx := t.Context()
+	svc := NewFile2DocumentService()
+	if err := svc.convertFiles(ctx, nil, [][]string{
+		{"华夏基金"},
+		{"华夏基金", "法务部"},
+		{"华夏基金", "质检部"},
+	}, []string{"kb-1"}, "user-1", "add"); err != nil {
+		t.Fatalf("convertFiles: %v", err)
+	}
+
+	folderDAO := dao.NewDocumentFolderDAO()
+	top, err := folderDAO.GetSiblingByName(ctx, dao.DB, "kb-1", "", "华夏基金")
+	if err != nil || top == nil {
+		t.Fatalf("顶层目录没建出来: %v", err)
+	}
+	for _, name := range []string{"法务部", "质检部"} {
+		child, err := folderDAO.GetSiblingByName(ctx, dao.DB, "kb-1", top.ID, name)
+		if err != nil || child == nil {
+			t.Fatalf("空目录 %s 没建出来: %v", name, err)
+		}
 	}
 }
