@@ -1976,6 +1976,9 @@ func setupChunkTestDB(t *testing.T) *gorm.DB {
 		&entity.Document{},
 		&entity.Task{},
 		&entity.IngestionTask{},
+		// 可见范围收窄后"共享给某个成员"靠 resource_grant 表达，测试 fixture
+		// 需要这张表。
+		&entity.ResourceGrant{},
 	); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
@@ -2026,6 +2029,15 @@ func insertChunkTestUserTenant(t *testing.T, userID, tenantID string) {
 func insertChunkTestKB(t *testing.T, id, tenantID string) {
 	t.Helper()
 
+	insertChunkTestKBWithoutGrant(t, id, tenantID)
+	grantChunkTestKBToMembers(t, id, tenantID)
+}
+
+// insertChunkTestKBWithoutGrant 只建库、不补授权。permission=me 的可见性矩阵
+// 需要"库里没给别人授权"的初始状态，那一支必须用这个函数。
+func insertChunkTestKBWithoutGrant(t *testing.T, id, tenantID string) {
+	t.Helper()
+
 	var owner entity.UserTenant
 	err := dao.DB.Where("tenant_id = ? AND role = ? AND status = ?", tenantID, "owner", "1").First(&owner).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -2048,7 +2060,6 @@ func insertChunkTestKB(t *testing.T, id, tenantID string) {
 	if err := dao.DB.Create(kb).Error; err != nil {
 		t.Fatalf("insert kb: %v", err)
 	}
-	grantChunkTestKBToMembers(t, id, tenantID)
 }
 
 // grantChunkTestKBToMembers 给租户内除 owner 外的成员补一条库级可编辑授权。
@@ -2064,22 +2075,29 @@ func grantChunkTestKBToMembers(t *testing.T, kbID, tenantID string) {
 		Find(&members).Error; err != nil {
 		t.Fatalf("list tenant members: %v", err)
 	}
-	now := time.Now().UnixMilli()
 	for _, m := range members {
-		grant := &entity.ResourceGrant{
-			ID:           "grant-" + kbID + "-" + m.UserID,
-			TenantID:     tenantID,
-			ResourceKind: string(permission.ResourceKindDataset),
-			ResourceID:   kbID,
-			SubjectKind:  entity.GrantSubjectUser,
-			SubjectID:    m.UserID,
-			Permission:   "edit",
-			Effect:       entity.GrantEffectAllow,
-			BaseModel:    entity.BaseModel{CreateTime: &now, UpdateTime: &now},
-		}
-		if err := dao.DB.Create(grant).Error; err != nil {
-			t.Fatalf("grant kb %s to %s: %v", kbID, m.UserID, err)
-		}
+		grantChunkTestKBToUser(t, kbID, tenantID, m.UserID)
+	}
+}
+
+// grantChunkTestKBToUser 给单个成员一条库级可编辑授权。
+func grantChunkTestKBToUser(t *testing.T, kbID, tenantID, userID string) {
+	t.Helper()
+
+	now := time.Now().UnixMilli()
+	grant := &entity.ResourceGrant{
+		ID:           "grant-" + kbID + "-" + userID,
+		TenantID:     tenantID,
+		ResourceKind: string(permission.ResourceKindDataset),
+		ResourceID:   kbID,
+		SubjectKind:  entity.GrantSubjectUser,
+		SubjectID:    userID,
+		Permission:   "edit",
+		Effect:       entity.GrantEffectAllow,
+		BaseModel:    entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+	}
+	if err := dao.DB.Create(grant).Error; err != nil {
+		t.Fatalf("grant kb %s to %s: %v", kbID, userID, err)
 	}
 }
 

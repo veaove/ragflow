@@ -31,21 +31,27 @@ func TestRetrievalTestChecksDatasetUsePermission(t *testing.T) {
 
 func TestChunkManagementDatasetPermissions(t *testing.T) {
 	for _, tt := range []struct {
-		name       string
-		userID     string
-		permission entity.TenantPermission
-		allowed    bool
+		name        string
+		userID      string
+		permission  entity.TenantPermission
+		grantMember bool
+		allowed     bool
 	}{
-		{"owner private", "owner", entity.TenantPermissionMe, true},
-		{"member private", "member", entity.TenantPermissionMe, false},
-		{"member team", "member", entity.TenantPermissionTeam, true},
-		{"unrelated team", "other", entity.TenantPermissionTeam, false},
+		{"owner private", "owner", entity.TenantPermissionMe, false, true},
+		// permission=me 只对创建者放行，resource_grant 是它唯一的例外，所以
+		// 这一档必须在不给成员授权的前提下验证。
+		{"member private", "member", entity.TenantPermissionMe, false, false},
+		{"member team", "member", entity.TenantPermissionTeam, true, true},
+		{"unrelated team", "other", entity.TenantPermissionTeam, false, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			db := setupChunkTestDB(t)
 			pushChunkTestDB(t, db)
 			insertChunkTestUserTenant(t, "member", "owner")
-			insertChunkTestKB(t, "kb-1", "owner")
+			insertChunkTestKBWithoutGrant(t, "kb-1", "owner")
+			if tt.grantMember {
+				grantChunkTestKBToUser(t, "kb-1", "owner", "member")
+			}
 			insertChunkTestDoc(t, "doc-1", "kb-1")
 			if err := db.Model(&entity.Knowledgebase{}).Where("id = ?", "kb-1").
 				Update("permission", string(tt.permission)).Error; err != nil {
