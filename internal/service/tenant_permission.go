@@ -18,6 +18,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"ragflow/internal/dao"
@@ -92,6 +93,12 @@ func resolveReadTenantID(ctx context.Context, userID, requestedTenantID string) 
 		return readableTenantID(ctx, userID)
 	}
 	if err := permission.NewDatabaseChecker(dao.DB).CheckTenant(ctx, permission.Subject{UserID: userID}, requestedTenantID, permission.TenantMember); err != nil {
+		// 显式点名一个不属于自己的租户必须报权限错误。原样返回
+		// ErrMembershipNotFound 会让调用方把它和「一个租户都没有」混成同一件
+		// 事，于是静默返回空列表 —— 请求者以为切了租户，实际什么都没读到。
+		if errors.Is(err, permission.ErrMembershipNotFound) {
+			return "", fmt.Errorf("%w: tenant %s", permission.ErrPermissionDenied, requestedTenantID)
+		}
 		return "", err
 	}
 	return requestedTenantID, nil
