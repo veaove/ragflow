@@ -1121,6 +1121,19 @@ func (g *NavigateStructureTool) invokableRun(ctx context.Context, argumentsInJSO
 	if len(docIDs) > 10 {
 		docIDs = docIDs[:10]
 	}
+	// 文件级授权：被排除文档的编译结构不读、不回显。
+	if denied := deniedDocuments(ctx, callerUserID(ctx), datasetIDs); len(denied) > 0 {
+		kept := make([]string, 0, len(docIDs))
+		for _, id := range docIDs {
+			if !denied[id] {
+				kept = append(kept, id)
+			}
+		}
+		docIDs = kept
+	}
+	if len(docIDs) == 0 {
+		return navStructEmpty(navStructReasonNoDoc, "no readable document"), nil
+	}
 
 	reader := getStructureReader()
 	if reader == nil {

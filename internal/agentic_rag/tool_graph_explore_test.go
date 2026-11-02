@@ -552,3 +552,65 @@ func TestKgAdapterDocOutlineProbeFailureIsNotAbsence(t *testing.T) {
 		t.Errorf("error = %v, want the probe failure", err)
 	}
 }
+
+// TestKgRowDenied reads the two provenance shapes a KG row can carry: a
+// document-level row names its doc_id, a dataset-level merged row names the
+// contributing documents in source_doc_ids (json array or engine array).
+func TestKgRowDenied(t *testing.T) {
+	denied := map[string]bool{"d1": true}
+	cases := []struct {
+		name string
+		row  map[string]interface{}
+		want bool
+	}{
+		{"doc-level denied", map[string]interface{}{"doc_id": "d1"}, true},
+		{"doc-level allowed", map[string]interface{}{"doc_id": "d2"}, false},
+		{"merged row with a denied source", map[string]interface{}{
+			"doc_id": "kb1", "source_doc_ids": []interface{}{"d2", "d1"},
+		}, true},
+		{"merged row, json array with a denied source", map[string]interface{}{
+			"doc_id": "kb1", "source_doc_ids": `["d1","d2"]`,
+		}, true},
+		{"merged row, all sources allowed", map[string]interface{}{
+			"doc_id": "kb1", "source_doc_ids": []string{"d2", "d3"},
+		}, false},
+		{"no provenance", map[string]interface{}{}, false},
+	}
+	for _, tc := range cases {
+		if got := kgRowDenied(tc.row, denied); got != tc.want {
+			t.Errorf("%s: kgRowDenied = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+	if kgRowDenied(map[string]interface{}{"doc_id": "d1"}, nil) {
+		t.Error("no denied set means no filtering")
+	}
+}
+
+// kgPassageFakeEngine serves the evidence-passage read.
+type kgPassageFakeEngine struct {
+	engine.DocEngine
+	rows []map[string]interface{}
+}
+
+func (e *kgPassageFakeEngine) Search(_ context.Context, _ *enginetypes.SearchRequest) (*enginetypes.SearchResult, error) {
+	return &enginetypes.SearchResult{Chunks: e.rows}, nil
+}
+
+// TestEvidencePassagesSkipsDeniedDocuments: the chunks behind a subgraph are
+// read back by id, so a chunk from a document the caller may not see must be
+// dropped even when an entity row pointed at it.
+func TestEvidencePassagesSkipsDeniedDocuments(t *testing.T) {
+	eng := &kgPassageFakeEngine{rows: []map[string]interface{}{
+		{"id": "c1", "doc_id": "d1", "kb_id": "kb1", "content_with_weight": "hidden"},
+		{"id": "c2", "doc_id": "d2", "kb_id": "kb1", "content_with_weight": "visible"},
+	}}
+	entities := []KgEntity{
+		{DocID: "d1", SourceChunkIDs: []string{"c1"}},
+		{DocID: "d2", SourceChunkIDs: []string{"c2"}},
+	}
+	got := NewKgAdapter(eng).evidencePassages(context.Background(), "t1", []string{"kb1"},
+		entities, nil, map[string]bool{"d1": true})
+	if len(got) != 1 || got[0].DocID != "d2" {
+		t.Fatalf("passages = %+v, want only the visible document's chunk", got)
+	}
+}

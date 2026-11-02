@@ -158,6 +158,8 @@ func (g *NavigateTreeTool) invokableRun(ctx context.Context, argumentsInJSON str
 	// and reports "no compiled tree" by returning a nil slice when no NavService
 	// is installed (treated exactly like a dataset without a tree).
 	router := nav.NewNavServiceRouter()
+	// 文件级授权：被排除文档的树条目既不路由也不回显。
+	denied := deniedDocuments(ctx, callerUserID(ctx), datasetIDs)
 	full := strings.TrimSpace(query + " " + strings.TrimSpace(args.Keywords))
 
 	var (
@@ -182,7 +184,7 @@ func (g *NavigateTreeTool) invokableRun(ctx context.Context, argumentsInJSON str
 		anyTree = true
 		for _, pair := range routed {
 			did := strings.TrimSpace(pair[0])
-			if did == "" || seen[did] {
+			if did == "" || seen[did] || denied[did] {
 				continue
 			}
 			seen[did] = true

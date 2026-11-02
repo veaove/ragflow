@@ -166,6 +166,7 @@ func (g *GraphDocOutlineTool) invokableRun(ctx context.Context, argumentsInJSON 
 		TenantID:   g.tenantID,
 		DatasetIDs: datasetIDs,
 		DocIDs:     docIDs,
+		UserID:     callerUserID(ctx),
 	})
 	if err != nil {
 		return "", fmt.Errorf("graph_doc_outline: %w", err)

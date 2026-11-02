@@ -26,6 +26,8 @@ import (
 
 	"ragflow/internal/agent/runtime"
 	"ragflow/internal/common"
+	"ragflow/internal/dao"
+	"ragflow/internal/permission"
 
 	"go.uber.org/zap"
 )
@@ -140,6 +142,45 @@ func resolveDocumentScope(ctx context.Context, requested []string) ([]string, er
 		}
 	}
 	return requested, nil
+}
+
+// callerUserID reads the run's caller identity from the canvas state the chat
+// pipeline attaches (state.Sys["user_id"]). An empty result means the caller is
+// unknown: the KG tools then skip document-level grants instead of guessing.
+func callerUserID(ctx context.Context) string {
+	state, err := runtime.GetStateFromContext(ctx)
+	if err != nil || state == nil {
+		return ""
+	}
+	userID, _ := state.Sys["user_id"].(string)
+	return strings.TrimSpace(userID)
+}
+
+// deniedDocuments collects the documents the caller may not see so every
+// compiled product (KG row, nav tree hit, compiled structure) derived from them
+// can be dropped before it reaches the tool result.
+//
+// 判定失败不收紧：库级过滤已经生效，误删整段知识产物比漏一条更糟。
+func deniedDocuments(ctx context.Context, userID string, datasetIDs []string) map[string]bool {
+	if userID == "" || len(datasetIDs) == 0 || dao.DB == nil {
+		return nil
+	}
+	hiddenByKB, err := permission.HiddenDocumentIDs(ctx, dao.DB,
+		permission.Subject{UserID: userID}, datasetIDs)
+	if err != nil {
+		common.WarnCtx(ctx, "agentic_rag: resolve document-level grants failed", zap.Error(err))
+		return nil
+	}
+	if len(hiddenByKB) == 0 {
+		return nil
+	}
+	denied := make(map[string]bool, len(hiddenByKB))
+	for _, ids := range hiddenByKB {
+		for _, id := range ids {
+			denied[id] = true
+		}
+	}
+	return denied
 }
 
 func intersectDocumentScope(ctx context.Context, ids []string) []string {

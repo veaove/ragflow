@@ -143,6 +143,7 @@ func (g *GraphExploreTool) invokableRun(ctx context.Context, argumentsInJSON str
 		DatasetIDs: datasetIDs,
 		DocScope:   args.DocScope,
 		Query:      query,
+		UserID:     callerUserID(ctx),
 	})
 	if err != nil {
 		return "", fmt.Errorf("graph_explore: %w", err)

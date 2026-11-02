@@ -108,6 +108,9 @@ type KgExploreRequest struct {
 	DatasetIDs []string
 	DocScope   []string
 	Query      string
+	// UserID 是发起人：文件级授权用它摘掉被拒绝文件的图谱行与证据切片。
+	// 为空表示不做文件级收紧。
+	UserID string
 }
 
 // KgExploreResult is the walk output: the seeded + hopped subgraph and the
@@ -203,6 +206,9 @@ func (a *KgAdapter) Explore(ctx context.Context, req KgExploreRequest) (KgExplor
 		return empty, nil
 	}
 
+	// 文件级授权：被排除的文件不参与这次图谱游走。
+	denied := deniedDocuments(ctx, req.UserID, datasetIDs)
+
 	// Encode the seed text ONCE: one embedding request serves every dataset.
 	seedVec := a.seedVector(ctx, req.TenantID, query)
 
@@ -234,7 +240,7 @@ func (a *KgAdapter) Explore(ctx context.Context, req KgExploreRequest) (KgExplor
 	}
 
 	for _, kbID := range datasetIDs {
-		seedRows := a.seedSearch(ctx, req.TenantID, kbID, docs, query, scopeKwd, seedVec)
+		seedRows := a.seedSearch(ctx, req.TenantID, kbID, docs, query, scopeKwd, seedVec, denied)
 		var seeds []KgEntity
 		for _, row := range seedRows {
 			if e, ok := kgParseEntity(row); ok {
@@ -249,9 +255,9 @@ func (a *KgAdapter) Explore(ctx context.Context, req KgExploreRequest) (KgExplor
 			}
 			terms := kgEndpointTerms(frontier)
 			relRows := a.kgSearch(ctx, req.TenantID, kbID, docs, "relation", "", kgRelLimit, scopeKwd,
-				map[string]interface{}{"from_entity_kwd": terms}, "", 0)
+				map[string]interface{}{"from_entity_kwd": terms}, "", 0, denied)
 			relRows = append(relRows, a.kgSearch(ctx, req.TenantID, kbID, docs, "relation", "", kgRelLimit, scopeKwd,
-				map[string]interface{}{"to_entity_kwd": terms}, "", 0)...)
+				map[string]interface{}{"to_entity_kwd": terms}, "", 0, denied)...)
 
 			// Dedup on the row id so the same endpoint pair from different rows
 			// survives; fall back to the from|to|type triple when the engine
@@ -303,7 +309,7 @@ func (a *KgAdapter) Explore(ctx context.Context, req KgExploreRequest) (KgExplor
 				limit = len(neighbours)
 			}
 			neighRows := a.kgSearch(ctx, req.TenantID, kbID, docs, "entity", "", limit, scopeKwd,
-				map[string]interface{}{"name_kwd": kgEndpointTerms(neighbours)}, "", 0)
+				map[string]interface{}{"name_kwd": kgEndpointTerms(neighbours)}, "", 0, denied)
 			var found []KgEntity
 			for _, row := range neighRows {
 				if e, ok := kgParseEntity(row); ok {
@@ -344,7 +350,7 @@ func (a *KgAdapter) Explore(ctx context.Context, req KgExploreRequest) (KgExplor
 	return KgExploreResult{
 		Entities:  entities,
 		Relations: relations,
-		Passages:  a.evidencePassages(ctx, req.TenantID, datasetIDs, entities, relations),
+		Passages:  a.evidencePassages(ctx, req.TenantID, datasetIDs, entities, relations, denied),
 	}, nil
 }
 
@@ -369,7 +375,7 @@ func (a *KgAdapter) seedVector(ctx context.Context, tenantID, text string) []flo
 // seedSearch resolves the seed entity rows: dense KNN over the entity rows
 // re-ranked by mention_count desc, or a keyword match when no vector is
 // available.
-func (a *KgAdapter) seedSearch(ctx context.Context, tenantID, kbID string, docs []string, text, scopeKwd string, seedVec []float64) []map[string]interface{} {
+func (a *KgAdapter) seedSearch(ctx context.Context, tenantID, kbID string, docs []string, text, scopeKwd string, seedVec []float64, denied map[string]bool) []map[string]interface{} {
 	if len(seedVec) > 0 {
 		dense := &enginetypes.MatchDenseExpr{
 			VectorColumnName:  fmt.Sprintf("q_%d_vec", len(seedVec)),
@@ -379,10 +385,10 @@ func (a *KgAdapter) seedSearch(ctx context.Context, tenantID, kbID string, docs 
 			TopN:              kgSeedPool,
 			ExtraOptions:      map[string]interface{}{"similarity": kgSeedSim},
 		}
-		rows := a.kgSearchRaw(ctx, tenantID, kbID, docs, "entity", scopeKwd, nil, []interface{}{dense}, "mention_count_int", kgSeedPool)
+		rows := a.kgSearchRaw(ctx, tenantID, kbID, docs, "entity", scopeKwd, nil, []interface{}{dense}, "mention_count_int", kgSeedPool, denied)
 		return kgTopMentionCount(rows, kgSeeds)
 	}
-	return a.kgSearch(ctx, tenantID, kbID, docs, "entity", text, kgSeeds, scopeKwd, nil, "mention_count_int", kgSeedPool)
+	return a.kgSearch(ctx, tenantID, kbID, docs, "entity", text, kgSeeds, scopeKwd, nil, "mention_count_int", kgSeedPool, denied)
 }
 
 // graphRowsExist reports whether one dataset holds ANY compiled entity row in
@@ -413,7 +419,7 @@ func (a *KgAdapter) graphRowsExist(ctx context.Context, tenantID, kbID string, d
 }
 
 // kgSearchRaw is the low-level KG row search over one dataset.
-func (a *KgAdapter) kgSearchRaw(ctx context.Context, tenantID, kbID string, docs []string, kind, scopeKwd string, extra map[string]interface{}, matchExprs []interface{}, orderDesc string, limit int) []map[string]interface{} {
+func (a *KgAdapter) kgSearchRaw(ctx context.Context, tenantID, kbID string, docs []string, kind, scopeKwd string, extra map[string]interface{}, matchExprs []interface{}, orderDesc string, limit int, denied map[string]bool) []map[string]interface{} {
 	condition := map[string]interface{}{"knowledge_graph_kwd": kind}
 	if scopeKwd != "" {
 		condition["scope_kwd"] = scopeKwd
@@ -428,7 +434,7 @@ func (a *KgAdapter) kgSearchRaw(ctx context.Context, tenantID, kbID string, docs
 		IndexNames: []string{kgIndexName(tenantID)},
 		KbIDs:      []string{kbID},
 		SelectFields: []string{
-			"id", "content_with_weight", "source_chunk_ids", "doc_id", "docnm_kwd",
+			"id", "content_with_weight", "source_chunk_ids", "source_doc_ids", "doc_id", "docnm_kwd",
 			"name_kwd", "mention_count_int", "from_entity_kwd", "to_entity_kwd",
 		},
 		Filter: condition,
@@ -446,11 +452,80 @@ func (a *KgAdapter) kgSearchRaw(ctx context.Context, tenantID, kbID string, docs
 	if err != nil {
 		return nil
 	}
-	return res.Chunks
+	if len(denied) == 0 {
+		return res.Chunks
+	}
+	kept := make([]map[string]interface{}, 0, len(res.Chunks))
+	for _, row := range res.Chunks {
+		if kgRowDenied(row, denied) {
+			continue
+		}
+		kept = append(kept, row)
+	}
+	return kept
+}
+
+// kgRowDenied reports whether a KG row has to be dropped for this caller.
+//
+// KG 行是聚合产物，没法从一条实体 / 关系里剔掉"某个文档贡献的那部分"，所以只
+// 要任一来源文档被文件级规则排除，整行都不给：文档级行（scope_kwd=doc）看
+// doc_id，数据集级合并行（doc_id 是库 id）看 source_doc_ids。
+func kgRowDenied(row map[string]interface{}, denied map[string]bool) bool {
+	if len(denied) == 0 {
+		return false
+	}
+	if docID, _ := row["doc_id"].(string); docID != "" && denied[docID] {
+		return true
+	}
+	for _, id := range kgStringList(row["source_doc_ids"]) {
+		if denied[id] {
+			return true
+		}
+	}
+	return false
+}
+
+// kgStringList reads an engine-returned string array: ES/Infinity may hand back
+// []interface{}, []string, or a comma-separated string.
+func kgStringList(value interface{}) []string {
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case []string:
+		return v
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return nil
+		}
+		// Infinity hands json-typed columns back as a serialized array.
+		if strings.HasPrefix(s, "[") {
+			var decoded []string
+			if json.Unmarshal([]byte(s), &decoded) == nil {
+				return decoded
+			}
+		}
+		var out []string
+		for _, item := range strings.Split(s, ",") {
+			if item = strings.TrimSpace(item); item != "" {
+				out = append(out, item)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // kgSearch searches the KG rows of one dataset with a text match expression.
-func (a *KgAdapter) kgSearch(ctx context.Context, tenantID, kbID string, docs []string, kind, text string, topN int, scopeKwd string, extra map[string]interface{}, orderDesc string, pool int) []map[string]interface{} {
+func (a *KgAdapter) kgSearch(ctx context.Context, tenantID, kbID string, docs []string, kind, text string, topN int, scopeKwd string, extra map[string]interface{}, orderDesc string, pool int, denied map[string]bool) []map[string]interface{} {
 	var matchExprs []interface{}
 	if text != "" {
 		candidates := topN
@@ -463,12 +538,12 @@ func (a *KgAdapter) kgSearch(ctx context.Context, tenantID, kbID string, docs []
 			TopN:         candidates,
 		}}
 	}
-	return a.kgSearchRaw(ctx, tenantID, kbID, docs, kind, scopeKwd, extra, matchExprs, orderDesc, topN)
+	return a.kgSearchRaw(ctx, tenantID, kbID, docs, kind, scopeKwd, extra, matchExprs, orderDesc, topN, denied)
 }
 
 // evidencePassages loads the source chunks behind the subgraph, in first-seen
 // doc order, capped at kgMaxPassages.
-func (a *KgAdapter) evidencePassages(ctx context.Context, tenantID string, datasetIDs []string, entities []KgEntity, relations []KgRelation) []KgPassage {
+func (a *KgAdapter) evidencePassages(ctx context.Context, tenantID string, datasetIDs []string, entities []KgEntity, relations []KgRelation, denied map[string]bool) []KgPassage {
 	type evidence struct {
 		docID string
 		ids   []string
@@ -477,6 +552,9 @@ func (a *KgAdapter) evidencePassages(ctx context.Context, tenantID string, datas
 	index := map[string]int{}
 	seen := map[string]bool{}
 	add := func(docID string, ids []string) {
+		if docID != "" && denied[docID] {
+			return
+		}
 		for _, chunkID := range ids {
 			if chunkID == "" {
 				continue
@@ -509,6 +587,9 @@ func (a *KgAdapter) evidencePassages(ctx context.Context, tenantID string, datas
 		}
 		remaining := kgMaxPassages - len(out)
 		for _, p := range a.loadPassages(ctx, tenantID, datasetIDs, group.ids, remaining) {
+			if p.DocID != "" && denied[p.DocID] {
+				continue
+			}
 			out = append(out, p)
 		}
 	}
@@ -703,6 +784,8 @@ type KgDocOutlineRequest struct {
 	TenantID   string
 	DatasetIDs []string
 	DocIDs     []string
+	// UserID 是发起人：被文件级规则排除的文档不返回大纲。
+	UserID string
 }
 
 // DocOutline returns each document's compiled graph in one shot. Every document
@@ -723,6 +806,9 @@ func (a *KgAdapter) DocOutline(ctx context.Context, req KgDocOutlineRequest) (Kg
 	if len(docIDs) > kgOutlineMaxDocs {
 		docIDs = docIDs[:kgOutlineMaxDocs]
 	}
+
+	// 文件级授权：被排除的文件既不出大纲，也不做证据段落回取。
+	denied := deniedDocuments(ctx, req.UserID, datasetIDs)
 
 	var entities []KgEntity
 	var relations []KgRelation
@@ -755,7 +841,7 @@ func (a *KgAdapter) DocOutline(ctx context.Context, req KgDocOutlineRequest) (Kg
 	absent := true
 	for _, kbID := range datasetIDs {
 		rows := a.kgSearchRaw(ctx, req.TenantID, kbID, docIDs, "graph", "",
-			nil, nil, "", kgOutlineMaxDocs*kgOutlineRowsEach)
+			nil, nil, "", kgOutlineMaxDocs*kgOutlineRowsEach, denied)
 		if len(rows) > 0 {
 			absent = false
 		}
@@ -789,7 +875,7 @@ func (a *KgAdapter) DocOutline(ctx context.Context, req KgDocOutlineRequest) (Kg
 				limit = kgOutlineMaxRelations
 			}
 			rows := a.kgSearchRaw(ctx, req.TenantID, kbID, fallbackDocs, kind, "",
-				nil, nil, "mention_count_int", limit)
+				nil, nil, "mention_count_int", limit, denied)
 			if len(rows) == 0 {
 				continue
 			}
@@ -845,7 +931,7 @@ func (a *KgAdapter) DocOutline(ctx context.Context, req KgDocOutlineRequest) (Kg
 		relations = relations[:kgOutlineMaxRelations]
 	}
 
-	passages := a.evidencePassages(ctx, req.TenantID, datasetIDs, entities, relations)
+	passages := a.evidencePassages(ctx, req.TenantID, datasetIDs, entities, relations, denied)
 	return KgExploreResult{
 		Entities:    entities,
 		Relations:   relations,
