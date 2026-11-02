@@ -76,9 +76,27 @@ func (s *DocumentService) GetThumbnails(ctx context.Context, userID string, docI
 		return nil, fmt.Errorf("failed to fetch document thumbnails: %w", err)
 	}
 
+	// 缩略图是批量接口：先把"被文件级规则排除的文件"一次算出来，再逐条跳过，
+	// 否则每张图都要跑一遍访问判定。
+	kbIDs := make([]string, 0, len(documents))
+	for _, document := range documents {
+		if document != nil && document.KbID != "" {
+			kbIDs = append(kbIDs, document.KbID)
+		}
+	}
+	hiddenDocuments := make(map[string]bool, len(documents))
+	if hiddenByKB, err := permission.HiddenDocumentIDs(ctx, dao.DB, permission.Subject{UserID: userID}, kbIDs); err == nil {
+		for _, ids := range hiddenByKB {
+			for _, id := range ids {
+				hiddenDocuments[id] = true
+			}
+		}
+	}
+
 	result := make(map[string]string, len(documents))
 	for _, document := range documents {
-		if document == nil || service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, document.KbID, permission.OperationRead) != nil {
+		if document == nil || hiddenDocuments[document.ID] ||
+			service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, document.KbID, permission.OperationRead) != nil {
 			continue
 		}
 

@@ -861,3 +861,60 @@ func TestRetrievalSearchesEachTenantIndexOnce(t *testing.T) {
 		t.Fatalf("index names = %v, want [ragflow_tenant-1]", docEngine.indexNames)
 	}
 }
+
+// 文件级授权的排除名单要与调用方已有的 must_not 合并，不能把它的 exists
+// 排除（compiled products）顶掉。
+func TestGetFiltersMergesDocumentGrantExclusions(t *testing.T) {
+	req := &RetrievalSearchRequest{
+		KbIDs:          []string{"kb-1"},
+		ExcludedDocIDs: []string{"doc-denied"},
+		Filter: map[string]interface{}{
+			"must_not": map[string]interface{}{"exists": "compile_kwd"},
+		},
+	}
+
+	mustNot, _ := req.GetFilters()["must_not"].(map[string]interface{})
+	if mustNot["exists"] != "compile_kwd" {
+		t.Fatalf("existing must_not lost: %v", mustNot)
+	}
+	if got, _ := mustNot["doc_id"].([]string); !slices.Equal(got, []string{"doc-denied"}) {
+		t.Fatalf("doc_id exclusion = %v, want [doc-denied]", mustNot["doc_id"])
+	}
+}
+
+// 引擎侧过滤之后的兜底：落在排除名单里的 chunk 一律不返回。不是所有引擎都
+// 支持按 doc_id 排除（Vastbase 只处理 must_not.exists），漏一条就等于把被
+// 拒绝的文件内容交出去。
+func TestSearchPrunesDocumentLevelDeniedChunks(t *testing.T) {
+	if GetQueryBuilder() == nil {
+		globalQueryBuilder = NewQueryBuilder()
+	}
+	docEngine := &captureSearchDocEngine{
+		engineType: string(engine.EngineVastbase),
+		result: &types.SearchResult{
+			Chunks: []map[string]interface{}{
+				{"id": "chunk-1", "doc_id": "doc-allowed"},
+				{"id": "chunk-2", "doc_id": "doc-denied"},
+			},
+			Total: 2,
+		},
+	}
+	svc := NewRetrievalService(docEngine, nil)
+
+	result, err := svc.Search(t.Context(), &RetrievalSearchRequest{
+		Question:       "test question",
+		TenantIDs:      []string{"tenant-1"},
+		KbIDs:          []string{"kb-1"},
+		Page:           1,
+		PageSize:       10,
+		RankFeature:    map[string]float64{},
+		EmbeddingModel: &modelModule.EmbeddingModel{ModelDriver: &captureEmbeddingDriver{}},
+		ExcludedDocIDs: []string{"doc-denied"},
+	})
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(result.Chunks) != 1 || result.Chunks[0]["doc_id"] != "doc-allowed" {
+		t.Fatalf("chunks = %v, want only doc-allowed", result.Chunks)
+	}
+}

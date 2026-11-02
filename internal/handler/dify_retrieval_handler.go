@@ -274,6 +274,7 @@ func (h *DifyRetrievalHandler) Retrieval(c *gin.Context) {
 		SimilarityThreshold: scoreThreshold,
 		EmbeddingModel:      embModel,
 		Language:            entity.KnowledgebasesLanguage(kbs),
+		UserID:              user.ID, // 文件级授权：检索按发起人排除被拒绝的文件
 	}
 	if rankFeature != nil {
 		sr.RankFeature = &rankFeature

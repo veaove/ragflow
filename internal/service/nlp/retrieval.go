@@ -31,6 +31,7 @@ import (
 	"ragflow/internal/engine"
 	"ragflow/internal/engine/types"
 	"ragflow/internal/entity/models"
+	"ragflow/internal/permission"
 	"ragflow/internal/tokenizer"
 
 	"go.uber.org/zap"
@@ -98,6 +99,9 @@ type RetrievalRequest struct {
 	// Language is the dataset language ("" = English); diacritic-folding
 	// languages (Slovak, Czech) fold the query so its tokens match index tokens.
 	Language string
+	// UserID 是检索的发起人。文件级授权需要它来决定"哪些文件被排除了"；
+	// 为空表示调用方不做文件级收紧（内部对账、后台任务）。
+	UserID string
 }
 
 // RetrievalResult result from retrieval search
@@ -206,6 +210,7 @@ func (s *RetrievalService) Retrieval(ctx context.Context, req *RetrievalRequest)
 		Language:               req.Language,
 		SynonymOverride:        req.SynonymOverride,
 		ExtraChunkTokens:       req.ExtraChunkTokens,
+		UserID:                 req.UserID,
 	}
 	searchResult, err := s.Search(ctx, searchReq)
 	if err != nil {
@@ -655,6 +660,13 @@ type RetrievalSearchRequest struct {
 	SynonymOverride  map[string][]string
 	ExtraChunkTokens map[string][]string
 	Language string
+	// UserID 是检索发起人：Search 用它算出文件级授权排除掉的文件，写进
+	// ExcludedDocIDs。为空表示不做文件级收紧。
+	UserID string
+	// ExcludedDocIDs 是调用者看不到的文件（由 UserID 推导）。引擎侧用
+	// must_not 排除，结果侧还会再兜底剪一遍 —— 个别引擎不支持按 doc_id
+	// 排除时必须仍然不漏。
+	ExcludedDocIDs []string
 }
 
 func buildInfinityFusionExpr(topn int, vectorSimilarityWeight *float64) *types.FusionExpr {
@@ -734,6 +746,8 @@ func (s *RetrievalService) Search(ctx context.Context, req *RetrievalSearchReque
 	if req.AllowDenseFallback == nil {
 		req.AllowDenseFallback = new(true)
 	}
+	// 文件级授权：先算出调用者看不到的文件，再由 GetFilters 写进 must_not。
+	s.applyDocumentGrantExclusions(ctx, req)
 	filters := req.GetFilters()
 	if _, ok := filters["available_int"]; !ok {
 		filters["available_int"] = 1
@@ -960,6 +974,11 @@ func (s *RetrievalService) Search(ctx context.Context, req *RetrievalSearchReque
 	}
 
 	searchResult := engineResult
+	// 引擎侧已经用 must_not 排除了，这里再剪一遍：不支持按 doc_id 排除的引擎
+	// （以及 must_not 被丢弃的引擎）必须仍然不漏，排除名单来自文件级授权。
+	if searchResult != nil && len(req.ExcludedDocIDs) > 0 {
+		searchResult.Chunks = pruneExcludedChunks(searchResult.Chunks, req.ExcludedDocIDs)
+	}
 	// The window the engine was asked for vs what it returned, together with what
 	// it was asked FOR: a shortfall is indistinguishable from a narrower query
 	// without both, and it is what a caller sees as a thin candidate pool (the ES
@@ -1087,7 +1106,62 @@ func (r *RetrievalSearchRequest) GetFilters() map[string]interface{} {
 			filters[key] = val
 		}
 	}
+	// 文件级授权排除：与调用方自己的 must_not 合并，别把它们顶掉。
+	if len(r.ExcludedDocIDs) > 0 {
+		mustNot, _ := filters["must_not"].(map[string]interface{})
+		if mustNot == nil {
+			mustNot = make(map[string]interface{}, 1)
+		}
+		mustNot["doc_id"] = r.ExcludedDocIDs
+		filters["must_not"] = mustNot
+	}
 	return filters
+}
+
+// applyDocumentGrantExclusions 把文件级授权排除掉的文件写进 req.ExcludedDocIDs。
+//
+// 只有真正带规则的库才会产生查询开销（见 permission.HiddenDocumentIDs）。
+// 判定失败时保持"不额外收紧"：检索已经校验过库级权限，这里再 fail closed 会让
+// 一次偶发查询失败变成整个知识库检索不到东西。
+func (s *RetrievalService) applyDocumentGrantExclusions(ctx context.Context, req *RetrievalSearchRequest) {
+	if req.UserID == "" || len(req.KbIDs) == 0 || dao.DB == nil {
+		return
+	}
+	// 同一个 req 可能被重试（降级再搜一次），每次都以最新的规则为准。
+	req.ExcludedDocIDs = nil
+	hiddenByKB, err := permission.HiddenDocumentIDs(ctx, dao.DB,
+		permission.Subject{UserID: req.UserID}, req.KbIDs)
+	if err != nil {
+		common.Warn(fmt.Sprintf("resolve document-level grants for retrieval: %v", err))
+		return
+	}
+	for _, ids := range hiddenByKB {
+		req.ExcludedDocIDs = append(req.ExcludedDocIDs, ids...)
+	}
+}
+
+// pruneExcludedChunks 摘掉落在文件级排除名单里的 chunk。
+//
+// 引擎侧通常已经用 must_not 排除了，这一层是兜底：不支持按 doc_id 排除的引擎
+// （或 must_not 被丢弃的引擎）漏一条，就等于把被拒绝的文件内容交出去。
+func pruneExcludedChunks(chunks []map[string]interface{}, excluded []string) []map[string]interface{} {
+	if len(chunks) == 0 || len(excluded) == 0 {
+		return chunks
+	}
+	excludedSet := make(map[string]struct{}, len(excluded))
+	for _, id := range excluded {
+		excludedSet[id] = struct{}{}
+	}
+	kept := make([]map[string]interface{}, 0, len(chunks))
+	for _, chunk := range chunks {
+		if docID, _ := chunk["doc_id"].(string); docID != "" {
+			if _, drop := excludedSet[docID]; drop {
+				continue
+			}
+		}
+		kept = append(kept, chunk)
+	}
+	return kept
 }
 
 // RetrievalByChildren aggregates child chunks into parent chunks

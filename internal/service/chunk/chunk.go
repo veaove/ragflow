@@ -418,6 +418,7 @@ func (s *ChunkService) RetrievalTest(ctx context.Context, req *service.Retrieval
 		EmbeddingModel:         embeddingModel,
 		Highlight:              req.Highlight,
 		Language:               entity.KnowledgebasesLanguage(kbRecords),
+		UserID:                 userID, // 文件级授权：检索按发起人排除被拒绝的文件
 		// Comparison injection points; nil for every ordinary request.
 		SynonymOverride:  req.SynonymOverride,
 		ExtraChunkTokens: req.ExtraChunkTokens,
@@ -582,6 +583,12 @@ func (s *ChunkService) Get(ctx context.Context, req *service.GetChunkRequest, us
 	}
 	if doc.KbID != req.DatasetID {
 		return nil, fmt.Errorf("document does not belong to this dataset")
+	}
+
+	// 库级可见只是前提：文件可能已经被文件级规则排除，或只给了只读。
+	if err := permission.CheckDocumentAccess(ctx, dao.DB,
+		permission.Subject{UserID: userID}, doc.KbID, doc.ID, permission.OperationRead); err != nil {
+		return nil, err
 	}
 
 	// The lookup stays inside the dataset named in the route, and the row must
@@ -963,6 +970,11 @@ func (s *ChunkService) List(ctx context.Context, req *service.ListChunksRequest,
 
 	kb, err := s.getAccessibleKnowledgebase(ctx, doc.KbID, userID, permission.OperationRead)
 	if err != nil {
+		return nil, err
+	}
+	// 库级可见只是前提：文件可能已经被文件级规则排除，或只给了只读。
+	if err := permission.CheckDocumentAccess(ctx, dao.DB,
+		permission.Subject{UserID: userID}, doc.KbID, doc.ID, permission.OperationRead); err != nil {
 		return nil, err
 	}
 	targetTenantID := kb.TenantID

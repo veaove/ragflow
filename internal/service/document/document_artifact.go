@@ -41,7 +41,9 @@ func (s *DocumentService) GetDocumentImage(ctx context.Context, userID, imageID 
 // composite image ID belongs to an indexed chunk of an accessible document.
 func (s *DocumentService) GetDocumentImageForDocument(ctx context.Context, userID, docID, imageID string) ([]byte, error) {
 	doc, err := s.documentDAO.GetByID(ctx, dao.DB, docID)
-	if err != nil || doc == nil || service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, doc.KbID, permission.OperationRead) != nil {
+	if err != nil || doc == nil ||
+		service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, doc.KbID, permission.OperationRead) != nil ||
+		permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: userID}, doc.KbID, doc.ID, permission.OperationRead) != nil {
 		return nil, ErrDocumentImageNotFound
 	}
 	bucket, objectKey, ok := strings.Cut(imageID, "-")
@@ -69,7 +71,10 @@ func (s *DocumentService) GetDocumentImageForDocument(ctx context.Context, userI
 // document metadata.
 func (s *DocumentService) GetDocumentThumbnail(ctx context.Context, userID, docID string) ([]byte, error) {
 	doc, err := s.documentDAO.GetByID(ctx, dao.DB, docID)
-	if err != nil || doc == nil || service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, doc.KbID, permission.OperationRead) != nil || doc.Thumbnail == nil || *doc.Thumbnail == "" || strings.HasPrefix(*doc.Thumbnail, imgBase64Prefix) {
+	if err != nil || doc == nil ||
+		service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, doc.KbID, permission.OperationRead) != nil ||
+		permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: userID}, doc.KbID, doc.ID, permission.OperationRead) != nil ||
+		doc.Thumbnail == nil || *doc.Thumbnail == "" || strings.HasPrefix(*doc.Thumbnail, imgBase64Prefix) {
 		return nil, ErrDocumentImageNotFound
 	}
 	storageImpl := storage.GetStorageFactory().GetStorage()
@@ -266,8 +271,10 @@ func (s *DocumentService) GetDocumentPreview(ctx context.Context, userID, docID 
 	}
 
 	// Keep access denial indistinguishable from a missing document so callers
-	// cannot probe document IDs.
-	if service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, doc.KbID, permission.OperationRead) != nil {
+	// cannot probe document IDs. 库级可见之后还要看文件级规则：被文件级规则
+	// 排除的文件同样按"找不到"处理。
+	if service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, doc.KbID, permission.OperationRead) != nil ||
+		permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: userID}, doc.KbID, doc.ID, permission.OperationRead) != nil {
 		return nil, ErrPreviewDocumentNotFound
 	}
 

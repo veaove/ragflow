@@ -247,9 +247,27 @@ func (s *DocumentService) DeleteDocuments(ctx context.Context, ids []string, del
 		}
 	}
 
-	// 5. Delete each document (non-critical failures are tolerated per doc)
+	// 5. 文件级授权：只读授权或被文件级规则排除的文件不允许删除。先一次性挑出
+	// 有规则的文件，再逐条判定，避免为整批文件跑权限查询。
+	restricted, err := permission.RestrictedDocumentIDs(ctx, dao.DB, ids)
+	if err != nil {
+		return 0, fmt.Errorf("failed to resolve document-level grants: %w", err)
+	}
+	restrictedSet := make(map[string]bool, len(restricted))
+	for _, id := range restricted {
+		restrictedSet[id] = true
+	}
+
+	// 6. Delete each document (non-critical failures are tolerated per doc)
 	deleted := 0
 	for _, docID := range ids {
+		if restrictedSet[docID] {
+			if grantErr := permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: userID},
+				datasetID, docID, permission.OperationDeleteContent); grantErr != nil {
+				common.Warn(fmt.Sprintf("DeleteDocuments: %s blocked by document-level grant", docID))
+				continue
+			}
+		}
 		if err := s.deleteDocumentFull(ctx, docID); err != nil {
 			common.Warn(fmt.Sprintf("DeleteDocuments: failed to delete %s: %v", docID, err))
 			continue

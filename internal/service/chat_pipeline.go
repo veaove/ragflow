@@ -799,6 +799,7 @@ func (s *ChatPipelineService) AsyncChat(
 						EmbeddingModel:         embModel,
 						Aggs:                   func() *bool { v := true; return &v }(),
 						Language:               entity.KnowledgebasesLanguage(kbs),
+						UserID:                 userID, // 文件级授权：检索按发起人排除被拒绝的文件
 					}
 
 					result, retErr := retrievalSvc.Retrieval(ctx, req)

@@ -48,6 +48,16 @@ func (s *DocumentService) BatchUpdateDocumentStatus(ctx context.Context, userID,
 		documentByID[doc.ID] = doc
 	}
 
+	// 文件级授权：只有真正带规则的文件才逐条判定，正常库里一个都没有。
+	restricted, err := permission.RestrictedDocumentIDs(ctx, dao.DB, documentIDs)
+	if err != nil {
+		return nil, common.CodeServerError, fmt.Errorf("failed to resolve document-level grants: %w", err)
+	}
+	restrictedSet := make(map[string]bool, len(restricted))
+	for _, id := range restricted {
+		restrictedSet[id] = true
+	}
+
 	for _, docID := range documentIDs {
 		doc, ok := documentByID[docID]
 		if !ok {
@@ -60,6 +70,15 @@ func (s *DocumentService) BatchUpdateDocumentStatus(ctx context.Context, userID,
 			result[docID] = map[string]string{"error": "Document not found in this dataset."}
 			hasError = true
 			continue
+		}
+
+		if restrictedSet[docID] {
+			if grantErr := permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: userID},
+				datasetID, docID, permission.OperationUpdate); grantErr != nil {
+				result[docID] = map[string]string{"error": "Permission denied"}
+				hasError = true
+				continue
+			}
 		}
 
 		currentStatus := ""
@@ -133,6 +152,13 @@ func (s *DocumentService) UpdateDatasetDocument(ctx context.Context, userID, dat
 			return nil, common.CodeDataError, errors.New("the dataset doesn't own the document")
 		}
 		return nil, common.CodeServerError, err
+	}
+
+	// 文件级授权：只读授权或被排除的文件不许改。
+	if grantErr := permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: userID},
+		datasetID, documentID, permission.OperationUpdate); grantErr != nil {
+		code, permissionErr := permissionresponse.Normalize(grantErr)
+		return nil, code, permissionErr
 	}
 
 	if code, err := s.validateDatasetDocumentUpdate(ctx, datasetID, documentID, userID, doc, req, present); err != nil {

@@ -153,6 +153,11 @@ func (h *DocumentHandler) GetDocumentByID(c *gin.Context) {
 		respondHTTPPermissionError(c, err, false)
 		return
 	}
+	// 文件级授权：被排除的文件按"找不到"返回，避免用 id 探路。
+	if err := permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: user.ID}, doc.KbID, doc.ID, permission.OperationRead); err != nil {
+		respondHTTPPermissionError(c, err, true)
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": doc,
@@ -388,6 +393,11 @@ func (h *DocumentHandler) UpdateDocument(c *gin.Context) {
 		respondPermissionError(c, err, false)
 		return
 	}
+	// 文件级授权：只读授权或被排除的文件不许改。
+	if err := permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: user.ID}, doc.KbID, doc.ID, permission.OperationUpdate); err != nil {
+		respondPermissionError(c, err, true)
+		return
+	}
 
 	var req document.UpdateDocumentRequest
 	if err = c.ShouldBindJSON(&req); err != nil {
@@ -441,6 +451,11 @@ func (h *DocumentHandler) DeleteDocument(c *gin.Context) {
 	}
 	if err := h.datasetService.CheckAccess(ctx, permission.Subject{UserID: user.ID}, doc.KbID, permission.OperationDeleteContent); err != nil {
 		respondPermissionError(c, err, false)
+		return
+	}
+	// 文件级授权：只读授权或被排除的文件不许删。
+	if err := permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: user.ID}, doc.KbID, doc.ID, permission.OperationDeleteContent); err != nil {
+		respondPermissionError(c, err, true)
 		return
 	}
 
@@ -1218,6 +1233,11 @@ func (h *DocumentHandler) DownloadDocument(c *gin.Context) {
 	// Authorize the caller before serving file bytes. Answer exactly like the
 	// missing-document case so dataset existence is not leaked.
 	if err := h.datasetService.CheckAccess(ctx, permission.Subject{UserID: user.ID}, datasetID, permission.OperationRead); err != nil {
+		respondPermissionError(c, err, true)
+		return
+	}
+	// 文件级授权：被排除的文件按"找不到"处理，不返回文件字节。
+	if err := permission.CheckDocumentAccess(ctx, dao.DB, permission.Subject{UserID: user.ID}, datasetID, docID, permission.OperationRead); err != nil {
 		respondPermissionError(c, err, true)
 		return
 	}
