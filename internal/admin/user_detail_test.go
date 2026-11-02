@@ -26,6 +26,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/entity"
 	"ragflow/internal/ingestion/testutil"
+	"ragflow/internal/permission"
 
 	"github.com/gin-gonic/gin"
 )
@@ -42,6 +43,8 @@ func setupAdminUserDetailTest(t *testing.T) *Handler {
 		&entity.UserTenant{},
 		&entity.Knowledgebase{},
 		&entity.UserCanvas{},
+		// 列表按 resource_grant 判定成员可见性，测试库要建这张表。
+		&entity.ResourceGrant{},
 	)
 	t.Cleanup(testutil.ReplaceDBForTest(t, db))
 
@@ -94,6 +97,15 @@ func setupAdminUserDetailTest(t *testing.T) *Handler {
 	}
 	if err := db.Create(&datasets).Error; err != nil {
 		t.Fatalf("create datasets: %v", err)
+	}
+	// team 档只覆盖租户管理层，普通成员看到团队的库靠一条显式授权。
+	if err := db.Create(&entity.ResourceGrant{
+		ID: "grant-dataset-team", TenantID: "tenant-2",
+		ResourceKind: string(permission.ResourceKindDataset), ResourceID: "dataset-team",
+		SubjectKind: entity.GrantSubjectUser, SubjectID: user.ID,
+		Permission: "edit", Effect: entity.GrantEffectAllow,
+	}).Error; err != nil {
+		t.Fatalf("grant team dataset: %v", err)
 	}
 
 	agents := []entity.UserCanvas{

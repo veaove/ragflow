@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 )
 
 // setupChatPermissionTestDB prepares the tables dataset permission resolution
@@ -14,7 +15,7 @@ func setupChatPermissionTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := setupModelProviderServiceTestDB(t)
 	useModelProviderServiceTestDB(t, db)
-	if err := db.AutoMigrate(&entity.Knowledgebase{}, &entity.Tenant{}); err != nil {
+	if err := db.AutoMigrate(&entity.Knowledgebase{}, &entity.Tenant{}, &entity.ResourceGrant{}); err != nil {
 		t.Fatalf("migrate chat permission tables: %v", err)
 	}
 
@@ -28,6 +29,14 @@ func setupChatPermissionTestDB(t *testing.T) *gorm.DB {
 		// member-1's 知识库 list.
 		&entity.Knowledgebase{ID: "private-dataset", TenantID: "tenant-1", CreatedBy: "owner-1", Name: "private", EmbdID: "bge-test", Permission: string(entity.TenantPermissionMe), Status: &valid},
 		&entity.Knowledgebase{ID: "team-dataset", TenantID: "tenant-1", CreatedBy: "owner-1", Name: "team", EmbdID: "bge-test", Permission: string(entity.TenantPermissionTeam), Status: &valid},
+		// team-dataset 与 member-1 的共享关系落在 resource_grant 上：team 档本身
+		// 只覆盖租户管理层。
+		&entity.ResourceGrant{
+			ID: "grant-team-dataset", TenantID: "tenant-1",
+			ResourceKind: string(permission.ResourceKindDataset), ResourceID: "team-dataset",
+			SubjectKind: entity.GrantSubjectUser, SubjectID: "member-1",
+			Permission: "edit", Effect: entity.GrantEffectAllow,
+		},
 	}
 	for _, row := range rows {
 		if err := db.Create(row).Error; err != nil {

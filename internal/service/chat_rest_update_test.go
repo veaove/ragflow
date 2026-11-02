@@ -53,6 +53,13 @@ func setupChatRESTUpdateServiceTestDB(t *testing.T) *gorm.DB {
 	}).Error; err != nil {
 		t.Fatalf("failed to create tenant: %v", err)
 	}
+	// 个人租户同样有一条 owner 成员关系：模型与 provider 的授权事实按租户
+	// owner 归属计算，缺了它模型解析会直接报「没有活跃 owner」。
+	if err := db.Create(&entity.UserTenant{
+		ID: "ut-user-1", UserID: "user-1", TenantID: "user-1", Role: "owner", Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("failed to create tenant owner: %v", err)
+	}
 	if err := db.Create(&entity.TenantModelProvider{
 		ID:           "provider-a",
 		TenantID:     "user-1",

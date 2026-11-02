@@ -399,7 +399,7 @@ func TestRetrieval_ResolveDatasetIDByUserPermission(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to open sqlite: %v", err)
 			}
-			if err := db.AutoMigrate(&entity.Knowledgebase{}, &entity.UserTenant{}); err != nil {
+			if err := db.AutoMigrate(&entity.Knowledgebase{}, &entity.UserTenant{}, &entity.ResourceGrant{}); err != nil {
 				t.Fatalf("failed to migrate permission tables: %v", err)
 			}
 			origDB := dao.DB
@@ -424,6 +424,17 @@ func TestRetrieval_ResolveDatasetIDByUserPermission(t *testing.T) {
 			}
 			if err := db.Create(&memberships).Error; err != nil {
 				t.Fatalf("failed to seed memberships: %v", err)
+			}
+			// team 档只覆盖租户管理层，成员要看到这个库得有一条显式授权。
+			if tc.visibility == string(entity.TenantPermissionTeam) {
+				if err := db.Create(&entity.ResourceGrant{
+					ID: "grant-kb-team", TenantID: "tenant-1",
+					ResourceKind: "dataset", ResourceID: datasetID,
+					SubjectKind: entity.GrantSubjectUser, SubjectID: "member",
+					Permission: "edit", Effect: entity.GrantEffectAllow,
+				}).Error; err != nil {
+					t.Fatalf("failed to seed dataset grant: %v", err)
+				}
 			}
 
 			state := runtime.NewCanvasState("run-1", "task-1")

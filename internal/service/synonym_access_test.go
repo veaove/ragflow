@@ -105,6 +105,15 @@ func setupSynonymAccessFixtures(t *testing.T) *SynonymService {
 	if err := db.Create(&grant).Error; err != nil {
 		t.Fatalf("failed to seed grant: %v", err)
 	}
+	// team 档现在只覆盖租户管理层，普通成员能读它同样靠一条团队授权。
+	teamGrant := entity.ResourceGrant{
+		ID: "grant-team", TenantID: synTenantKB,
+		ResourceKind: string(permission.ResourceKindDataset), ResourceID: synKBTeam,
+		SubjectKind: entity.GrantSubjectTeam,
+	}
+	if err := db.Create(&teamGrant).Error; err != nil {
+		t.Fatalf("failed to seed team grant: %v", err)
+	}
 
 	return NewSynonymService()
 }

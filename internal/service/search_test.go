@@ -217,6 +217,8 @@ func TestSearchServiceListSearchesUsesPermissionScope(t *testing.T) {
 			t.Fatalf("create membership %s: %v", row.ID, err)
 		}
 	}
+	// 知识搜索默认只对创建者可见，"团队共用"靠一条只读授权表达。
+	grantTestResourceReadOnly(t, "team-tenant", permission.ResourceKindSearchApp, "team-search", "member-1")
 
 	result, err := NewSearchService().ListSearches(t.Context(), "member-1", "", 0, 0, nil, nil)
 	if err != nil {
@@ -261,6 +263,7 @@ func TestSearchServiceSharesReadAndRunWithTenantMembers(t *testing.T) {
 	if err := dao.DB.Create(&membership).Error; err != nil {
 		t.Fatalf("create membership: %v", err)
 	}
+	grantTestResourceReadOnly(t, "team-tenant", permission.ResourceKindSearchApp, "team-search", "member-1")
 
 	service := NewSearchService()
 	if _, err := service.GetSearchDetail(t.Context(), "member-1", search.ID); err != nil {

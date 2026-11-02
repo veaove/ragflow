@@ -36,6 +36,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 	"ragflow/internal/service"
 	dataset "ragflow/internal/service/dataset"
 	"ragflow/internal/service/document"
@@ -417,6 +418,7 @@ func setupDocumentPermissionDB(t *testing.T, accessible bool) {
 	if err := db.AutoMigrate(
 		&entity.Knowledgebase{},
 		&entity.UserTenant{},
+		&entity.ResourceGrant{},
 	); err != nil {
 		t.Fatalf("failed to migrate permission tables: %v", err)
 	}
@@ -449,6 +451,15 @@ func setupDocumentPermissionDB(t *testing.T, accessible bool) {
 			Status:   sptr(string(entity.StatusValid)),
 		}).Error; err != nil {
 			t.Fatalf("insert user_tenant: %v", err)
+		}
+		// team 档只覆盖租户管理层，普通成员要访问这个库得有一条显式授权。
+		if err := db.Create(&entity.ResourceGrant{
+			ID: "grant-kb-owner", TenantID: "tenant-owner",
+			ResourceKind: string(permission.ResourceKindDataset), ResourceID: "kb-owner",
+			SubjectKind: entity.GrantSubjectUser, SubjectID: "user-1",
+			Permission: "edit", Effect: entity.GrantEffectAllow,
+		}).Error; err != nil {
+			t.Fatalf("insert dataset grant: %v", err)
 		}
 	}
 
@@ -714,6 +725,7 @@ func setupUploadHandlerDB(t *testing.T, role string) *gorm.DB {
 		&entity.Tenant{},
 		&entity.UserTenant{},
 		&entity.Knowledgebase{},
+		&entity.ResourceGrant{},
 	); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
@@ -735,7 +747,7 @@ func setupUploadHandlerDB(t *testing.T, role string) *gorm.DB {
 		TenantID:     "tenant-1",
 		Name:         "kb-upload",
 		EmbdID:       "embd-1",
-		CreatedBy:    "user-1",
+		CreatedBy:    "owner-1",
 		Permission:   string(entity.TenantPermissionTeam),
 		ParserID:     "naive",
 		PipelineID:   &pipelineID,
@@ -743,6 +755,17 @@ func setupUploadHandlerDB(t *testing.T, role string) *gorm.DB {
 		Status:       sptr(string(entity.StatusValid)),
 	}).Error; err != nil {
 		t.Fatalf("insert knowledgebase: %v", err)
+	}
+	// 普通成员靠一条库级授权拿到上传权限；team 档本身只覆盖租户管理层。
+	if role == "normal" {
+		if err := db.Create(&entity.ResourceGrant{
+			ID: "grant-kb-upload", TenantID: "tenant-1",
+			ResourceKind: string(permission.ResourceKindDataset), ResourceID: "123e4567e89b12d3a456426614174000",
+			SubjectKind: entity.GrantSubjectUser, SubjectID: "user-1",
+			Permission: "edit", Effect: entity.GrantEffectAllow,
+		}).Error; err != nil {
+			t.Fatalf("insert dataset grant: %v", err)
+		}
 	}
 	return db
 }
@@ -901,8 +924,10 @@ func TestUploadDocumentsHandler_LocalReturnsPartialSuccess(t *testing.T) {
 	}
 }
 
-func TestUploadDocumentsHandler_DeniesNonNormalTeamRole(t *testing.T) {
-	db := setupUploadHandlerDB(t, "admin")
+// 还没接受邀请的人不是成员：既不是创建者，也没有任何库级授权。
+// 租户管理员能上传，所以这里的反例只能是 invite 档。
+func TestUploadDocumentsHandler_DeniesPendingMember(t *testing.T) {
+	db := setupUploadHandlerDB(t, "invite")
 	orig := dao.DB
 	dao.DB = db
 	t.Cleanup(func() { dao.DB = orig })

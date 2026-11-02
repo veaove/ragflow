@@ -39,6 +39,7 @@ import (
 	"ragflow/internal/dao"
 	"ragflow/internal/engine/types"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 	"ragflow/internal/service"
 	"ragflow/internal/service/file"
 	"ragflow/internal/storage"
@@ -537,6 +538,8 @@ func setupServiceTestDBWithDSN(t *testing.T, dsn string) *gorm.DB {
 		&entity.UserTenant{},
 		&entity.UserCanvas{},
 		&entity.API4Conversation{},
+		// 文件级授权解析要读这张表；没有它 DeleteDocuments 直接报 no such table。
+		&entity.ResourceGrant{},
 	); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
@@ -598,6 +601,30 @@ func makeTestFileHeader(t *testing.T, field, filename string, content []byte) *m
 
 // sptr returns a pointer to the given string.
 func sptr(s string) *string { return &s }
+
+// grantTestKBDataset 给 userID 补一条知识库级可编辑授权。
+//
+// 可见范围收窄后 permission=team 只覆盖租户管理层，普通成员访问别人的库要靠
+// resource_grant，测试里用一条授权模拟控制台的分享动作。
+func grantTestKBDataset(t *testing.T, kbID, tenantID, userID string) {
+	t.Helper()
+
+	now := time.Now().UnixMilli()
+	grant := &entity.ResourceGrant{
+		ID:           "grant-" + kbID + "-" + userID,
+		TenantID:     tenantID,
+		ResourceKind: string(permission.ResourceKindDataset),
+		ResourceID:   kbID,
+		SubjectKind:  entity.GrantSubjectUser,
+		SubjectID:    userID,
+		Permission:   "edit",
+		Effect:       entity.GrantEffectAllow,
+		BaseModel:    entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+	}
+	if err := dao.DB.Create(grant).Error; err != nil {
+		t.Fatalf("grant kb %s to %s: %v", kbID, userID, err)
+	}
+}
 
 func insertTestKB(t *testing.T, id, tenantID string, docNum, tokenNum, chunkNum int64) {
 	t.Helper()
@@ -2150,6 +2177,8 @@ func TestGetDocumentPreview_AccessControl(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("insert user_tenant: %v", err)
 	}
+	// team 档只覆盖租户管理层，成员能预览靠的是这条显式授权。
+	grantTestKBDataset(t, "kb-prev", "tenant-1", "user-2")
 	if _, err = svc.GetDocumentPreview(ctx, "user-2", "doc-prev"); err != nil {
 		t.Fatalf("team member preview: %v", err)
 	}
@@ -3923,15 +3952,20 @@ func TestGetThumbnails_AlignsWithPythonFormatting(t *testing.T) {
 
 	insertTestKB(t, "kb-1", "tenant-1", 0, 0, 0)
 	insertTestKB(t, "kb-2", "tenant-1", 0, 0, 0)
-	insertTestKB(t, "kb-other", "tenant-other", 0, 0, 0)
-	if err := db.Where("tenant_id = ? AND role = ?", "tenant-other", "owner").Delete(&entity.UserTenant{}).Error; err != nil {
-		t.Fatalf("remove fixture owner: %v", err)
-	}
 	if err := db.Create(&entity.UserTenant{
 		ID: "other-owner_tenant-other", UserID: "other-owner", TenantID: "tenant-other",
 		Role: "owner", InvitedBy: "other-owner", Status: sptr(string(entity.StatusValid)),
 	}).Error; err != nil {
 		t.Fatalf("seed other tenant owner: %v", err)
+	}
+	// 另一个租户的库必须由那个租户的人创建：创建者对自己的资源始终可用，用
+	// user-1 当创建者会让这条跨租户隔离用例失去意义。
+	if err := db.Create(&entity.Knowledgebase{
+		ID: "kb-other", TenantID: "tenant-other", Name: "other-kb", EmbdID: "embd-1",
+		CreatedBy: "other-owner", Permission: string(entity.TenantPermissionTeam),
+		Status: sptr(string(entity.StatusValid)),
+	}).Error; err != nil {
+		t.Fatalf("seed other tenant kb: %v", err)
 	}
 	base64Thumb := "data:image/png;base64,AAAA"
 	fileThumb := "thumb.png"

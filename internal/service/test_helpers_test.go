@@ -19,6 +19,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -27,6 +28,7 @@ import (
 	"ragflow/internal/dao"
 	"ragflow/internal/engine/types"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 )
 
 // sptr returns a pointer to the given string.
@@ -194,6 +196,42 @@ func (fakeChatDocEngine) ListMessages(context.Context, string, int, int) ([]inte
 func (fakeChatDocEngine) PublishTask(map[string]interface{}) error { return nil }
 func (fakeChatDocEngine) ShowMessageQueue() string                 { return "" }
 func (fakeChatDocEngine) SupportsPageRank() bool                   { return false }
+
+// grantTestResource 给 userID 补一条可编辑的资源级授权。
+//
+// 可见范围收窄后 permission=team 只覆盖租户管理层（owner / 租户管理员），普通
+// 成员必须逐人授权才能看到别人的资源。测试里"团队协作可见"这类场景用一条
+// resource_grant 模拟控制台的分享动作，而不是继续指望 team 档本身放行。
+func grantTestResource(t *testing.T, tenantID string, kind permission.ResourceKind, resourceID, userID string) {
+	t.Helper()
+	insertTestResourceGrant(t, tenantID, kind, resourceID, userID, "edit")
+}
+
+// grantTestResourceReadOnly 只授"看 + 检索"，用于锁定"成员只能读不能改"这类契约。
+func grantTestResourceReadOnly(t *testing.T, tenantID string, kind permission.ResourceKind, resourceID, userID string) {
+	t.Helper()
+	insertTestResourceGrant(t, tenantID, kind, resourceID, userID, "read")
+}
+
+func insertTestResourceGrant(t *testing.T, tenantID string, kind permission.ResourceKind, resourceID, userID, level string) {
+	t.Helper()
+
+	now := time.Now().UnixMilli()
+	grant := &entity.ResourceGrant{
+		ID:           "grant-" + string(kind) + "-" + resourceID + "-" + userID,
+		TenantID:     tenantID,
+		ResourceKind: string(kind),
+		ResourceID:   resourceID,
+		SubjectKind:  entity.GrantSubjectUser,
+		SubjectID:    userID,
+		Permission:   level,
+		Effect:       entity.GrantEffectAllow,
+		BaseModel:    entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+	}
+	if err := dao.DB.Create(grant).Error; err != nil {
+		t.Fatalf("grant %s %s to %s: %v", kind, resourceID, userID, err)
+	}
+}
 
 // insertTestKB inserts a test Knowledgebase row.
 func insertTestKB(t *testing.T, id, tenantID string, docNum, tokenNum, chunkNum int64) {

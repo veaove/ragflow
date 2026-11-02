@@ -1805,6 +1805,8 @@ func TestUpdateAgentTeamMemberCanUpdateButCannotChangePermission(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("failed to seed user tenant: %v", err)
 	}
+	// team 档只覆盖租户管理层，成员能编辑靠的是这条显式授权。
+	grantTestResource(t, "owner-1", permission.ResourceKindCanvas, "canvas-team-edit", "member-1")
 
 	samePermission := " TEAM "
 	if err := NewAgentService().UpdateAgent(ctx, "member-1", "canvas-team-edit", map[string]interface{}{
@@ -2756,6 +2758,8 @@ func createTeamSharedAgentTestFixtures(t *testing.T, canvasOwner, teammate, sess
 	}).Error; err != nil {
 		t.Fatalf("failed to create user tenant: %v", err)
 	}
+	// 「团队共享给某个成员」在收窄后的模型里就是一条 resource_grant。
+	grantTestResource(t, canvasOwner, permission.ResourceKindCanvas, "canvas-1", teammate)
 	createAgentSessionTestConversation(t, sessionID, "canvas-1", sessionOwner, 1000)
 }
 

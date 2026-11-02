@@ -24,6 +24,7 @@ import (
 
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 )
 
 func createChatWithCreator(t *testing.T, db *gorm.DB, chat *entity.Chat) {
@@ -91,6 +92,12 @@ func setupChatCreatorServiceTestDB(t *testing.T) *gorm.DB {
 		ID: "rel-1", UserID: "member-1", TenantID: "team-1", Role: "normal", Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("create membership: %v", err)
+	}
+	// 每个租户都有 owner：模型这类租户级资源的授权事实要按 owner 归属计算。
+	if err := db.Create(&entity.UserTenant{
+		ID: "rel-owner", UserID: "owner-1", TenantID: "team-1", Role: "owner", Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("create tenant owner: %v", err)
 	}
 	if err := db.Create(&entity.TenantModelProvider{
 		ID: "provider-team", TenantID: "team-1", ProviderName: "OpenAI",
@@ -164,6 +171,8 @@ func TestChatServiceListChatsResolvesCreator(t *testing.T) {
 	createChatWithCreator(t, db, &entity.Chat{
 		ID: "chat-team", TenantID: "team-1", CreatedBy: "member-1", Name: sptr("team_chat"),
 	})
+	// 问答应用默认只对创建者可见，团队共享靠一条显式授权。
+	grantTestResource(t, "team-1", permission.ResourceKindChat, "chat-team", "user-1")
 	// Legacy shape: no created_by, tenant_id holds the creator's user id.
 	createChatWithCreator(t, db, &entity.Chat{
 		ID: "chat-legacy", TenantID: "user-1", Name: sptr("legacy_chat"),

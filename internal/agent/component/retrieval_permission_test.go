@@ -18,7 +18,7 @@ func TestCheckCanvasRetrievalDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&entity.UserCanvas{}, &entity.Knowledgebase{}, &entity.Memory{}, &entity.UserTenant{}); err != nil {
+	if err := db.AutoMigrate(&entity.UserCanvas{}, &entity.Knowledgebase{}, &entity.Memory{}, &entity.UserTenant{}, &entity.ResourceGrant{}); err != nil {
 		t.Fatalf("migrate permission tables: %v", err)
 	}
 
@@ -57,6 +57,20 @@ func TestCheckCanvasRetrievalDependencies(t *testing.T) {
 	for i := range memberships {
 		if err := db.Create(&memberships[i]).Error; err != nil {
 			t.Fatalf("create membership: %v", err)
+		}
+	}
+	// team 档只覆盖租户管理层：调用方对画布、库、共享记忆都要有显式授权。
+	for _, grant := range []entity.ResourceGrant{
+		{ID: "grant-canvas", TenantID: "canvas-owner", ResourceKind: string(permission.ResourceKindCanvas), ResourceID: canvas.ID},
+		{ID: "grant-dataset", TenantID: "canvas-owner", ResourceKind: string(permission.ResourceKindDataset), ResourceID: dataset.ID},
+		{ID: "grant-memory", TenantID: "canvas-owner", ResourceKind: string(permission.ResourceKindMemory), ResourceID: sharedMemory.ID},
+	} {
+		grant.SubjectKind = entity.GrantSubjectUser
+		grant.SubjectID = "caller"
+		grant.Permission = "edit"
+		grant.Effect = entity.GrantEffectAllow
+		if err := db.Create(&grant).Error; err != nil {
+			t.Fatalf("create grant %s: %v", grant.ID, err)
 		}
 	}
 

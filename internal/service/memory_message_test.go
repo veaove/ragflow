@@ -181,6 +181,8 @@ func setupMemoryMessageTestDB(t *testing.T) {
 		&entity.TenantModel{},
 		&entity.Task{},
 		&entity.MemoryTask{},
+		// 记忆的可见性同样看 resource_grant：team 档只覆盖租户管理层。
+		&entity.ResourceGrant{},
 	); err != nil {
 		t.Fatalf("failed to migrate memory test tables: %v", err)
 	}
@@ -215,6 +217,8 @@ func TestListMemoryFiltersUsesAccessibleMemoryAggregates(t *testing.T) {
 			t.Fatalf("seed memory: %v", err)
 		}
 	}
+	// team 档不再等于"全员可见"，共享记忆要有一条显式授权。
+	grantTestResource(t, "user-2", permission.ResourceKindMemory, "mem-3", "user-1")
 
 	filters, err := NewMemoryService().ListMemoryFilters(t.Context(), "user-1")
 	if err != nil {
@@ -278,6 +282,7 @@ func TestListMemoryFiltersKeepsCanonicalFacetOrder(t *testing.T) {
 			t.Fatalf("seed memory: %v", err)
 		}
 	}
+	grantTestResource(t, "user-2", permission.ResourceKindMemory, "mem-shared", "user-1")
 
 	filters, err := NewMemoryService().ListMemoryFilters(t.Context(), "user-1")
 	if err != nil {
@@ -446,6 +451,7 @@ func TestUpdateMemoryTeamMemberCannotChangePermissions(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed user tenant: %v", err)
 	}
+	grantTestResource(t, "owner-1", permission.ResourceKindMemory, "mem-team", "member-1")
 
 	svc := NewMemoryService()
 	samePermission := " TEAM "
@@ -491,6 +497,7 @@ func TestUpdateMemoryTeamMemberResolvesModelsAgainstOwnerTenant(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed user tenant: %v", err)
 	}
+	grantTestResource(t, "owner-1", permission.ResourceKindMemory, "mem-model", "member-1")
 
 	for _, row := range []struct {
 		providerID string
@@ -749,6 +756,7 @@ func TestListMemoriesKeepsJoinedTenantFilter(t *testing.T) {
 			t.Fatalf("seed memory %s: %v", m.ID, err)
 		}
 	}
+	grantTestResource(t, "tenant-2", permission.ResourceKindMemory, "mem-joined-team", "user-1")
 
 	ctx := t.Context()
 
@@ -806,6 +814,10 @@ func TestListMemoriesForCanvasUsesCallerOwnerIntersection(t *testing.T) {
 			t.Fatalf("seed memory %s: %v", memory.ID, err)
 		}
 	}
+	// 画布本身也要对调用方开放：这条路径先用画布的 run 权限收敛，再和记忆的
+	// 授权取交集。
+	grantTestResource(t, "canvas-owner", permission.ResourceKindCanvas, "canvas-1", "caller")
+	grantTestResource(t, "canvas-owner", permission.ResourceKindMemory, "memory-shared", "caller")
 
 	response, err := NewMemoryService().ListMemories(t.Context(), "caller", nil, nil, "", "", 1, 30, canvas.ID)
 	if err != nil {

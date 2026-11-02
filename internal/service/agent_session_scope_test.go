@@ -77,6 +77,8 @@ func setupSharedCanvasFixture(t *testing.T) {
 	createTeamVisibleCanvas(t, "canvas-team", "owner-1", "tenant-1")
 	addSessionTestTenantMember(t, "tenant-1", "owner-1", string(permission.RoleOwner))
 	addSessionTestTenantMember(t, "tenant-1", "member-1", string(permission.RoleNormal))
+	// team 档只覆盖租户管理层，普通成员要看别人的画布得有一条显式授权。
+	grantTestResource(t, "tenant-1", permission.ResourceKindCanvas, "canvas-team", "member-1")
 
 	createAgentSessionTestConversation(t, "session-owner", "canvas-team", "owner-1", 1000)
 	createAgentSessionTestConversation(t, "session-member", "canvas-team", "member-1", 2000)
