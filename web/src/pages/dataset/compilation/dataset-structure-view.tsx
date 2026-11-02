@@ -1,11 +1,3 @@
-import {
-  SelectWithSearch,
-  SelectWithSearchFlagOptionType,
-} from '@/components/originui/select-with-search';
-import {
-  findEntityDisplayNameByKeyword,
-  getEntityDisplayName,
-} from '@/components/structure-graph/adapters';
 import { RepresentationRenderer } from '@/components/structure-graph/representation-renderer';
 import { Card } from '@/components/ui/card';
 import {
@@ -18,12 +10,12 @@ import {
   useKnowledgeBaseId,
 } from '@/hooks/use-knowledge-request';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useCallback } from 'react';
 
 import { StructureKind, ViewMode, ViewModeGenerateTypeMap } from './constants';
-import { useRunEndEffect } from './hooks/use-run-end-effect';
+import DatasetGraphView from './dataset-graph-view';
 import CompilationEmptyState from './empty-state';
+import { useRunEndEffect } from './hooks/use-run-end-effect';
 import { CompilationLoadingCard } from './loading-card';
 
 interface DatasetStructureViewProps {
@@ -31,12 +23,19 @@ interface DatasetStructureViewProps {
 }
 
 export function DatasetStructureView({ kind }: DatasetStructureViewProps) {
-  const { t } = useTranslation();
+  // Graph 走知识图谱视图：同一份实体/关系数据和同一套渲染（筛选、布局、
+  // 检索、证据面板），不再用内嵌小画布另起一套。
+  if (kind === ViewMode.Graph) {
+    return <DatasetGraphView />;
+  }
+
+  return <StructureTreeView kind={kind} />;
+}
+
+function StructureTreeView({ kind }: DatasetStructureViewProps) {
   const queryClient = useQueryClient();
   const knowledgeBaseId = useKnowledgeBaseId();
-  const [graphKeywords, setGraphKeywords] = useState('');
-  const [selectedNodeId, setSelectedNodeId] = useState('');
-  const { data, loading } = useFetchDatasetStructureGraph(kind, graphKeywords);
+  const { data, loading } = useFetchDatasetStructureGraph(kind);
   const template = data?.templates?.[0];
 
   const generateType = ViewModeGenerateTypeMap[kind];
@@ -47,87 +46,23 @@ export function DatasetStructureView({ kind }: DatasetStructureViewProps) {
     queryClient.invalidateQueries({
       queryKey: DatasetStructureKeys.kind(knowledgeBaseId, kind),
     });
-  }, [knowledgeBaseId, kind]);
+  }, [queryClient, knowledgeBaseId, kind]);
 
   useRunEndEffect(structureStatus, handleRunEnd);
-
-  const entityOptions = useMemo<SelectWithSearchFlagOptionType[]>(
-    () =>
-      (template?.entities ?? []).map((entity) => {
-        const name = getEntityDisplayName(entity);
-        return {
-          label: name,
-          value: name,
-          keywords: [name, ...(entity.aliases ?? [])],
-        };
-      }),
-    [template?.entities],
-  );
-
-  // Only refill the select when the selected entity is still in the current
-  // graph data, to avoid showing raw text with no matching option
-  const selectedEntityName =
-    selectedNodeId &&
-    (template?.entities ?? []).some(
-      (entity) => getEntityDisplayName(entity) === selectedNodeId,
-    )
-      ? selectedNodeId
-      : '';
-
-  const handleSelectEntity = useCallback((name: string) => {
-    // Picking an option behaves like an Enter search: refetch the server-side
-    // keyword subgraph for that entity and keep the node highlighted.
-    setSelectedNodeId(name);
-    setGraphKeywords(name);
-  }, []);
-
-  const handleNoMatchEnter = useCallback(
-    (keywords: string) => {
-      // Enter on a keyword that exactly names an entity must behave like
-      // picking it from the dropdown. Only unmatched text falls back to the
-      // raw keyword subgraph with no highlighted node.
-      const entityName = findEntityDisplayNameByKeyword(
-        template?.entities ?? [],
-        keywords,
-      );
-      if (entityName) {
-        handleSelectEntity(entityName);
-        return;
-      }
-      setGraphKeywords(keywords);
-      setSelectedNodeId('');
-    },
-    [template?.entities, handleSelectEntity],
-  );
 
   if (loading && !data) {
     return <CompilationLoadingCard />;
   }
 
-  if (!template && !graphKeywords) {
+  if (!template) {
     return <CompilationEmptyState type={kind} data={structureRunData} />;
   }
 
   return (
     <Card className="flex-1 min-h-0 overflow-hidden flex border-border-button rounded-xl flex-col">
-      <div className="flex justify-between gap-4 px-4 pt-4">
-        {kind === ViewMode.Graph && (
-          <SelectWithSearch
-            options={entityOptions}
-            value={selectedEntityName || graphKeywords}
-            onChange={handleSelectEntity}
-            placeholder={t('knowledgeCompilation.searchEntity')}
-            allowClear
-            alwaysShowSearch
-            triggerClassName="ml-auto w-96 max-w-full"
-            onNoMatchEnter={handleNoMatchEnter}
-            disableAutoSelectOnEnter
-          />
-        )}
-      </div>
       <RepresentationRenderer
         template={template}
-        highlightNodeId={selectedEntityName || null}
+        highlightNodeId={null}
         totalEntities={data?.total_entities}
         returnedEntities={data?.returned_entities}
       />
