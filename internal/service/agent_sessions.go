@@ -123,10 +123,14 @@ func agentSessionBelongsTo(session *entity.API4Conversation, userID string) bool
 	return session.ExpUserID != nil && *session.ExpUserID == userID
 }
 
-// agentSessionVisibleTo 判断调用者能否读/删这条会话。
+// agentSessionVisibleTo 判断调用者能否**读**这条会话。
 //
 // 自己的会话直接放行，省掉一次权限查询；别人的会话再看是否具备「读全部」的
 // 身份。
+//
+// 只用于读路径。删除没有跟着一起收：共享画布的成员可以删该画布下任何会话是
+// 既有契约（TestDeleteAgentSessionItem_SharedCanvasGrantsDeleteAccess 钉着），
+// 改它属于调整产品语义，要单独决策。
 func (s *AgentService) agentSessionVisibleTo(ctx context.Context, userID, canvasID string, session *entity.API4Conversation) (bool, error) {
 	if agentSessionBelongsTo(session, userID) {
 		return true, nil
@@ -499,15 +503,6 @@ func (s *AgentService) DeleteAgentSessionItem(ctx context.Context, userID, agent
 	if conv == nil {
 		return false, common.CodeSuccess, nil
 	}
-	// 删除同样要判归属：原实现只校验画布 use 权限，任何成员都能删掉别人的
-	// 会话。看不到的会话按「不存在」处理，既幂等也不泄露它是否存在。
-	visible, verr := s.agentSessionVisibleTo(ctx, userID, agentID, conv)
-	if verr != nil {
-		return false, common.CodeServerError, fmt.Errorf("failed to resolve session visibility: %w", verr)
-	}
-	if !visible {
-		return false, common.CodeSuccess, nil
-	}
 	row, err := s.api4ConversationDAO.DeleteBySessionIDAndAgentID(ctx, dao.DB, sessionID, agentID)
 	if err != nil {
 		return false, common.CodeServerError, err
@@ -538,16 +533,6 @@ func (s *AgentService) DeleteAgentSessions(ctx context.Context, userID, agentID 
 			return &DeleteAgentSessionsResult{}, common.CodeSuccess, nil
 		}
 
-		// 清空整个智能体的会话只能由画布所有者 / 租户管理员发起：否则任何
-		// 能打开这个智能体的成员都能一键抹掉所有人的聊天记录。
-		readAll, aerr := s.canReadAllAgentSessions(ctx, userID, agentID)
-		if aerr != nil {
-			return nil, common.CodeServerError, fmt.Errorf("failed to resolve session visibility: %w", aerr)
-		}
-		if !readAll {
-			return nil, common.CodeDataError, fmt.Errorf("you don't have permission to delete all sessions for agent %s", agentID)
-		}
-
 		listedIDs, err := s.api4ConversationDAO.ListIDsByAgentID(ctx, dao.DB, agentID)
 		if err != nil {
 			return nil, common.CodeServerError, err
@@ -574,16 +559,6 @@ func (s *AgentService) DeleteAgentSessions(ctx context.Context, userID, agentID 
 			return nil, common.CodeServerError, err
 		}
 		if conv == nil {
-			errorsList = append(errorsList, fmt.Sprintf("The agent doesn't own the session %s", sessionID))
-			continue
-		}
-
-		// 批量删除逐条判归属，不能让「批量」变成绕过单条校验的后门。
-		visible, verr := s.agentSessionVisibleTo(ctx, userID, agentID, conv)
-		if verr != nil {
-			return nil, common.CodeServerError, fmt.Errorf("failed to resolve session visibility: %w", verr)
-		}
-		if !visible {
 			errorsList = append(errorsList, fmt.Sprintf("The agent doesn't own the session %s", sessionID))
 			continue
 		}

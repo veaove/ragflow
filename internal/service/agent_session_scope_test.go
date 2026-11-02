@@ -32,7 +32,10 @@ import (
 // 这组测试锁住三条规则：
 //   - 普通成员只读得到自己的会话，即使不传任何过滤条件、或者伪造别人的 id；
 //   - 画布所有者（以及走同一条 AccessSourceOwner 的租户管理员）仍能看全部；
-//   - 别人的会话对普通成员表现为「不存在」，读与删都一样。
+//   - 别人的会话对普通成员表现为「不存在」。
+//
+// 删除不在范围内：共享画布的成员可以删该画布下任何会话是既有契约，见
+// agent_test.go 的 TestDeleteAgentSessionItem_SharedCanvasGrantsDeleteAccess。
 
 // createTeamVisibleCanvas creates a canvas shared with the whole tenant, which
 // is the only shape where a non-owner can reach the sessions endpoint at all.
@@ -167,45 +170,32 @@ func TestGetAgentSessionHidesForeignSession(t *testing.T) {
 	}
 }
 
-func TestDeleteAgentSessionItemRefusesForeignSession(t *testing.T) {
+func TestGetAgentSessionOwnerReadsAnySession(t *testing.T) {
+	setupSharedCanvasFixture(t)
+
+	session, code, err := NewAgentService().GetAgentSession(t.Context(), "owner-1", "canvas-team", "session-member")
+	if err != nil {
+		t.Fatalf("GetAgentSession failed: %v", err)
+	}
+	if code != common.CodeSuccess {
+		t.Fatalf("expected code %d, got %d", common.CodeSuccess, code)
+	}
+	if session == nil || session.ID != "session-member" {
+		t.Fatalf("expected session-member, got %+v", session)
+	}
+}
+
+// 删除侧保持既有契约：共享画布的成员可以删该画布下的任何会话
+// （见 agent_test.go 的 TestDeleteAgentSessionItem_SharedCanvasGrantsDeleteAccess）。
+// 这里只锁定「读收紧了、删没动」，防止以后误以为两处一起改了。
+func TestDeleteAgentSessionItemStillFollowsCanvasAccess(t *testing.T) {
 	setupSharedCanvasFixture(t)
 
 	deleted, code, err := NewAgentService().DeleteAgentSessionItem(t.Context(), "member-1", "canvas-team", "session-owner")
 	if err != nil {
 		t.Fatalf("DeleteAgentSessionItem failed: %v", err)
 	}
-	if code != common.CodeSuccess {
-		t.Fatalf("expected code %d, got %d", common.CodeSuccess, code)
-	}
-	if deleted {
-		t.Fatal("expected foreign session not to be deleted")
-	}
-
-	still, gerr := dao.NewAPI4ConversationDAO().GetBySessionID(t.Context(), dao.DB, "session-owner", "canvas-team")
-	if gerr != nil {
-		t.Fatalf("reload session failed: %v", gerr)
-	}
-	if still == nil {
-		t.Fatal("foreign session was deleted")
-	}
-}
-
-func TestDeleteAgentSessionsRefusesDeleteAllForMember(t *testing.T) {
-	setupSharedCanvasFixture(t)
-
-	_, code, err := NewAgentService().DeleteAgentSessions(t.Context(), "member-1", "canvas-team", nil, true)
-	if err == nil {
-		t.Fatal("expected permission error for delete_all")
-	}
-	if code != common.CodeDataError {
-		t.Fatalf("expected code %d, got %d", common.CodeDataError, code)
-	}
-
-	listed, lerr := dao.NewAPI4ConversationDAO().ListIDsByAgentID(t.Context(), dao.DB, "canvas-team")
-	if lerr != nil {
-		t.Fatalf("list session ids failed: %v", lerr)
-	}
-	if len(listed) != 2 {
-		t.Fatalf("expected both sessions to survive, got %d", len(listed))
+	if code != common.CodeSuccess || !deleted {
+		t.Fatalf("expected delete to follow canvas access, code=%v deleted=%v", code, deleted)
 	}
 }
