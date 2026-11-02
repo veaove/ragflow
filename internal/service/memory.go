@@ -385,7 +385,7 @@ func (s *MemoryService) ListMemoryFilters(ctx context.Context, userID string) (*
 		return nil, err
 	}
 	if len(memoryIDs) == 0 {
-		return &MemoryFiltersResponse{}, nil
+		return newMemoryFiltersResponse(), nil
 	}
 	memories, _, err := s.memoryDAO.GetByFilter(ctx, dao.DB, memoryIDs, nil, nil, "", "", 1, 0)
 	if err != nil {
@@ -414,7 +414,7 @@ func (s *MemoryService) ListMemoryFilters(ctx context.Context, userID string) (*
 		}
 		storageCounts[memory.StorageType]++
 	}
-	resp := &MemoryFiltersResponse{}
+	resp := newMemoryFiltersResponse()
 	for id, count := range ownerCounts {
 		resp.Filter.Owner = append(resp.Filter.Owner, MemoryFilterOption{ID: id, Label: ownerLabels[id], Count: count})
 	}
@@ -425,6 +425,17 @@ func (s *MemoryService) ListMemoryFilters(ctx context.Context, userID string) (*
 	})
 	resp.Total = int64(len(memories))
 	return resp, nil
+}
+
+// newMemoryFiltersResponse starts a facet response whose slices are non-nil.
+// A nil slice marshals to JSON null, and the console builds the filter
+// dropdowns by mapping over these arrays, so an empty facet list must be [].
+func newMemoryFiltersResponse() *MemoryFiltersResponse {
+	resp := &MemoryFiltersResponse{}
+	resp.Filter.Owner = make([]MemoryFilterOption, 0, 4)
+	resp.Filter.MemoryType = make([]MemoryFilterOption, 0, 4)
+	resp.Filter.StorageType = make([]MemoryFilterOption, 0, 2)
+	return resp
 }
 
 func filterOptionsInOrder(counts map[string]int64, canonicalOrder []string) []MemoryFilterOption {

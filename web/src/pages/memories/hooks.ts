@@ -368,18 +368,22 @@ export const useRenameMemory = () => {
  * const { data: list } = useFetchMemoryList();
  * const { filters } = useSelectFilters(list?.data?.memory_list ?? []);
  */
-export function useSelectFilters(filterData: MemoryFiltersResponse) {
+export function useSelectFilters(filterData?: MemoryFiltersResponse) {
   const { t } = useTranslation();
 
   const filters: FilterCollection[] = useMemo(() => {
     // 服务端把 memory_type / storage_type 的枚举值直接当 label 返回
     // （raw、table…），中文界面会因此摆出英文。这里按 id 换成译文，
     // 认不出的枚举保留服务端 label，免得新枚举变成一个筛不到的空选项。
+    //
+    // 面元数组一律按空数组兜底：没有可见记忆时服务端会给空列表，
+    // 历史响应里也可能是 null，直接 map 会把整页打成白屏。
+    const facet = filterData?.filter;
     const localize = (
-      list: MemoryFiltersResponse['filter']['memory_type'],
+      list: MemoryFiltersResponse['filter']['memory_type'] | null | undefined,
       toKey: (id?: string | null) => string | undefined,
     ) =>
-      list.map((item) => {
+      (list ?? []).map((item) => {
         const key = toKey(item.id);
         return key ? { ...item, label: t(key) } : item;
       });
@@ -387,17 +391,17 @@ export function useSelectFilters(filterData: MemoryFiltersResponse) {
     return [
       {
         field: 'owner',
-        list: filterData.filter.owner,
+        list: facet?.owner ?? [],
         label: t('common.owner'),
       },
       {
         field: 'memoryType',
-        list: localize(filterData.filter.memory_type, memoryTypeLabelKey),
+        list: localize(facet?.memory_type, memoryTypeLabelKey),
         label: t('memories.memoryType'),
       },
       {
         field: 'storageType',
-        list: localize(filterData.filter.storage_type, storageTypeLabelKey),
+        list: localize(facet?.storage_type, storageTypeLabelKey),
         label: t('memories.storageType'),
       },
     ];

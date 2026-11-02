@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -313,6 +314,39 @@ func TestListMemoryFiltersKeepsCanonicalFacetOrder(t *testing.T) {
 	}
 	if !reflect.DeepEqual(refreshed, filters) {
 		t.Fatalf("refreshed filters = %+v, want %+v", refreshed, filters)
+	}
+}
+
+// TestListMemoryFiltersEmptyResponseUsesJSONArrays pins the empty facet shape.
+// A nil slice marshals to JSON null, and the console builds the filter
+// dropdowns by mapping over these arrays, so a user without accessible
+// memories used to crash the page instead of seeing the empty state.
+func TestListMemoryFiltersEmptyResponseUsesJSONArrays(t *testing.T) {
+	setupMemoryMessageTestDB(t)
+	if err := dao.DB.Create(&[]*entity.User{
+		{ID: "user-1", Nickname: "Owner"},
+		{ID: "user-2", Nickname: "Owner tenant"},
+	}).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	status := "1"
+	if err := dao.DB.Create(&entity.UserTenant{
+		ID: "ut-1", UserID: "user-1", TenantID: "user-2", Role: "normal", InvitedBy: "user-2", Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("seed user tenant: %v", err)
+	}
+
+	filters, err := NewMemoryService().ListMemoryFilters(t.Context(), "user-1")
+	if err != nil {
+		t.Fatalf("ListMemoryFilters: %v", err)
+	}
+	raw, err := json.Marshal(filters)
+	if err != nil {
+		t.Fatalf("marshal filters: %v", err)
+	}
+	const want = `{"filter":{"owner":[],"memory_type":[],"storage_type":[]},"total":0}`
+	if string(raw) != want {
+		t.Fatalf("empty filters = %s, want %s", raw, want)
 	}
 }
 
