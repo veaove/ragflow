@@ -130,12 +130,12 @@ func (s *KnowledgeGraphService) loadGraphRows(ctx context.Context, tenantID, dat
 				kind = firstStringValue(row["knowledge_graph_kwd"])
 			}
 			if kind == "relation" {
-				if relation, ok := kgRelationFromRow(row); ok {
+				if relation, ok := kgRelationFromRow(row, datasetID); ok {
 					relations = append(relations, relation)
 				}
 				continue
 			}
-			if entity, ok := kgEntityFromRow(row); ok {
+			if entity, ok := kgEntityFromRow(row, datasetID); ok {
 				entities = append(entities, entity)
 			}
 		}
@@ -149,7 +149,7 @@ func (s *KnowledgeGraphService) loadGraphRows(ctx context.Context, tenantID, dat
 // kgEntityFromRow projects one entity row. The payload JSON is authoritative
 // (it keeps the original casing of the name); the *_kwd columns are only
 // consulted when the payload is missing or predates a field.
-func kgEntityFromRow(row map[string]interface{}) (kgview.RawEntity, bool) {
+func kgEntityFromRow(row map[string]interface{}, datasetID string) (kgview.RawEntity, bool) {
 	payload := graphLoadPayload(row)
 	name := kgPayloadString(payload, "name", "text", "term", "title")
 	if name == "" {
@@ -171,7 +171,7 @@ func kgEntityFromRow(row map[string]interface{}) (kgview.RawEntity, bool) {
 		Aliases:      kgPayloadStrings(payload, "aliases"),
 		MentionCount: 1,
 		ChunkIDs:     graphSourceChunkIDs(payload, row),
-		DocIDs:       kgRowDocIDs(row),
+		DocIDs:       kgRowDocIDs(row, datasetID),
 	}
 	if mention, ok := graphMentionCount(row); ok && mention > 0 {
 		entity.MentionCount = mention
@@ -181,7 +181,7 @@ func kgEntityFromRow(row map[string]interface{}) (kgview.RawEntity, bool) {
 
 // kgRelationFromRow projects one relation row, keeping the description, the
 // source chunks and any explicit confidence the extractor stored.
-func kgRelationFromRow(row map[string]interface{}) (kgview.RawRelation, bool) {
+func kgRelationFromRow(row map[string]interface{}, datasetID string) (kgview.RawRelation, bool) {
 	payload := graphLoadPayload(row)
 	from := kgPayloadString(payload, "from", "source", "src")
 	to := kgPayloadString(payload, "to", "target", "tgt")
@@ -198,7 +198,7 @@ func kgRelationFromRow(row map[string]interface{}) (kgview.RawRelation, bool) {
 		Type:        kgPayloadString(payload, "type"),
 		Description: kgPayloadString(payload, "description", "definition_excerpt"),
 		ChunkIDs:    graphSourceChunkIDs(payload, row),
-		DocIDs:      kgRowDocIDs(row),
+		DocIDs:      kgRowDocIDs(row, datasetID),
 		Confidence:  kgPayloadConfidence(payload),
 	}, true
 }
@@ -253,13 +253,14 @@ func kgPayloadConfidence(payload map[string]interface{}) float64 {
 }
 
 // kgRowDocIDs returns the documents a row came from. Dataset-level rows carry
-// the dataset id in doc_id, which is not a document.
-func kgRowDocIDs(row map[string]interface{}) []string {
+// the dataset id in doc_id, which is not a document and must not be shown as a
+// source.
+func kgRowDocIDs(row map[string]interface{}, datasetID string) []string {
 	out := make([]string, 0, 4)
 	seen := map[string]struct{}{}
 	add := func(id string) {
 		id = strings.TrimSpace(id)
-		if id == "" {
+		if id == "" || id == datasetID {
 			return
 		}
 		if _, ok := seen[id]; ok {

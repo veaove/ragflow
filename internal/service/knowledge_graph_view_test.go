@@ -26,13 +26,13 @@ func TestKGEntityFromRowPrefersPayload(t *testing.T) {
 	row := map[string]interface{}{
 		"content_with_weight": `{"name":"华夏基金","type":"基金公司","description":"华夏基金是公募基金管理人","aliases":["华夏"],"source_chunk_ids":["c1","c2"]}`,
 		// Lower-cased engine columns must lose to the payload's original casing.
-		"name_kwd":         "华夏基金",
-		"entity_type_kwd":  "company",
+		"name_kwd":          "华夏基金",
+		"entity_type_kwd":   "company",
 		"mention_count_int": []interface{}{float64(7)},
-		"doc_ids_kwd":      []interface{}{"d1", "d2"},
+		"doc_ids_kwd":       []interface{}{"d1", "d2"},
 	}
 
-	entity, ok := kgEntityFromRow(row)
+	entity, ok := kgEntityFromRow(row, "kb-1")
 	if !ok {
 		t.Fatal("entity row rejected")
 	}
@@ -59,7 +59,7 @@ func TestKGEntityFromRowFallsBackToColumnsAndRejectsSentinels(t *testing.T) {
 		"entity_type_kwd":     "供应商",
 		"content_with_weight": ``,
 	}
-	entity, ok := kgEntityFromRow(row)
+	entity, ok := kgEntityFromRow(row, "kb-1")
 	if !ok || entity.Name != "宁德时代" || entity.Type != "供应商" {
 		t.Fatalf("fallback projection = %+v (ok=%v)", entity, ok)
 	}
@@ -68,7 +68,7 @@ func TestKGEntityFromRowFallsBackToColumnsAndRejectsSentinels(t *testing.T) {
 	}
 
 	for _, sentinel := range []string{"", "  ", "unknown", "none"} {
-		if _, ok := kgEntityFromRow(map[string]interface{}{"name_kwd": sentinel}); ok {
+		if _, ok := kgEntityFromRow(map[string]interface{}{"name_kwd": sentinel}, "kb-1"); ok {
 			t.Errorf("row with sentinel name %q must be skipped", sentinel)
 		}
 	}
@@ -82,7 +82,7 @@ func TestKGRelationFromRowKeepsDescriptionSourcesAndConfidence(t *testing.T) {
 		"source_doc_ids":      []interface{}{"d1"},
 	}
 
-	relation, ok := kgRelationFromRow(row)
+	relation, ok := kgRelationFromRow(row, "kb-1")
 	if !ok {
 		t.Fatal("relation row rejected")
 	}
@@ -111,7 +111,7 @@ func TestKGRelationFromRowRejectsUnusableTriples(t *testing.T) {
 		},
 	}
 	for name, row := range cases {
-		if _, ok := kgRelationFromRow(row); ok {
+		if _, ok := kgRelationFromRow(row, "kb-1"); ok {
 			t.Errorf("%s: relation accepted, want skipped", name)
 		}
 	}
@@ -121,7 +121,7 @@ func TestKGRelationFromRowRejectsUnusableTriples(t *testing.T) {
 		"content_with_weight": `{"from":"unknown","to":"电池包","type":"供货"}`,
 		"from_entity_kwd":     "宁德时代",
 		"to_entity_kwd":       "电池包",
-	})
+	}, "kb-1")
 	if !ok || relation.From != "宁德时代" {
 		t.Fatalf("sentinel fallback = %+v (ok=%v), want 宁德时代", relation, ok)
 	}
@@ -132,7 +132,7 @@ func TestKGRowDocIDs(t *testing.T) {
 		"doc_ids_kwd":    []interface{}{"d1", "d2", "d1"},
 		"source_doc_ids": []interface{}{"d2", "d3"},
 	}
-	ids := kgRowDocIDs(row)
+	ids := kgRowDocIDs(row, "kb-1")
 	want := []string{"d1", "d2", "d3"}
 	if len(ids) != len(want) {
 		t.Fatalf("doc ids = %v, want %v", ids, want)
@@ -144,8 +144,13 @@ func TestKGRowDocIDs(t *testing.T) {
 	}
 
 	// Scalar doc_id is used only when the list columns are absent.
-	if got := kgRowDocIDs(map[string]interface{}{"doc_id": "d9"}); len(got) != 1 || got[0] != "d9" {
+	if got := kgRowDocIDs(map[string]interface{}{"doc_id": "d9"}, "kb-1"); len(got) != 1 || got[0] != "d9" {
 		t.Fatalf("scalar fallback = %v, want [d9]", got)
+	}
+
+	// Dataset-level rows carry the dataset id in doc_id; it is not a document.
+	if got := kgRowDocIDs(map[string]interface{}{"doc_id": "kb-1"}, "kb-1"); len(got) != 0 {
+		t.Fatalf("dataset-level doc_id = %v, want none", got)
 	}
 }
 
