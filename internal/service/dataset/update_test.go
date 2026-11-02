@@ -85,8 +85,9 @@ func TestDatasetServiceUpdateDatasetUpdatesFields(t *testing.T) {
 	if persisted.Description == nil || *persisted.Description != description {
 		t.Fatalf("expected persisted description, got %#v", persisted.Description)
 	}
-	if persisted.Permission != permission {
-		t.Fatalf("expected persisted permission %q, got %q", permission, persisted.Permission)
+	// 落库的是归一化后的三档取值：历史值 team 现在写 tenant_owner。
+	if want := entity.NormalizeResourceVisibility(permission); persisted.Permission != want {
+		t.Fatalf("expected persisted permission %q, got %q", want, persisted.Permission)
 	}
 	if persisted.ParserID != chunkMethod {
 		t.Fatalf("expected parser id %q, got %q", chunkMethod, persisted.ParserID)

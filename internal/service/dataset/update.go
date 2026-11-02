@@ -104,9 +104,9 @@ func (d *DatasetService) UpdateDataset(ctx context.Context, datasetID, userID st
 		simpleUpdates["language"] = language
 	}
 	if req.Permission != nil {
-		permission := strings.TrimSpace(*req.Permission)
-		if permission != "me" && permission != "team" {
-			return nil, common.CodeDataError, errors.New("Input should be 'me' or 'team'")
+		permission, err := normalizeDatasetVisibility(*req.Permission)
+		if err != nil {
+			return nil, common.CodeDataError, err
 		}
 		simpleUpdates["permission"] = permission
 	}

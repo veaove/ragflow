@@ -73,10 +73,11 @@ func (d *DatasetService) CreateDataset(ctx context.Context, req *service.CreateD
 	pipelineID := req.PipelineID
 
 	if req.Permission != nil {
-		permission = strings.TrimSpace(*req.Permission)
-		if permission != "me" && permission != "team" {
-			return nil, common.CodeDataError, errors.New("Input should be 'me' or 'team'")
+		normalized, err := normalizeDatasetVisibility(*req.Permission)
+		if err != nil {
+			return nil, common.CodeDataError, err
 		}
+		permission = normalized
 	}
 	if req.ParserID != nil {
 		canonicalID, err := canonicalDatasetParserID(strings.TrimSpace(*req.ParserID))
