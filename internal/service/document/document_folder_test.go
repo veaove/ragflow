@@ -27,10 +27,10 @@ import (
 // 列表行显示的"N 个文件"和"解析文件夹"的处理范围都依赖这两个口径。
 func TestSubtreeCountsAndDescendants(t *testing.T) {
 	folders := []*entity.DocumentFolder{
-		{ID: "a", ParentID: ""},
-		{ID: "b", ParentID: "a"},
-		{ID: "c", ParentID: "b"},
-		{ID: "d", ParentID: ""},
+		{ID: "a", ParentID: "", Name: "a"},
+		{ID: "b", ParentID: "a", Name: "b"},
+		{ID: "c", ParentID: "b", Name: "c"},
+		{ID: "d", ParentID: "", Name: "d"},
 	}
 
 	children := make(map[string][]*entity.DocumentFolder, len(folders))

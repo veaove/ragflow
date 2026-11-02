@@ -475,7 +475,10 @@ func folderPath(folders []*entity.DocumentFolder, folderID string) string {
 	parts := make([]string, 0, 4)
 	current := byID[folderID]
 	for current != nil {
-		parts = append(parts, current.Name)
+		// 名字为空时跳过，否则路径里会多出一段空白（"a ›  › c"）。
+		if name := strings.TrimSpace(current.Name); name != "" {
+			parts = append(parts, name)
+		}
 		current = byID[current.ParentID]
 	}
 	for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
