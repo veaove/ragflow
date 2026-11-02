@@ -85,6 +85,55 @@ func (s *AgentService) CheckCanvasAccess(ctx context.Context, userID, canvasID s
 	return err == nil, err
 }
 
+// canReadAllAgentSessions 判断调用者能否读取该画布下**所有人**的会话。
+//
+// 会话是私聊记录，不是画布内容：「能打开这个智能体」不等于「能看别人跟它的
+// 对话」。只有画布所有者与租户管理员可以看全部，其余成员只能看自己的。
+//
+// 判定走 permission 包而不是自己查 user_tenant：那里同时认 role 枚举与控制台
+// 写入的 role_id（内置「租户管理员」角色），只认枚举会漏掉从成员编辑页分配
+// 的人——本部署线上就存在这种行。
+//
+// ResolveAccess 对「资源所有者」和「租户管理员」返回同一个
+// AccessSourceOwner，团队可见的普通成员拿到的是 AccessSourceTenant /
+// AccessSourceShared，所以这一个比较就够。
+func (s *AgentService) canReadAllAgentSessions(ctx context.Context, userID, canvasID string) (bool, error) {
+	access, err := permission.NewDatabaseChecker(dao.DB).ResolveAccess(
+		ctx,
+		permission.Subject{UserID: userID},
+		permission.ResourceRef{Kind: permission.ResourceKindCanvas, ID: canvasID},
+	)
+	if err != nil {
+		return false, err
+	}
+	return access.Source == permission.AccessSourceOwner, nil
+}
+
+// agentSessionBelongsTo 判断会话是不是这个人自己开的。
+//
+// 两个列都要认：写入侧把登录用户 id 同时写进 user_id 与 exp_user_id，但
+// exp_user_id 是后加的列，早期行可能为 NULL，只认一列会让主人自己都读不到。
+func agentSessionBelongsTo(session *entity.API4Conversation, userID string) bool {
+	if session == nil || userID == "" {
+		return false
+	}
+	if session.UserID == userID {
+		return true
+	}
+	return session.ExpUserID != nil && *session.ExpUserID == userID
+}
+
+// agentSessionVisibleTo 判断调用者能否读/删这条会话。
+//
+// 自己的会话直接放行，省掉一次权限查询；别人的会话再看是否具备「读全部」的
+// 身份。
+func (s *AgentService) agentSessionVisibleTo(ctx context.Context, userID, canvasID string, session *entity.API4Conversation) (bool, error) {
+	if agentSessionBelongsTo(session, userID) {
+		return true, nil
+	}
+	return s.canReadAllAgentSessions(ctx, userID, canvasID)
+}
+
 func parseAgentSessionDate(value string, isEnd bool) (*time.Time, error) {
 	if value == "" {
 		return nil, nil
@@ -300,9 +349,15 @@ func checkDuplicateSessionIDs(ids []string) ([]string, []string) {
 }
 
 // ListAgentSessions returns paginated agent sessions visible to the caller.
-func (s *AgentService) ListAgentSessions(ctx context.Context, userID, _ string, agentID string, req ListAgentSessionsRequest) (*ListAgentSessionsResponse, common.ErrorCode, error) {
+//
+// 可见范围由服务端定，客户端传的 user_id / exp_user_id 只能在这个范围内继续
+// 收窄，不能扩大：画布所有者与租户管理员可看整个画布，其余成员只看自己的。
+func (s *AgentService) ListAgentSessions(ctx context.Context, userID, callerID, agentID string, req ListAgentSessionsRequest) (*ListAgentSessionsResponse, common.ErrorCode, error) {
 	if agentID == "" {
 		return nil, common.CodeArgumentError, errors.New("agent_id is required")
+	}
+	if callerID == "" {
+		callerID = userID
 	}
 
 	ok, err := s.CheckCanvasAccess(ctx, userID, agentID)
@@ -321,10 +376,28 @@ func (s *AgentService) ListAgentSessions(ctx context.Context, userID, _ string, 
 		return nil, common.CodeOperatingError, errors.New("agent not found or no permission")
 	}
 
+	// 会话归属边界。
+	//
+	// 原实现只校验「能读这个画布」，然后把客户端的 user_id / exp_user_id 原样
+	// 下传 DAO；而 DAO 是「传了才加 where」，于是不传过滤条件就返回该画布下
+	// 所有人的会话——任何能打开这个智能体的租户成员都能读到全部聊天记录，
+	// 还能用 user_id=xxx 指定看谁的。
+	//
+	// 现在由服务端定边界：没有「读全部」身份的人一律收敛到本人（user_id 或
+	// exp_user_id 命中自己），客户端传的过滤条件被 AND 在这个边界之上。
+	ownerFilter := ""
+	readAll, accessErr := s.canReadAllAgentSessions(ctx, callerID, agentID)
+	if accessErr != nil {
+		return nil, common.CodeServerError, fmt.Errorf("failed to resolve session visibility: %w", accessErr)
+	}
+	if !readAll {
+		ownerFilter = callerID
+	}
+
 	sessionDAO := dao.NewChatSessionDAO()
 
 	if req.ExpUserID != "" {
-		rows, err := sessionDAO.ListAgentSessionNames(ctx, dao.DB, agentID, req.ExpUserID)
+		rows, err := sessionDAO.ListAgentSessionNames(ctx, dao.DB, agentID, req.ExpUserID, ownerFilter)
 		if err != nil {
 			return nil, common.CodeServerError, err
 		}
@@ -341,19 +414,20 @@ func (s *AgentService) ListAgentSessions(ctx context.Context, userID, _ string, 
 	}
 
 	total, sessions, err := sessionDAO.ListAgentSessions(ctx, dao.DB, dao.ListAgentSessionsParams{
-		AgentID:    agentID,
-		Page:       req.Page,
-		PageSize:   req.PageSize,
-		OrderBy:    req.OrderBy,
-		Desc:       req.Desc,
-		SessionID:  req.SessionID,
-		UserID:     req.UserID,
-		IncludeDSL: req.IncludeDSL,
-		NoHistory:  req.NoHistory,
-		Keywords:   req.Keywords,
-		FromDate:   fromDate,
-		ToDate:     toDate,
-		ExpUserID:  req.ExpUserID,
+		AgentID:     agentID,
+		Page:        req.Page,
+		PageSize:    req.PageSize,
+		OrderBy:     req.OrderBy,
+		Desc:        req.Desc,
+		SessionID:   req.SessionID,
+		UserID:      req.UserID,
+		IncludeDSL:  req.IncludeDSL,
+		NoHistory:   req.NoHistory,
+		Keywords:    req.Keywords,
+		FromDate:    fromDate,
+		ToDate:      toDate,
+		ExpUserID:   req.ExpUserID,
+		OwnerUserID: ownerFilter,
 	})
 	if err != nil {
 		return nil, common.CodeServerError, err
@@ -392,6 +466,16 @@ func (s *AgentService) GetAgentSession(ctx context.Context, userID, agentID, ses
 	if data == nil {
 		return nil, common.CodeNotFound, fmt.Errorf("agent session not found")
 	}
+	// 单条读同样要判归属：只校验画布权限时，任何能打开该智能体的成员都能
+	// 拿 session_id 直接读到别人的整段对话。这里与列表共用一条规则，并且
+	// 对外统一回「不存在」，不暴露「这个 id 存在但不是你的」。
+	visible, verr := s.agentSessionVisibleTo(ctx, userID, agentID, data)
+	if verr != nil {
+		return nil, common.CodeServerError, fmt.Errorf("failed to resolve session visibility: %w", verr)
+	}
+	if !visible {
+		return nil, common.CodeNotFound, fmt.Errorf("agent session not found")
+	}
 	return data, common.CodeSuccess, nil
 }
 
@@ -413,6 +497,15 @@ func (s *AgentService) DeleteAgentSessionItem(ctx context.Context, userID, agent
 		return false, common.CodeServerError, cerr
 	}
 	if conv == nil {
+		return false, common.CodeSuccess, nil
+	}
+	// 删除同样要判归属：原实现只校验画布 use 权限，任何成员都能删掉别人的
+	// 会话。看不到的会话按「不存在」处理，既幂等也不泄露它是否存在。
+	visible, verr := s.agentSessionVisibleTo(ctx, userID, agentID, conv)
+	if verr != nil {
+		return false, common.CodeServerError, fmt.Errorf("failed to resolve session visibility: %w", verr)
+	}
+	if !visible {
 		return false, common.CodeSuccess, nil
 	}
 	row, err := s.api4ConversationDAO.DeleteBySessionIDAndAgentID(ctx, dao.DB, sessionID, agentID)
@@ -445,6 +538,16 @@ func (s *AgentService) DeleteAgentSessions(ctx context.Context, userID, agentID 
 			return &DeleteAgentSessionsResult{}, common.CodeSuccess, nil
 		}
 
+		// 清空整个智能体的会话只能由画布所有者 / 租户管理员发起：否则任何
+		// 能打开这个智能体的成员都能一键抹掉所有人的聊天记录。
+		readAll, aerr := s.canReadAllAgentSessions(ctx, userID, agentID)
+		if aerr != nil {
+			return nil, common.CodeServerError, fmt.Errorf("failed to resolve session visibility: %w", aerr)
+		}
+		if !readAll {
+			return nil, common.CodeDataError, fmt.Errorf("you don't have permission to delete all sessions for agent %s", agentID)
+		}
+
 		listedIDs, err := s.api4ConversationDAO.ListIDsByAgentID(ctx, dao.DB, agentID)
 		if err != nil {
 			return nil, common.CodeServerError, err
@@ -471,6 +574,16 @@ func (s *AgentService) DeleteAgentSessions(ctx context.Context, userID, agentID 
 			return nil, common.CodeServerError, err
 		}
 		if conv == nil {
+			errorsList = append(errorsList, fmt.Sprintf("The agent doesn't own the session %s", sessionID))
+			continue
+		}
+
+		// 批量删除逐条判归属，不能让「批量」变成绕过单条校验的后门。
+		visible, verr := s.agentSessionVisibleTo(ctx, userID, agentID, conv)
+		if verr != nil {
+			return nil, common.CodeServerError, fmt.Errorf("failed to resolve session visibility: %w", verr)
+		}
+		if !visible {
 			errorsList = append(errorsList, fmt.Sprintf("The agent doesn't own the session %s", sessionID))
 			continue
 		}

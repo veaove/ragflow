@@ -47,6 +47,13 @@ type ListAgentSessionsParams struct {
 	FromDate   *time.Time
 	ToDate     *time.Time
 	ExpUserID  string
+	// OwnerUserID 是授权边界，不是客户端筛选条件。
+	//
+	// UserID / ExpUserID 来自请求参数，只在传了值时生效（不传等于不限制）；
+	// OwnerUserID 由服务层在判完「能否读整个画布」之后填入，非空时强制要求
+	// 会话属于该用户。缺了它，「不传任何过滤条件」的请求会拿到该画布下
+	// 所有人的会话。
+	OwnerUserID string
 }
 
 // NewChatSessionDAO create chat session DAO
@@ -210,13 +217,32 @@ func (dao *ChatSessionDAO) DeleteByDialogIDs(ctx context.Context, db *gorm.DB, d
 	return rowsAffected, err
 }
 
-func (dao *ChatSessionDAO) ListAgentSessionNames(ctx context.Context, db *gorm.DB, agentID, expUserID string) ([]map[string]interface{}, error) {
+// agentSessionOwnedBy 拼出「这条会话属于某人」的条件。
+//
+// 两列都要认：写入侧（CreateAgentSession 与聊天链路）把登录用户 id 同时写进
+// user_id 和 exp_user_id，但 exp_user_id 是后加的列，早期行可能为 NULL，
+// 只认其中一列会让那些行对主人自己都不可见。
+func (dao *ChatSessionDAO) agentSessionOwnedBy(query *gorm.DB, userID string) *gorm.DB {
+	if userID == "" {
+		return query
+	}
+	return query.Where("(user_id = ? OR exp_user_id = ?)", userID, userID)
+}
+
+// ListAgentSessionNames 返回会话下拉框用的 id/name 列表。
+//
+// expUserID 是客户端的筛选条件；ownerUserID 是服务端定下的归属边界，
+// 非空时只有该用户的会话会出现在结果里。
+func (dao *ChatSessionDAO) ListAgentSessionNames(ctx context.Context, db *gorm.DB, agentID, expUserID, ownerUserID string) ([]map[string]interface{}, error) {
 	var rows []map[string]interface{}
-	err := db.WithContext(ctx).Model(&entity.API4Conversation{}).
+	query := db.WithContext(ctx).Model(&entity.API4Conversation{}).
 		Select("id", "name").
-		Where("dialog_id = ? AND exp_user_id = ?", agentID, expUserID).
-		Order("create_date DESC").
-		Find(&rows).Error
+		Where("dialog_id = ?", agentID)
+	if expUserID != "" {
+		query = query.Where("exp_user_id = ?", expUserID)
+	}
+	query = dao.agentSessionOwnedBy(query, ownerUserID)
+	err := query.Order("create_date DESC").Find(&rows).Error
 	return rows, err
 }
 
@@ -260,6 +286,10 @@ func (dao *ChatSessionDAO) ListAgentSessions(ctx context.Context, db *gorm.DB, p
 	if params.UserID != "" {
 		query = query.Where("user_id = ?", params.UserID)
 	}
+
+	// 归属边界必须无条件生效：客户端不传 user_id / exp_user_id 时，上面两个
+	// 分支都不加限制，只靠这一条兜住「读到别人会话」。
+	query = dao.agentSessionOwnedBy(query, params.OwnerUserID)
 
 	if params.Keywords != "" {
 		keywords := strings.ToLower(params.Keywords)
