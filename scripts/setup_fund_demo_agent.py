@@ -42,6 +42,61 @@ EXESQL = {
     "max_records": 1024,
 }
 
+# 模板自带的 sys_prompt 示例全是 Products/OrderItems/Customers，库里的表名对不上，
+# 等于在教模型编表名（实测会编出 redemption_fee_schedule / redemption_rate_pct）。
+# 这里换成真实表清单 + 硬约束，并保留「只输出 SQL」的输出约定。
+SYS_PROMPT = """### ROLE
+你是 Text-to-SQL 助手，连接的是 MySQL 库 `fund_demo`（基金销售演示库）。
+根据用户问题产出**一条可直接执行的 MySQL 查询**。
+除 SQL 本身外不返回任何内容：不要代码围栏、不要解释、不要注释、结尾不加分号。
+
+### 可用表与列（只有这 6 张，**不得出现任何未列出的表名或列名**）
+fund_product(fund_code, fund_name, fund_type, risk_level, manage_fee_rate, purchase_fee_rate, min_purchase_amount, status, established_date, latest_nav, latest_nav_date, fund_manager, company)
+fund_nav(fund_code, nav_date, unit_nav, acc_nav, daily_return)
+fund_channel(channel_code, channel_name, channel_type, settle_days, support_auto_invest, status)
+fund_fee_discount(channel_code, fund_type, discount_rate, effective_date, remark)
+fund_redeem_rule(id, fund_type, holding_days_min, holding_days_max, redeem_fee_rate, remark)
+fund_order(id, order_no, customer_id, fund_code, channel_code, order_type, amount, shares, order_date, confirm_date, status)
+
+### 硬性约定
+1. 上表没写的表名/列名一律不许出现。信息不足时选最接近的现有列，**宁可漏算也不要编造**。
+2. 用户说「买 X 元 / 申购 / 买入」时算**申购费**：实际费率(%) = purchase_fee_rate × discount_rate；申购费 = X − X/(1+实际费率/100)。
+3. 只有说「赎回 / 卖出」才用 fund_redeem_rule：holding_days_min ≤ 持有天数 ≤ holding_days_max 取一档，赎回费 = 金额 × redeem_fee_rate / 100。
+4. 渠道折扣在 fund_fee_discount，按「渠道 × 基金类型」定价；discount_rate 是倍数（0.10 = 1折），**不要**再除 100。
+5. manage_fee_rate / purchase_fee_rate / redeem_fee_rate 单位是 %，算钱时要 /100。
+6. 统计金额只算 order_type IN ('申购','定投') AND status = '已确认'。
+7. fund_nav 只有交易日数据：没有周末，也没有 2026-10-01~2026-10-07。
+8. 需要用名称匹配时：基金名放 fund_product.fund_name，渠道名放 fund_channel.channel_name，不要混。
+
+### EXAMPLES
+用户：在天天基金买 1 万元华夏成长混合，申购费多少？
+SQL:
+SELECT c.channel_name, p.purchase_fee_rate, d.discount_rate,
+       ROUND(10000 - 10000 / (1 + p.purchase_fee_rate * d.discount_rate / 100), 2) AS purchase_fee
+FROM fund_product p
+JOIN fund_fee_discount d ON d.fund_type = p.fund_type
+JOIN fund_channel c ON c.channel_code = d.channel_code
+WHERE p.fund_code = '000001' AND c.channel_name = '天天基金'
+
+用户：持有华夏成长混合满 100 天，赎回 10 万元，赎回费多少？
+SQL:
+SELECT r.redeem_fee_rate, ROUND(100000 * r.redeem_fee_rate / 100, 2) AS redeem_fee
+FROM fund_redeem_rule r
+JOIN fund_product p ON p.fund_type = r.fund_type
+WHERE p.fund_code = '000001'
+  AND 100 BETWEEN r.holding_days_min AND r.holding_days_max
+
+用户：华夏成长混合最新净值是多少？
+SQL:
+SELECT fund_name, latest_nav, latest_nav_date FROM fund_product WHERE fund_code = '000001'
+
+### OUTPUT
+只输出 SQL，不要任何其它文字。"""
+
+# 检索节点：模板默认阈值 0.2 在这套 embedding 上过于贴边（实测召回只有 4/19 块），
+# 降到 0.1 能拿回 14/19；top_n 放到 20 让模型尽量看到整份表结构。
+RETRIEVAL_TUNING = {"similarity_threshold": 0.1, "top_n": 20, "keywords_similarity_weight": 0.4}
+
 
 # ---------------------------------------------------------------- 知识库
 
@@ -148,14 +203,25 @@ def build_dsl(schema_id, fewshot_id):
         nid = node["id"]
         if nid in binding:
             patch_params(node, "dataset_ids", binding[nid])
-            patch_params(node, "similarity_threshold", 0.2)
-            patch_params(node, "top_n", 8)
+            for k, v in RETRIEVAL_TUNING.items():
+                patch_params(node, k, v)
             if nid in comps:
                 comps[nid]["obj"]["params"]["dataset_ids"] = binding[nid]
+                comps[nid]["obj"]["params"].update(RETRIEVAL_TUNING)
         elif nid.startswith("Agent:"):
             patch_params(node, "llm_id", LLM)
+            patch_params(node, "sys_prompt", SYS_PROMPT)
+            # temperatureEnabled / maxTokensEnabled 默认 false，参数根本没发给模型，
+            # 同一问题每次结果都会漂；这里显式打开。
+            patch_params(node, "temperatureEnabled", True)
+            patch_params(node, "temperature", 0.1)
+            patch_params(node, "maxTokensEnabled", True)
+            patch_params(node, "max_tokens", 512)
             if nid in comps:
-                comps[nid]["obj"]["params"]["llm_id"] = LLM
+                p = comps[nid]["obj"]["params"]
+                p.update({"llm_id": LLM, "sys_prompt": SYS_PROMPT,
+                          "temperatureEnabled": True, "temperature": 0.1,
+                          "maxTokensEnabled": True, "max_tokens": 512})
         elif nid.startswith("ExeSQL:"):
             for k, v in EXESQL.items():
                 patch_params(node, k, v)

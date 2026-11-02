@@ -19,7 +19,7 @@ import { useHandleFilterSubmit } from '@/components/list-filter-bar/use-handle-f
 import message from '@/components/ui/message';
 import { AgentCategory, AgentGlobals } from '@/constants/agent';
 import { ListDeletionKey } from '@/constants/list-deletion';
-import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
+import { useFetchTenantInfo, useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import {
   AgentListItem,
   IAgentLogResponse,
@@ -938,21 +938,30 @@ export const useFetchAgentLog = (searchParams: IAgentLogsRequest) => {
 export const useFetchSessionsByCanvasId = () => {
   const { id: canvasId } = useParams();
   const { data: tenantInfo } = useFetchTenantInfo();
+  const { data: userInfo } = useFetchUserInfo();
+
+  // 会话落库时 exp_user_id 存的是**登录用户 id**，不是 tenant_id。
+  // 本部署 tenant_id ≠ user_id（tenant 8d5c7946… 的 owner 用户恰好同 id，
+  // 但被邀请的成员不是），传 tenant_id 会查到同租户下别人的会话、
+  // 反而看不到自己的——表现为「会话记录不会保存」。
+  const expUserId = userInfo?.id;
 
   const { data, isFetching: loading } = useQuery<IAgentLogsResponse>({
-    queryKey: [AgentApiAction.FetchSessionsByCanvasId, canvasId],
+    queryKey: [AgentApiAction.FetchSessionsByCanvasId, canvasId, expUserId],
     initialData: { total: 0, sessions: [] } as IAgentLogsResponse,
     gcTime: 0,
-    enabled: !!canvasId && !isEmpty(tenantInfo),
+    // 必须等 userInfo 到位再查：expUserId 为空会退化成「不过滤」，
+    // 后端会把该智能体所有人的会话都返回。
+    enabled: !!canvasId && !isEmpty(tenantInfo) && !!expUserId,
     queryFn: async () => {
-      if (!canvasId) {
+      if (!canvasId || !expUserId) {
         return { total: 0, sessions: [] };
       }
 
       const { data } = await fetchAgentLogsByCanvasId(canvasId, {
         page: 1,
         page_size: 100,
-        exp_user_id: tenantInfo.tenant_id,
+        exp_user_id: expUserId,
       });
 
       return { total: data?.total ?? 0, sessions: data?.data ?? [] };
