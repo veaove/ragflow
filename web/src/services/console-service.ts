@@ -75,19 +75,20 @@ export const fetchDepartments = (tenantId: string) =>
 export const createDepartment = (
   tenantId: string,
   body: { name: string; parent_id?: string; sort?: number },
-) => request.post<ResponseData<DepartmentNode>>(
-  api.tenantDepartments(tenantId),
-  { data: body },
-);
+) =>
+  request.post<ResponseData<DepartmentNode>>(api.tenantDepartments(tenantId), {
+    data: body,
+  });
 
 export const updateDepartment = (
   tenantId: string,
   id: string,
   body: { name?: string; parent_id?: string; sort?: number },
-) => request.put<ResponseData<{ id: string }>>(
-  api.tenantDepartment(tenantId, id),
-  { data: body },
-);
+) =>
+  request.put<ResponseData<{ id: string }>>(
+    api.tenantDepartment(tenantId, id),
+    { data: body },
+  );
 
 export const deleteDepartment = (tenantId: string, id: string) =>
   request.delete<ResponseData<{ id: string }>>(
@@ -106,10 +107,11 @@ export const fetchConsoleMembers = (
     role_id?: string;
     status?: string;
   },
-) => request.get<ApiEnvelope<{ members: ConsoleMember[]; total: number }>>(
-  api.tenantConsoleMembers(tenantId),
-  { params },
-);
+) =>
+  request.get<ApiEnvelope<{ members: ConsoleMember[]; total: number }>>(
+    api.tenantConsoleMembers(tenantId),
+    { params },
+  );
 
 export const updateConsoleMember = (
   tenantId: string,
@@ -122,10 +124,11 @@ export const updateConsoleMember = (
     /** 账号昵称；传空串表示清空，列表回落到邮箱显示 */
     nickname?: string;
   },
-) => request.put<ResponseData<{ user_id: string }>>(
-  api.tenantConsoleMember(tenantId, userId),
-  { data: body },
-);
+) =>
+  request.put<ResponseData<{ user_id: string }>>(
+    api.tenantConsoleMember(tenantId, userId),
+    { data: body },
+  );
 
 /** 移除成员：复用现有的 DELETE /tenants/:id/users（body 传 user_id）。 */
 export const removeConsoleMember = (tenantId: string, userId: string) =>
@@ -143,19 +146,20 @@ export const fetchConsoleRoles = (tenantId: string) =>
 export const createConsoleRole = (
   tenantId: string,
   body: { name: string; description?: string; grant?: Record<string, string> },
-) => request.post<ResponseData<{ id: string }>>(
-  api.tenantConsoleRoles(tenantId),
-  { data: body },
-);
+) =>
+  request.post<ResponseData<{ id: string }>>(api.tenantConsoleRoles(tenantId), {
+    data: body,
+  });
 
 export const updateConsoleRole = (
   tenantId: string,
   id: string,
   body: { name?: string; description?: string },
-) => request.put<ResponseData<{ id: string }>>(
-  api.tenantConsoleRole(tenantId, id),
-  { data: body },
-);
+) =>
+  request.put<ResponseData<{ id: string }>>(
+    api.tenantConsoleRole(tenantId, id),
+    { data: body },
+  );
 
 export const deleteConsoleRole = (tenantId: string, id: string) =>
   request.delete<ResponseData<{ id: string }>>(
@@ -166,10 +170,11 @@ export const saveConsolePermissions = (
   tenantId: string,
   id: string,
   permissions: RolePermissionRow[],
-) => request.put<ResponseData<{ id: string }>>(
-  api.tenantConsoleRolePermissions(tenantId, id),
-  { data: { permissions } },
-);
+) =>
+  request.put<ResponseData<{ id: string }>>(
+    api.tenantConsoleRolePermissions(tenantId, id),
+    { data: { permissions } },
+  );
 
 // ── 资源授权 ────────────────────────────────────────────────────────────────
 
@@ -187,6 +192,13 @@ export interface GrantSubject {
   id: string;
   name: string;
   permission?: 'read' | 'edit';
+  /**
+   * 规则取向：allow 授予、deny 排除。
+   *
+   * 只有文件级授权支持 deny —— 库级的「不给」用清空授权表达，多一个入口
+   * 只会让优先级无从解释。deny 压过同一资源上的任何 allow。
+   */
+  effect?: 'allow' | 'deny';
 }
 
 /** 一行资源 + 它当前的授权规则。 */
@@ -209,34 +221,65 @@ export const fetchGrants = (
     page?: number;
     page_size?: number;
   },
-) => request.get<ApiEnvelope<{ resources: GrantResource[]; total: number }>>(
-  api.tenantGrants(tenantId),
-  { params },
-);
+) =>
+  request.get<ApiEnvelope<{ resources: GrantResource[]; total: number }>>(
+    api.tenantGrants(tenantId),
+    { params },
+  );
+
+/** 知识库下的一个文件及其文件级规则（为空表示仍继承知识库）。 */
+export interface GrantDocument {
+  document_id: string;
+  document_name: string;
+  suffix: string;
+  size: number;
+  created_by: string;
+  created_by_name: string;
+  update_time: number;
+  /** 是否已经不再继承知识库的可见范围（有自己的规则）。 */
+  restricted: boolean;
+  grants: GrantSubject[];
+}
+
+/** 展开某个知识库时按需拉取它下面的文件（分页）。 */
+export const fetchGrantDocuments = (
+  tenantId: string,
+  datasetId: string,
+  params: { keywords?: string; page?: number; page_size?: number },
+) =>
+  request.get<ApiEnvelope<{ documents: GrantDocument[]; total: number }>>(
+    api.tenantGrantDocuments(tenantId, datasetId),
+    { params },
+  );
 
 /**
  * 整体覆盖某个资源的授权规则。传空数组表示撤销所有显式规则，
- * 回到 `default_scope` 决定的默认可见性。
+ * 回到 `default_scope` 决定的默认可见性（文件级即回到继承知识库）。
+ *
+ * `parentId` 只在文件级（kind=document）时传，是文件所属的知识库 id。
  */
 export const setGrants = (
   tenantId: string,
-  kind: 'dataset' | 'canvas' | 'memory',
+  kind: 'dataset' | 'canvas' | 'memory' | 'document',
   resourceId: string,
   subjects: GrantSubject[],
-) => request.put<ResponseData<{ resource_id: string }>>(
-  api.tenantGrant(tenantId, kind, resourceId),
-  { data: { subjects } },
-);
+  parentId?: string,
+) =>
+  request.put<ResponseData<{ resource_id: string }>>(
+    api.tenantGrant(tenantId, kind, resourceId),
+    { data: parentId ? { subjects, parent_id: parentId } : { subjects } },
+  );
 
 /** 移除成员后由管理员重置密码：password 需先用 rsaPsw 加密。 */
 export const resetMemberPassword = (
   tenantId: string,
   userId: string,
   encryptedPassword: string,
-) => request.put<ResponseData<{ user_id: string }>>(
-  api.tenantConsoleMemberPassword(tenantId, userId),
-  { data: { password: encryptedPassword } },
-);
+) =>
+  request.put<ResponseData<{ user_id: string }>>(
+    api.tenantConsoleMemberPassword(tenantId, userId),
+    { data: { password: encryptedPassword } },
+  );
 
 /**
  * 直接添加已注册用户为成员（无需对方接受邀请）。
@@ -248,20 +291,23 @@ export const resetMemberPassword = (
 export const addTenantMember = (
   tenantId: string,
   body: { email: string; role?: string; role_id?: string },
-) => request.post<ResponseData<unknown>>(api.tenantAddMember(tenantId), { data: body });
+) =>
+  request.post<ResponseData<unknown>>(api.tenantAddMember(tenantId), {
+    data: body,
+  });
 
 // ── Owner 移交 ──────────────────────────────────────────────────────────────
 
 /** 当前 owner 把权限移交给本租户内另一个成员。 */
-export const transferTenantOwner = (
-  tenantId: string,
-  targetUserId: string,
-) => request.post<ResponseData<{
-  tenant_id: string;
-  new_owner_id: string;
-  old_owner_id: string;
-  old_owner_role: string;
-}>>(api.tenantTransferOwner(tenantId), { target_user_id: targetUserId });
+export const transferTenantOwner = (tenantId: string, targetUserId: string) =>
+  request.post<
+    ResponseData<{
+      tenant_id: string;
+      new_owner_id: string;
+      old_owner_id: string;
+      old_owner_role: string;
+    }>
+  >(api.tenantTransferOwner(tenantId), { target_user_id: targetUserId });
 
 // ── 当前用户权限 ────────────────────────────────────────────────────────────
 
@@ -275,9 +321,7 @@ export interface MyPermissions {
 }
 
 export const fetchMyPermissions = (tenantId: string) =>
-  request.get<ApiEnvelope<MyPermissions>>(
-    api.tenantMyPermissions(tenantId),
-  );
+  request.get<ApiEnvelope<MyPermissions>>(api.tenantMyPermissions(tenantId));
 
 // ── 权限变更记录 ────────────────────────────────────────────────────────────
 
@@ -299,5 +343,4 @@ export const fetchConsoleAudits = (params: {
   page?: number;
   page_size?: number;
   object_type?: string;
-}) =>
-  request.get<ApiEnvelope<AuditEntry[]>>(api.audits, { params });
+}) => request.get<ApiEnvelope<AuditEntry[]>>(api.audits, { params });

@@ -510,8 +510,7 @@ export default {
   tenantConsoleMembers: (tenantId: string) =>
     `${restAPIv1}/tenants/${tenantId}/console/members`,
   /** 现有成员接口：DELETE + body{user_id} 移除成员 */
-  tenantMembers: (tenantId: string) =>
-    `${restAPIv1}/tenants/${tenantId}/users`,
+  tenantMembers: (tenantId: string) => `${restAPIv1}/tenants/${tenantId}/users`,
   tenantConsoleMember: (tenantId: string, userId: string) =>
     `${restAPIv1}/tenants/${tenantId}/console/members/${userId}`,
   tenantConsoleMemberPassword: (tenantId: string, userId: string) =>
@@ -528,16 +527,16 @@ export default {
     `${restAPIv1}/tenants/${tenantId}/roles/${id}`,
   tenantConsoleRolePermissions: (tenantId: string, id: string) =>
     `${restAPIv1}/tenants/${tenantId}/roles/${id}/permissions`,
-  tenantGrants: (tenantId: string) =>
-    `${restAPIv1}/tenants/${tenantId}/grants`,
+  tenantGrants: (tenantId: string) => `${restAPIv1}/tenants/${tenantId}/grants`,
   tenantMyPermissions: (tenantId: string) =>
     `${restAPIv1}/tenants/${tenantId}/console/me/permissions`,
   tenantGrant: (tenantId: string, kind: string, resourceId: string) =>
     `${restAPIv1}/tenants/${tenantId}/grants/${kind}/${resourceId}`,
+  tenantGrantDocuments: (tenantId: string, datasetId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/grants/dataset/${datasetId}/documents`,
   adminCreateTenant: `${restAPIv1}/admin/tenants`,
   adminCreateUser: `${restAPIv1}/admin/users`,
-  adminUpdateUser: (username: string) =>
-    `${restAPIv1}/admin/users/${username}`,
+  adminUpdateUser: (username: string) => `${restAPIv1}/admin/users/${username}`,
   adminSetSuperuser: (username: string) =>
     `${restAPIv1}/admin/users/${username}/admin`,
   adminGetUserDetails: (username: string) =>

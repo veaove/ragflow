@@ -615,11 +615,56 @@ func (h *ConsoleHandler) ListResourceGrants(c *gin.Context) {
 	common.SuccessWithData(c, gin.H{"resources": rows, "total": total}, "success")
 }
 
+// ListResourceGrantDocuments handles
+// GET /tenants/:tenant_id/grants/:kind/:resource_id/documents.
+//
+// 文件级授权是资源级授权的下一层：控制台展开某个知识库时按需拉这一页文件，
+// 每行带着自己的规则。规则为空表示该文件仍继承知识库的可见范围。
+func (h *ConsoleHandler) ListResourceGrantDocuments(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	tenantID := consoleTenantID(c)
+	if err := requireTenantAccess(c, user.ID, tenantID, false); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
+		return
+	}
+
+	if kind := c.Param("kind"); kind != "dataset" {
+		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "只有知识库支持按文件展开授权")
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || size > 200 {
+		size = 20
+	}
+
+	rows, total, err := service.NewResourceGrantService().ListDocuments(
+		c.Request.Context(), tenantID, c.Param("resource_id"),
+		c.Query("keywords"), size, (page-1)*size,
+	)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, gin.H{"documents": rows, "total": total}, "success")
+}
+
 // SetResourceGrants handles PUT /tenants/:tenant_id/grants/:kind/:resource_id.
 //
 // The body carries the complete rule set: {subjects:[{kind,id}]}. Sending an
 // empty list revokes every explicit rule, leaving the legacy permission column
 // in charge again.
+//
+// kind=document 时 body 还要带 parent_id（文件所属的知识库），后端据此校验
+// 文件确实挂在这个库里 —— 文件级规则不能成为跨库授权的入口。
 func (h *ConsoleHandler) SetResourceGrants(c *gin.Context) {
 	user, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
@@ -634,6 +679,8 @@ func (h *ConsoleHandler) SetResourceGrants(c *gin.Context) {
 
 	var req struct {
 		Subjects []service.GrantSubject `json:"subjects"`
+		// ParentID 是文件级授权所属的知识库 id；资源级授权忽略该字段。
+		ParentID string `json:"parent_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, err.Error())
@@ -641,13 +688,13 @@ func (h *ConsoleHandler) SetResourceGrants(c *gin.Context) {
 	}
 
 	if err := service.NewResourceGrantService().SetGrants(
-		c.Request.Context(), tenantID, c.Param("kind"), c.Param("resource_id"), req.Subjects,
+		c.Request.Context(), tenantID, c.Param("kind"), c.Param("resource_id"), req.ParentID, req.Subjects,
 	); err != nil {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
 		return
 	}
 	auditConsoleChange(c, user, tenantID, "update", "resource_grant", c.Param("resource_id"), nil,
-		entity.JSONMap{"kind": c.Param("kind"), "subjects": len(req.Subjects)})
+		entity.JSONMap{"kind": c.Param("kind"), "parent_id": req.ParentID, "subjects": len(req.Subjects)})
 	common.SuccessWithData(c, gin.H{"resource_id": c.Param("resource_id")}, "success")
 }
 

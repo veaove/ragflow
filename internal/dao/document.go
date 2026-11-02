@@ -134,8 +134,12 @@ type DocumentListOptions struct {
 	// FolderID 为 nil 表示不按文件夹筛选；指向空串表示只看"未分类"；
 	// 指向普通字符串表示只看该目录直属的文件。
 	FolderID *string
-	Offset int
-	Limit  int
+	// Visibility 是权限层产出的可见性谓词（文件级授权）。DAO 不认识授权
+	// 规则，只负责把谓词挂到列表、计数、筛选项这几条查询上，保证分页与
+	// total 用的是同一个口径。nil 表示不做额外过滤。
+	Visibility func(*gorm.DB) *gorm.DB
+	Offset     int
+	Limit      int
 }
 
 // ListByKBID list documents by knowledge base ID
@@ -345,6 +349,9 @@ func applyDocumentListFilters(query *gorm.DB, opts DocumentListOptions, qualifie
 	// Note: create_time_from / create_time_to are NOT applied at DB level.
 	// They are filtered post-query in the handler so total reflects the
 	// unfiltered count, matching the Python API contract.
+	if opts.Visibility != nil {
+		query = opts.Visibility(query)
+	}
 	return query
 }
 

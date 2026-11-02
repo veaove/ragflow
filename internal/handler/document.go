@@ -632,6 +632,11 @@ func (h *DocumentHandler) ListDocuments(c *gin.Context) {
 		common.ResponseWithCodeData(c, common.CodeDataError, map[string]interface{}{"total": 0, "docs": []interface{}{}}, errMsg)
 		return
 	}
+	// 文件级授权：库级检查通过之后，再把调用者看不到的文件从列表、计数和
+	// 筛选项里一起剔除，否则 total 与实际渲染的行数对不上。
+	opts.Visibility = permission.DocumentVisibility(
+		ctx, dao.DB, permission.Subject{UserID: userID}, datasetID,
+	).Apply
 	opts, errMsg = h.applyDocumentMetadataFilter(c, opts)
 	if errMsg != "" {
 		common.ResponseWithCodeData(c, common.CodeDataError, map[string]interface{}{"total": 0, "docs": []interface{}{}}, errMsg)

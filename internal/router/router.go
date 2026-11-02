@@ -382,6 +382,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 				tenants.PUT("/:tenant_id/roles/:id/permissions", r.consoleHandler.SaveConsolePermissions)
 				// 资源授权：知识库 / 智能体 / 记忆的可见范围
 				tenants.GET("/:tenant_id/grants", r.consoleHandler.ListResourceGrants)
+				// 文件级授权：展开某个知识库时按需拉取库内文件及其规则
+				tenants.GET("/:tenant_id/grants/:kind/:resource_id/documents", r.consoleHandler.ListResourceGrantDocuments)
 				tenants.PUT("/:tenant_id/grants/:kind/:resource_id", r.consoleHandler.SetResourceGrants)
 				// Owner 移交给本租户里的另一个成员
 				tenants.POST("/:tenant_id/console/owner/transfer", r.consoleHandler.TransferTenantOwner)

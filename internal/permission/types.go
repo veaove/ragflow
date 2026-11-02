@@ -44,6 +44,7 @@ type ResourceKind string
 
 const (
 	ResourceKindDataset       ResourceKind = "dataset"
+	ResourceKindDocument      ResourceKind = "document"
 	ResourceKindCanvas        ResourceKind = "canvas"
 	ResourceKindAgentSession  ResourceKind = "agent_session"
 	ResourceKindMemory        ResourceKind = "memory"

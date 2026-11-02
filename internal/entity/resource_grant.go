@@ -29,6 +29,14 @@ type ResourceGrant struct {
 	// 直接拿 TenantOperations，里面含 Update/Delete）。空值若按 read 处理，
 	// 存量授权会在升级瞬间全部降级成只读，属于破坏性变更。
 	Permission string `gorm:"column:permission;size:16;not null;default:'edit'" json:"permission"`
+	// Effect 是这条规则的取向：
+	//   allow —— 授予（默认；这列出现之前每条授权都是"授予"）
+	//   deny  —— 排除
+	//
+	// 只有文件级（resource_kind=document）允许 deny：库级的"看不见"用清空
+	// 授权表达，多一个入口只会让优先级无从解释。deny 永远压过 allow —— 否则
+	// 「把这一个人排除掉」会被部门 / 全团队的 allow 覆盖回去，等于没写。
+	Effect string `gorm:"column:effect;size:8;not null;default:'allow'" json:"effect"`
 	BaseModel
 }
 
@@ -42,4 +50,10 @@ const (
 	GrantSubjectTeam       = "team"
 	GrantSubjectDepartment = "department"
 	GrantSubjectUser       = "user"
+)
+
+// Grant effects. Only document-level rules may carry EffectDeny.
+const (
+	GrantEffectAllow = "allow"
+	GrantEffectDeny  = "deny"
 )

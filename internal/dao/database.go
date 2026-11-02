@@ -439,6 +439,12 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 		return err
 	}
 
+	// 同上：effect 列也只在自己这一句里补，否则只重启服务不跑 migrate 的部署
+	// 会在文件级授权写入时报 Unknown column 'effect'。
+	if err := ensureResourceGrantEffectColumn(ctx, db); err != nil {
+		return err
+	}
+
 	// tenant 不在上面的列表里（它的列历史上由 Python 侧迁移管理），
 	// 所以租户启停用这一列必须单独补，否则线上所有租户查询都会
 	// 报 Unknown column 'enabled'。
@@ -487,6 +493,24 @@ func ensureResourceGrantPermissionColumn(ctx context.Context, db *gorm.DB) error
 		"UPDATE resource_grant SET permission = 'edit' WHERE permission IS NULL OR permission = ''",
 	).Error; err != nil {
 		return fmt.Errorf("backfill resource_grant.permission: %w", err)
+	}
+	return nil
+}
+
+// ensureResourceGrantEffectColumn 幂等地补上 resource_grant.effect。
+//
+// 存量行按 'allow' 回填：这列出现之前每条授权都是"授予"。留空会让存量规则
+// 既不命中 allow 也不命中 deny，文件级"显式规则接管可见性"的判定会把它们
+// 当成一条不生效的规则 —— 文件从继承变成谁都看不见。
+func ensureResourceGrantEffectColumn(ctx context.Context, db *gorm.DB) error {
+	added, err := ensureColumn(ctx, db, &entity.ResourceGrant{}, "effect", "Effect")
+	if err != nil || !added {
+		return err
+	}
+	if err := db.WithContext(ctx).Exec(
+		"UPDATE resource_grant SET effect = 'allow' WHERE effect IS NULL OR effect = ''",
+	).Error; err != nil {
+		return fmt.Errorf("backfill resource_grant.effect: %w", err)
 	}
 	return nil
 }

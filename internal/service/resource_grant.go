@@ -32,6 +32,9 @@ type GrantSubject struct {
 	// Permission 是这次授予的操作级别："read" 只能看，"edit" 可编辑删除。
 	// 空值按 "edit" 处理：老前端不传这个字段，保持它原来的行为（授权即编辑）。
 	Permission string `json:"permission,omitempty"`
+	// Effect 是这条规则的取向："allow"（授予）或 "deny"（排除）。
+	// 只有文件级授权支持 deny，空值按 allow 处理。
+	Effect string `json:"effect,omitempty"`
 }
 
 // 授权级别白名单。不接受任意字符串，避免写进库里之后没人认得出是什么。
@@ -39,6 +42,18 @@ const (
 	GrantPermissionRead = "read"
 	GrantPermissionEdit = "edit"
 )
+
+// GrantKindDocument 是文件级授权的 resource_kind。文件永远挂在某个知识库下，
+// 库级是前提，文件级只做细化。
+const GrantKindDocument = "document"
+
+// normalizeGrantEffect 把外部输入收敛成合法取向，空值按 allow 处理。
+func normalizeGrantEffect(v string) string {
+	if strings.EqualFold(strings.TrimSpace(v), entity.GrantEffectDeny) {
+		return entity.GrantEffectDeny
+	}
+	return entity.GrantEffectAllow
+}
 
 // strongerGrantPermission 返回两个级别里更强的那个（edit > read）。
 // 用于合并同一主体的多行历史授权，避免"部门只读 + 个人可编辑"被读成只读。
@@ -72,9 +87,10 @@ type GrantResourceView struct {
 
 // supportedKinds guards the console-supplied kind before it reaches a table name.
 var supportedKinds = map[string]bool{
-	"dataset": true,
-	"canvas":  true,
-	"memory":  true,
+	"dataset":         true,
+	"canvas":          true,
+	"memory":          true,
+	GrantKindDocument: true,
 }
 
 // ListResources returns a page of resources of one kind with their grants.
@@ -304,6 +320,25 @@ func (s *ResourceGrantService) ownerNames(ctx context.Context, ids []string) map
 	return out
 }
 
+// grantAggregate 是同一个主体在一份规则集合里的最终展示状态。
+type grantAggregate struct {
+	permission string
+	effect     string
+}
+
+// merge 收敛同一个主体的多行规则：deny 压过 allow，同级取更强的 permission。
+func (a grantAggregate) merge(row *entity.ResourceGrant) grantAggregate {
+	if a.effect == entity.GrantEffectDeny || normalizeGrantEffect(row.Effect) == entity.GrantEffectDeny {
+		// deny 不可逆：命中过一条，这个主体就是被排除，再多的 allow 也不
+		// 会把展示（和判定）拉回"允许"。
+		return grantAggregate{effect: entity.GrantEffectDeny, permission: a.permission}
+	}
+	return grantAggregate{
+		effect:     entity.GrantEffectAllow,
+		permission: strongerGrantPermission(a.permission, row.Permission),
+	}
+}
+
 // describeGrants turns stored rows into display subjects (resolving names).
 func (s *ResourceGrantService) describeGrants(ctx context.Context, tenantID string, rows []*entity.ResourceGrant) []GrantSubject {
 	out := make([]GrantSubject, 0, len(rows))
@@ -314,21 +349,28 @@ func (s *ResourceGrantService) describeGrants(ctx context.Context, tenantID stri
 	deptIDs := make([]string, 0)
 	userIDs := make([]string, 0)
 	teamHit := false
-	// 同一个主体可能有多行（历史数据），取更强的那个级别。
-	teamPerm := ""
-	deptPerm := make(map[string]string, len(rows))
-	userPerm := make(map[string]string, len(rows))
+	teamGrant := grantAggregate{}
+	deptGrants := make(map[string]grantAggregate, len(rows))
+	userGrants := make(map[string]grantAggregate, len(rows))
+	seenDept := make(map[string]bool, len(rows))
+	seenUser := make(map[string]bool, len(rows))
 	for _, r := range rows {
 		switch r.SubjectKind {
 		case entity.GrantSubjectTeam:
 			teamHit = true
-			teamPerm = strongerGrantPermission(teamPerm, r.Permission)
+			teamGrant = teamGrant.merge(r)
 		case entity.GrantSubjectDepartment:
-			deptIDs = append(deptIDs, r.SubjectID)
-			deptPerm[r.SubjectID] = strongerGrantPermission(deptPerm[r.SubjectID], r.Permission)
+			if !seenDept[r.SubjectID] {
+				seenDept[r.SubjectID] = true
+				deptIDs = append(deptIDs, r.SubjectID)
+			}
+			deptGrants[r.SubjectID] = deptGrants[r.SubjectID].merge(r)
 		case entity.GrantSubjectUser:
-			userIDs = append(userIDs, r.SubjectID)
-			userPerm[r.SubjectID] = strongerGrantPermission(userPerm[r.SubjectID], r.Permission)
+			if !seenUser[r.SubjectID] {
+				seenUser[r.SubjectID] = true
+				userIDs = append(userIDs, r.SubjectID)
+			}
+			userGrants[r.SubjectID] = userGrants[r.SubjectID].merge(r)
 		}
 	}
 
@@ -353,21 +395,30 @@ func (s *ResourceGrantService) describeGrants(ctx context.Context, tenantID stri
 	userNames := s.ownerNames(ctx, userIDs)
 
 	if teamHit {
-		out = append(out, GrantSubject{Kind: entity.GrantSubjectTeam, Name: "全团队", Permission: teamPerm})
+		out = append(out, GrantSubject{
+			Kind: entity.GrantSubjectTeam, Name: "全团队",
+			Permission: teamGrant.permission, Effect: teamGrant.effect,
+		})
 	}
 	for _, id := range deptIDs {
 		name := deptNames[id]
 		if name == "" {
 			name = "已删除部门"
 		}
-		out = append(out, GrantSubject{Kind: entity.GrantSubjectDepartment, ID: id, Name: name, Permission: deptPerm[id]})
+		out = append(out, GrantSubject{
+			Kind: entity.GrantSubjectDepartment, ID: id, Name: name,
+			Permission: deptGrants[id].permission, Effect: deptGrants[id].effect,
+		})
 	}
 	for _, id := range userIDs {
 		name := userNames[id]
 		if name == "" {
 			name = id
 		}
-		out = append(out, GrantSubject{Kind: entity.GrantSubjectUser, ID: id, Name: name, Permission: userPerm[id]})
+		out = append(out, GrantSubject{
+			Kind: entity.GrantSubjectUser, ID: id, Name: name,
+			Permission: userGrants[id].permission, Effect: userGrants[id].effect,
+		})
 	}
 	return out
 }
@@ -376,11 +427,18 @@ func (s *ResourceGrantService) describeGrants(ctx context.Context, tenantID stri
 //
 // The resource is verified to belong to the tenant first — otherwise the console
 // would be a way to grant access to someone else's knowledge base.
-func (s *ResourceGrantService) SetGrants(ctx context.Context, tenantID, kind, resourceID string, subjects []GrantSubject) error {
+//
+// parentID 只对文件级（kind=document）有意义，是文件所在的知识库 id：文件
+// 永远挂在库下，库级是前提，所以保存文件级规则时必须同时校验这层归属。
+func (s *ResourceGrantService) SetGrants(ctx context.Context, tenantID, kind, resourceID, parentID string, subjects []GrantSubject) error {
 	if !supportedKinds[kind] {
 		return errors.New("不支持的资源类型")
 	}
-	if err := s.assertResourceInTenant(ctx, tenantID, kind, resourceID); err != nil {
+	if kind == GrantKindDocument {
+		if err := s.assertDocumentInDataset(ctx, tenantID, parentID, resourceID); err != nil {
+			return err
+		}
+	} else if err := s.assertResourceInTenant(ctx, tenantID, kind, resourceID); err != nil {
 		return err
 	}
 
@@ -394,6 +452,12 @@ func (s *ResourceGrantService) SetGrants(ctx context.Context, tenantID, kind, re
 		if sub.Kind != entity.GrantSubjectTeam && strings.TrimSpace(sub.ID) == "" {
 			continue
 		}
+		effect := normalizeGrantEffect(sub.Effect)
+		if effect == entity.GrantEffectDeny && kind != GrantKindDocument {
+			// 库级的"不可见"用清空授权表达。允许多一套拒绝语义会让同一个
+			// 结果有两个入口，优先级就无从解释了。
+			return errors.New("资源级授权不支持「拒绝」，收回权限请移除对应授权")
+		}
 		rows = append(rows, &entity.ResourceGrant{
 			TenantID:     tenantID,
 			ResourceKind: kind,
@@ -401,10 +465,32 @@ func (s *ResourceGrantService) SetGrants(ctx context.Context, tenantID, kind, re
 			SubjectKind:  sub.Kind,
 			SubjectID:    sub.ID,
 			Permission:   normalizeGrantPermission(sub.Permission),
+			Effect:       effect,
 			BaseModel:    entity.BaseModel{CreateTime: &now, UpdateTime: &now},
 		})
 	}
 	return dao.NewResourceGrantDAO().Replace(ctx, dao.DB, tenantID, kind, resourceID, rows)
+}
+
+// assertDocumentInDataset confirms the document exists and sits in datasetID,
+// and that datasetID itself belongs to the tenant.
+func (s *ResourceGrantService) assertDocumentInDataset(ctx context.Context, tenantID, datasetID, documentID string) error {
+	if strings.TrimSpace(datasetID) == "" {
+		return errors.New("缺少文件所属的知识库")
+	}
+	if err := s.assertResourceInTenant(ctx, tenantID, "dataset", datasetID); err != nil {
+		return err
+	}
+	var count int64
+	if err := dao.DB.WithContext(ctx).Model(&entity.Document{}).
+		Where("id = ? AND kb_id = ?", documentID, datasetID).
+		Count(&count).Error; err != nil {
+		return err
+	}
+	if count == 0 {
+		return errors.New("文件不存在或不属于该知识库")
+	}
+	return nil
 }
 
 // assertResourceInTenant confirms the resource is owned by this tenant.

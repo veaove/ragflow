@@ -94,4 +94,24 @@ describe('console-service 写接口的请求体位置', () => {
       addTenantMember(TENANT, { email: 'a@b.com', role: 'normal' }),
     );
   });
+
+  // 文件级授权必须把所属知识库一起送到后端：后端据此校验文件确实在这个库里，
+  // 少了它就只能拒绝保存，多了它资源级授权又能被当成文件级写进去。
+  it('文件级授权把 parent_id 与规则一起放进 options.data', () => {
+    expectDataSentAs(mockRequest.put, () =>
+      setGrants(
+        TENANT,
+        'document',
+        'doc-1',
+        [{ kind: 'user', id: 'u-1', name: '张三', effect: 'deny' }],
+        'kb-1',
+      ),
+    );
+    expect(mockRequest.put.mock.calls[0][1].data).toEqual({
+      subjects: [
+        { kind: 'user', id: 'u-1', name: '张三', effect: 'deny' },
+      ],
+      parent_id: 'kb-1',
+    });
+  });
 });
