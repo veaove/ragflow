@@ -63,11 +63,7 @@ func TestDatasetServiceListDatasetsIDsAccessibleViaTeamTenant(t *testing.T) {
 		t.Fatalf("insert owner tenant: %v", err)
 	}
 	insertDatasetUpdateTeamMember(t, "user-1", "owner-1")
-	if err := dao.DB.Model(&entity.Knowledgebase{}).
-		Where("id = ?", "kb-team").
-		Update("permission", string(entity.TenantPermissionTeam)).Error; err != nil {
-		t.Fatalf("update kb permission: %v", err)
-	}
+	shareDatasetWithMember(t, "kb-team", "user-1")
 
 	ctx := t.Context()
 	data, total, code, err := testDatasetListService(t).ListDatasets(ctx,
@@ -93,11 +89,7 @@ func TestDatasetServiceListDatasetsAndFiltersUseAuthorizedScope(t *testing.T) {
 	insertDatasetUpdateKB(t, "kb-team", "owner-1", "Team")
 	insertDatasetUpdateKB(t, "kb-private", "owner-1", "Private")
 	insertDatasetUpdateTeamMember(t, "user-1", "owner-1")
-	if err := dao.DB.Model(&entity.Knowledgebase{}).
-		Where("id = ?", "kb-team").
-		Update("permission", string(entity.TenantPermissionTeam)).Error; err != nil {
-		t.Fatalf("share team dataset: %v", err)
-	}
+	shareDatasetWithMember(t, "kb-team", "user-1")
 
 	ctx := t.Context()
 	data, total, code, err := testDatasetListService(t).ListDatasets(ctx,
@@ -132,11 +124,7 @@ func TestDatasetServiceListDatasetsForCanvasUsesCallerOwnerIntersection(t *testi
 	insertDatasetUpdateKB(t, "kb-shared", "owner-1", "Shared")
 	insertDatasetUpdateKB(t, "kb-owner-only", "owner-1", "Owner only")
 	insertDatasetUpdateTeamMember(t, "user-1", "owner-1")
-	if err := dao.DB.Model(&entity.Knowledgebase{}).
-		Where("id = ?", "kb-shared").
-		Update("permission", string(entity.TenantPermissionTeam)).Error; err != nil {
-		t.Fatalf("share dataset with tenant: %v", err)
-	}
+	shareDatasetWithMember(t, "kb-shared", "user-1")
 	canvas := entity.UserCanvas{
 		ID:         "canvas-shared",
 		UserID:     "owner-1",
@@ -146,6 +134,7 @@ func TestDatasetServiceListDatasetsForCanvasUsesCallerOwnerIntersection(t *testi
 	if err := dao.DB.Create(&canvas).Error; err != nil {
 		t.Fatalf("create shared canvas: %v", err)
 	}
+	shareCanvasWithMember(t, "canvas-shared", "owner-1", "user-1")
 
 	service := testDatasetListService(t)
 	data, total, code, err := service.ListDatasets(t.Context(), "", "", 1, 30,
@@ -217,11 +206,7 @@ func TestDatasetServiceListDatasetsPaginatesInsidePermissionScope(t *testing.T) 
 	insertDatasetUpdateKB(t, "kb-private", "owner-1", "Private")
 	insertDatasetUpdateKB(t, "kb-outside", "other-owner", "Outside")
 	insertDatasetUpdateTeamMember(t, "user-1", "owner-1")
-	if err := dao.DB.Model(&entity.Knowledgebase{}).
-		Where("id = ?", "kb-team").
-		Update("permission", string(entity.TenantPermissionTeam)).Error; err != nil {
-		t.Fatalf("share team dataset: %v", err)
-	}
+	shareDatasetWithMember(t, "kb-team", "user-1")
 
 	service := testDatasetListService(t)
 	terms := []dao.OrderTerm{{Column: "name"}}

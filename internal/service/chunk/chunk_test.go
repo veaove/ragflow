@@ -2048,6 +2048,39 @@ func insertChunkTestKB(t *testing.T, id, tenantID string) {
 	if err := dao.DB.Create(kb).Error; err != nil {
 		t.Fatalf("insert kb: %v", err)
 	}
+	grantChunkTestKBToMembers(t, id, tenantID)
+}
+
+// grantChunkTestKBToMembers 给租户内除 owner 外的成员补一条库级可编辑授权。
+//
+// 可见范围收窄后（owner / tenant_owner / platform），"permission=team 的库
+// 对全体成员可见"不再成立，普通成员必须逐人授权。chunk 测试关心的是切片
+// 逻辑本身，这里用一条授权模拟既有的团队协作关系。
+func grantChunkTestKBToMembers(t *testing.T, kbID, tenantID string) {
+	t.Helper()
+
+	var members []entity.UserTenant
+	if err := dao.DB.Where("tenant_id = ? AND user_id <> ?", tenantID, tenantID).
+		Find(&members).Error; err != nil {
+		t.Fatalf("list tenant members: %v", err)
+	}
+	now := time.Now().UnixMilli()
+	for _, m := range members {
+		grant := &entity.ResourceGrant{
+			ID:           "grant-" + kbID + "-" + m.UserID,
+			TenantID:     tenantID,
+			ResourceKind: string(permission.ResourceKindDataset),
+			ResourceID:   kbID,
+			SubjectKind:  entity.GrantSubjectUser,
+			SubjectID:    m.UserID,
+			Permission:   "edit",
+			Effect:       entity.GrantEffectAllow,
+			BaseModel:    entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+		}
+		if err := dao.DB.Create(grant).Error; err != nil {
+			t.Fatalf("grant kb %s to %s: %v", kbID, m.UserID, err)
+		}
+	}
 }
 
 func insertChunkTestDoc(t *testing.T, id, kbID string) {

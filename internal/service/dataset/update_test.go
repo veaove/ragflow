@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
@@ -504,12 +505,8 @@ func TestDatasetServiceUpdateDatasetRejectsTeamMemberPermissionChange(t *testing
 	db := setupDatasetUpdateTestDB(t)
 	pushServiceDB(t, db)
 	insertDatasetUpdateKB(t, "kb-1", "owner-1", "Original")
-	if err := dao.DB.Model(&entity.Knowledgebase{}).
-		Where("id = ?", "kb-1").
-		Update("permission", string(entity.TenantPermissionTeam)).Error; err != nil {
-		t.Fatalf("update kb permission: %v", err)
-	}
 	insertDatasetUpdateTeamMember(t, "user-1", "owner-1")
+	shareDatasetWithMember(t, "kb-1", "user-1")
 
 	permission := string(entity.TenantPermissionMe)
 	ctx := t.Context()
@@ -530,8 +527,8 @@ func TestDatasetServiceUpdateDatasetRejectsTeamMemberPermissionChange(t *testing
 	if err != nil {
 		t.Fatalf("get dataset: %v", err)
 	}
-	if persisted.Permission != string(entity.TenantPermissionTeam) {
-		t.Fatalf("expected permission to remain %q, got %q", entity.TenantPermissionTeam, persisted.Permission)
+	if persisted.Permission != entity.ResourceVisibilityTenantOwner {
+		t.Fatalf("expected permission to remain %q, got %q", entity.ResourceVisibilityTenantOwner, persisted.Permission)
 	}
 }
 
@@ -539,15 +536,11 @@ func TestDatasetServiceUpdateDatasetAllowsTeamMemberToResubmitUnchangedPermissio
 	db := setupDatasetUpdateTestDB(t)
 	pushServiceDB(t, db)
 	insertDatasetUpdateKB(t, "kb-1", "owner-1", "Original")
-	if err := dao.DB.Model(&entity.Knowledgebase{}).
-		Where("id = ?", "kb-1").
-		Update("permission", string(entity.TenantPermissionTeam)).Error; err != nil {
-		t.Fatalf("update kb permission: %v", err)
-	}
 	insertDatasetUpdateTeamMember(t, "user-1", "owner-1")
+	shareDatasetWithMember(t, "kb-1", "user-1")
 
 	name := "Renamed by team member"
-	permission := string(entity.TenantPermissionTeam)
+	permission := entity.ResourceVisibilityTenantOwner
 	result, code, err := testDatasetUpdateService(t).UpdateDataset(t.Context(), "kb-1", "user-1", service.UpdateDatasetRequest{
 		Name:       &name,
 		Permission: &permission,
@@ -578,18 +571,14 @@ func TestDatasetServiceUpdateDatasetResolvesEmbeddingInDatasetTenant(t *testing.
 	db := setupDatasetUpdateTestDB(t)
 	pushServiceDB(t, db)
 	insertDatasetUpdateKB(t, "kb-1", "tenant-1", "Original")
-	if err := dao.DB.Model(&entity.Knowledgebase{}).
-		Where("id = ?", "kb-1").
-		Update("permission", string(entity.TenantPermissionTeam)).Error; err != nil {
-		t.Fatalf("update kb permission: %v", err)
-	}
 	insertDatasetUpdateTeamMember(t, "user-1", "tenant-1")
+	shareDatasetWithMember(t, "kb-1", "user-1")
 	insertDatasetUpdateModelProvider(t, "provider-1", "tenant-1", "ZHIPU-AI")
 	insertDatasetUpdateModelInstance(t, "instance-1", "provider-1", "test")
 	embeddingModelID := "aabbccdd11223344aabbccdd11223344"
 	insertDatasetUpdateTenantModel(t, embeddingModelID, "provider-1", "instance-1", "embedding-2", int(entity.ModelTypeEmbedding))
 
-	permission := string(entity.TenantPermissionTeam)
+	permission := entity.ResourceVisibilityTenantOwner
 	_, code, err := testDatasetUpdateService(t).UpdateDataset(t.Context(), "kb-1", "user-1", service.UpdateDatasetRequest{
 		Permission:     &permission,
 		EmbeddingModel: &embeddingModelID,
@@ -1093,6 +1082,69 @@ func insertDatasetUpdateCanvas(t *testing.T, id, userID string) {
 func insertDatasetUpdateTeamMember(t *testing.T, userID, tenantID string) {
 	t.Helper()
 	ensureDatasetTestMembership(t, userID, tenantID, "normal")
+}
+
+// shareDatasetWithMember 把库调成「租户管理层可见」并给成员一条可编辑授权。
+//
+// 可见范围收窄后，"permission=team 的库对全体成员可见"不再成立：普通成员
+// 必须逐人授权。测试里用这一对动作表达"这个库已经和该成员共享"。
+func shareDatasetWithMember(t *testing.T, kbID, userID string) {
+	t.Helper()
+
+	var kb struct {
+		TenantID string `gorm:"column:tenant_id"`
+	}
+	if err := dao.DB.Model(&entity.Knowledgebase{}).Select("tenant_id").
+		Where("id = ?", kbID).Take(&kb).Error; err != nil {
+		t.Fatalf("load kb %s tenant: %v", kbID, err)
+	}
+	if err := dao.DB.Model(&entity.Knowledgebase{}).Where("id = ?", kbID).
+		Update("permission", entity.ResourceVisibilityTenantOwner).Error; err != nil {
+		t.Fatalf("share kb %s: %v", kbID, err)
+	}
+	now := time.Now().UnixMilli()
+	grant := &entity.ResourceGrant{
+		ID:           "grant-" + kbID + "-" + userID,
+		TenantID:     kb.TenantID,
+		ResourceKind: "dataset",
+		ResourceID:   kbID,
+		SubjectKind:  entity.GrantSubjectUser,
+		SubjectID:    userID,
+		Permission:   "edit",
+		Effect:       entity.GrantEffectAllow,
+		BaseModel:    entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+	}
+	if err := dao.DB.Create(grant).Error; err != nil {
+		t.Fatalf("grant kb %s to %s: %v", kbID, userID, err)
+	}
+}
+
+// shareCanvasWithMember 把智能体调成「租户管理层可见」并给成员一条可查看授权。
+//
+// 同 shareDatasetWithMember：canvas 也走三级可见性，team 值收窄后成员必须
+// 被显式授权才能拿它当作库的访问来源。
+func shareCanvasWithMember(t *testing.T, canvasID, ownerUserID, userID string) {
+	t.Helper()
+
+	if err := dao.DB.Model(&entity.UserCanvas{}).Where("id = ?", canvasID).
+		Update("permission", entity.ResourceVisibilityTenantOwner).Error; err != nil {
+		t.Fatalf("share canvas %s: %v", canvasID, err)
+	}
+	now := time.Now().UnixMilli()
+	grant := &entity.ResourceGrant{
+		ID:           "grant-canvas-" + canvasID + "-" + userID,
+		TenantID:     ownerUserID,
+		ResourceKind: "canvas",
+		ResourceID:   canvasID,
+		SubjectKind:  entity.GrantSubjectUser,
+		SubjectID:    userID,
+		Permission:   "read",
+		Effect:       entity.GrantEffectAllow,
+		BaseModel:    entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+	}
+	if err := dao.DB.Create(grant).Error; err != nil {
+		t.Fatalf("grant canvas %s to %s: %v", canvasID, userID, err)
+	}
 }
 
 func insertDatasetUpdateConnector(t *testing.T, id, tenantID string) {

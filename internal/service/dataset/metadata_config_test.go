@@ -217,12 +217,8 @@ func TestDatasetServiceUpdateDocumentMetadataConfigAllowsTeamMember(t *testing.T
 	pushServiceDB(t, db)
 	insertCreateDatasetTenant(t, "owner-1")
 	insertDatasetMetadataConfigKB(t, "kb-1", "owner-1")
-	if err := dao.DB.Model(&entity.Knowledgebase{}).
-		Where("id = ?", "kb-1").
-		Update("permission", string(entity.TenantPermissionTeam)).Error; err != nil {
-		t.Fatalf("update kb permission: %v", err)
-	}
 	insertDatasetMetadataConfigTeamMember(t, "user-1", "owner-1")
+	shareDatasetWithMember(t, "kb-1", "user-1")
 	insertDatasetMetadataConfigDoc(t, "doc-1", "kb-1", entity.JSONMap{})
 
 	ctx := t.Context()

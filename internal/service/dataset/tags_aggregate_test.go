@@ -241,9 +241,10 @@ func TestDatasetServiceAggregateTagsScopesLoaderToDatasetTenant(t *testing.T) {
 	kbInput := "523e4567-e89b-12d3-a456-426614174004"
 	kbID := strings.ReplaceAll(kbInput, "-", "")
 	const kbTenant = "tenant-owner"
-	insertAggregateTagsKB(t, kbID, kbTenant, string(entity.TenantPermissionTeam), "file-foreign", 0)
+	insertAggregateTagsKB(t, kbID, kbTenant, entity.ResourceVisibilityTenantOwner, "file-foreign", 0)
 	insertAggregateTagsDoc(t, "doc-scope", kbID, "file-foreign")
 	insertAggregateTagsMembership(t, kbTenant, "user-1")
+	shareDatasetWithMember(t, kbID, "user-1")
 	ctx := t.Context()
 
 	var gotOwner string
@@ -522,8 +523,9 @@ func TestDatasetServiceAggregateTagsScopesDocumentTagSourceToDatasetTenant(t *te
 
 	kbInput := "f23e4567-e89b-12d3-a456-426614174014"
 	const kbTenant = "tenant-owner"
-	insertAggregateTagsKB(t, strings.ReplaceAll(kbInput, "-", ""), kbTenant, string(entity.TenantPermissionTeam), "", 0)
+	insertAggregateTagsKB(t, strings.ReplaceAll(kbInput, "-", ""), kbTenant, entity.ResourceVisibilityTenantOwner, "", 0)
 	insertAggregateTagsMembership(t, kbTenant, "user-1")
+	shareDatasetWithMember(t, strings.ReplaceAll(kbInput, "-", ""), "user-1")
 	insertAggregateTagsDoc(t, "doc-owned", strings.ReplaceAll(kbInput, "-", ""), "file-foreign")
 
 	var gotOwner string
