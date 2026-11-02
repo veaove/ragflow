@@ -6,7 +6,11 @@ import {
 } from '@/components/list-view/list-data-table';
 import { AgentListItemType, IFlow } from '@/interfaces/database/agent';
 import { appTypeLabelKey } from '@/pages/analytics/app-type';
-import { formatKnowledgeBaseCell } from '@/utils/kb-labels';
+import {
+  EMPTY_LABEL,
+  formatKnowledgeBaseCell,
+  getKnowledgeBaseNames,
+} from '@/utils/kb-labels';
 import { AgentRowActions } from './agent-row-actions';
 
 /**
@@ -120,10 +124,16 @@ export function AgentListTable({
       title: t('common.knowledgeBase'),
       className: 'max-w-[240px]',
       render: (row) => {
-        // 原来只显示「N 个」，看不出引用了哪几个库；改成与问答/搜索列表同口径的
-        // 名称展示（最多两个 + 「等 N 个」，完整列表在 title 里）。
-        const names = (row.datasets ?? []).map((d) => d.name);
-        const { text, title } = formatKnowledgeBaseCell(names);
+        // 与问答/搜索列表同口径：后端成对返回 dataset_ids 与 kb_names，名称
+        // 映射统一走 kb-labels。模板组/内置流水线不是数据库实体、没有绑定关系，
+        // 按表头注释的约定显示占位符，而不是「未关联」。
+        if (row.type && row.type !== AgentListItemType.Agent) {
+          return <span className="text-text-secondary">{EMPTY_LABEL}</span>;
+        }
+
+        const { text, title } = formatKnowledgeBaseCell(
+          getKnowledgeBaseNames(row),
+        );
         return (
           <span
             className="line-clamp-1 text-text-secondary"

@@ -88,6 +88,12 @@ export declare interface IFlow {
   /** Most recent run start, epoch ms. */
   last_run_time?: number;
   datasets?: Pick<IDataset, 'id' | 'name' | 'avatar'>[];
+  /**
+   * 「关联知识库」列：后端成对返回，下标一一对应（与 /chats、/search 同口径）。
+   * 绑定关系从画布 DSL 的检索组件里解析，datasets 是早期只带名称的形状。
+   */
+  dataset_ids?: string[];
+  kb_names?: string[];
   tags?: string;
 }
 

@@ -222,6 +222,42 @@ type UserCanvasListItem struct {
 	LastRunTime *int64 `gorm:"column:last_run_time"`
 }
 
+// CanvasDSLRow is the minimal projection used to read a canvas' DSL blob.
+type CanvasDSLRow struct {
+	ID  string         `gorm:"column:id"`
+	DSL entity.JSONMap `gorm:"column:dsl"`
+}
+
+// ListDSLByIDs loads the DSL of the given canvases, keyed by canvas id.
+//
+// The list projection (UserCanvasListItem) deliberately skips dsl: every row
+// carries a longtext graph. Callers that need the graph (e.g. to know which
+// knowledge bases an agent is bound to) pay for it once per page instead of
+// dragging the blob through every list query.
+func (dao *UserCanvasDAO) ListDSLByIDs(ctx context.Context, db *gorm.DB, canvasIDs []string) (map[string]entity.JSONMap, error) {
+	if len(canvasIDs) == 0 {
+		return map[string]entity.JSONMap{}, nil
+	}
+
+	var rows []*CanvasDSLRow
+	if err := db.WithContext(ctx).
+		Model(&entity.UserCanvas{}).
+		Select("id, dsl").
+		Where("id IN ?", canvasIDs).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	dsls := make(map[string]entity.JSONMap, len(rows))
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		dsls[row.ID] = row.DSL
+	}
+	return dsls, nil
+}
+
 // ListByIDs lists permission-filtered canvases with optional metadata filters.
 func (dao *UserCanvasDAO) ListByIDs(ctx context.Context, db *gorm.DB, canvasIDs, ownerIDs []string, page, pageSize int, terms []OrderTerm, keywords string, canvasCategories []string, canvasType string, tags []string, release *bool) ([]*UserCanvasListItem, int64, error) {
 	if len(canvasIDs) == 0 {

@@ -332,6 +332,7 @@ var ErrAgentStorageError = errors.New("agent storage error")
 // AgentService agent service
 type AgentService struct {
 	canvasDAO                   *dao.UserCanvasDAO
+	kbDAO                       *dao.KnowledgebaseDAO
 	canvasTemplateDAO           *dao.CanvasTemplateDAO
 	userDAO                     *dao.UserDAO
 	userTenantDAO               *dao.UserTenantDAO
@@ -409,6 +410,7 @@ func NewAgentServiceWithOptions(
 	}
 	return &AgentService{
 		canvasDAO:                   dao.NewUserCanvasDAO(),
+		kbDAO:                       dao.NewKnowledgebaseDAO(),
 		canvasTemplateDAO:           dao.NewCanvasTemplateDAO(),
 		userDAO:                     dao.NewUserDAO(),
 		userTenantDAO:               dao.NewUserTenantDAO(),
@@ -457,6 +459,11 @@ type AgentItem struct {
 	LatestVersionSeq int `json:"latest_version_seq"`
 	// LastRunTime drives the "最近运行" column (epoch ms).
 	LastRunTime *int64 `json:"last_run_time,omitempty"`
+	// DatasetIDs / KBNames drive the "知识库" column. Same contract as /chats
+	// and /search: two arrays appended in one loop, so index i of KBNames is
+	// the name of DatasetIDs[i]. Empty means the canvas binds no dataset.
+	DatasetIDs []string `json:"dataset_ids,omitempty"`
+	KBNames    []string `json:"kb_names,omitempty"`
 	// Type discriminates agent vs compilation-template-group items in the merged
 	// /agents response. It is set only for merged items (agent => "agent").
 	Type string `json:"type,omitempty"`
@@ -699,6 +706,12 @@ func (s *AgentService) ListAgents(ctx context.Context, userID string, keywords s
 		agentItems[i] = toAgentItem(c)
 	}
 	s.attachReleaseTimes(ctx, agentItems)
+	// 「关联知识库」列：列表主查询不取 dsl（每行都是 longtext），这里按页补一次，
+	// 从绑定关系反查库名。失败直接报错而不是静默留空——静默正是这一列之前
+	// 一直显示「未关联」的原因。
+	if err := s.attachCanvasDatasets(ctx, agentItems); err != nil {
+		return nil, common.CodeServerError, fmt.Errorf("failed to resolve agent datasets: %w", err)
+	}
 
 	// Groups are owner-only (no team sharing) and scoped to the caller, so they
 	// are merged only when the caller's own tenant is an effective owner
