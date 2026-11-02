@@ -413,6 +413,9 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 		// 会话表：登录时按「是否允许多端」写入 / 清理，
 		// 表不存在会让登录直接失败，所以必须随服务启动收敛。
 		&entity.UserSession{},
+		// 知识库目录树是 Go 侧新增的表。文档列表的每一行都要读它，
+		// 缺表会让整个知识库文件页 500，所以必须在这里注册。
+		&entity.DocumentFolder{},
 	}
 	for _, m := range goRuntimeModels {
 		if err := autoMigrateSafely(ctx, db, m); err != nil {

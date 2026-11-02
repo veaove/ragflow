@@ -100,7 +100,9 @@ func (s *DocumentService) ListDocumentFolders(ctx context.Context, userID, datas
 	nodes := make([]*DocumentFolderNode, 0, len(folders))
 	var total int64 = unfiled
 	for _, folder := range folders {
-		fileCount, folderCount := subtreeCounts(children, directCounts, folder.ID)
+		// subtreeCounts 只统计子孙；FileCount 的口径是「整棵子树」，
+		// 所以要把目录自己的直属文件加回来，否则"解析文件夹"会少报数量。
+		subtreeFiles, folderCount := subtreeCounts(children, directCounts, folder.ID)
 		docCount := directCounts[folder.ID]
 		total += docCount
 		nodes = append(nodes, &DocumentFolderNode{
@@ -108,7 +110,7 @@ func (s *DocumentService) ListDocumentFolders(ctx context.Context, userID, datas
 			ParentID:    folder.ParentID,
 			Name:        folder.Name,
 			DocCount:    docCount,
-			FileCount:   fileCount,
+			FileCount:   docCount + subtreeFiles,
 			FolderCount: folderCount,
 			CreatedBy:   folder.CreatedBy,
 			CreateTime:  folder.CreateTime,
