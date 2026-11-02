@@ -183,3 +183,45 @@ func TestGrantLevelPrefersEdit(t *testing.T) {
 		t.Fatalf("edit grant should win over read, got %v", err)
 	}
 }
+
+// 普通成员亲手建的 permission=me 知识库，自己要能立刻打开。
+//
+// OwnerUserID 存的是「租户 owner」而不是创建者，所以创建者不在 owner 那一支里：
+// 不单独放行的话，用户创建成功、列表里也看得到，点进去却是 403/404。
+func TestPrivateResourceAllowsCreator(t *testing.T) {
+	db, memberID, ref := setupGrantFixture(t, "read")
+	// 把库的创建者改成这个普通成员，模拟他亲手创建。
+	if err := db.Model(&entity.Knowledgebase{}).
+		Where("id = ?", ref.ID).
+		Update("created_by", memberID).Error; err != nil {
+		t.Fatalf("update kb creator: %v", err)
+	}
+	// 授权行与创建者无关：创建者应当按 owner 口径放行。
+	if err := db.Where("id = ?", "grant-1").Delete(&entity.ResourceGrant{}).Error; err != nil {
+		t.Fatalf("drop grant: %v", err)
+	}
+
+	checker := NewDatabaseChecker(db)
+	ctx := context.Background()
+	for _, op := range []Operation{
+		OperationRead, OperationUpdate, OperationDelete, OperationRun, OperationUse,
+	} {
+		if err := checker.CheckResource(ctx, Subject{UserID: memberID}, ref, op); err != nil {
+			t.Errorf("creator should be allowed %q on own private resource, got %v", op, err)
+		}
+	}
+}
+
+// 创建者放行不能变成「普通成员互相可见」：非创建者、无授权时仍然被拒。
+func TestPrivateResourceStillDeniesNonCreator(t *testing.T) {
+	db, memberID, ref := setupGrantFixture(t, "read")
+	if err := db.Where("id = ?", "grant-1").Delete(&entity.ResourceGrant{}).Error; err != nil {
+		t.Fatalf("drop grant: %v", err)
+	}
+
+	checker := NewDatabaseChecker(db)
+	err := checker.CheckResource(context.Background(), Subject{UserID: memberID}, ref, OperationRead)
+	if !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("non-creator member must still be denied, got %v", err)
+	}
+}

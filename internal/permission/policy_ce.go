@@ -574,6 +574,13 @@ func (e *evaluation) resolveResource(ctx context.Context, subject Subject, resou
 
 	switch resource.Visibility {
 	case VisibilityPrivate:
+		// 创建者对自己的私有资源始终可用。OwnerUserID 是「租户 owner」，
+		// 不是创建者 —— 普通成员建完一个 permission=me 的知识库，紧接着
+		// 打开它就会被自己的私有库挡住（列表能看到，点进去 403/404）。
+		// 'me' 的语义就是「只有自己」，创建者必须在 owner 之外单独放行。
+		if resource.CreatedBy != "" && subject.UserID == resource.CreatedBy {
+			return resourceAccess(resource, AccessSourceOwner), nil
+		}
 		// private 默认只有 owner 可见；resource_grant 是它的唯一例外。
 		// 只在这一支查授权表：tenant 可见性已经放行，没必要为它多一次查询。
 		level, err := e.grantLevel(ctx, subject, resource)
