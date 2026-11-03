@@ -56,47 +56,79 @@ test.describe('越权访问 · 普通成员', () => {
     expect(member.status(), '成员角色变更应被 403 拦截').toBe(403);
   });
 
-  test('FINDING：成员能读到资源授权树（只读管理视角）', async ({
-    request,
-  }) => {
-    const res = await request.get(api.grantTree(TID), {
-      headers: { Authorization: tokenOf('member') },
-    });
-    const body = await res.json();
-    // 当前实现：grant.view 放行，树里是全部 18 个库（含 member 打不开的私库）。
-    // 只读、写操作已 403，但仍属信息暴露，记录在 PLAN.md「已知缺陷」。
-    expect(body.code).toBe(0);
-    expect(body.data.total).toBe(18);
+  test('授权树只含本人可读的资源（D2 回归）', async ({ request }) => {
+    const headers = { Authorization: tokenOf('member') };
+    const tree = await (await request.get(api.grantTree(TID), { headers })).json();
+    expect(tree.code).toBe(0);
+
+    // 预期：member 只看到自己可读的库（被授权库 + 自建库），看不到
+    // RESOURCES.privateKb（owner 的私库）。
+    const ids = (tree.data.nodes as { id: string }[]).map((n) => n.id);
+    expect(ids).toContain(RESOURCES.grantedKb.id);
+    expect(ids).not.toContain(RESOURCES.privateKb.id);
+    expect(tree.data.total).toBe(ids.length);
+
+    // 与列表接口保持一致：树里的库必须都在 /datasets 里出现。
+    const list = await (await request.get(api.datasets, { headers })).json();
+    const listIds = (list.data as { id: string }[]).map((d) => d.id);
+    for (const id of ids) {
+      expect(listIds, `授权树里的 ${id} 应同时出现在知识库列表`).toContain(id);
+    }
   });
 
-  test('FINDING：质检规则未按资源授权过滤', async ({ request }) => {
+  test('读不到的库按 id 展开子项 → 拒绝（D2 回归）', async ({ request }) => {
+    const headers = { Authorization: tokenOf('member') };
+    // 预期：不能靠换 id 绕过树上的收窄，子项接口直接拒绝，不返回任何文件名。
+    const denied = await (
+      await request.get(
+        `${api.grantExceptions(TID)}?kind=dataset&dataset_id=${RESOURCES.privateKb.id}`,
+        { headers },
+      )
+    ).json();
+    expect(denied.code).not.toBe(0);
+    expect(denied.data?.total ?? 0).toBe(0);
+
+    // 对照组：读得到的库可以正常展开（证明拒绝来自权限，不是接口本身报错）。
+    const allowed = await (
+      await request.get(
+        `${api.grantExceptions(TID)}?kind=dataset&dataset_id=${RESOURCES.grantedKb.id}`,
+        { headers },
+      )
+    ).json();
+    expect(allowed.code).toBe(0);
+  });
+
+  test('质检规则跟随应用可见性（D3 回归）', async ({ request }) => {
     const res = await request.get(api.qcRules, {
       headers: { Authorization: tokenOf('member') },
     });
     const body = await res.json();
     expect(body.code).toBe(0);
-    // 当前实现：规则按租户返回，与「归属应用是否可见」无关。
+    // 预期：member 一个可配置应用都看不到（/qc 页面为空态），规则列表也应为空；
+    // 租户管理层的列表不受影响（见下方 owner 用例）。
     expect(Array.isArray(body.data)).toBe(true);
-    expect(body.data.length).toBeGreaterThan(0);
+    expect(body.data.length).toBe(0);
+
+    const ownerRes = await request.get(api.qcRules, {
+      headers: { Authorization: tokenOf('owner') },
+    });
+    const ownerBody = await ownerRes.json();
+    expect(ownerBody.code).toBe(0);
+    expect(ownerBody.data.length).toBeGreaterThan(0);
   });
 
-  test.fixme(
-    '缺陷：成员看不到自己创建的私库（详情 200 / 列表缺失）',
-    async ({ request }) => {
-      const detail = await request.get(api.dataset(RESOURCES.memberOwnKb.id), {
-        headers: { Authorization: tokenOf('member') },
-      });
-      expect((await detail.json()).code).toBe(0);
+  test('成员能看到自己创建的私库（D1 回归）', async ({ request }) => {
+    const headers = { Authorization: tokenOf('member') };
+    const detail = await request.get(api.dataset(RESOURCES.memberOwnKb.id), {
+      headers,
+    });
+    expect((await detail.json()).code).toBe(0);
 
-      const list = await request.get(api.datasets, {
-        headers: { Authorization: tokenOf('member') },
-      });
-      const names = ((await list.json()).data as { name: string }[]).map(
-        (d) => d.name,
-      );
-      // 期望成立（创建者恒可见），当前实现不成立：列表 scope 只认
-      // owner / team / 授权 / 部门管理员，漏了 created_by = 本人。
-      expect(names).toContain(RESOURCES.memberOwnKb.name);
-    },
-  );
+    const list = await request.get(api.datasets, { headers });
+    const names = ((await list.json()).data as { name: string }[]).map(
+      (d) => d.name,
+    );
+    // 预期：创建者恒可见，列表与详情的可见集合一致。
+    expect(names).toContain(RESOURCES.memberOwnKb.name);
+  });
 });

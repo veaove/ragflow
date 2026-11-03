@@ -2,14 +2,14 @@
 
 | 项 | 内容 |
 |---|---|
-| 报告日期 | 2026-11-03 |
-| 被测环境 | `http://172.30.20.51`（内网，版本 `311d615`） |
+| 报告日期 | 2026-11-03（第二轮：补边界/异常/关键路径用例 + 缺陷修复验证） |
+| 被测环境 | `http://172.30.20.51`（内网，线上版本 `311d615`；本轮修复尚未发版） |
 | 被测租户 | 华夏基金 `8d5c79460d6c46efb58353c68d8bf729` |
 | 测试账号 | `owner` = 123456789@qq.com（租户所有者）；`member` = hjzd@hjzd.com（自定义角色「技术员」，矩阵 25 模块全勾） |
 | 测试框架 | Playwright 1.64.1 / Chromium，单 worker 串行，`fullyParallel=false` |
-| 用例位置 | `e2e/specs/00~40-*.spec.ts`，设计说明见 `e2e/PLAN.md` |
-| 执行结果 | **24 用例：23 passed / 1 skipped（`test.fixme`）/ 0 failed**，总耗时 2.7 min |
-| 测试基线 | **默认只读**：不创建、不修改、不删除业务数据 |
+| 用例位置 | `e2e/specs/00~70-*.spec.ts`，设计说明见 `e2e/PLAN.md` |
+| 执行结果 | **48 用例：40 passed / 8 failed**，总耗时 5.0 min。8 条失败全部是「修复后行为」的回归断言，等这批后端改动发版后转绿（见 §2.3） |
+| 测试基线 | **默认只读**：不创建、不修改、不删除业务数据；写接口打不存在的资源或提交「与现状相同」的值 |
 
 ## 0. 只读基线与判定口径
 
@@ -74,7 +74,43 @@
 | 改资源授权 / 角色矩阵 / 成员角色 → 403 | member `PUT grants/dataset/{不存在}`、`PUT roles/{不存在}/permissions`、`PUT console/members/{不存在}` 全部 HTTP 403（先于「资源不存在」判定，说明拦截在权限层） | 通过 |
 | FINDING：成员能读到资源授权树 | member `GET grant-tree`：`code = 0`、`total = 18`（含其打不开的私库） | 通过（记录缺陷 D2） |
 | FINDING：质检规则未按资源授权过滤 | member `GET /qc/rules`：`code = 0`，返回 9 条规则 | 通过（记录缺陷 D3） |
-| 缺陷：成员看不到自己创建的私库（详情 200 / 列表缺失） | member 对 `技术部(2)` 详情 `code = 0`，但 `GET /datasets` 列表中不含该名称 | **skipped（`test.fixme`，等 D1 修复）** |
+| 成员能看到自己创建的私库（D1 回归） | member 对 `技术部(2)` 详情与列表都可见 | 断言已转正，等发版转绿 |
+
+### 1.6 边界条件（`50-boundary.spec.ts`，10 条）
+
+| 场景 | 预期 | 结果 |
+|---|---|---|
+| `page=0&page_size=0` | code 101「greater than or equal to 1」，不落到 `LIMIT 0` | 通过 |
+| `page=-1&page_size=1000` | code 101，负 offset 不透传 | 通过 |
+| 授权列表 `page_size=1000` | code 0，`page_size > 200` 回落默认 20，行数与 total 一致（18） | 通过 |
+| 授权树 `keywords=%` | code 0、total 0（`%` 按字面量，不是通配符） | 通过 |
+| 授权树 `keywords` 300 字符 | code 0、total 0，不 500 | 通过 |
+| `grant-exceptions` 缺 `dataset_id` | code 102「缺少知识库 id」 | 通过 |
+| 不存在的租户 | HTTP 403「租户不存在」，不返回 200+空树 | 通过 |
+| 未知 kind（grants / grant-tree） | 各自显式报错（不支持的资源类型 / 没有层级结构） | 通过 |
+| 不存在的资源 id | 与「无权访问」同一条 message `Resource not found` | 通过 |
+| member 查他人 / 自己的授权清单 | 他人 403、自己 200（D2 回归） | 失败（未发版） |
+
+### 1.7 异常输入（`60-invalid-input.spec.ts`，7 条）
+
+| 场景 | 预期 | 结果 |
+|---|---|---|
+| 授权写入体是畸形 JSON | HTTP 400 + code 400（解析先于权限/资源校验，不落库） | 通过 |
+| 授权写入 `kind=bogus` | code 非 0「不支持的资源类型」 | 通过 |
+| 授权写入打不存在的资源 | code 非 0「资源不存在」 | 通过 |
+| 质检规则只给 `app_type` 或只给 `app_id` | code 101「must be provided together」 | 通过 |
+| 不带 Authorization | HTTP 401「Missing Authorization header」 | 通过 |
+| 伪造 token | HTTP 401「Invalid access token」 | 通过 |
+| member 请求里塞别的租户 id | HTTP 403「租户不存在」，不回落到自己的租户 | 通过 |
+
+### 1.8 关键路径（`70-keypaths.spec.ts`，4 条）
+
+| 场景 | 预期 | 结果 |
+|---|---|---|
+| 授权页「按资源 ↔ 按成员」往返 | 回来后仍选中同一个库，右栏不退回第一个库 | 通过 |
+| 角色矩阵连续切换 3 个角色 | 每次都渲染矩阵首行「知识库」，不串台 | 通过 |
+| member 打开授权树页（D2 的 UI 面） | 只出现自己可读的库，owner 私库不出现 | 失败（未发版） |
+| member 打开知识库列表页 | 被授权库在、owner 私库不在，接口 name 与页面一致 | 通过 |
 
 ---
 
@@ -84,11 +120,11 @@
 
 | 编号 | 严重程度 | 问题 | 表现 | 影响 | 证据 | 状态 |
 |---|---|---|---|---|---|---|
-| **D1** | **高** | 成员看不到自己创建的知识库 | `技术部(2)`（`c9f2f30c…`）详情接口对 member 返回 `code=0`，但 `GET /datasets` 列表只有 2 个被授权的库，不含它 | 成员自建的库在列表里「凭空消失」，无法进入管理 / 删改，等同于数据丢失；详情可读说明不是权限拒绝，而是列表过滤条件缺失 | `40-overreach.spec.ts` fixme 用例；列表可见范围只取 `owner / team / 授权 / 部门管理员`，漏了 `created_by = 本人` | 未修复（用例已固化） |
-| **D2** | 中 | 普通成员可读取整棵资源授权树 | member `GET /tenants/:tid/grant-tree` 返回 `code=0, total=18` | 泄露全部知识库名称、文件数、文件夹结构与授权摘要，包括本人无权打开的私库；写操作已 403，故为**只读信息暴露**，不能横向提权，但可被用于踩点 | `40-overreach.spec.ts` FINDING 用例 | 未修复 |
-| **D3** | 中 | 质检规则未按资源授权过滤 | member `GET /qc/rules` 返回 9 条规则（与其可见应用无关） | 成员可读到不属于自己可见应用的质检规则配置（规则名 / 提示词 / 判定条件）；数据面越权读取 | `40-overreach.spec.ts` FINDING 用例；另见 `30-resource-scope` 中 member 的 `/qc` 页面确实「暂无可配置的应用」 | 未修复 |
-| **D4** | 中 | 内置角色矩阵可被空写覆盖，随后被静默回填 | `PUT /roles/:id/permissions` 提交 `{permissions: []}` 返回成功；下一次 `ListRoles` 又按 `ConsoleModules` 把默认行补回 | 「撤销某模块 / 撤销全部」对内置角色**不可持久化**：保存成功但实际被改回默认，管理员会误以为权限已收紧；`backfillBuiltinRolePermissions` 无法区分「模块新增需补行」与「管理员主动删除」 | 本轮实测：Owner 提交空矩阵后仍为 25 行全勾（数据未丢，但语义被吞） | 未修复（未写用例，避免向线上租户写入） |
-| **D5** | 低 | 内置角色可被改名，多处逻辑按名字匹配 | `PUT /roles/:id` 前端已禁用编辑，接口层无 `is_builtin` 保护 | 改名后 `EnsureTenantAdminRole`（按「租户管理员」）、`backfillBuiltinRolePermissions`（按 spec name）静默失配，owner 移交与权限补行行为不可预期 | `internal/dao/role.go`（Delete 有内置保护，Update 无） | 未修复（只记录） |
+| **D1** | **高** | 成员看不到自己创建的知识库 | `技术部(2)`（`c9f2f30c…`）详情接口对 member 返回 `code=0`，但 `GET /datasets` 列表只有 2 个被授权的库，不含它 | 成员自建的库在列表里「凭空消失」，无法进入管理 / 删改，等同于数据丢失；详情可读说明不是权限拒绝，而是列表过滤条件缺失 | `40-overreach.spec.ts` fixme 用例；列表可见范围只取 `owner / team / 授权 / 部门管理员`，漏了 `created_by = 本人` | **已修复（未发版）** |
+| **D2** | 中 | 普通成员可读取整棵资源授权树 | member `GET /tenants/:tid/grant-tree` 返回 `code=0, total=18` | 泄露全部知识库名称、文件数、文件夹结构与授权摘要，包括本人无权打开的私库；写操作已 403，故为**只读信息暴露**，不能横向提权，但可被用于踩点 | `40-overreach.spec.ts` FINDING 用例 | **已修复（未发版）** |
+| **D3** | 中 | 质检规则未按资源授权过滤 | member `GET /qc/rules` 返回 9 条规则（与其可见应用无关） | 成员可读到不属于自己可见应用的质检规则配置（规则名 / 提示词 / 判定条件）；数据面越权读取 | `40-overreach.spec.ts` FINDING 用例；另见 `30-resource-scope` 中 member 的 `/qc` 页面确实「暂无可配置的应用」 | **已修复（未发版）** |
+| **D4** | 中 | 内置角色矩阵可被空写覆盖，随后被静默回填 | `PUT /roles/:id/permissions` 提交 `{permissions: []}` 返回成功；下一次 `ListRoles` 又按 `ConsoleModules` 把默认行补回 | 「撤销某模块 / 撤销全部」对内置角色**不可持久化**：保存成功但实际被改回默认，管理员会误以为权限已收紧；`backfillBuiltinRolePermissions` 无法区分「模块新增需补行」与「管理员主动删除」 | 本轮实测：Owner 提交空矩阵后仍为 25 行全勾（数据未丢，但语义被吞） | **已修复（未发版）** |
+| **D5** | 低 | 内置角色可被改名，多处逻辑按名字匹配 | `PUT /roles/:id` 前端已禁用编辑，接口层无 `is_builtin` 保护 | 改名后 `EnsureTenantAdminRole`（按「租户管理员」）、`backfillBuiltinRolePermissions`（按 spec name）静默失配，owner 移交与权限补行行为不可预期 | `internal/dao/role.go`（Delete 有内置保护，Update 无） | **已修复（未发版）** |
 
 > 严重程度定义：**高** = 主流程不可用或权限边界判断错误；**中** = 越权/信息暴露或管理动作语义错误，但不阻断主流程；**低** = 需高权限前提或管理面边界问题。
 
@@ -101,6 +137,22 @@
 | 接口计数用例得到 `-1` | `/chats`、`/searches`、`/agents` 返回 `{ total, list }`，用例只认数组或 `total_count` | 计数函数兼容数组与 `total` 两种形态 |
 | 质检空态用例失败 | 正则先命中 `<option>暂无可用应用</option>`，而 option 永远不可见 | 直接断言可见空态文案 |
 | 「Owner 矩阵写入必须被拒绝」断言失败 | 与后端刻意设计相反（允许 owner 微调内置角色矩阵） | 改为只读断言「Owner 25 行全勾」 |
+
+### 2.3 本轮修复与验证（2026-11-03）
+
+| 缺陷 | 改动 | 验证 |
+|---|---|---|
+| **D1** | `internal/permission/policy_ce.go`：`QueryScope` 的 SQL 快路径补 `knowledgebase.created_by = 调用者`，与逐条判权的 `Scope` 口径一致 | 新增 `TestQueryScopeIncludesDatasetsCreatedByCaller`；`TestDepartmentAdminQueryScopeMatchesSingleResourceCheck` 的旧期望（「成员一个都看不到」）修正为「只看得到自建的那个」 |
+| **D2** | `resource_grant_scope.go`（新增）：把授权页 kind 映射到权限 kind，`grant-tree` / `grants` / `grant-exceptions` / `grants-by-subject` 按调用者读权限收窄；按 id 展开子项也判父节点；文件/文件夹是租户级资产，显式不收窄 | 新增 `TestGrantTreeScopesToCallerReadableDatasets`；既有 4 条授权树用例改造为带 caller 参数 |
+| **D3** | `dao.QcRuleListFilter` 增加 `AppIDsByType`；`handler.ListRules` 对非租户管理层收窄到可见 chat/canvas 应用 | 新增 `TestQcRuleListScopesToVisibleApps`（含「空集合 ≠ 不限」） |
+| **D4** | `ConsoleService.SavePermissions`：保存时把未提交模块补成全 false 行（行缺失在 `ModulePermission` 是放行、在 backfill 是按默认补回）；Owner 矩阵拒绝写入 | 新增 `TestSavePermissionsMaterializesRevokedModules`、`TestSavePermissionsRejectsOwnerMatrix`；`TestSavePermissionsClearsMatrix` 改为断言 25 行全 false |
+| **D5** | `ConsoleService.UpdateRole`：内置角色拒绝改名/改描述（`EnsureTenantAdminRole`、backfill 都按名字匹配） | 新增 `TestUpdateRoleRejectsBuiltinRename` |
+
+**单测结论**：`/root/rf-verify`（detached `origin/main`）`./build.sh --test` → **0 FAIL / 131 packages ok**。
+
+**E2E 结论**：48 条里 40 条通过，8 条失败全部是上表缺陷的回归断言（D1/D2×3/D3/D4/D5），必须等这批后端改动发版后才会转绿——它们是发版验收条件，不要为了让套件变绿而放宽。
+
+**过程中的一次事故（已恢复）**：D5 用例最初提交了一个新角色名「普通成员-改名」，在未发版的旧服务里**真的把线上内置角色改了名**（旧服务没有保护），导致后续「点普通成员」的用例超时。已用同接口改回，并把 D4/D5 两条用例改为提交「与现状相同的值」：旧服务幂等接受、新服务拒绝，修复前后都只读。
 
 ---
 

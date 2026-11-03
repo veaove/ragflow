@@ -5,3 +5,4 @@ probe-out/
 report/
 test-results/
 test-results-*/
+tmp-results*/

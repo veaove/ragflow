@@ -93,8 +93,10 @@ export const api = {
     `/api/v1/tenants/${tenantId}/grant-tree?kind=${kind}`,
   grants: (tenantId: string, kind = 'dataset') =>
     `/api/v1/tenants/${tenantId}/grants?kind=${kind}`,
-  grantsBySubject: (tenantId: string, subjectId: string) =>
-    `/api/v1/tenants/${tenantId}/grants-by-subject?subject_id=${subjectId}`,
+  grantExceptions: (tenantId: string) =>
+    `/api/v1/tenants/${tenantId}/grant-exceptions`,
+  grantsBySubject: (tenantId: string, subjectId: string, subjectKind = 'user') =>
+    `/api/v1/tenants/${tenantId}/grants-by-subject?subject_kind=${subjectKind}&subject_id=${subjectId}`,
   setGrants: (tenantId: string, kind: string, resourceId: string) =>
     `/api/v1/tenants/${tenantId}/grants/${kind}/${resourceId}`,
 };

@@ -60,16 +60,81 @@ test.describe('角色权限 · 矩阵渲染与只读约束', () => {
 
   /**
    * 内置角色的矩阵「可以被写」是刻意设计（见 dao.RoleDAO.ReplacePermissions：
-   * 允许 owner 微调内置角色，避免为改一格权限重建一个自定义角色），所以这里
-   * 不断言「写被拒绝」，而是断言矩阵本身始终满格 —— owner 身份在
-   * ModulePermission 里本来就永远放行，矩阵被改窄只会误伤其他成员。
-   *
-   * 现存缺陷（不写成用例，避免往线上真实租户写数据）：
-   * 1. PUT /roles/:id 对内置角色不拦改名，而「租户管理员」查找与 backfill 都按
-   *    名字匹配，改名后这些逻辑静默失效；
-   * 2. 给内置角色提交空矩阵会返回成功，但下一次 ListRoles 会按 ConsoleModules
-   *    回填默认行 —— 「撤销全部」无法持久化，看着保存成功，实际被改回默认。
+   * 允许 owner 微调内置角色，避免为改一格权限重建一个自定义角色）；但 Owner
+   * 例外 —— 它对应 user_tenant.role 枚举，DAO 里本来就对 owner 无条件放行，
+   * 所以 Owner 的矩阵开写入口只会让「改了没效果」变成一张工单（D4 的修法）。
    */
+  test('Owner 矩阵写入被拒绝（D4 回归）', async ({ request }) => {
+    const headers = {
+      Authorization: tokenOf('owner'),
+      'Content-Type': 'application/json',
+    };
+    const roles = await (
+      await request.get(api.roles(TID), { headers })
+    ).json();
+    const owner = (roles.data.roles as { id: string; name: string }[]).find(
+      (r) => r.name === 'Owner',
+    );
+    expect(owner, 'Owner 角色应存在').toBeTruthy();
+
+    // 提交的是「当前这份矩阵」而不是空数组：老版本会接受并重写（值不变，无副作用），
+    // 新版本会拒绝。这样这条用例在修复前后都只读，不会把线上矩阵清空。
+    const current = await (await request.get(api.roles(TID), { headers })).json();
+    const rows = (
+      current.data.roles as {
+        name: string;
+        permissions: Record<string, unknown>[];
+      }[]
+    ).find((r) => r.name === 'Owner')!.permissions;
+    const res = await request.put(api.rolePermissions(TID, owner!.id), {
+      headers,
+      data: { permissions: rows },
+    });
+    const body = await res.json();
+    expect(body.code, 'Owner 矩阵写入必须被拒绝').not.toBe(0);
+
+    // 写失败后矩阵仍是满格：25 行 × 5 动作全 true。
+    const after = await (await request.get(api.roles(TID), { headers })).json();
+    const stillFull = (
+      after.data.roles as {
+        name: string;
+        permissions: (Record<string, boolean> & { module: string })[];
+      }[]
+    ).find((r) => r.name === 'Owner')!;
+    expect(stillFull.permissions.length).toBe(after.data.modules.length);
+    for (const row of stillFull.permissions) {
+      expect(row.can_view, `Owner 的「${row.module}」被改窄了`).toBe(true);
+    }
+  });
+
+  test('内置角色不可改名（D5 回归）', async ({ request }) => {
+    const headers = {
+      Authorization: tokenOf('owner'),
+      'Content-Type': 'application/json',
+    };
+    const roles = await (
+      await request.get(api.roles(TID), { headers })
+    ).json();
+    const builtin = (
+      roles.data.roles as { id: string; name: string; is_builtin: boolean }[]
+    ).find((r) => r.name === '普通成员');
+    expect(builtin?.is_builtin).toBe(true);
+
+    // 提交「改回自己现在的名字」：老版本接受但值不变（幂等），新版本拒绝。
+    // 不能发一个新名字 —— 未发版的旧服务会真的把内置角色改掉（本套件踩过）。
+    const res = await request.put(`${api.roles(TID)}/${builtin!.id}`, {
+      headers,
+      data: { name: builtin!.name },
+    });
+    const body = await res.json();
+    expect(body.code, '内置角色改名必须被拒绝').not.toBe(0);
+
+    const after = await (await request.get(api.roles(TID), { headers })).json();
+    const names = (after.data.roles as { name: string }[]).map((r) => r.name);
+    expect(names).toContain('普通成员');
+    expect(names).toHaveLength(6);
+  });
+
   test('Owner 内置角色：矩阵满 25 个模块且全勾', async ({ request }) => {
     const body = await (
       await request.get(api.roles(TID), {

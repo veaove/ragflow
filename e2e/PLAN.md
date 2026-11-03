@@ -14,10 +14,13 @@ e2e/
 ├── support/global-setup.ts# .auth 缺失时自动跑 auth.mjs
 └── specs/
     ├── 00-smoke.spec.ts        # 登录态、一级导航、未登录跳转
-    ├── 10-role-matrix.spec.ts  # 角色列表、矩阵渲染、Owner 满格
+    ├── 10-role-matrix.spec.ts  # 角色列表、矩阵渲染、Owner 满格、D4/D5 回归
     ├── 20-grant.spec.ts        # 授权树层级、右栏联动、接口字段
     ├── 30-resource-scope.spec.ts # 六类资源的可见边界与接口计数
-    └── 40-overreach.spec.ts    # 普通成员的越权读写
+    ├── 40-overreach.spec.ts    # 越权 + D1/D2/D3 回归断言
+    ├── 50-boundary.spec.ts     # 分页上下界、通配符、超长参数、越界 id
+    ├── 60-invalid-input.spec.ts# 畸形 JSON、非法 kind、缺参、401/403
+    └── 70-keypaths.spec.ts     # 页面往返、角色切换、成员入口不串台
 ```
 
 ## 只读基线
@@ -32,13 +35,16 @@ e2e/
 
 完整的场景覆盖清单、分级与未覆盖项见 `docs/e2e-permission-report.md`；下表只留演进记录。
 
-| # | 缺陷 | 证据 | 处理 |
-|---|---|---|---|
-| D1 | 成员看不到自己创建的私库：详情 200，列表缺失 | `技术部(2)` 详情 `code=0`，`GET /datasets` 只回 2 个被授权的库 | `40-overreach` 的 `test.fixme`；列表 scope 只认 owner / team / 授权 / 部门管理员，漏了 `created_by = 本人` |
-| D2 | 成员能读整棵资源授权树（18 个库，含打不开的私库） | `GET /tenants/:id/grant-tree` 对该成员 `code=0, total=18` | FINDING 用例；只读、写已 403，属信息暴露 |
-| D3 | 质检规则未按资源授权过滤，按租户返回 | 成员 `GET /qc/rules` 拿到 9 条规则 | FINDING 用例；规则归属应用对成员不可见，规则本身仍可读 |
-| D4 | 内置角色矩阵可被空写覆盖，随后被静默回填 | `PUT /roles/:id/permissions` 提交 `{permissions: []}` 返回成功，下次 `ListRoles` 又按 `ConsoleModules` 补回默认行 | 不写成用例（要写线上数据）；`dao.backfillBuiltinRolePermissions` 无法区分「模块新增」与「管理员撤销」 |
-| D5 | 内置角色可被改名，而多处逻辑按名字匹配 | `PUT /roles/:id` 无 `is_builtin` 保护；`EnsureTenantAdminRole` / backfill 按 `name` 查 | 前端已禁用编辑，接口层未拦；同上，只记录 |
+| # | 缺陷 | 证据 | 处理 | 修复 |
+|---|---|---|---|---|
+| D1 | 成员看不到自己创建的私库：详情 200，列表缺失 | `技术部(2)` 详情 `code=0`，`GET /datasets` 只回 2 个被授权的库 | `40-overreach` 的 `test.fixme`；列表 scope 只认 owner / team / 授权 / 部门管理员，漏了 `created_by = 本人` | `8ba40d72e`：`QueryScope` 的 SQL 补 `created_by`，用例转正 |
+| D2 | 成员能读整棵资源授权树（18 个库，含打不开的私库） | `GET /tenants/:id/grant-tree` 对该成员 `code=0, total=18` | FINDING 用例；只读、写已 403，属信息暴露 | `8ba40d72e` `266dd05f0`：树/列表/子项/按成员全部按读权限收窄；文件与文件夹是租户级资产，不收窄 |
+| D3 | 质检规则未按资源授权过滤，按租户返回 | 成员 `GET /qc/rules` 拿到 9 条规则 | FINDING 用例；规则归属应用对成员不可见，规则本身仍可读 | `8ba40d72e`：普通成员收窄到可见 chat/canvas 应用，管理层保持全量 |
+| D4 | 内置角色矩阵可被空写覆盖，随后被静默回填 | `PUT /roles/:id/permissions` 提交 `{permissions: []}` 返回成功，下次 `ListRoles` 又按 `ConsoleModules` 补回默认行 | 不写成用例（要写线上数据）；`dao.backfillBuiltinRolePermissions` 无法区分「模块新增」与「管理员撤销」 | `8ba40d72e`：保存时补满 25 行（false 也落库），Owner 矩阵拒绝写入 |
+| D5 | 内置角色可被改名，而多处逻辑按名字匹配 | `PUT /roles/:id` 无 `is_builtin` 保护；`EnsureTenantAdminRole` / backfill 按 `name` 查 | 前端已禁用编辑，接口层未拦；同上，只记录 | `8ba40d72e`：`UpdateRole` 拒绝内置角色 |
+
+修复的单测结论：`/root/rf-verify` 全量 `./build.sh --test` → **0 FAIL / 131 packages ok**（2026-11-03）。
+E2E 里的 D1–D5 回归断言要等这次后端发版后才转绿，它们是发版的验收条件。
 
 ## 运行
 
