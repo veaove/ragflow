@@ -14,7 +14,7 @@ import {
 import { GrantTarget, defaultScopeLabel } from './grant-dialog';
 import { GrantKeys } from './grant-keys';
 
-const DOCUMENT_PAGE_SIZE = 10;
+const DEFAULT_DOCUMENT_PAGE_SIZE = 10;
 
 function grantTagClass(grant: GrantSubject) {
   return grant.effect === 'deny'
@@ -50,18 +50,18 @@ function DocumentRow({ doc, dataset, onEdit }: DocumentRowProps) {
   }, [dataset.name, dataset.resourceId, doc, onEdit]);
 
   return (
-    <TableRow className="hover:bg-bg-list/50">
-      <TableCell className="text-sm text-text-primary">
-        <div className="flex items-center gap-2 pl-8">
+    <tr className="border-t border-border-default/60">
+      <td className="py-2 pr-3 text-sm text-text-primary">
+        <div className="flex items-center gap-2 pl-2">
           <LucideFileText className="size-3.5 shrink-0 text-text-secondary" />
           <span className="truncate">{doc.document_name || '-'}</span>
         </div>
-      </TableCell>
-      <TableCell className="text-xs text-text-secondary">文件</TableCell>
-      <TableCell className="text-xs">
+      </td>
+      <td className="py-2 pr-3 text-xs text-text-secondary">文件</td>
+      <td className="py-2 pr-3 text-xs">
         {doc.created_by_name || doc.created_by || '-'}
-      </TableCell>
-      <TableCell className="text-xs">
+      </td>
+      <td className="py-2 pr-3 text-xs">
         {doc.restricted ? (
           <div className="flex flex-wrap gap-1">
             {(doc.grants ?? []).map((grant, idx) => (
@@ -78,8 +78,8 @@ function DocumentRow({ doc, dataset, onEdit }: DocumentRowProps) {
             继承自知识库（{defaultScopeLabel(dataset.defaultScope)}）
           </span>
         )}
-      </TableCell>
-      <TableCell className="whitespace-nowrap text-xs">
+      </td>
+      <td className="whitespace-nowrap py-2 text-xs">
         <button
           type="button"
           className="text-accent-primary hover:underline"
@@ -87,8 +87,8 @@ function DocumentRow({ doc, dataset, onEdit }: DocumentRowProps) {
         >
           设置
         </button>
-      </TableCell>
-    </TableRow>
+      </td>
+    </tr>
   );
 }
 
@@ -106,6 +106,9 @@ interface GrantDocumentRowsProps {
  * 资源行展开后显示的文件列表。
  *
  * 只在展开时挂载，查询按库分页 —— 一个库可能有上千个文件，不展开的库不请求。
+ *
+ * 整个展开区包在一个灰色边框容器里：这些行是表格的一部分，不加容器时展开内容
+ * 和上下资源行糊在一起，看不出哪几行属于展开项。
  */
 export function GrantDocumentRows({
   tenantId,
@@ -113,6 +116,7 @@ export function GrantDocumentRows({
   onEdit,
 }: GrantDocumentRowsProps) {
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_DOCUMENT_PAGE_SIZE);
   const [keywords, setKeywords] = useState('');
 
   const { data, isFetching } = useQuery({
@@ -120,14 +124,14 @@ export function GrantDocumentRows({
       tenantId,
       dataset.resourceId,
       page,
-      DOCUMENT_PAGE_SIZE,
+      pageSize,
       keywords,
     ),
     queryFn: async () => {
       const res = await fetchGrantDocuments(tenantId, dataset.resourceId, {
         keywords: keywords || undefined,
         page,
-        page_size: DOCUMENT_PAGE_SIZE,
+        page_size: pageSize,
       });
       return res?.data?.data ?? { documents: [], total: 0 };
     },
@@ -143,15 +147,24 @@ export function GrantDocumentRows({
     [],
   );
 
-  const handlePageChange = useCallback((nextPage: number) => {
-    setPage(nextPage);
-  }, []);
+  // 换每页条数必须回到第一页：停在第 3 页再切成 100 条/页会落到一个空页。
+  const handlePageChange = useCallback(
+    (nextPage: number, nextSize: number) => {
+      if (nextSize !== pageSize) {
+        setPageSize(nextSize);
+        setPage(1);
+        return;
+      }
+      setPage(nextPage);
+    },
+    [pageSize],
+  );
 
   return (
-    <>
-      <TableRow className="bg-bg-list/60">
-        <TableCell colSpan={5} className="py-2">
-          <div className="flex flex-wrap items-center gap-3 pl-8">
+    <TableRow className="hover:bg-transparent">
+      <TableCell colSpan={5} className="p-2">
+        <div className="overflow-hidden rounded-lg border border-border-default bg-bg-base">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border-default bg-bg-list/50 px-3 py-2">
             <span className="text-xs text-text-secondary">
               {isFetching ? '加载中…' : `共 ${total} 个文件`}
             </span>
@@ -165,43 +178,38 @@ export function GrantDocumentRows({
               未单独设置的文件继承知识库的可见范围
             </span>
           </div>
-        </TableCell>
-      </TableRow>
 
-      {documents.length === 0 && (
-        <TableRow>
-          <TableCell
-            colSpan={5}
-            className="py-4 pl-8 text-xs text-text-secondary"
-          >
-            {isFetching ? '…' : '没有匹配的文件'}
-          </TableCell>
-        </TableRow>
-      )}
+          {documents.length === 0 ? (
+            <p className="px-3 py-4 text-xs text-text-secondary">
+              {isFetching ? '…' : '没有匹配的文件'}
+            </p>
+          ) : (
+            <table className="w-full">
+              <tbody>
+                {documents.map((doc) => (
+                  <DocumentRow
+                    key={doc.document_id}
+                    doc={doc}
+                    dataset={dataset}
+                    onEdit={onEdit}
+                  />
+                ))}
+              </tbody>
+            </table>
+          )}
 
-      {documents.map((doc) => (
-        <DocumentRow
-          key={doc.document_id}
-          doc={doc}
-          dataset={dataset}
-          onEdit={onEdit}
-        />
-      ))}
-
-      {total > DOCUMENT_PAGE_SIZE && (
-        <TableRow>
-          <TableCell colSpan={5} className="py-1">
-            <div className="flex justify-end">
+          {total > 0 && (
+            <div className="flex justify-end border-t border-border-default px-3 py-1.5">
               <RAGFlowPagination
                 total={total}
                 current={page}
-                pageSize={DOCUMENT_PAGE_SIZE}
+                pageSize={pageSize}
                 onChange={handlePageChange}
               />
             </div>
-          </TableCell>
-        </TableRow>
-      )}
-    </>
+          )}
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }
