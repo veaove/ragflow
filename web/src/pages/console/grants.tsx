@@ -43,7 +43,7 @@ import {
 } from './grant-dialog';
 import { GrantKeys } from './grant-keys';
 import { GrantMemberView } from './grant-member-view';
-import { GrantTree, findGrantNodePath } from './grant-tree';
+import { GrantTree, findGrantNode, findGrantNodePath } from './grant-tree';
 
 type GrantKind = string;
 
@@ -284,8 +284,9 @@ export default function ConsoleGrants() {
   const total = data?.total ?? 0;
 
   // 选中节点由 id 记录，树刷新后按 id 找回；找不到时回落到第一个根节点。
+  // 必须在整棵树里找：只比根节点的话，点子文件夹会落回第一个库。
   const selectedNode = useMemo(
-    () => nodes.find((n) => n.id === selectedNodeId) ?? nodes[0],
+    () => findGrantNode(nodes, selectedNodeId) ?? nodes[0],
     [nodes, selectedNodeId],
   );
   const trail = useMemo(
@@ -469,28 +470,41 @@ export default function ConsoleGrants() {
           </div>
         </header>
 
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <div className="flex flex-wrap gap-1 rounded-md bg-background-second p-1">
-            {kinds.map((tab) => (
-              <button
-                key={tab.kind}
-                type="button"
-                value={tab.kind}
-                onClick={handleKindChange}
-                className={`rounded px-3 py-1 text-sm ${
-                  kind === tab.kind
-                    ? 'bg-bg-base text-text-primary shadow-sm'
-                    : 'text-text-secondary hover:text-text-primary'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+        <div className="mb-3 flex flex-wrap items-end gap-3 border-b border-border-default">
+          {/*
+            用下划线而不是小胶囊：胶囊的选中色和页面底色太接近，十几个 sheet
+            排在一起时根本看不出当前在哪一个。
+          */}
+          <div
+            role="tablist"
+            aria-label="资源类型"
+            className="flex flex-wrap items-center gap-1"
+          >
+            {kinds.map((tab) => {
+              const active = kind === tab.kind;
+              return (
+                <button
+                  key={tab.kind}
+                  type="button"
+                  role="tab"
+                  value={tab.kind}
+                  aria-selected={active}
+                  onClick={handleKindChange}
+                  className={`-mb-px border-b-2 px-3 pb-2 pt-1 text-sm transition-colors duration-150 ${
+                    active
+                      ? 'border-accent-primary font-medium text-accent-primary'
+                      : 'border-transparent text-text-secondary hover:border-border-default hover:text-text-primary'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
 
           {/* 有层级的类型把搜索放进左栏，按资源宽度优先给树和详情面板。 */}
           {!hierarchical && (
-            <div className="relative ml-auto">
+            <div className="relative mb-1 ml-auto">
               <LucideSearch className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
               <Input
                 value={keywords}
@@ -502,10 +516,19 @@ export default function ConsoleGrants() {
           )}
         </div>
 
+        {/* 每个分支自己带 key + 淡入：切 sheet / 切视角时内容区明显换一片。 */}
         {view === 'member' ? (
-          <GrantMemberView tenantId={tenantId ?? ''} members={members} />
+          <div
+            key="member"
+            className="flex min-h-0 flex-1 animate-in flex-col fade-in-0 duration-200"
+          >
+            <GrantMemberView tenantId={tenantId ?? ''} members={members} />
+          </div>
         ) : hierarchical ? (
-          <div className="flex min-h-0 flex-1 gap-4">
+          <div
+            key={`tree-${kind}`}
+            className="flex min-h-0 flex-1 animate-in gap-4 fade-in-0 duration-200"
+          >
             <aside className="flex w-[320px] shrink-0 flex-col rounded-lg border border-border-default bg-bg-base">
               <div className="border-b border-border-default p-2">
                 <div className="mb-1.5 flex items-center justify-between px-1 text-xs text-text-secondary">
@@ -537,17 +560,24 @@ export default function ConsoleGrants() {
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-border-default bg-bg-base p-4">
               {selectedNode ? (
-                <GrantDetailPanel
-                  tenantId={tenantId ?? ''}
-                  kind={kind}
-                  node={selectedNode}
-                  trail={trail}
-                  inheritedFrom={inheritedFrom}
-                  onEdit={setEditing}
-                  onRemove={handleRemoveGrant}
-                  onClearException={handleClearException}
-                  onVisibilityChange={handleVisibilityChange}
-                />
+                // key 换掉即重挂：同一位置换内容时给一段淡入，点文件夹才不会
+                // 显得「点了没反应」。
+                <div
+                  key={selectedNode.id}
+                  className="animate-in fade-in-0 duration-150 slide-in-from-bottom-1"
+                >
+                  <GrantDetailPanel
+                    tenantId={tenantId ?? ''}
+                    kind={kind}
+                    node={selectedNode}
+                    trail={trail}
+                    inheritedFrom={inheritedFrom}
+                    onEdit={setEditing}
+                    onRemove={handleRemoveGrant}
+                    onClearException={handleClearException}
+                    onVisibilityChange={handleVisibilityChange}
+                  />
+                </div>
               ) : (
                 <p className="py-10 text-center text-sm text-text-secondary">
                   {treeFetching ? '…' : '左侧没有可授权的资源'}
@@ -557,7 +587,10 @@ export default function ConsoleGrants() {
           </div>
         ) : (
           <>
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div
+              key={`table-${kind}`}
+              className="min-h-0 flex-1 animate-in overflow-auto fade-in-0 duration-200"
+            >
               <Table rootClassName="max-h-[calc(100vh-280px)]">
                 <TableHeader>
                   <TableRow>

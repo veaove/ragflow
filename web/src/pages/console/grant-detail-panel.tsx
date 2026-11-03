@@ -1,5 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { LucidePlus, LucideShieldCheck } from 'lucide-react';
+import {
+  LucideChevronRight,
+  LucidePlus,
+  LucideShieldCheck,
+} from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -25,6 +29,13 @@ import { GrantSummaryBadge } from './grant-tree';
 
 const EXCEPTION_PREVIEW_SIZE = 6;
 const EXCEPTION_PAGE_SIZE = 20;
+
+/** 标题旁的层级标签：点的是库还是文件夹，一眼要能分开。 */
+const NODE_KIND_LABEL: Record<string, string> = {
+  dataset: '知识库',
+  folder: '文件夹',
+  file: '文件',
+};
 
 /** 规则标签：允许是蓝底，拒绝是红底 —— 拒绝在这份列表里最需要被看见。 */
 function GrantChips({ grants }: { grants: GrantSubject[] }) {
@@ -275,7 +286,7 @@ export function GrantDetailPanel({
 
   const isLeafFile = node.node_kind === 'file';
 
-  const { data } = useQuery({
+  const { data, isLoading: exceptionsLoading } = useQuery({
     queryKey: GrantKeys.exceptions(
       tenantId,
       kind,
@@ -357,15 +368,23 @@ export function GrantDetailPanel({
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <header className="border-b border-border-default pb-3">
-        <div className="flex items-center gap-1 text-xs text-text-secondary">
-          {trail.slice(0, -1).map((item) => (
-            <span key={item.id} className="truncate">
-              {item.name} /
+        <div className="flex flex-wrap items-center gap-1 text-xs text-text-secondary">
+          {trail.slice(0, -1).map((item, idx) => (
+            <span key={item.id} className="flex items-center gap-1">
+              {idx > 0 && (
+                <LucideChevronRight className="size-3 text-text-secondary/60" />
+              )}
+              <span className="max-w-[220px] truncate" title={item.name}>
+                {item.name}
+              </span>
             </span>
           ))}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-medium text-text-primary">{node.name}</h2>
+          <span className="rounded bg-background-second px-1.5 py-0.5 text-[11px] leading-4 text-text-secondary">
+            {NODE_KIND_LABEL[node.node_kind] ?? node.node_kind}
+          </span>
           <GrantSummaryBadge summary={node.summary} />
           {node.owner_name && (
             <span className="text-xs text-text-secondary">
@@ -480,7 +499,15 @@ export function GrantDetailPanel({
               </button>
             </div>
 
-            {items.length === 0 ? (
+            {exceptionsLoading ? (
+              <div
+                aria-busy="true"
+                className="space-y-2 rounded-md border border-border-default p-3"
+              >
+                <div className="h-3 w-1/3 animate-pulse rounded bg-background-second" />
+                <div className="h-3 w-2/3 animate-pulse rounded bg-background-second" />
+              </div>
+            ) : items.length === 0 ? (
               <div className="flex items-center gap-2 rounded-md border border-border-default bg-state-success/5 p-3 text-xs text-text-secondary">
                 <LucideShieldCheck className="size-4 shrink-0 text-state-success" />
                 {fileTotal > 0

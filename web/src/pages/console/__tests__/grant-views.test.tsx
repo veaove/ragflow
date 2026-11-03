@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { GrantDetailPanel } from '../grant-detail-panel';
 import { GrantDialog } from '../grant-dialog';
-import { GrantTree } from '../grant-tree';
+import { GrantTree, findGrantNode } from '../grant-tree';
 
 jest.mock('@/services/console-service', () => ({
   ...jest.requireActual('@/services/console-service'),
@@ -94,6 +94,32 @@ describe('GrantTree', () => {
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'f1' }),
     );
+  });
+
+  it('选中态只落在被点的那一行', () => {
+    render(
+      <GrantTree
+        nodes={[kbNode()]}
+        selectedId="f1"
+        onSelect={jest.fn()}
+        emptyText="没有资源"
+      />,
+    );
+
+    expect(screen.getByText('银行资料').closest('button')).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    expect(screen.getByText('07-帮助中心').closest('button')).not.toHaveAttribute(
+      'aria-current',
+    );
+  });
+
+  it('点文件夹时在子节点里找得到它，而不是回落成第一个库', () => {
+    const root = kbNode();
+    expect(findGrantNode([root], 'f1')?.name).toBe('银行资料');
+    expect(findGrantNode([root], 'kb1')?.name).toBe('07-帮助中心');
+    expect(findGrantNode([root], 'missing')).toBeUndefined();
   });
 
   it('没有资源时给出空态文案', () => {

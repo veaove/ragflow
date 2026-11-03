@@ -76,20 +76,30 @@ function TreeRow({
     },
     [node.id, onToggle],
   );
-  const handleSelect = useCallback(() => onSelect(node), [node, onSelect]);
+  // 选中时顺带展开：折叠状态下点一行，除了右侧换内容，左侧也该露出里面，
+  // 否则「点了一下」在树上看不出任何变化。
+  const handleSelect = useCallback(() => {
+    onSelect(node);
+    if (hasChildren && !isOpen) onToggle(node.id);
+  }, [hasChildren, isOpen, node, onSelect, onToggle]);
 
   return (
     <li>
       <button
         type="button"
         onClick={handleSelect}
-        className={`group flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-sm transition-colors ${
+        aria-current={isSelected ? 'true' : undefined}
+        className={`group relative flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left text-sm transition-colors duration-150 ${
           isSelected
-            ? 'bg-accent-primary/10 text-accent-primary'
+            ? 'bg-accent-primary/10 font-medium text-accent-primary ring-1 ring-inset ring-accent-primary/25'
             : 'text-text-primary hover:bg-background-second'
         }`}
         style={{ paddingLeft: 8 + depth * 14 }}
       >
+        {/* 选中态在最左侧加一条竖线：只有背景色时，浅色主题下几乎看不出来。 */}
+        {isSelected && (
+          <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent-primary" />
+        )}
         {hasChildren ? (
           <span
             role="presentation"
@@ -201,6 +211,26 @@ export function GrantTree({
       ))}
     </ul>
   );
+}
+
+/**
+ * 按 id 找节点，子节点也要找。
+ *
+ * 只用根节点匹配会让「点文件夹」落回第一个知识库：右栏看起来毫无反应，用户
+ * 分不清是没点上还是没生效。
+ */
+export function findGrantNode(
+  nodes: GrantTreeNode[],
+  id: string,
+): GrantTreeNode | undefined {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    if (node.children?.length) {
+      const hit = findGrantNode(node.children, id);
+      if (hit) return hit;
+    }
+  }
+  return undefined;
 }
 
 /** 从根到目标节点的路径，面板用它解释「这是谁的子项」。 */
