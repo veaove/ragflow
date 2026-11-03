@@ -342,6 +342,11 @@ func TestSavePermissionsDropsUnknownModules(t *testing.T) {
 	}
 }
 
+// TestSavePermissionsClearsMatrix 「清空」= 每个模块都落一行全 false。
+//
+// 行缺失在系统里不是「撤销」：ModulePermission 把 nil 当无约束（放行），
+// backfillBuiltinRolePermissions 又按默认值补行。空输入若只删行，撤销会被
+// 静默回滚（E2E D4），所以这里断言的是「25 行全 false」而不是「0 行」。
 func TestSavePermissionsClearsMatrix(t *testing.T) {
 	db := setupConsoleRoleDB(t)
 	svc := NewConsoleService()
@@ -352,15 +357,19 @@ func TestSavePermissionsClearsMatrix(t *testing.T) {
 		{ID: "rp-r-sp2-1", RoleID: role.ID, Module: "dataset", CanView: true},
 	})
 
-	// 空输入 → 清空全部
 	if err := svc.SavePermissions(context.Background(), "tenant-1", role.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 
-	var count int64
-	db.Model(&entity.RolePermission{}).Where("role_id = ?", role.ID).Count(&count)
-	if count != 0 {
-		t.Fatalf("empty SavePermissions should clear matrix, got %d rows", count)
+	var stored []entity.RolePermission
+	db.Where("role_id = ?", role.ID).Find(&stored)
+	if len(stored) != len(dao.ConsoleModules) {
+		t.Fatalf("cleared matrix = %d rows, want %d (每个模块一行 false)", len(stored), len(dao.ConsoleModules))
+	}
+	for _, row := range stored {
+		if row.CanView || row.CanCreate || row.CanEdit || row.CanDelete || row.CanManage {
+			t.Fatalf("module %q should be fully revoked, got %+v", row.Module, row)
+		}
 	}
 }
 

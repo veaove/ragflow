@@ -38,6 +38,18 @@ func setupGrantTreeTestDB(t *testing.T) *gorm.DB {
 	}).Error; err != nil {
 		t.Fatalf("seed membership: %v", err)
 	}
+	// 租户必须有 active owner：permission 装载资源时要靠它填 OwnerUserID，
+	// 缺了会直接报 invalid permission request（真实数据不会缺，fixture 会）。
+	if err := db.Create(&entity.User{
+		ID: "u-tenant-owner", Nickname: "李雷", Email: "lilei@example.com",
+	}).Error; err != nil {
+		t.Fatalf("seed tenant owner user: %v", err)
+	}
+	if err := db.Create(&entity.UserTenant{
+		ID: "ut-owner", UserID: "u-tenant-owner", TenantID: "t1", Role: "owner", Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("seed tenant owner membership: %v", err)
+	}
 
 	// status 必须给：授权树按调用者的读权限收窄，Active=false 的库在权限包里
 	// 等于「已停用」，任何调用者都读不到。

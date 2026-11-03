@@ -128,18 +128,20 @@ func (s *ResourceGrantService) ListResources(ctx context.Context, tenantID, kind
 	if kw := strings.TrimSpace(keywords); kw != "" {
 		q = q.Where(spec.NameExpr+" LIKE ?", "%"+kw+"%")
 	}
-	visible, err := s.visibleGrantIDs(ctx, userID, spec.Kind)
+	visible, scoped, err := s.visibleGrantIDs(ctx, userID, spec.Kind)
 	if err != nil {
 		return nil, 0, err
 	}
-	if len(visible) == 0 {
-		return []*GrantResourceView{}, 0, nil
+	if scoped {
+		if len(visible) == 0 {
+			return []*GrantResourceView{}, 0, nil
+		}
+		visibleIDs := make([]string, 0, len(visible))
+		for id := range visible {
+			visibleIDs = append(visibleIDs, id)
+		}
+		q = q.Where("id IN ?", visibleIDs)
 	}
-	visibleIDs := make([]string, 0, len(visible))
-	for id := range visible {
-		visibleIDs = append(visibleIDs, id)
-	}
-	q = q.Where("id IN ?", visibleIDs)
 
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

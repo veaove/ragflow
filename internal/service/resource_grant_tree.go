@@ -98,7 +98,7 @@ func (s *ResourceGrantService) GrantTree(ctx context.Context, tenantID, kind, ke
 	case "dataset":
 		return s.datasetGrantTree(ctx, tenantID, keywords, userID)
 	case "file":
-		return s.fileGrantTree(ctx, tenantID, keywords, userID)
+		return s.fileGrantTree(ctx, tenantID, keywords)
 	}
 	return nil, errors.New("该类资源没有层级结构")
 }
@@ -119,19 +119,22 @@ func (s *ResourceGrantService) datasetGrantTree(ctx context.Context, tenantID, k
 		Scan(&kbs).Error; err != nil {
 		return nil, err
 	}
-	visible, err := s.visibleGrantIDs(ctx, userID, "dataset")
+	visible, scoped, err := s.visibleGrantIDs(ctx, userID, "dataset")
 	if err != nil {
 		return nil, err
 	}
-	// 在内存里收窄：库、文件夹、文件数、授权全都按 kbIDs 往下推，这里少一个库
-	// 就等于整棵子树都不出现，不会出现「库名看不见但文件数还能算出来」的残留。
-	readable := kbs[:0]
-	for _, kb := range kbs {
-		if _, ok := visible[kb.ID]; ok {
-			readable = append(readable, kb)
+	if scoped {
+		// 在内存里收窄：库、文件夹、文件数、授权全都按 kbIDs 往下推，这里少一个
+		// 库就等于整棵子树都不出现，不会出现「库名看不见但文件数还能算出来」的
+		// 残留。
+		readable := kbs[:0]
+		for _, kb := range kbs {
+			if _, ok := visible[kb.ID]; ok {
+				readable = append(readable, kb)
+			}
 		}
+		kbs = readable
 	}
-	kbs = readable
 	result := &GrantTreeResult{Kind: "dataset", Label: "知识库", Nodes: []*GrantTreeNode{}}
 	if len(kbs) == 0 {
 		return result, nil
@@ -309,7 +312,7 @@ func (s *ResourceGrantService) datasetGrantTree(ctx context.Context, tenantID, k
 	return result, nil
 }
 
-func (s *ResourceGrantService) fileGrantTree(ctx context.Context, tenantID, keywords, userID string) (*GrantTreeResult, error) {
+func (s *ResourceGrantService) fileGrantTree(ctx context.Context, tenantID, keywords string) (*GrantTreeResult, error) {
 	db := dao.DB.WithContext(ctx)
 
 	type fileRow struct {
@@ -418,25 +421,9 @@ func (s *ResourceGrantService) fileGrantTree(ctx context.Context, tenantID, keyw
 		return out
 	}
 
-	// 只保留调用者读得到的根节点：根读不到时整棵子树一并隐藏，否则文件名
-	// 仍然会从子节点漏出来。文件与文件夹在权限包里是两个 kind，取并集。
-	visibleFiles, err := s.visibleGrantIDs(ctx, userID, "file")
-	if err != nil {
-		return nil, err
-	}
-	visibleFolders, err := s.visibleGrantIDs(ctx, userID, "folder")
-	if err != nil {
-		return nil, err
-	}
-	for _, node := range walkRoot("") {
-		if _, ok := visibleFolders[node.ID]; ok {
-			result.Nodes = append(result.Nodes, node)
-			continue
-		}
-		if _, ok := visibleFiles[node.ID]; ok {
-			result.Nodes = append(result.Nodes, node)
-		}
-	}
+	// 文件/文件夹不做逐资源收窄：它们在权限包里是租户级资产（同租户成员都能读），
+	// 收窄只会得到空树（E2E D2 的收窄只针对知识库这种 permission=me 的资源）。
+	result.Nodes = walkRoot("")
 	for _, node := range result.Nodes {
 		result.FileTotal += node.FileCount
 		result.ExceptionTotal += node.ExceptionCount
