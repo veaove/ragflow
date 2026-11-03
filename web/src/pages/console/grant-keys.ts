@@ -1,9 +1,18 @@
-/** 资源授权页的 query key 工厂：资源列表与「展开后的文件列表」各一组。 */
+/**
+ * 资源授权页的 query key 工厂。
+ *
+ * 三组前缀分开：资源树（有层级的类型）、平铺资源列表（无层级的类型）、
+ * 成员视角。写操作要同时失效树与列表，所以各自都有 root。
+ */
 export const GrantKeys = {
   /** 资源列表前缀，用于整体失效。 */
   resourcesRoot: ['console/grants'] as const,
-  /** 文件列表前缀，用于整体失效（与资源列表不同前缀，需分别失效）。 */
-  documentsRoot: ['console/grant-documents'] as const,
+  /** 资源树前缀。 */
+  treeRoot: ['console/grant-tree'] as const,
+  /** 子项例外（某个节点下的文件 / 文件夹）。 */
+  exceptionsRoot: ['console/grant-exceptions'] as const,
+  /** 成员视角。 */
+  subjectRoot: ['console/grants-by-subject'] as const,
   resources: (
     tenantId: string,
     kind: string,
@@ -11,19 +20,29 @@ export const GrantKeys = {
     pageSize: number,
     keywords: string,
   ) => ['console/grants', tenantId, kind, page, pageSize, keywords] as const,
-  documents: (
+  tree: (tenantId: string, kind: string, keywords: string) =>
+    ['console/grant-tree', tenantId, kind, keywords] as const,
+  exceptions: (
     tenantId: string,
+    kind: string,
     datasetId: string,
+    folderId: string,
+    keywords: string,
+    includeAll: boolean,
     page: number,
     pageSize: number,
-    keywords: string,
   ) =>
     [
-      'console/grant-documents',
+      'console/grant-exceptions',
       tenantId,
+      kind,
       datasetId,
+      folderId,
+      keywords,
+      includeAll,
       page,
       pageSize,
-      keywords,
     ] as const,
+  subject: (tenantId: string, subjectId: string) =>
+    ['console/grants-by-subject', tenantId, subjectId] as const,
 };

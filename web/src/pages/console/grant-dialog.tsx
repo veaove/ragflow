@@ -31,6 +31,13 @@ export interface GrantTarget {
   grants: GrantSubject[];
   /** 资源级：private / team；文件级固定为继承知识库。 */
   defaultScope: string;
+  /**
+   * 作用范围提示，例如「本层及全部 44 个文件；子项自己设置过的规则优先」。
+   * 授权最容易出错的不是选错人，而是没意识到这一改会影响整棵子树。
+   */
+  scopeHint?: string;
+  /** 新加规则的默认取向：从「添加例外」进来时直接是拒绝。 */
+  initialEffect?: 'allow' | 'deny';
 }
 
 export interface GrantSubjectOptions {
@@ -88,7 +95,11 @@ export function GrantDialog({
   const [addEffect, setAddEffect] = useState<'allow' | 'deny'>('allow');
   const [saving, setSaving] = useState(false);
 
-  const isDocument = target?.kind === 'document';
+  // 文件级（知识库文件 / 文件管理里的文件）与库级的区别只在文案与提示。
+  const isFileLevel = target?.kind === 'document' || target?.kind === 'file';
+  // 只有知识库内的文件支持「拒绝」：库、文件夹、文件管理的文件收回权限都用
+  // 清空授权表达，多一套拒绝语义会让优先级无从解释（后端同样会拒绝）。
+  const supportsDeny = target?.kind === 'document';
 
   useEffect(() => {
     if (!target) return;
@@ -96,7 +107,12 @@ export function GrantDialog({
     setAddKind('department');
     setAddId('');
     setAddPermission('read');
-    setAddEffect('allow');
+    // 不支持拒绝的类型要落回允许，否则会提交一个后端明确拒绝的组合。
+    setAddEffect(
+      target.kind === 'document' && target.initialEffect === 'deny'
+        ? 'deny'
+        : 'allow',
+    );
   }, [target]);
 
   const handleAddKindChange = useCallback(
@@ -227,7 +243,7 @@ export function GrantDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {isDocument ? '设置文件可见范围' : '设置可见范围'}
+            {isFileLevel ? '设置文件可见范围' : '设置可见范围'}
           </DialogTitle>
         </DialogHeader>
 
@@ -240,7 +256,7 @@ export function GrantDialog({
             )}
             <span className="text-text-primary">{target?.name}</span>
             <span className="ml-2 rounded bg-bg-list px-1.5 py-0.5 text-xs">
-              {isDocument ? '文件级' : '资源级'}
+              {isFileLevel ? '文件级' : '资源级'}
             </span>
             {target && !draft.length && (
               <span className="ml-2 text-xs">
@@ -249,6 +265,12 @@ export function GrantDialog({
               </span>
             )}
           </div>
+
+          {target?.scopeHint && (
+            <p className="rounded-md bg-state-warning/10 px-3 py-2 text-xs text-state-warning">
+              作用范围：{target.scopeHint}
+            </p>
+          )}
 
           <div>
             <div className="mb-1 text-sm text-text-secondary">已授权</div>
@@ -285,7 +307,7 @@ export function GrantDialog({
                       {permissionLabel(g.permission)}
                     </button>
                   )}
-                  {isDocument && (
+                  {supportsDeny && (
                     <button
                       type="button"
                       onClick={() => handleToggleEffect(idx)}
@@ -345,7 +367,7 @@ export function GrantDialog({
               <option value="read">可查看</option>
               <option value="edit">可编辑</option>
             </select>
-            {isDocument && (
+            {supportsDeny && (
               <select
                 value={addEffect}
                 onChange={handleAddEffectChange}
@@ -371,12 +393,11 @@ export function GrantDialog({
             可编辑：可以修改内容、删除资源。
           </p>
 
-          {isDocument && (
+          {isFileLevel && (
             <p className="text-xs text-text-secondary">
-              文件默认继承知识库的可见范围。一旦给某个文件设置了规则，该文件就只看
-              这份规则：「拒绝」优先于任何「允许」。看不到的文件不会出现在知识库
-              文件列表里，也无法查看内容、下载或解析，问答检索时不会命中它的切片。
-              清空全部规则即恢复继承。
+              {supportsDeny
+                ? '知识库内的文件默认继承知识库的可见范围。一旦设置了规则，该文件就只看这份规则：「拒绝」优先于任何「允许」。看不到的文件不会出现在文件列表里，也无法查看内容、下载或解析，问答检索时不会命中它的切片。清空全部规则即恢复继承。'
+                : '文件管理的文件默认只有所有者可见，逐人授权即把该文件单独放开；清空全部规则会收回这些授权。'}
             </p>
           )}
 

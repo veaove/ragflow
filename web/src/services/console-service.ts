@@ -266,31 +266,6 @@ export const fetchGrants = (
     { params },
   );
 
-/** 知识库下的一个文件及其文件级规则（为空表示仍继承知识库）。 */
-export interface GrantDocument {
-  document_id: string;
-  document_name: string;
-  suffix: string;
-  size: number;
-  created_by: string;
-  created_by_name: string;
-  update_time: number;
-  /** 是否已经不再继承知识库的可见范围（有自己的规则）。 */
-  restricted: boolean;
-  grants: GrantSubject[];
-}
-
-/** 展开某个知识库时按需拉取它下面的文件（分页）。 */
-export const fetchGrantDocuments = (
-  tenantId: string,
-  datasetId: string,
-  params: { keywords?: string; page?: number; page_size?: number },
-) =>
-  request.get<ApiEnvelope<{ documents: GrantDocument[]; total: number }>>(
-    api.tenantGrantDocuments(tenantId, datasetId),
-    { params },
-  );
-
 /**
  * 整体覆盖某个资源的授权规则。传空数组表示撤销所有显式规则，
  * 回到 `default_scope` 决定的默认可见性（文件级即回到继承知识库）。
@@ -307,6 +282,133 @@ export const setGrants = (
   request.put<ResponseData<{ resource_id: string }>>(
     api.tenantGrant(tenantId, kind, resourceId),
     { data: parentId ? { subjects, parent_id: parentId } : { subjects } },
+  );
+
+/** 树上徽章的色调：后端只给语义，前端只取色。 */
+export type GrantTone = 'owner' | 'visible' | 'exception' | 'inherit';
+
+export interface GrantNodeSummary {
+  tone: GrantTone;
+  label: string;
+}
+
+/**
+ * 资源树上的一行。
+ *
+ * 树只画层级骨架：知识库 → 文件夹，文件管理 → 文件夹 → 文件。文件不进知识库
+ * 的树（一个库 44 个文件会把树撑爆），要逐项确认时走「子项例外」的查看全部。
+ */
+export interface GrantTreeNode {
+  id: string;
+  name: string;
+  /** dataset / folder / file */
+  node_kind: string;
+  /** 可授权的 resource_kind；空串表示这一层不单独授权（知识库内的文件夹）。 */
+  grant_kind?: string;
+  parent_id?: string;
+  /** 写文件级规则时要带上的所属知识库 id。 */
+  parent_grant_id?: string;
+  owner_name?: string;
+  visibility?: GrantVisibility | '';
+  supports_visibility: boolean;
+  file_count: number;
+  exception_count: number;
+  summary: GrantNodeSummary;
+  grants: GrantSubject[];
+  children?: GrantTreeNode[];
+}
+
+export interface GrantTree {
+  kind: string;
+  label: string;
+  nodes: GrantTreeNode[];
+  total: number;
+  file_total: number;
+  exception_total: number;
+}
+
+export interface GrantExceptionItem {
+  resource_id: string;
+  resource_name: string;
+  grant_kind: string;
+  node_kind: string;
+  parent_grant_id?: string;
+  /** 文件夹路径，用于区分同名文件。 */
+  path?: string;
+  suffix?: string;
+  size?: number;
+  restricted: boolean;
+  grants: GrantSubject[];
+}
+
+export interface GrantExceptionPage {
+  items: GrantExceptionItem[];
+  total: number;
+  file_total: number;
+  exception_total: number;
+}
+
+/** 一次全部取回：树要一次画完，分页会退化成点一层查一次。 */
+export const fetchGrantTree = (
+  tenantId: string,
+  params: { kind: string; keywords?: string },
+) =>
+  request.get<ApiEnvelope<GrantTree>>(api.tenantGrantTree(tenantId), {
+    params,
+  });
+
+/** includeAll=true 用于「查看全部文件」，默认只返回有独立规则的子项。 */
+export const fetchGrantExceptions = (
+  tenantId: string,
+  params: {
+    kind: string;
+    dataset_id?: string;
+    folder_id?: string;
+    keywords?: string;
+    all?: boolean;
+    page?: number;
+    page_size?: number;
+  },
+) =>
+  request.get<ApiEnvelope<GrantExceptionPage>>(
+    api.tenantGrantExceptions(tenantId),
+    {
+      params: {
+        ...params,
+        all: params.all ? 1 : undefined,
+      },
+    },
+  );
+
+/** 一行可见来源：同一资源经不同路径到达同一个人时分多行。 */
+export interface GrantSubjectRow {
+  resource_kind: string;
+  resource_id: string;
+  resource_name: string;
+  parent_name?: string;
+  permission: 'read' | 'edit';
+  effect: 'allow' | 'deny';
+  via: 'direct' | 'department' | 'team';
+  via_name?: string;
+}
+
+export interface GrantBySubjectResult {
+  subject_kind: GrantSubject['kind'];
+  subject_id: string;
+  subject_name: string;
+  rows: GrantSubjectRow[];
+  direct: number;
+  department: number;
+  team: number;
+}
+
+export const fetchGrantsBySubject = (
+  tenantId: string,
+  params: { subject_kind?: string; subject_id: string },
+) =>
+  request.get<ApiEnvelope<GrantBySubjectResult>>(
+    api.tenantGrantsBySubject(tenantId),
+    { params },
   );
 
 /** 移除成员后由管理员重置密码：password 需先用 rsaPsw 加密。 */

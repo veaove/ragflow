@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LucideChevronRight, LucideSearch } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { LucideSearch } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConsoleGuard } from '@/components/console-guard';
@@ -19,26 +19,31 @@ import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import {
   ConsoleMember,
   DepartmentNode,
+  GrantExceptionItem,
   GrantKindOption,
   GrantResource,
   GrantSubject,
+  GrantTreeNode,
   GrantVisibility,
   fetchConsoleMembers,
   fetchDepartments,
   fetchGrantKinds,
+  fetchGrantTree,
   fetchGrants,
   setGrants,
   setGrantVisibility,
 } from '@/services/console-service';
 
+import { GrantDetailPanel } from './grant-detail-panel';
 import {
   GrantDialog,
   GrantTarget,
   VISIBILITY_OPTIONS,
   defaultScopeLabel,
 } from './grant-dialog';
-import { GrantDocumentRows } from './grant-document-rows';
 import { GrantKeys } from './grant-keys';
+import { GrantMemberView } from './grant-member-view';
+import { GrantTree, findGrantNodePath } from './grant-tree';
 
 type GrantKind = string;
 
@@ -55,34 +60,27 @@ const FALLBACK_KINDS: GrantKindOption[] = [
   { kind: 'memory', label: '记忆中心', supports_visibility: true },
 ];
 
+/** 有层级、走「树 + 详情」布局的资源类型。其余类型继续用平铺列表。 */
+const HIERARCHICAL_KINDS = new Set(['dataset', 'file']);
+
 const PAGE_SIZE = 20;
 
 interface ResourceRowProps {
   row: GrantResource;
-  kind: GrantKind;
   kindLabel: string;
   supportsVisibility: boolean;
-  expanded: boolean;
-  onToggle: (resourceId: string) => void;
   onEdit: (row: GrantResource) => void;
   onVisibilityChange: (row: GrantResource, next: GrantVisibility) => void;
 }
 
-/** 资源行。知识库行可展开，展开后下面接它自己的文件列表。 */
+/** 无层级资源的一行：平铺列表里只回答「给了谁」。 */
 function ResourceRow({
   row,
-  kind,
   kindLabel,
   supportsVisibility,
-  expanded,
-  onToggle,
   onEdit,
   onVisibilityChange,
 }: ResourceRowProps) {
-  const handleToggle = useCallback(() => {
-    onToggle(row.resource_id);
-  }, [onToggle, row.resource_id]);
-
   const handleEdit = useCallback(() => {
     onEdit(row);
   }, [onEdit, row]);
@@ -97,27 +95,9 @@ function ResourceRow({
   return (
     <TableRow>
       <TableCell className="text-sm text-text-primary">
-        {kind === 'dataset' ? (
-          <button
-            type="button"
-            onClick={handleToggle}
-            className="flex items-center gap-1.5 text-left"
-            title={expanded ? '收起文件列表' : '展开文件列表'}
-          >
-            <LucideChevronRight
-              className={`size-4 shrink-0 text-text-secondary transition-transform ${
-                expanded ? 'rotate-90' : ''
-              }`}
-            />
-            <span>{row.resource_name || '-'}</span>
-          </button>
-        ) : (
-          row.resource_name || '-'
-        )}
+        {row.resource_name || '-'}
       </TableCell>
-      <TableCell className="text-xs text-text-secondary">
-        {kindLabel}
-      </TableCell>
+      <TableCell className="text-xs text-text-secondary">{kindLabel}</TableCell>
       <TableCell className="text-xs">
         {row.owner_name || row.owner_id || '-'}
       </TableCell>
@@ -171,13 +151,11 @@ function ResourceRow({
 }
 
 /**
- * 资源授权：按资源类型列出可授权的资源，并编辑「谁可以看」。
+ * 资源授权：配置「谁能看」。
  *
- * 语义要点：这里配置的是**显式授权**，它覆盖 `permission` 字段的默认二值语义。
- * 清空所有规则即回到默认（仅自己 / 全团队），后端据此决定是否落库。
- *
- * 知识库行可以展开到文件级：文件没有规则时继承知识库的可见范围，一旦设置了
- * 自己的规则（允许 / 拒绝），该文件就只看这份规则。
+ * 两种视角共用同一份数据：按资源回答「这个库给了谁」，按成员回答「他为什么能
+ * 看」。有层级的资源（知识库 / 文件管理）走左侧树 + 右侧详情：树只画骨架和
+ * 每层摘要，文件不进树、集中在「子项例外」里，避免几十层嵌套下拉。
  */
 export default function ConsoleGrants() {
   const { t } = useTranslation();
@@ -186,10 +164,11 @@ export default function ConsoleGrants() {
   const tenantId = tenantInfo?.tenant_id as string | undefined;
 
   const [kind, setKind] = useState<GrantKind>('dataset');
+  const [view, setView] = useState<'resource' | 'member'>('resource');
   const [keywords, setKeywords] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
-  const [expandedId, setExpandedId] = useState('');
+  const [selectedNodeId, setSelectedNodeId] = useState('');
 
   const [editing, setEditing] = useState<GrantTarget | null>(null);
 
@@ -232,8 +211,6 @@ export default function ConsoleGrants() {
     return out;
   }, [departments]);
 
-  // 下拉选项直接派生：数组本身来自已缓存的查询结果，这里再包一层 useMemo
-  // 只会让依赖项多出一个每次渲染都变的 `members`。
   const subjectOptions = {
     departments: flatDepts,
     members: members.map((m) => ({ id: m.id, name: m.nickname || m.email })),
@@ -253,6 +230,33 @@ export default function ConsoleGrants() {
   const activeKind = kinds.find((x) => x.kind === kind);
   const kindLabel = activeKind?.label ?? '';
   const supportsVisibility = activeKind?.supports_visibility ?? false;
+  const hierarchical = HIERARCHICAL_KINDS.has(kind);
+
+  // 有层级的资源走树；平铺列表只给没有父子关系的类型用。
+  const { data: treeData, isFetching: treeFetching } = useQuery({
+    queryKey: GrantKeys.tree(tenantId ?? '', kind, keywords),
+    enabled: !!tenantId && hierarchical && view === 'resource',
+    queryFn: async () => {
+      const res = await fetchGrantTree(tenantId as string, {
+        kind,
+        keywords: keywords || undefined,
+      });
+      return (
+        res?.data?.data ?? {
+          kind,
+          label: kindLabel,
+          nodes: [] as GrantTreeNode[],
+          total: 0,
+          file_total: 0,
+          exception_total: 0,
+        }
+      );
+    },
+  });
+  const nodes = useMemo<GrantTreeNode[]>(
+    () => treeData?.nodes ?? [],
+    [treeData],
+  );
 
   const { data, isFetching } = useQuery({
     queryKey: GrantKeys.resources(
@@ -262,7 +266,7 @@ export default function ConsoleGrants() {
       pageSize,
       keywords,
     ),
-    enabled: !!tenantId,
+    enabled: !!tenantId && !hierarchical,
     queryFn: async () => {
       const res = await fetchGrants(tenantId as string, {
         kind,
@@ -273,27 +277,47 @@ export default function ConsoleGrants() {
       return res?.data?.data ?? { resources: [], total: 0 };
     },
   });
-  const resources: GrantResource[] = data?.resources ?? [];
+  const resources = useMemo<GrantResource[]>(
+    () => data?.resources ?? [],
+    [data],
+  );
   const total = data?.total ?? 0;
 
-  // 切换 tab / 搜索时回到第一页并收起展开行，避免页码与展开内容错位。
+  // 选中节点由 id 记录，树刷新后按 id 找回；找不到时回落到第一个根节点。
+  const selectedNode = useMemo(
+    () => nodes.find((n) => n.id === selectedNodeId) ?? nodes[0],
+    [nodes, selectedNodeId],
+  );
+  const trail = useMemo(
+    () => (selectedNode ? findGrantNodePath(nodes, selectedNode.id) : []),
+    [nodes, selectedNode],
+  );
+  // 最近的可授权祖先：知识库内的文件夹本身没有规则，面板要指回库上的授权。
+  const inheritedFrom = useMemo(() => {
+    for (let i = trail.length - 2; i >= 0; i -= 1) {
+      if (trail[i].grants?.length) {
+        return { node: trail[i], grants: trail[i].grants };
+      }
+    }
+    return undefined;
+  }, [trail]);
+
+  // 切换 tab / 搜索时回到第一页并清掉选中节点，避免页码与展开内容错位。
   useEffect(() => {
     setPage(1);
-    setExpandedId('');
-  }, [kind]);
+    setSelectedNodeId('');
+  }, [kind, keywords]);
 
-  useEffect(() => {
-    setExpandedId('');
-  }, [keywords]);
-
-  const handleToggleExpand = useCallback((resourceId: string) => {
-    setExpandedId((prev) => (prev === resourceId ? '' : resourceId));
-  }, []);
-
-  // 用按钮的 value 传 tab key，避免在 JSX 里为每个 tab 写一个闭包。
   const handleKindChange = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
       setKind(e.currentTarget.value as GrantKind);
+    },
+    [],
+  );
+
+  const handleViewChange = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      setView(e.currentTarget.value as 'resource' | 'member');
     },
     [],
   );
@@ -311,6 +335,10 @@ export default function ConsoleGrants() {
     setPageSize(nextSize);
   }, []);
 
+  const handleSelectNode = useCallback((node: GrantTreeNode) => {
+    setSelectedNodeId(node.id);
+  }, []);
+
   const handleEditResource = useCallback(
     (row: GrantResource) => {
       setEditing({
@@ -319,6 +347,7 @@ export default function ConsoleGrants() {
         name: row.resource_name || '未命名资源',
         grants: row.grants ?? [],
         defaultScope: row.visibility || row.default_scope,
+        scopeHint: `本层资源；其下子项未单独设置时继承这里的规则`,
       });
     },
     [kind],
@@ -329,17 +358,30 @@ export default function ConsoleGrants() {
   }, []);
 
   const handleVisibilityChange = useCallback(
-    async (row: GrantResource, next: GrantVisibility) => {
+    async (row: GrantResource | GrantTreeNode, next: GrantVisibility) => {
       if (!tenantId) return;
       try {
-        await setGrantVisibility(tenantId, kind, row.resource_id, next);
+        await setGrantVisibility(
+          tenantId,
+          kind,
+          'resource_id' in row ? row.resource_id : row.id,
+          next,
+        );
       } finally {
         // 成功或失败都以服务端为准重新拉一次，避免下拉停在没保存成功的值上。
         queryClient.invalidateQueries({ queryKey: GrantKeys.resourcesRoot });
+        queryClient.invalidateQueries({ queryKey: GrantKeys.treeRoot });
       }
     },
     [kind, queryClient, tenantId],
   );
+
+  const invalidateAll = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: GrantKeys.resourcesRoot });
+    queryClient.invalidateQueries({ queryKey: GrantKeys.treeRoot });
+    queryClient.invalidateQueries({ queryKey: GrantKeys.exceptionsRoot });
+    queryClient.invalidateQueries({ queryKey: GrantKeys.subjectRoot });
+  }, [queryClient]);
 
   const handleSubmit = useCallback(
     async (target: GrantTarget, subjects: GrantSubject[]) => {
@@ -352,25 +394,79 @@ export default function ConsoleGrants() {
         target.parentId,
       );
       setEditing(null);
-      queryClient.invalidateQueries({ queryKey: GrantKeys.resourcesRoot });
-      if (target.kind === 'document') {
-        queryClient.invalidateQueries({ queryKey: GrantKeys.documentsRoot });
-      }
+      invalidateAll();
     },
-    [queryClient, tenantId],
+    [invalidateAll, tenantId],
+  );
+
+  const handleRemoveGrant = useCallback(
+    async (target: GrantTarget, subject: GrantSubject) => {
+      if (!tenantId) return;
+      const next = (target.grants ?? []).filter(
+        (g) => !(g.kind === subject.kind && g.id === subject.id),
+      );
+      await setGrants(
+        tenantId,
+        target.kind,
+        target.resourceId,
+        next,
+        target.parentId,
+      );
+      invalidateAll();
+    },
+    [invalidateAll, tenantId],
+  );
+
+  // 取消例外 = 清空该子项的全部规则，它重新回到继承。
+  const handleClearException = useCallback(
+    async (item: GrantExceptionItem) => {
+      if (!tenantId) return;
+      await setGrants(
+        tenantId,
+        item.grant_kind,
+        item.resource_id,
+        [],
+        item.parent_grant_id,
+      );
+      invalidateAll();
+    },
+    [invalidateAll, tenantId],
   );
 
   return (
     <ConsoleGuard>
       <section className="flex h-full flex-col p-5">
-        <header className="mb-4">
-          <h1 className="text-2xl font-medium text-text-primary">
-            {t('console.grants')}
-          </h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            配置知识库、知识问答、知识搜索、智能体、记忆中心等资源的可见范围；
-            可见范围分「仅所有者 / 租户管理层 / 平台管理员」三档，普通成员需逐人授权
-          </p>
+        <header className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-medium text-text-primary">
+              {t('console.grants')}
+            </h1>
+            <p className="mt-1 text-sm text-text-secondary">
+              知识库与文件管理的授权按层级展示：每层只回答「给了谁」和「哪些子项
+              例外」，可见范围分「仅所有者 / 租户管理层 / 平台管理员」三档，普通
+              成员需逐人授权
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-1 rounded-md bg-background-second p-1">
+            {[
+              { value: 'resource', label: '按资源' },
+              { value: 'member', label: '按成员' },
+            ].map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                value={item.value}
+                onClick={handleViewChange}
+                className={`rounded px-3 py-1 text-sm ${
+                  view === item.value
+                    ? 'bg-bg-base text-text-primary shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </header>
 
         <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -392,76 +488,121 @@ export default function ConsoleGrants() {
             ))}
           </div>
 
-          <div className="relative ml-auto">
-            <LucideSearch className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
-            <Input
-              value={keywords}
-              onChange={handleKeywordsChange}
-              placeholder="搜索资源名称"
-              className="w-56 pl-8"
-            />
-          </div>
+          {/* 有层级的类型把搜索放进左栏，按资源宽度优先给树和详情面板。 */}
+          {!hierarchical && (
+            <div className="relative ml-auto">
+              <LucideSearch className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
+              <Input
+                value={keywords}
+                onChange={handleKeywordsChange}
+                placeholder="搜索资源名称"
+                className="w-56 pl-8"
+              />
+            </div>
+          )}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto">
-          <Table rootClassName="max-h-[calc(100vh-280px)]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>资源名称</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>所有者</TableHead>
-                <TableHead>可见范围</TableHead>
-                <TableHead>操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {resources.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="py-10 text-center text-sm text-text-secondary"
-                  >
-                    {isFetching ? '…' : '暂无资源'}
-                  </TableCell>
-                </TableRow>
-              )}
-              {resources.map((row) => (
-                <Fragment key={row.resource_id}>
-                  <ResourceRow
-                    row={row}
-                    kind={kind}
-                    kindLabel={kindLabel}
-                    supportsVisibility={supportsVisibility}
-                    expanded={expandedId === row.resource_id}
-                    onToggle={handleToggleExpand}
-                    onEdit={handleEditResource}
-                    onVisibilityChange={handleVisibilityChange}
+        {view === 'member' ? (
+          <GrantMemberView tenantId={tenantId ?? ''} members={members} />
+        ) : hierarchical ? (
+          <div className="flex min-h-0 flex-1 gap-4">
+            <aside className="flex w-[320px] shrink-0 flex-col rounded-lg border border-border-default bg-bg-base">
+              <div className="border-b border-border-default p-2">
+                <div className="mb-1.5 flex items-center justify-between px-1 text-xs text-text-secondary">
+                  <span>
+                    资源（{treeData?.total ?? 0} 个
+                    {kind === 'dataset' ? '库' : '目录'}）
+                  </span>
+                  <span>{treeData?.file_total ?? 0} 个文件</span>
+                </div>
+                <div className="relative">
+                  <LucideSearch className="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-text-secondary" />
+                  <Input
+                    value={keywords}
+                    onChange={handleKeywordsChange}
+                    placeholder="搜索资源或文件夹"
+                    className="h-8 pl-7 text-xs"
                   />
-                  {kind === 'dataset' && expandedId === row.resource_id && (
-                    <GrantDocumentRows
-                      tenantId={tenantId as string}
-                      dataset={{
-                        resourceId: row.resource_id,
-                        name: row.resource_name,
-                        defaultScope: row.default_scope,
-                      }}
-                      onEdit={setEditing}
-                    />
-                  )}
-                </Fragment>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto p-1">
+                <GrantTree
+                  nodes={nodes}
+                  selectedId={selectedNode?.id ?? ''}
+                  onSelect={handleSelectNode}
+                  emptyText={treeFetching ? '…' : '没有匹配的资源'}
+                />
+              </div>
+            </aside>
 
-        <div className="flex items-center justify-end pt-3">
-          <RAGFlowPagination
-            total={total}
-            current={page}
-            pageSize={pageSize}
-            onChange={handlePageChange}
-          />
-        </div>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-border-default bg-bg-base p-4">
+              {selectedNode ? (
+                <GrantDetailPanel
+                  tenantId={tenantId ?? ''}
+                  kind={kind}
+                  node={selectedNode}
+                  trail={trail}
+                  inheritedFrom={inheritedFrom}
+                  onEdit={setEditing}
+                  onRemove={handleRemoveGrant}
+                  onClearException={handleClearException}
+                  onVisibilityChange={handleVisibilityChange}
+                />
+              ) : (
+                <p className="py-10 text-center text-sm text-text-secondary">
+                  {treeFetching ? '…' : '左侧没有可授权的资源'}
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="min-h-0 flex-1 overflow-auto">
+              <Table rootClassName="max-h-[calc(100vh-280px)]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>资源名称</TableHead>
+                    <TableHead>类型</TableHead>
+                    <TableHead>所有者</TableHead>
+                    <TableHead>可见范围</TableHead>
+                    <TableHead>操作</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {resources.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="py-10 text-center text-sm text-text-secondary"
+                      >
+                        {isFetching ? '…' : '暂无资源'}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {resources.map((row) => (
+                    <ResourceRow
+                      key={row.resource_id}
+                      row={row}
+                      kindLabel={kindLabel}
+                      supportsVisibility={supportsVisibility}
+                      onEdit={handleEditResource}
+                      onVisibilityChange={handleVisibilityChange}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="flex items-center justify-end pt-3">
+              <RAGFlowPagination
+                total={total}
+                current={page}
+                pageSize={pageSize}
+                onChange={handlePageChange}
+              />
+            </div>
+          </>
+        )}
 
         <GrantDialog
           target={editing}
