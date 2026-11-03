@@ -39,15 +39,17 @@ func setupGrantTreeTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("seed membership: %v", err)
 	}
 
+	// status 必须给：授权树按调用者的读权限收窄，Active=false 的库在权限包里
+	// 等于「已停用」，任何调用者都读不到。
 	if err := db.Create(&entity.Knowledgebase{
 		ID: "kb1", TenantID: "t1", Name: "07-帮助中心", EmbdID: "embd-1",
-		CreatedBy: "u-owner", Permission: string(entity.TenantPermissionTeam),
+		CreatedBy: "u-owner", Permission: string(entity.TenantPermissionTeam), Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("seed kb: %v", err)
 	}
 	if err := db.Create(&entity.Knowledgebase{
 		ID: "kb2", TenantID: "t1", Name: "08-空库", EmbdID: "embd-1",
-		CreatedBy: "u-owner", Permission: string(entity.TenantPermissionMe),
+		CreatedBy: "u-owner", Permission: string(entity.TenantPermissionMe), Status: &status,
 	}).Error; err != nil {
 		t.Fatalf("seed kb2: %v", err)
 	}
@@ -109,7 +111,7 @@ func TestGrantTreeDatasetSummaries(t *testing.T) {
 	seedGrant(t, db, "dataset", "kb1", entity.GrantSubjectUser, "u-owner", "edit", entity.GrantEffectAllow)
 	seedGrant(t, db, GrantKindDocument, "d2", entity.GrantSubjectUser, "u-owner", "read", entity.GrantEffectDeny)
 
-	tree, err := NewResourceGrantService().GrantTree(t.Context(), "t1", "dataset", "")
+	tree, err := NewResourceGrantService().GrantTree(t.Context(), "t1", "dataset", "", "u-owner")
 	if err != nil {
 		t.Fatalf("GrantTree: %v", err)
 	}
@@ -165,7 +167,7 @@ func TestGrantTreeDatasetKeywords(t *testing.T) {
 	db := setupGrantTreeTestDB(t)
 	seedGrant(t, db, "dataset", "kb1", entity.GrantSubjectTeam, "", "read", entity.GrantEffectAllow)
 
-	tree, err := NewResourceGrantService().GrantTree(t.Context(), "t1", "dataset", "内部资料")
+	tree, err := NewResourceGrantService().GrantTree(t.Context(), "t1", "dataset", "内部资料", "u-owner")
 	if err != nil {
 		t.Fatalf("GrantTree: %v", err)
 	}
@@ -173,12 +175,58 @@ func TestGrantTreeDatasetKeywords(t *testing.T) {
 		t.Fatalf("keyword should keep kb1 only, got %+v", tree.Nodes)
 	}
 
-	tree, err = NewResourceGrantService().GrantTree(t.Context(), "t1", "dataset", "空库")
+	tree, err = NewResourceGrantService().GrantTree(t.Context(), "t1", "dataset", "空库", "u-owner")
 	if err != nil {
 		t.Fatalf("GrantTree: %v", err)
 	}
 	if tree.Total != 1 || tree.Nodes[0].Summary.Tone != GrantToneOwner {
 		t.Fatalf("kb2 should stay owner-only, got %+v", tree.Nodes)
+	}
+}
+
+// TestGrantTreeScopesToCallerReadableDatasets 覆盖 E2E D2：授权页对普通成员只能
+// 列出他读得到的库。别人 permission=me 的私库连名字都不该出现 —— 这正是「成员
+// 能读到整棵授权树（18 个库）」那条缺陷的核心。
+func TestGrantTreeScopesToCallerReadableDatasets(t *testing.T) {
+	db := setupGrantTreeTestDB(t)
+
+	status := string(entity.StatusValid)
+	if err := db.Create(&entity.Knowledgebase{
+		ID: "kb-other-private", TenantID: "t1", Name: "09-别人的私库", EmbdID: "embd-1",
+		CreatedBy: "u-other", Permission: string(entity.TenantPermissionMe), Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("seed other private kb: %v", err)
+	}
+
+	// u-owner 是 kb1（team + 创建者）与 kb2（创建者）的可见者，看不到别人建在
+	// 同租户的私库。
+	tree, err := NewResourceGrantService().GrantTree(t.Context(), "t1", "dataset", "", "u-owner")
+	if err != nil {
+		t.Fatalf("GrantTree: %v", err)
+	}
+	if tree.Total != 2 {
+		t.Fatalf("total = %d, want 2 (%v)", tree.Total, treeNodeIDs(tree.Nodes))
+	}
+	for _, node := range tree.Nodes {
+		if node.ID == "kb-other-private" {
+			t.Fatal("别人 permission=me 的私库不应出现在授权树里")
+		}
+	}
+
+	// 与该租户无关的人看到空树，而不是整租户清单。
+	stranger, err := NewResourceGrantService().GrantTree(t.Context(), "t1", "dataset", "", "u-stranger")
+	if err != nil {
+		t.Fatalf("GrantTree(stranger): %v", err)
+	}
+	if stranger.Total != 0 || len(stranger.Nodes) != 0 {
+		t.Fatalf("stranger tree = %v, want empty", treeNodeIDs(stranger.Nodes))
+	}
+
+	// 按 id 展开子项同样要拦：否则「树上看不见、换个 id 就能读」。
+	if _, err := NewResourceGrantService().ListGrantExceptions(
+		t.Context(), "t1", "dataset", "kb-other-private", "", "", "u-owner", false, 20, 0,
+	); err == nil {
+		t.Fatal("读不到的库的子项应返回错误，而不是内容")
 	}
 }
 
@@ -199,7 +247,7 @@ func TestGrantTreeFileHierarchy(t *testing.T) {
 	}
 	seedGrant(t, db, "file", "fl1", entity.GrantSubjectUser, "u-owner", "read", entity.GrantEffectDeny)
 
-	tree, err := NewResourceGrantService().GrantTree(t.Context(), "t1", "file", "")
+	tree, err := NewResourceGrantService().GrantTree(t.Context(), "t1", "file", "", "u-owner")
 	if err != nil {
 		t.Fatalf("GrantTree: %v", err)
 	}
@@ -234,7 +282,7 @@ func TestListGrantExceptionsScopes(t *testing.T) {
 
 	svc := NewResourceGrantService()
 
-	page, err := svc.ListGrantExceptions(t.Context(), "t1", "dataset", "kb1", "", "", false, 20, 0)
+	page, err := svc.ListGrantExceptions(t.Context(), "t1", "dataset", "kb1", "", "", "u-owner", false, 20, 0)
 	if err != nil {
 		t.Fatalf("ListGrantExceptions: %v", err)
 	}
@@ -251,7 +299,7 @@ func TestListGrantExceptionsScopes(t *testing.T) {
 		t.Errorf("file_total=%d exception_total=%d, want 4/1", page.FileTotal, page.ExceptionTotal)
 	}
 
-	all, err := svc.ListGrantExceptions(t.Context(), "t1", "dataset", "kb1", "", "", true, 20, 0)
+	all, err := svc.ListGrantExceptions(t.Context(), "t1", "dataset", "kb1", "", "", "u-owner", true, 20, 0)
 	if err != nil {
 		t.Fatalf("ListGrantExceptions(all): %v", err)
 	}
@@ -268,7 +316,7 @@ func TestListGrantExceptionsScopes(t *testing.T) {
 		t.Errorf("restricted = %d, want 1", restricted)
 	}
 
-	scoped, err := svc.ListGrantExceptions(t.Context(), "t1", "dataset", "kb1", "f2", "", true, 20, 0)
+	scoped, err := svc.ListGrantExceptions(t.Context(), "t1", "dataset", "kb1", "f2", "", "u-owner", true, 20, 0)
 	if err != nil {
 		t.Fatalf("ListGrantExceptions(folder): %v", err)
 	}
@@ -277,7 +325,7 @@ func TestListGrantExceptionsScopes(t *testing.T) {
 			scoped.Total, scoped.FileTotal, scoped.ExceptionTotal)
 	}
 
-	searched, err := svc.ListGrantExceptions(t.Context(), "t1", "dataset", "kb1", "", "光大", true, 20, 0)
+	searched, err := svc.ListGrantExceptions(t.Context(), "t1", "dataset", "kb1", "", "光大", "u-owner", true, 20, 0)
 	if err != nil {
 		t.Fatalf("ListGrantExceptions(keywords): %v", err)
 	}
@@ -349,11 +397,11 @@ func TestGrantsBySubjectSeparatesSources(t *testing.T) {
 func TestGrantTreeRejectsFlatKinds(t *testing.T) {
 	setupGrantTreeTestDB(t)
 
-	if _, err := NewResourceGrantService().GrantTree(t.Context(), "t1", "chat", ""); err == nil {
+	if _, err := NewResourceGrantService().GrantTree(t.Context(), "t1", "chat", "", "u-owner"); err == nil {
 		t.Fatal("expected error for flat kind")
 	}
 	if _, err := NewResourceGrantService().ListGrantExceptions(
-		t.Context(), "t1", "chat", "", "", "", false, 20, 0,
+		t.Context(), "t1", "chat", "", "", "", "u-owner", false, 20, 0,
 	); err == nil {
 		t.Fatal("expected error for flat kind")
 	}

@@ -89,17 +89,21 @@ type GrantTreeResult struct {
 //
 // 只有存在层级的资源才走树：知识库（库 → 文件夹）与文件管理（文件夹 → 文件）。
 // 其余类型（知识问答、智能体…）没有父子关系，前端继续用平铺列表。
-func (s *ResourceGrantService) GrantTree(ctx context.Context, tenantID, kind, keywords string) (*GrantTreeResult, error) {
+//
+// userID 是查看者：树只画他读得到的资源。授权页是「谁能看什么」的管理视角，
+// 但它同时也是普通成员的可见入口（内置角色默认对每个模块 view），不做这层
+// 收窄就会把别人 permission=me 的私库名单一起发出去（E2E D2）。
+func (s *ResourceGrantService) GrantTree(ctx context.Context, tenantID, kind, keywords, userID string) (*GrantTreeResult, error) {
 	switch strings.TrimSpace(kind) {
 	case "dataset":
-		return s.datasetGrantTree(ctx, tenantID, keywords)
+		return s.datasetGrantTree(ctx, tenantID, keywords, userID)
 	case "file":
-		return s.fileGrantTree(ctx, tenantID, keywords)
+		return s.fileGrantTree(ctx, tenantID, keywords, userID)
 	}
 	return nil, errors.New("该类资源没有层级结构")
 }
 
-func (s *ResourceGrantService) datasetGrantTree(ctx context.Context, tenantID, keywords string) (*GrantTreeResult, error) {
+func (s *ResourceGrantService) datasetGrantTree(ctx context.Context, tenantID, keywords, userID string) (*GrantTreeResult, error) {
 	db := dao.DB.WithContext(ctx)
 
 	type kbRow struct {
@@ -115,6 +119,19 @@ func (s *ResourceGrantService) datasetGrantTree(ctx context.Context, tenantID, k
 		Scan(&kbs).Error; err != nil {
 		return nil, err
 	}
+	visible, err := s.visibleGrantIDs(ctx, userID, "dataset")
+	if err != nil {
+		return nil, err
+	}
+	// 在内存里收窄：库、文件夹、文件数、授权全都按 kbIDs 往下推，这里少一个库
+	// 就等于整棵子树都不出现，不会出现「库名看不见但文件数还能算出来」的残留。
+	readable := kbs[:0]
+	for _, kb := range kbs {
+		if _, ok := visible[kb.ID]; ok {
+			readable = append(readable, kb)
+		}
+	}
+	kbs = readable
 	result := &GrantTreeResult{Kind: "dataset", Label: "知识库", Nodes: []*GrantTreeNode{}}
 	if len(kbs) == 0 {
 		return result, nil
@@ -292,7 +309,7 @@ func (s *ResourceGrantService) datasetGrantTree(ctx context.Context, tenantID, k
 	return result, nil
 }
 
-func (s *ResourceGrantService) fileGrantTree(ctx context.Context, tenantID, keywords string) (*GrantTreeResult, error) {
+func (s *ResourceGrantService) fileGrantTree(ctx context.Context, tenantID, keywords, userID string) (*GrantTreeResult, error) {
 	db := dao.DB.WithContext(ctx)
 
 	type fileRow struct {
@@ -401,7 +418,25 @@ func (s *ResourceGrantService) fileGrantTree(ctx context.Context, tenantID, keyw
 		return out
 	}
 
-	result.Nodes = walkRoot("")
+	// 只保留调用者读得到的根节点：根读不到时整棵子树一并隐藏，否则文件名
+	// 仍然会从子节点漏出来。文件与文件夹在权限包里是两个 kind，取并集。
+	visibleFiles, err := s.visibleGrantIDs(ctx, userID, "file")
+	if err != nil {
+		return nil, err
+	}
+	visibleFolders, err := s.visibleGrantIDs(ctx, userID, "folder")
+	if err != nil {
+		return nil, err
+	}
+	for _, node := range walkRoot("") {
+		if _, ok := visibleFolders[node.ID]; ok {
+			result.Nodes = append(result.Nodes, node)
+			continue
+		}
+		if _, ok := visibleFiles[node.ID]; ok {
+			result.Nodes = append(result.Nodes, node)
+		}
+	}
 	for _, node := range result.Nodes {
 		result.FileTotal += node.FileCount
 		result.ExceptionTotal += node.ExceptionCount
@@ -489,7 +524,7 @@ type GrantExceptionResult struct {
 // 子项，供「查看全部文件」逐项确认，仍在容器内分页滚动。
 func (s *ResourceGrantService) ListGrantExceptions(
 	ctx context.Context,
-	tenantID, kind, datasetID, folderID, keywords string,
+	tenantID, kind, datasetID, folderID, keywords, userID string,
 	includeAll bool, limit, offset int,
 ) (*GrantExceptionResult, error) {
 	if limit <= 0 {
@@ -498,10 +533,22 @@ func (s *ResourceGrantService) ListGrantExceptions(
 	if offset < 0 {
 		offset = 0
 	}
+	// 子项是「这个库 / 这个文件夹里有什么」的直接答案，必须先确认调用者读得到
+	// 父节点。拒绝时按「资源不存在」回报，不泄露存在性（E2E D2 同一类问题）。
 	switch strings.TrimSpace(kind) {
 	case "dataset":
+		if datasetID != "" && !s.canReadGrantResource(ctx, userID, "dataset", datasetID) {
+			return nil, errors.New("资源不存在")
+		}
+		// 指定到具体文件夹时同样要判：文件夹可以比库更严格（逐文件 deny）。
+		if folderID != "" && !s.canReadGrantResource(ctx, userID, "folder", folderID) {
+			return nil, errors.New("资源不存在")
+		}
 		return s.datasetExceptions(ctx, tenantID, datasetID, folderID, keywords, includeAll, limit, offset)
 	case "file":
+		if folderID != "" && !s.canReadGrantResource(ctx, userID, "folder", folderID) {
+			return nil, errors.New("资源不存在")
+		}
 		return s.fileExceptions(ctx, tenantID, folderID, keywords, includeAll, limit, offset)
 	}
 	return nil, errors.New("该类资源没有子项")

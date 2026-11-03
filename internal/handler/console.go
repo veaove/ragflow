@@ -68,13 +68,8 @@ func requireTenantAccess(c *gin.Context, userID, tenantID string, write bool) er
 	if membership.Status != nil && *membership.Status != "1" {
 		return errors.New("成员状态已停用")
 	}
-	if write && membership.Role != string(permissionRoleOwner) && membership.Role != string(permissionRoleAdmin) {
-		// 枚举只覆盖邀请路径写的 admin：控制台编辑成员只写 role_id，枚举留在
-		// normal。只判枚举的话，被分配成内置「租户管理员」的人在控制台里连成员
-		// 都改不了 —— 移交 Owner 之后原 owner 立刻就是这个状态。
-		if !isBuiltinTenantAdmin(c, membership.RoleID) {
-			return errors.New("仅租户管理员可执行该操作")
-		}
+	if write && !tenantIsManagement(c, &membership) {
+		return errors.New("仅租户管理员可执行该操作")
 	}
 
 	module, action := inferModuleAction(c.Request.URL.Path, c.Request.Method)
@@ -82,6 +77,21 @@ func requireTenantAccess(c *gin.Context, userID, tenantID string, write bool) er
 		return nil
 	}
 	return checkModuleAction(c, userID, tenantID, module, action)
+}
+
+// tenantIsManagement 判断该成员是否属于租户管理层（owner / 租户管理员）。
+//
+// 枚举只覆盖邀请路径写的 admin：控制台编辑成员只写 role_id，枚举留在
+// normal。只判枚举的话，被分配成内置「租户管理员」的人在控制台里连成员都
+// 改不了 —— 移交 Owner 之后原 owner 立刻就是这个状态。
+func tenantIsManagement(c *gin.Context, membership *entity.UserTenant) bool {
+	if membership == nil {
+		return false
+	}
+	if membership.Role == string(permissionRoleOwner) || membership.Role == string(permissionRoleAdmin) {
+		return true
+	}
+	return isBuiltinTenantAdmin(c, membership.RoleID)
 }
 
 // Module keys of the role matrix that the console itself exposes.
@@ -611,7 +621,7 @@ func (h *ConsoleHandler) ListResourceGrants(c *gin.Context) {
 
 	rows, total, err := service.NewResourceGrantService().ListResources(
 		c.Request.Context(), tenantID, kind,
-		c.Query("keywords"), size, (page-1)*size,
+		c.Query("keywords"), user.ID, size, (page-1)*size,
 	)
 	if err != nil {
 		common.ResponseWithCodeData(c, common.CodeServerError, nil, err.Error())
@@ -693,7 +703,7 @@ func (h *ConsoleHandler) GrantTree(c *gin.Context) {
 	}
 
 	tree, err := service.NewResourceGrantService().GrantTree(
-		c.Request.Context(), tenantID, c.Query("kind"), c.Query("keywords"),
+		c.Request.Context(), tenantID, c.Query("kind"), c.Query("keywords"), user.ID,
 	)
 	if err != nil {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
@@ -730,7 +740,7 @@ func (h *ConsoleHandler) GrantExceptions(c *gin.Context) {
 	result, err := service.NewResourceGrantService().ListGrantExceptions(
 		c.Request.Context(), tenantID,
 		c.Query("kind"), c.Query("dataset_id"), c.Query("folder_id"),
-		c.Query("keywords"), c.Query("all") == "1",
+		c.Query("keywords"), user.ID, c.Query("all") == "1",
 		size, (page-1)*size,
 	)
 	if err != nil {
@@ -756,8 +766,27 @@ func (h *ConsoleHandler) GrantsBySubject(c *gin.Context) {
 		return
 	}
 
+	subjectKind := c.Query("subject_kind")
+	subjectID := c.Query("subject_id")
+	// 「他能看到什么」是管理视角：普通成员只能查自己。允许查别人等于把同事
+	// 名下的资源清单交出去，与 grant-tree 那条越权同一类问题（E2E D2）。
+	if !(subjectKind == entity.GrantSubjectUser && subjectID == user.ID) {
+		var membership entity.UserTenant
+		if err := dao.DB.WithContext(c.Request.Context()).
+			Where("tenant_id = ?", tenantID).
+			Where("user_id = ?", user.ID).
+			Take(&membership).Error; err != nil {
+			common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, "无权访问该租户")
+			return
+		}
+		if !tenantIsManagement(c, &membership) {
+			common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, "仅租户管理员可查看其他成员的授权")
+			return
+		}
+	}
+
 	result, err := service.NewResourceGrantService().GrantsBySubject(
-		c.Request.Context(), tenantID, c.Query("subject_kind"), c.Query("subject_id"),
+		c.Request.Context(), tenantID, subjectKind, subjectID,
 	)
 	if err != nil {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())

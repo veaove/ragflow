@@ -421,7 +421,19 @@ func (s *ConsoleService) CreateRole(ctx context.Context, tenantID, name, descrip
 }
 
 // UpdateRole renames a custom role.
+//
+// 内置角色的名字是种子的一部分，不能改：EnsureTenantAdminRole（移交 Owner 时
+// 找「租户管理员」）、backfillBuiltinRolePermissions（按 name 匹配默认矩阵）
+// 都按名字查，改名之后这些逻辑会静默失效，而控制台本来就把内置角色标成
+// 「不可编辑」——接口层不拦就只是把 UI 的约束当摆设（E2E D5）。
 func (s *ConsoleService) UpdateRole(ctx context.Context, tenantID, id string, fields map[string]any) error {
+	role, err := dao.NewRoleDAO().Get(ctx, dao.DB, tenantID, id)
+	if err != nil {
+		return err
+	}
+	if role.IsBuiltin {
+		return errors.New("内置角色不可修改名称或描述，如需调整能力请修改权限矩阵")
+	}
 	if name, ok := fields["name"].(string); ok {
 		name = strings.TrimSpace(name)
 		if name == "" {
@@ -447,25 +459,51 @@ func (s *ConsoleService) DeleteRole(ctx context.Context, tenantID, id string) er
 }
 
 // SavePermissions replaces a role's matrix from the console's checkbox grid.
+//
+// 每个模块都落一行，false 也落。行缺失在系统里有两个含义，都不是「撤销」：
+// ModulePermission 把 nil 当「没有约束」→ 放行；backfillBuiltinRolePermissions
+// 把缺失模块当「矩阵新增的模块」→ 按默认值补回。两者叠加让「撤销权限」既不
+// 生效也不持久（E2E D4），所以这里把矩阵补成全量再写。
 func (s *ConsoleService) SavePermissions(ctx context.Context, tenantID, roleID string, rows []*entity.RolePermission) error {
+	role, err := dao.NewRoleDAO().Get(ctx, dao.DB, tenantID, roleID)
+	if err != nil {
+		return err
+	}
+	if role.IsSystem {
+		// Owner 对应 user_tenant.role 枚举，DAO 里本来就对 owner 无条件放行，
+		// 给它的矩阵开写入口只会让「改了没效果」变成一张工单。
+		return errors.New("Owner 角色拥有全部权限，权限矩阵不可修改")
+	}
+
 	// Drop unknown modules instead of persisting them.
 	allowed := make(map[string]struct{}, len(dao.ConsoleModules))
 	for _, m := range dao.ConsoleModules {
 		allowed[m] = struct{}{}
 	}
-	clean := make([]*entity.RolePermission, 0, len(rows))
+	byModule := make(map[string]*entity.RolePermission, len(dao.ConsoleModules))
 	for _, row := range rows {
+		if row == nil {
+			continue
+		}
 		if _, ok := allowed[row.Module]; !ok {
 			continue
 		}
-		clean = append(clean, &entity.RolePermission{
+		byModule[row.Module] = &entity.RolePermission{
 			Module:    row.Module,
 			CanView:   row.CanView,
 			CanCreate: row.CanCreate,
 			CanEdit:   row.CanEdit,
 			CanDelete: row.CanDelete,
 			CanManage: row.CanManage,
-		})
+		}
+	}
+	clean := make([]*entity.RolePermission, 0, len(dao.ConsoleModules))
+	for _, module := range dao.ConsoleModules {
+		row, ok := byModule[module]
+		if !ok {
+			row = &entity.RolePermission{Module: module}
+		}
+		clean = append(clean, row)
 	}
 	return dao.NewRoleDAO().ReplacePermissions(ctx, dao.DB, tenantID, roleID, clean)
 }

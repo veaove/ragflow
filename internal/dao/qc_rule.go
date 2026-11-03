@@ -18,6 +18,7 @@ package dao
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -50,6 +51,10 @@ type QcRuleListFilter struct {
 	Scope    string
 	Severity string
 	Enabled  *bool
+	// AppIDsByType 非 nil 时把结果收窄到「创建于这些应用」的规则。
+	// nil 表示不按可见性收窄（租户管理层看全量）；空 map / 空列表表示一条都
+	// 不该看到 —— 两者语义不同，不能用 len==0 判断。
+	AppIDsByType map[string][]string
 }
 
 // ListBindingsByRule returns every app that references the rule, oldest first.
@@ -141,6 +146,26 @@ func (dao *QcRuleDAO) List(ctx context.Context, db *gorm.DB, filter QcRuleListFi
 	}
 	if filter.Enabled != nil {
 		query = query.Where("enabled = ?", *filter.Enabled)
+	}
+	if filter.AppIDsByType != nil {
+		// 规则的 (app_type, app_id) 是「创建于哪个应用」：应用看不见，规则也
+		// 不该看见。按类型拼 OR，两类都没有时明确写 1 = 0，而不是让条件落空
+		// 变成「不限」。
+		conditions := make([]string, 0, 2)
+		args := make([]any, 0, 4)
+		for _, appType := range []string{entity.QcAppTypeChat, entity.QcAppTypeCanvas} {
+			ids := filter.AppIDsByType[appType]
+			if len(ids) == 0 {
+				continue
+			}
+			conditions = append(conditions, "(app_type = ? AND app_id IN ?)")
+			args = append(args, appType, ids)
+		}
+		if len(conditions) == 0 {
+			query = query.Where("1 = 0")
+		} else {
+			query = query.Where(strings.Join(conditions, " OR "), args...)
+		}
 	}
 
 	var total int64

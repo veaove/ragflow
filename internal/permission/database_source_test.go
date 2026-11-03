@@ -253,6 +253,87 @@ func TestDatabaseCheckerScopesDatasetsToMembershipAndVisibility(t *testing.T) {
 	}
 }
 
+// TestQueryScopeIncludesDatasetsCreatedByCaller 覆盖 E2E D1：成员自建的私库
+// 详情能读、列表里却消失。SQL 快路径漏了「创建者恒可见」，而通用 Scope 路径
+// （逐条 checkResource）一直是放行的，两条路径口径不一致。
+func TestQueryScopeIncludesDatasetsCreatedByCaller(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&entity.Knowledgebase{}, &entity.UserTenant{}, &entity.ResourceGrant{}, &entity.User{}, &entity.Tenant{}); err != nil {
+		t.Fatalf("migrate permission tables: %v", err)
+	}
+
+	valid := string(entity.StatusValid)
+	datasets := []entity.Knowledgebase{
+		// 本人建的私库：既没有 team 也没授权，仍必须出现在列表里。
+		{ID: "own-private", TenantID: "t1", CreatedBy: "member-user", Permission: string(entity.TenantPermissionMe), Status: &valid},
+		// 别人建的私库：不可见。
+		{ID: "others-private", TenantID: "t1", CreatedBy: "tenant-owner", Permission: string(entity.TenantPermissionMe), Status: &valid},
+		// 本人建在另一个租户的库：创建者恒可见，不受租户切换影响。
+		{ID: "own-other-tenant", TenantID: "t2", CreatedBy: "member-user", Permission: string(entity.TenantPermissionMe), Status: &valid},
+	}
+	for i := range datasets {
+		if err := db.Create(&datasets[i]).Error; err != nil {
+			t.Fatalf("create dataset %q: %v", datasets[i].ID, err)
+		}
+	}
+	memberships := []entity.UserTenant{
+		{ID: "m1", UserID: "member-user", TenantID: "t1", Role: string(RoleNormal), Status: &valid},
+		{ID: "m2", UserID: "member-user", TenantID: "t2", Role: string(RoleNormal), Status: &valid},
+		{ID: "o1", UserID: "tenant-owner", TenantID: "t1", Role: string(RoleOwner), Status: &valid},
+		{ID: "o2", UserID: "tenant-owner", TenantID: "t2", Role: string(RoleOwner), Status: &valid},
+	}
+	for i := range memberships {
+		if err := db.Create(&memberships[i]).Error; err != nil {
+			t.Fatalf("create membership %q: %v", memberships[i].ID, err)
+		}
+	}
+
+	checker := NewDatabaseChecker(db)
+	queryScope, err := checker.QueryScope(context.Background(), Subject{UserID: "member-user"}, ScopeQuery{
+		Kind: ResourceKindDataset, Operation: OperationRead,
+	})
+	if err != nil {
+		t.Fatalf("QueryScope(datasets) error = %v", err)
+	}
+	var ids []string
+	if err := queryScope.Apply(db.Model(&entity.Knowledgebase{})).Order("knowledgebase.id").Pluck("knowledgebase.id", &ids).Error; err != nil {
+		t.Fatalf("query authorized datasets: %v", err)
+	}
+	want := []string{"own-other-tenant", "own-private"}
+	if len(ids) != len(want) {
+		t.Fatalf("QueryScope(datasets) = %v, want %v", ids, want)
+	}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("QueryScope(datasets) = %v, want %v", ids, want)
+		}
+	}
+
+	// 通用 Scope 路径必须给出同一集合，否则「详情能读、列表没有」会以另一种
+	// 形式复发（列表走 SQL、详情走 checkResource）。
+	scope, err := checker.Scope(context.Background(), Subject{UserID: "member-user"}, ScopeQuery{
+		Kind: ResourceKindDataset, Operation: OperationRead,
+	})
+	if err != nil {
+		t.Fatalf("Scope(datasets) error = %v", err)
+	}
+	if len(scope.ResourceIDs) != len(want) {
+		t.Fatalf("Scope(datasets) = %v, want %v", scope.ResourceIDs, want)
+	}
+	got := make(map[string]bool, len(scope.ResourceIDs))
+	for _, id := range scope.ResourceIDs {
+		got[id] = true
+	}
+	for _, id := range want {
+		if !got[id] {
+			t.Fatalf("Scope(datasets) = %v, want %v", scope.ResourceIDs, want)
+		}
+	}
+}
+
 func TestCheckerQueryScopeFallsBackToAuthorizedIDs(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

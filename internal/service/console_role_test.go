@@ -463,6 +463,136 @@ func TestEffectivePermissionsExplicitRoleID(t *testing.T) {
 	}
 }
 
+// ─── SavePermissions ────────────────────────────────────────────────────────
+
+// TestSavePermissionsMaterializesRevokedModules 覆盖 E2E D4：撤销权限必须能被
+// 持久化。矩阵行缺失会被两处当成别的东西 —— ModulePermission 当「无约束 ⇒
+// 放行」，backfillBuiltinRolePermissions 当「新增模块 ⇒ 按默认值补回」，所以
+// 保存时要把未提交的模块补成 false 行，而不是干脆不写。
+func TestSavePermissionsMaterializesRevokedModules(t *testing.T) {
+	db := setupConsoleRoleDB(t)
+	svc := NewConsoleService()
+	ctx := context.Background()
+
+	if _, err := svc.ListRoles(ctx, "tenant-1"); err != nil {
+		t.Fatalf("seed builtin roles: %v", err)
+	}
+	var memberRole entity.Role
+	if err := db.Where("tenant_id = ? AND name = ?", "tenant-1", "普通成员").Take(&memberRole).Error; err != nil {
+		t.Fatalf("load 普通成员: %v", err)
+	}
+
+	// 只提交一个模块，等于「其余全部撤销」。
+	if err := svc.SavePermissions(ctx, "tenant-1", memberRole.ID, []*entity.RolePermission{
+		{Module: "dataset", CanView: true},
+	}); err != nil {
+		t.Fatalf("SavePermissions: %v", err)
+	}
+
+	var rows []entity.RolePermission
+	if err := db.Where("role_id = ?", memberRole.ID).Find(&rows).Error; err != nil {
+		t.Fatalf("load matrix: %v", err)
+	}
+	if len(rows) != len(dao.ConsoleModules) {
+		t.Fatalf("matrix rows = %d, want %d (每行都必须落库)", len(rows), len(dao.ConsoleModules))
+	}
+	byModule := make(map[string]entity.RolePermission, len(rows))
+	for _, row := range rows {
+		byModule[row.Module] = row
+	}
+	if got := byModule["dataset"]; !got.CanView {
+		t.Fatalf("dataset should stay viewable, got %+v", got)
+	}
+	if got, ok := byModule["chat"]; !ok || got.CanView || got.CanCreate || got.CanEdit || got.CanDelete || got.CanManage {
+		t.Fatalf("chat 应被撤销为全 false，got %+v (ok=%v)", got, ok)
+	}
+
+	// 再读一次（会触发 EnsureBuiltinRoles → backfill）：撤销不能被默认值盖回去。
+	roles, err := svc.ListRoles(ctx, "tenant-1")
+	if err != nil {
+		t.Fatalf("ListRoles: %v", err)
+	}
+	var chatRow *entity.RolePermission
+	for _, role := range roles {
+		if role.ID != memberRole.ID {
+			continue
+		}
+		for _, perm := range role.Permissions {
+			if perm.Module == "chat" {
+				chatRow = perm
+			}
+		}
+	}
+	if chatRow == nil {
+		t.Fatal("chat row missing after re-read")
+	}
+	if chatRow.CanView {
+		t.Fatal("撤销后的 chat 权限被 backfill 恢复了")
+	}
+}
+
+// TestSavePermissionsRejectsOwnerMatrix Owner 是枚举角色，矩阵对它没有意义。
+func TestSavePermissionsRejectsOwnerMatrix(t *testing.T) {
+	db := setupConsoleRoleDB(t)
+	svc := NewConsoleService()
+	ctx := context.Background()
+
+	if _, err := svc.ListRoles(ctx, "tenant-1"); err != nil {
+		t.Fatalf("seed builtin roles: %v", err)
+	}
+	var owner entity.Role
+	if err := db.Where("tenant_id = ? AND name = ?", "tenant-1", "Owner").Take(&owner).Error; err != nil {
+		t.Fatalf("load Owner: %v", err)
+	}
+
+	if err := svc.SavePermissions(ctx, "tenant-1", owner.ID, nil); err == nil {
+		t.Fatal("Owner 矩阵写入应被拒绝")
+	}
+	var count int64
+	if err := db.Model(&entity.RolePermission{}).Where("role_id = ?", owner.ID).Count(&count).Error; err != nil {
+		t.Fatalf("count owner rows: %v", err)
+	}
+	if count != int64(len(dao.ConsoleModules)) {
+		t.Fatalf("owner rows = %d, want %d (被拒绝时不得删行)", count, len(dao.ConsoleModules))
+	}
+}
+
+// ─── UpdateRole ─────────────────────────────────────────────────────────────
+
+// TestUpdateRoleRejectsBuiltinRename 覆盖 E2E D5：内置角色改名会让按名字查找
+// 的链路静默失效（租户管理员识别、backfill），控制台已禁用，接口必须一致。
+func TestUpdateRoleRejectsBuiltinRename(t *testing.T) {
+	db := setupConsoleRoleDB(t)
+	svc := NewConsoleService()
+	ctx := context.Background()
+
+	if _, err := svc.ListRoles(ctx, "tenant-1"); err != nil {
+		t.Fatalf("seed builtin roles: %v", err)
+	}
+	var builtin entity.Role
+	if err := db.Where("tenant_id = ? AND name = ?", "tenant-1", "普通成员").Take(&builtin).Error; err != nil {
+		t.Fatalf("load 普通成员: %v", err)
+	}
+	if err := svc.UpdateRole(ctx, "tenant-1", builtin.ID, map[string]any{"name": "改名失败"}); err == nil {
+		t.Fatal("内置角色改名应被拒绝")
+	}
+
+	custom, err := svc.CreateRole(ctx, "tenant-1", "数据专员", "临时角色", map[string]string{"*": "view"})
+	if err != nil {
+		t.Fatalf("CreateRole: %v", err)
+	}
+	if err := svc.UpdateRole(ctx, "tenant-1", custom.ID, map[string]any{"name": "数据专员2"}); err != nil {
+		t.Fatalf("自定义角色应可改名: %v", err)
+	}
+	var renamed entity.Role
+	if err := db.Where("id = ?", custom.ID).Take(&renamed).Error; err != nil {
+		t.Fatalf("load renamed role: %v", err)
+	}
+	if renamed.Name != "数据专员2" {
+		t.Fatalf("name = %q, want 数据专员2", renamed.Name)
+	}
+}
+
 func TestEffectivePermissionsEnumFallbackSeedsBuiltin(t *testing.T) {
 	setupConsoleRoleDB(t)
 	svc := NewConsoleService()

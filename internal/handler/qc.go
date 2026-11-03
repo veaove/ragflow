@@ -34,6 +34,7 @@ import (
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 	"ragflow/internal/service"
 )
 
@@ -205,10 +206,11 @@ func (h *QcHandler) ListRules(c *gin.Context) {
 	appID := c.Query("app_id")
 
 	// app_type / app_id 是**可选**的：
-	//   传 → 按应用过滤（应用设置页的「选用规则」列表用）
-	//   不传 → 返回本租户的全部规则（质检规则页统一管理用）
-	// 统一列表的权限是「同租户」而不是「应用 owner」：规则是租户级配置资产，
-	// 应用只是引用方，是否生效仍只看 qc_rule_binding。
+	//   传 → 按应用过滤（应用设置页的「选用规则」列表用，要求调用者是应用 owner）
+	//   不传 → 列表按租户；但「同租户」不等于「谁都能看全量」：规则创建在哪个
+	//          应用，就跟着那个应用的可见性走，否则出现「应用看不见、规则却能读」
+	//          （E2E D3）。租户管理层仍看全量——规则是租户级配置资产，这层语义
+	//          只对普通成员收窄。
 	if appType != "" || appID != "" {
 		if appType == "" || appID == "" {
 			common.ErrorWithCode(c, common.CodeArgumentError, "app_type and app_id must be provided together")
@@ -249,15 +251,34 @@ func (h *QcHandler) ListRules(c *gin.Context) {
 		b := strings.EqualFold(v, "true") || v == "1"
 		enabled = &b
 	}
+	tenantID := CurrentTenantID(c)
 	filter := dao.QcRuleListFilter{
 		// 未指定应用时按当前租户兜底
-		TenantID: CurrentTenantID(c),
+		TenantID: tenantID,
 		AppType:  appType,
 		AppID:    appID,
 		Keyword:  c.Query("keyword"),
 		Scope:    c.Query("scope"),
 		Severity: c.Query("severity"),
 		Enabled:  enabled,
+	}
+	if appID == "" {
+		management, err := callerIsTenantManagement(c, user.ID, tenantID)
+		if err != nil {
+			common.ErrorWithCode(c, common.CodeServerError, err.Error())
+			return
+		}
+		if !management {
+			chatIDs, canvasIDs, err := visibleQcAppIDs(c.Request.Context(), user.ID)
+			if err != nil {
+				common.ErrorWithCode(c, common.CodeServerError, err.Error())
+				return
+			}
+			filter.AppIDsByType = map[string][]string{
+				entity.QcAppTypeChat:   chatIDs,
+				entity.QcAppTypeCanvas: canvasIDs,
+			}
+		}
 	}
 	rules, total, err := dao.NewQcRuleDAO().List(c.Request.Context(), dao.DB, filter, (page-1)*size, size)
 	if err != nil {
@@ -911,4 +932,51 @@ func (h *QcHandler) Stream(c *gin.Context) {
 			}
 		}
 	}
+}
+
+// callerIsTenantManagement 报告调用者是否是租户管理层（owner / 租户管理员）。
+//
+// 只读接口里也有「看一眼就是别人的数据」的条目（例如全租户质检规则、别人的
+// 授权清单），它们需要和写接口同一把尺子，所以把 requireTenantAccess(write)
+// 的判定抽成可复用的形式。
+func callerIsTenantManagement(c *gin.Context, userID, tenantID string) (bool, error) {
+	if tenantID == "" {
+		return false, nil
+	}
+	var membership entity.UserTenant
+	if err := dao.DB.WithContext(c.Request.Context()).
+		Where("tenant_id = ?", tenantID).
+		Where("user_id = ?", userID).
+		Take(&membership).Error; err != nil {
+		return false, err
+	}
+	return tenantIsManagement(c, &membership), nil
+}
+
+// visibleQcAppIDs 返回调用者读得到的 chat / canvas 应用 id。
+//
+// 质检规则挂在「创建它的应用」上，所以这两份 id 就是规则列表的可见边界。
+func visibleQcAppIDs(ctx context.Context, userID string) ([]string, []string, error) {
+	if userID == "" {
+		return nil, nil, nil
+	}
+	checker := permission.NewDatabaseChecker(dao.DB)
+	load := func(kind permission.ResourceKind) ([]string, error) {
+		scope, err := checker.Scope(ctx, permission.Subject{UserID: userID}, permission.ScopeQuery{
+			Kind: kind, Operation: permission.OperationRead,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return scope.ResourceIDs, nil
+	}
+	chatIDs, err := load(permission.ResourceKindChat)
+	if err != nil {
+		return nil, nil, err
+	}
+	canvasIDs, err := load(permission.ResourceKindCanvas)
+	if err != nil {
+		return nil, nil, err
+	}
+	return chatIDs, canvasIDs, nil
 }

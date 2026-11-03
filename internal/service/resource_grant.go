@@ -99,7 +99,11 @@ type grantResourceRow struct {
 }
 
 // ListResources returns a page of resources of one kind with their grants.
-func (s *ResourceGrantService) ListResources(ctx context.Context, tenantID, kind, keywords string, limit, offset int) ([]*GrantResourceView, int64, error) {
+//
+// userID 是查看者：清单只包含他读得到的资源。分页与 total 都在 SQL 里收窄，
+// 否则「看得见的行」和「total 说还有 16 条」会自相矛盾，也等于把全租户资源数
+// 量透给普通成员（E2E D2）。
+func (s *ResourceGrantService) ListResources(ctx context.Context, tenantID, kind, keywords, userID string, limit, offset int) ([]*GrantResourceView, int64, error) {
 	spec, err := grantKindSpecFor(kind)
 	if err != nil {
 		return nil, 0, err
@@ -124,6 +128,18 @@ func (s *ResourceGrantService) ListResources(ctx context.Context, tenantID, kind
 	if kw := strings.TrimSpace(keywords); kw != "" {
 		q = q.Where(spec.NameExpr+" LIKE ?", "%"+kw+"%")
 	}
+	visible, err := s.visibleGrantIDs(ctx, userID, spec.Kind)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(visible) == 0 {
+		return []*GrantResourceView{}, 0, nil
+	}
+	visibleIDs := make([]string, 0, len(visible))
+	for id := range visible {
+		visibleIDs = append(visibleIDs, id)
+	}
+	q = q.Where("id IN ?", visibleIDs)
 
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

@@ -274,8 +274,11 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 			Where("tenant.id = knowledgebase.tenant_id").
 			Where("IFNULL(tenant.enabled, 1) = 0")
 
-		visible := "(EXISTS (?) OR (knowledgebase.permission = ? AND EXISTS (?)) OR EXISTS (?))"
-		args := []any{callerIsOwner, string(entity.TenantPermissionTeam), callerIsMember, granted}
+		// 创建者恒可见：permission=me 约束的是「别人」，不是本人。缺这一条时
+		// 成员自建的库详情能读、列表里却没有（E2E D1），用户会以为库丢了。
+		// 这里用列比较而不是 EXISTS 子查询：knowledgebase 就是当前行。
+		visible := "(EXISTS (?) OR (knowledgebase.permission = ? AND EXISTS (?)) OR EXISTS (?) OR knowledgebase.created_by = ?)"
+		args := []any{callerIsOwner, string(entity.TenantPermissionTeam), callerIsMember, granted, subject.UserID}
 		// 子树为空（不是部门管理员，或没被分配部门）时不接这一段：既省一次
 		// 判断，也避免拼出 `IN ()` 这种依赖 MySQL 容错性的语法。
 		if subtreeErr == nil && len(departmentSubtree) > 0 {
