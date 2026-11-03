@@ -73,6 +73,8 @@ export default {
       pickDate: '选择日期',
       pickDateRange: '选择日期范围',
       selectAll: '全选',
+      maximize: '最大化',
+      restore: '还原',
       delete: '删除',
       deleteModalTitle: '确定删除吗?',
       deleteThem: '确定要删除吗？',

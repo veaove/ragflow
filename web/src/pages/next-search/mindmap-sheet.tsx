@@ -23,7 +23,9 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { IModalProps } from '@/interfaces/common';
-import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Maximize2, Minimize2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePendingMindMap } from './hooks';
 
@@ -34,6 +36,15 @@ interface IProps extends IModalProps<any> {
 const MindMapSheet = ({ data, hideModal, loading, visible }: IProps) => {
   const { t } = useTranslation();
   const percent = usePendingMindMap();
+  // 默认贴右侧窄栏，导图在这种宽度下只能看个大概，所以给一个铺满整页的开关。
+  const [maximized, setMaximized] = useState(false);
+
+  useEffect(() => {
+    if (!visible) {
+      setMaximized(false);
+    }
+  }, [visible]);
+
   // An empty tree (no children) means the backend honestly found nothing to
   // map. Render an explicit empty state instead of a ghost "root" node.
   const isEmptyMindMap =
@@ -41,7 +52,10 @@ const MindMapSheet = ({ data, hideModal, loading, visible }: IProps) => {
   return (
     <Sheet open={visible} modal={false}>
       <SheetContent
-        className="top-24 p-0 flex flex-col gap-0 h-auto"
+        className={cn(
+          'top-24 p-0 flex flex-col gap-0 h-auto',
+          maximized && 'top-0 h-full w-screen max-w-none',
+        )}
         closeIcon={false}
       >
         <SheetHeader className="border-b py-2 px-4">
@@ -50,13 +64,27 @@ const MindMapSheet = ({ data, hideModal, loading, visible }: IProps) => {
             <div className="text-text-primary font-medium text-base">
               {t('chunk.mind')}
             </div>
-            <X
-              className="text-text-primary cursor-pointer"
-              size={16}
-              onClick={() => {
-                hideModal?.();
-              }}
-            />
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                aria-pressed={maximized}
+                aria-label={
+                  maximized ? t('common.restore') : t('common.maximize')
+                }
+                title={maximized ? t('common.restore') : t('common.maximize')}
+                className="text-text-primary hover:text-accent-primary"
+                onClick={() => setMaximized((previous) => !previous)}
+              >
+                {maximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+              <X
+                className="text-text-primary cursor-pointer"
+                size={16}
+                onClick={() => {
+                  hideModal?.();
+                }}
+              />
+            </div>
           </div>
         </SheetHeader>
         <div className="flex-1 p-4 overflow-hidden">

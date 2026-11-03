@@ -79,6 +79,8 @@ export default {
       pickDate: 'Pick a date',
       pickDateRange: 'Pick a date range',
       selectAll: 'Select all',
+      maximize: 'Maximize',
+      restore: 'Restore',
       delete: 'Delete',
       deleteModalTitle: 'Are you sure to delete it ?',
       deleteThem: 'Are you sure to delete them ?',
