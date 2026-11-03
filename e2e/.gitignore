@@ -1,0 +1,7 @@
+# 登录态与运行产物，不入库
+.auth/
+node_modules/
+probe-out/
+report/
+test-results/
+test-results-*/

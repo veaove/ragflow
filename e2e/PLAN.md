@@ -1,0 +1,53 @@
+# 权限与资源授权 E2E（Playwright）
+
+目标：在真实租户（华夏基金，`172.30.20.51`）上验证角色矩阵、资源授权、资源可见范围三条链路，
+以及普通成员的越权边界。**默认全部只读**，不创建、不修改、不删除业务数据。
+
+## 目录
+
+```
+e2e/
+├── accounts.json          # 两个测试账号（owner / member）
+├── playwright.config.ts   # 单 worker、串行、失败留 trace
+├── scripts/               # auth.mjs 生成登录态；probe.mjs 探页面事实
+├── support/env.ts         # 账号、租户、真实资源 ID、接口前缀
+├── support/global-setup.ts# .auth 缺失时自动跑 auth.mjs
+└── specs/
+    ├── 00-smoke.spec.ts        # 登录态、一级导航、未登录跳转
+    ├── 10-role-matrix.spec.ts  # 角色列表、矩阵渲染、Owner 满格
+    ├── 20-grant.spec.ts        # 授权树层级、右栏联动、接口字段
+    ├── 30-resource-scope.spec.ts # 六类资源的可见边界与接口计数
+    └── 40-overreach.spec.ts    # 普通成员的越权读写
+```
+
+## 只读基线
+
+- 写接口一律打**不存在的资源 id**（`does-not-exist-0001`）：权限层放行才会走到「资源不存在」，
+  因此 403 能证明拦截生效，且不改任何数据。
+- 已知缺陷用 `test.fixme` 或「断言当前行为」的 FINDING 用例固化，不写 `test.skip`，
+  修复后用例变红提醒更新。
+- 需要真正写入的用例必须显式开 `E2E_ALLOW_WRITE=1`，并先建后删。
+
+## 已知缺陷
+
+| # | 缺陷 | 证据 | 处理 |
+|---|---|---|---|
+| D1 | 成员看不到自己创建的私库：详情 200，列表缺失 | `技术部(2)` 详情 `code=0`，`GET /datasets` 只回 2 个被授权的库 | `40-overreach` 的 `test.fixme`；列表 scope 只认 owner / team / 授权 / 部门管理员，漏了 `created_by = 本人` |
+| D2 | 成员能读整棵资源授权树（18 个库，含打不开的私库） | `GET /tenants/:id/grant-tree` 对该成员 `code=0, total=18` | FINDING 用例；只读、写已 403，属信息暴露 |
+| D3 | 质检规则未按资源授权过滤，按租户返回 | 成员 `GET /qc/rules` 拿到 9 条规则 | FINDING 用例；规则归属应用对成员不可见，规则本身仍可读 |
+| D4 | 内置角色矩阵可被空写覆盖，随后被静默回填 | `PUT /roles/:id/permissions` 提交 `{permissions: []}` 返回成功，下次 `ListRoles` 又按 `ConsoleModules` 补回默认行 | 不写成用例（要写线上数据）；`dao.backfillBuiltinRolePermissions` 无法区分「模块新增」与「管理员撤销」 |
+| D5 | 内置角色可被改名，而多处逻辑按名字匹配 | `PUT /roles/:id` 无 `is_builtin` 保护；`EnsureTenantAdminRole` / backfill 按 `name` 查 | 前端已禁用编辑，接口层未拦；同上，只记录 |
+
+## 运行
+
+```bash
+cd e2e
+npm install
+npx playwright install chromium   # 首次
+npm test                          # 全部
+npm run test:overreach            # 单个 spec
+npm run report                    # 看 HTML 报告
+```
+
+登录态失效（token 被顶掉）时重跑 `node scripts/auth.mjs`，或删掉 `.auth/*.json` 交给
+`global-setup` 自动生成。

@@ -1,0 +1,16 @@
+[
+  {
+    "name": "owner",
+    "email": "123456789@qq.com",
+    "password": "AsdQwe@123",
+    "role": "owner",
+    "note": "华夏基金租户创建者（owner 档）"
+  },
+  {
+    "name": "member",
+    "email": "hjzd@hjzd.com",
+    "password": "AsdQwe@123",
+    "role": "normal",
+    "note": "华夏基金普通成员，自定义角色「技术员」（矩阵全勾）"
+  }
+]
