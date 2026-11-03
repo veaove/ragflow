@@ -30,6 +30,8 @@ e2e/
 
 ## 已知缺陷
 
+完整的场景覆盖清单、分级与未覆盖项见 `docs/e2e-permission-report.md`；下表只留演进记录。
+
 | # | 缺陷 | 证据 | 处理 |
 |---|---|---|---|
 | D1 | 成员看不到自己创建的私库：详情 200，列表缺失 | `技术部(2)` 详情 `code=0`，`GET /datasets` 只回 2 个被授权的库 | `40-overreach` 的 `test.fixme`；列表 scope 只认 owner / team / 授权 / 部门管理员，漏了 `created_by = 本人` |
