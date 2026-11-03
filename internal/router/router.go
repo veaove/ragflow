@@ -387,8 +387,13 @@ func (r *Router) Setup(engine *gin.Engine) {
 				// 路径而不是 /grants/kinds：后者会和 /grants/:kind/... 抢同一
 				// 段通配，路由树上静态段优先但不值得赌框架行为。
 				tenants.GET("/:tenant_id/grant-kinds", r.consoleHandler.ListResourceGrantKinds)
-				// 文件级授权：展开某个知识库时按需拉取库内文件及其规则
-				tenants.GET("/:tenant_id/grants/:kind/:resource_id/documents", r.consoleHandler.ListResourceGrantDocuments)
+				// 资源授权树：知识库（库 → 文件夹）与文件管理（文件夹 → 文件）
+				// 两类有层级的资源，一次返回每层的状态摘要
+				tenants.GET("/:tenant_id/grant-tree", r.consoleHandler.GrantTree)
+				// 授权树某个节点下的子项（默认只有例外，"查看全部"才取全量）
+				tenants.GET("/:tenant_id/grant-exceptions", r.consoleHandler.GrantExceptions)
+				// 成员视角：某人凭哪些规则看到哪些资源，按来源分行
+				tenants.GET("/:tenant_id/grants-by-subject", r.consoleHandler.GrantsBySubject)
 				tenants.PUT("/:tenant_id/grants/:kind/:resource_id", r.consoleHandler.SetResourceGrants)
 				// 三级可见性：owner / tenant_owner / platform
 				tenants.PUT("/:tenant_id/grants/:kind/:resource_id/visibility", r.consoleHandler.SetResourceGrantVisibility)

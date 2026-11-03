@@ -261,11 +261,33 @@ func (a grantAggregate) merge(row *entity.ResourceGrant) grantAggregate {
 	}
 }
 
+// grantNameCache 缓存主体显示名。资源树的每个节点都要把规则翻成名字，
+// 没有缓存时同一批部门 / 成员会被重复查上几十次。
+type grantNameCache struct {
+	deptNames map[string]string
+	userNames map[string]string
+}
+
+func newGrantNameCache() *grantNameCache {
+	return &grantNameCache{
+		deptNames: map[string]string{},
+		userNames: map[string]string{},
+	}
+}
+
 // describeGrants turns stored rows into display subjects (resolving names).
 func (s *ResourceGrantService) describeGrants(ctx context.Context, tenantID string, rows []*entity.ResourceGrant) []GrantSubject {
+	return s.describeGrantsCached(ctx, tenantID, rows, newGrantNameCache())
+}
+
+// describeGrantsCached 与 describeGrants 相同，但复用调用方给的名字缓存。
+func (s *ResourceGrantService) describeGrantsCached(ctx context.Context, tenantID string, rows []*entity.ResourceGrant, cache *grantNameCache) []GrantSubject {
 	out := make([]GrantSubject, 0, len(rows))
 	if len(rows) == 0 {
 		return out
+	}
+	if cache == nil {
+		cache = newGrantNameCache()
 	}
 
 	deptIDs := make([]string, 0)
@@ -284,19 +306,22 @@ func (s *ResourceGrantService) describeGrants(ctx context.Context, tenantID stri
 		case entity.GrantSubjectDepartment:
 			if !seenDept[r.SubjectID] {
 				seenDept[r.SubjectID] = true
-				deptIDs = append(deptIDs, r.SubjectID)
+				if _, ok := cache.deptNames[r.SubjectID]; !ok {
+					deptIDs = append(deptIDs, r.SubjectID)
+				}
 			}
 			deptGrants[r.SubjectID] = deptGrants[r.SubjectID].merge(r)
 		case entity.GrantSubjectUser:
 			if !seenUser[r.SubjectID] {
 				seenUser[r.SubjectID] = true
-				userIDs = append(userIDs, r.SubjectID)
+				if _, ok := cache.userNames[r.SubjectID]; !ok {
+					userIDs = append(userIDs, r.SubjectID)
+				}
 			}
 			userGrants[r.SubjectID] = userGrants[r.SubjectID].merge(r)
 		}
 	}
 
-	deptNames := make(map[string]string, len(deptIDs))
 	if len(deptIDs) > 0 {
 		type row struct {
 			ID   string `gorm:"column:id"`
@@ -309,12 +334,16 @@ func (s *ResourceGrantService) describeGrants(ctx context.Context, tenantID stri
 			Where("id IN ?", deptIDs).
 			Find(&list).Error; err == nil {
 			for _, r := range list {
-				deptNames[r.ID] = r.Name
+				cache.deptNames[r.ID] = r.Name
 			}
 		}
 	}
 
-	userNames := s.ownerNames(ctx, userIDs)
+	for id, name := range s.ownerNames(ctx, userIDs) {
+		cache.userNames[id] = name
+	}
+	deptNames := cache.deptNames
+	userNames := cache.userNames
 
 	if teamHit {
 		out = append(out, GrantSubject{

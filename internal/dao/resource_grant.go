@@ -48,6 +48,37 @@ func (dao *ResourceGrantDAO) ListByResources(ctx context.Context, db *gorm.DB, t
 	return out, nil
 }
 
+// ListByTenant returns every rule of one tenant.
+//
+// 控制台的资源授权页要一次画出整棵树（哪些子项有例外、每层有几个主体），
+// 逐节点查询会变成 N 次往返。规则表只存「例外」，量级远小于资源表，整表
+// 取回后在内存里归并反而是最省的。
+func (dao *ResourceGrantDAO) ListByTenant(ctx context.Context, db *gorm.DB, tenantID string) ([]*entity.ResourceGrant, error) {
+	rows := make([]*entity.ResourceGrant, 0)
+	err := db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Find(&rows).Error
+	return rows, err
+}
+
+// ListBySubject returns the rules held by one subject.
+//
+// 「按成员」视角回答的是「他能看到什么」，必须能反查：直接授予这个人的、
+// 他所在部门的、以及全团队的三类来源要分开返回，否则「我没给过他为什么他
+// 能看」这类问题永远查不出来。
+func (dao *ResourceGrantDAO) ListBySubject(ctx context.Context, db *gorm.DB, tenantID, subjectKind, subjectID string) ([]*entity.ResourceGrant, error) {
+	rows := make([]*entity.ResourceGrant, 0)
+	q := db.WithContext(ctx).
+		Where("tenant_id = ?", tenantID).
+		Where("subject_kind = ?", subjectKind)
+	// 团队授权不记 subject_id（就是「本租户全体成员」），带 id 会查不到。
+	if subjectKind != entity.GrantSubjectTeam {
+		q = q.Where("subject_id = ?", subjectID)
+	}
+	err := q.Find(&rows).Error
+	return rows, err
+}
+
 // Replace swaps a resource's whole rule set.
 //
 // Full replace rather than diff: the console's save button means "this list is

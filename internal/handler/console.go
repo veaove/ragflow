@@ -142,9 +142,13 @@ func inferModuleAction(path, method string) (string, string) {
 		module = moduleMember
 	case strings.Contains(path, "/roles"):
 		module = moduleRole
-	case strings.Contains(path, "/grants"), strings.Contains(path, "/grant-kinds"):
-		// 资源授权是独立模块，和「角色管理」分开授权。grant-kinds 是同一
-		// 页面的 Tab 清单，必须跟着同一个模块走，否则它会绕过 grant.view。
+	case strings.Contains(path, "/grants"),
+		strings.Contains(path, "/grant-kinds"),
+		strings.Contains(path, "/grant-tree"),
+		strings.Contains(path, "/grant-exceptions"):
+		// 资源授权是独立模块，和「角色管理」分开授权。同一个页面的 Tab 清单、
+		// 资源树、子项例外、成员视角都必须跟着同一个模块走，否则它们会绕过
+		// grant.view —— 页面一半能用一半 403 比整页打不开更难排查。
 		module = "grant"
 	default:
 		return "", ""
@@ -671,12 +675,12 @@ func (h *ConsoleHandler) SetResourceGrantVisibility(c *gin.Context) {
 	common.SuccessWithData(c, gin.H{"resource_id": c.Param("resource_id"), "visibility": got}, "success")
 }
 
-// ListResourceGrantDocuments handles
-// GET /tenants/:tenant_id/grants/:kind/:resource_id/documents.
+// GrantTree handles GET /tenants/:tenant_id/grant-tree?kind=dataset|file.
 //
-// 文件级授权是资源级授权的下一层：控制台展开某个知识库时按需拉这一页文件，
-// 每行带着自己的规则。规则为空表示该文件仍继承知识库的可见范围。
-func (h *ConsoleHandler) ListResourceGrantDocuments(c *gin.Context) {
+// 资源授权页的主体是"授权"而不是"资源"：左边一棵树画出 库 → 文件夹 的骨架
+// 和每层状态，右边回答"这一层给了谁、哪些子项偏离了继承"。树必须一次返回全部
+// 摘要，分页会让前端退化成点一层查一次。
+func (h *ConsoleHandler) GrantTree(c *gin.Context) {
 	user, code, msg := GetUser(c)
 	if code != common.CodeSuccess {
 		common.ErrorWithCode(c, code, msg)
@@ -688,8 +692,29 @@ func (h *ConsoleHandler) ListResourceGrantDocuments(c *gin.Context) {
 		return
 	}
 
-	if kind := c.Param("kind"); kind != "dataset" {
-		common.ResponseWithHttpCodeData(c, http.StatusBadRequest, common.CodeBadRequest, nil, "只有知识库支持按文件展开授权")
+	tree, err := service.NewResourceGrantService().GrantTree(
+		c.Request.Context(), tenantID, c.Query("kind"), c.Query("keywords"),
+	)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, tree, "success")
+}
+
+// GrantExceptions handles GET /tenants/:tenant_id/grant-exceptions.
+//
+// 参数：kind=dataset|file，dataset_id（知识库）/ folder_id（作用范围），
+// all=1 时返回全部子项（"查看全部文件"），否则只返回有独立规则的子项。
+func (h *ConsoleHandler) GrantExceptions(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	tenantID := consoleTenantID(c)
+	if err := requireTenantAccess(c, user.ID, tenantID, false); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
 		return
 	}
 
@@ -702,15 +727,43 @@ func (h *ConsoleHandler) ListResourceGrantDocuments(c *gin.Context) {
 		size = 20
 	}
 
-	rows, total, err := service.NewResourceGrantService().ListDocuments(
-		c.Request.Context(), tenantID, c.Param("resource_id"),
-		c.Query("keywords"), size, (page-1)*size,
+	result, err := service.NewResourceGrantService().ListGrantExceptions(
+		c.Request.Context(), tenantID,
+		c.Query("kind"), c.Query("dataset_id"), c.Query("folder_id"),
+		c.Query("keywords"), c.Query("all") == "1",
+		size, (page-1)*size,
 	)
 	if err != nil {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
 		return
 	}
-	common.SuccessWithData(c, gin.H{"documents": rows, "total": total}, "success")
+	common.SuccessWithData(c, result, "success")
+}
+
+// GrantsBySubject handles GET /tenants/:tenant_id/grants-by-subject.
+//
+// 成员视角：同一个资源可能经直接授权 / 部门 / 全团队三条路到达同一个人，
+// 必须分行标出来源，否则"我没给过他，他为什么能看"永远查不清。
+func (h *ConsoleHandler) GrantsBySubject(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	tenantID := consoleTenantID(c)
+	if err := requireTenantAccess(c, user.ID, tenantID, false); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
+		return
+	}
+
+	result, err := service.NewResourceGrantService().GrantsBySubject(
+		c.Request.Context(), tenantID, c.Query("subject_kind"), c.Query("subject_id"),
+	)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, result, "success")
 }
 
 // SetResourceGrants handles PUT /tenants/:tenant_id/grants/:kind/:resource_id.

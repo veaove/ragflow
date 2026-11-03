@@ -31,6 +31,9 @@ type grantKindSpec struct {
 	TenantWhere func(tenantID string) (string, []any)
 	// ExtraWhere 是额外的固定条件（例如只看文件夹）。
 	ExtraWhere string
+	// Hidden 为真时不在 Tab 清单里出现：它仍是一个合法的授权类型（树上的
+	// 文件夹节点就用它写规则），只是不值得单独占一个入口。
+	Hidden bool
 }
 
 // tenantByColumn 是绝大多数资源的租户条件：表里有 tenant_id。
@@ -90,6 +93,9 @@ var grantKindCatalog = []*grantKindSpec{
 		NameExpr: "file.name", OwnerExpr: "file.created_by",
 		TenantWhere: tenantByColumn("file.tenant_id"),
 		ExtraWhere:  "file.type = 'folder'",
+		// 文件夹的授权在「文件」的树里做，单独出一个 Tab 只会让人以为
+		// 文件夹和文件是两套规则。
+		Hidden: true,
 	},
 	{
 		Kind: "mcp_server", Label: "MCP 服务", Table: "mcp_server",
@@ -134,15 +140,18 @@ func grantKindSpecFor(kind string) (*grantKindSpec, error) {
 
 // GrantKindOption 是控制台渲染 Tab 用的一项（顺序即展示顺序）。
 type GrantKindOption struct {
-	Kind             string `json:"kind"`
-	Label            string `json:"label"`
-	SupportsVisibility bool `json:"supports_visibility"`
+	Kind               string `json:"kind"`
+	Label              string `json:"label"`
+	SupportsVisibility bool   `json:"supports_visibility"`
 }
 
 // GrantKindOptions 返回资源授权页支持的全部资源类型。
 func GrantKindOptions() []GrantKindOption {
 	out := make([]GrantKindOption, 0, len(grantKindCatalog))
 	for _, spec := range grantKindCatalog {
+		if spec.Hidden {
+			continue
+		}
 		out = append(out, GrantKindOption{
 			Kind:               spec.Kind,
 			Label:              spec.Label,
