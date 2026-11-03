@@ -258,7 +258,10 @@ func TestDepartmentAdminQueryScopeMatchesSingleResourceCheck(t *testing.T) {
 		t.Fatalf("QueryScope(datasets, dept admin) = %v, want [ds-child]", ids)
 	}
 
-	// 普通成员仍然只能看到 team 可见的库（本 fixture 里一个都没有）。
+	// 普通成员在本 fixture 里没有 team 库，只剩「自己建的」那一个：
+	// 创建者对自己的 permission=me 资源始终可用（policy_ce 里 VisibilityPrivate
+	// 那一支单独放行创建者），列表 SQL 必须给出同一个答案，否则成员自建的库
+	// 会出现「详情能读、列表消失」。
 	memberScope, err := fixture.checker.QueryScope(context.Background(), Subject{UserID: "member-other"}, ScopeQuery{
 		Kind: ResourceKindDataset, Operation: OperationRead,
 	})
@@ -270,8 +273,15 @@ func TestDepartmentAdminQueryScopeMatchesSingleResourceCheck(t *testing.T) {
 		Pluck("knowledgebase.id", &memberIDs).Error; err != nil {
 		t.Fatalf("query authorized datasets for member: %v", err)
 	}
-	if len(memberIDs) != 0 {
-		t.Fatalf("QueryScope(datasets, member) = %v, want none", memberIDs)
+	if len(memberIDs) != 1 || memberIDs[0] != "ds-other" {
+		t.Fatalf("QueryScope(datasets, member) = %v, want [ds-other]", memberIDs)
+	}
+	// 单条判定与列表 SQL 必须一致：同事的私有库仍然读不到。
+	if err := fixture.check(t, "member-other", "ds-child", OperationRead); !errors.Is(err, ErrPermissionDenied) {
+		t.Errorf("普通成员读同事私有库 error = %v, want %v", err, ErrPermissionDenied)
+	}
+	if err := fixture.check(t, "member-other", "ds-other", OperationRead); err != nil {
+		t.Errorf("普通成员读自建私库 error = %v, want nil", err)
 	}
 
 	// 列表 SQL 与逐条判定必须给出同一个答案。
