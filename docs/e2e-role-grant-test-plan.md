@@ -5,9 +5,9 @@
 | 版本 | v1.0（2026-11-04） |
 | 被测环境 | `http://172.30.20.51` |
 | 被测租户 | 华夏基金 `8d5c79460d6c46efb58353c68d8bf729` |
-| 账号 | `owner` = 123456789@qq.com（租户所有者）；`member` = hjzd@hjzd.com（自定义角色「技术员」，矩阵 25 模块全勾）。密码均 `AsdQwe@123`，见 `e2e/accounts.json` |
+| 账号 | `owner` = 123456789@qq.com（租户所有者）；`member` = hjzd@hjzd.com（自定义角色「技术员」，矩阵 25 模块全勾）；`admin` / `dept` / `plain` = E2E 专用账号（内置「租户管理员」/「部门管理员」/「普通成员」，由 `e2e/scripts/seed-accounts.mjs` 幂等创建）。口令不入库，见 `.auth/accounts.local.json` 或 `E2E_<NAME>_PASSWORD` |
 | 技术栈 | Playwright 1.64.1 + Chromium，真浏览器 + 真后端 + 真数据，无 mock |
-| 用例位置 | `e2e/specs/00~90-*.spec.ts`（16 个 spec 分组，71 条用例） |
+| 用例位置 | `e2e/specs/00~95-*.spec.ts`（13 个 spec 文件，80 条用例） |
 | 执行入口 | `cd e2e && npx playwright test` |
 | 设计说明 | `e2e/PLAN.md`（陷阱与维护点）；历史结果 `docs/e2e-permission-report.md` |
 
@@ -19,7 +19,7 @@
 
 | 维度 | 内容 |
 |---|---|
-| 角色 | 租户所有者（owner）、自定义角色成员（member，矩阵全勾）；**角色矩阵的读写**本身也纳入（谁可以改矩阵、内置角色保护） |
+| 角色 | 租户所有者（owner）、自定义角色成员（member，矩阵全勾）、内置租户管理员（admin）、内置部门管理员（dept）、内置普通成员（plain）；**角色矩阵的读写**本身也纳入（谁可以改矩阵、内置角色保护） |
 | 资源 | 知识库（dataset）、知识问答（chat）、知识检索（search）、智能体（agent/canvas）、记忆（memory）、会话质检（qc 规则）、库内文件（document）、租户成员与角色 |
 | 操作 | 可见（列表/授权树）、可读（详情/内容/检索）、可写（改名/编辑/上传）、可管理（删除/授权/成员变更） |
 | 越权面 | 跨资源 id 直读、跨租户 id、伪造/缺失 token、普通成员调用管理接口、非法 kind / 畸形 body / 分页越界 |
@@ -29,7 +29,7 @@
 
 - 多租户隔离的**完整**验证（需第二租户与第二租户成员账号，记 G6）。
 - 检索链路的召回集断言（需固定 fixture 文档与解析流水线，记 G5）。
-- 部门管理员的部门范围（需部门树 + 部门成员，记 G4）。
+- 部门管理员的**跨部门**对照（`dept` 账号已挂在技术部，缺第二个部门的成员样本，记 G4）。
 - 文件级 allow/deny 的全路径（需专用测试库上传文件，记 G2）。
 - 性能/并发（独立压测，记 G10）。
 
@@ -47,7 +47,7 @@
 | P6 | 登录态有效 | 所有用例先断言 `res.status() === 200`，401 视为环境失效而非用例通过 |
 | P7 | **只读基线** | 写接口打不存在的资源，或提交与现状相同的值；禁止为「验证拒绝」而写入新值 |
 
-> 建议补充的测试账号（提高角色维度覆盖，记 G13）：租户管理员、部门管理员、无自定义角色的普通成员、非本租户用户各 1 个。当前 2 个账号只能覆盖「owner / 自定义角色成员」两个身份，其余身份以矩阵接口的只读断言间接覆盖。
+> 测试账号（G13 已按方案 A 补齐）：`admin`（内置租户管理员）、`dept`（内置部门管理员，技术部）、`plain`（内置普通成员，培训部，无任何资源授权）三个 E2E 专用账号由 `e2e/scripts/seed-accounts.mjs` 幂等创建，跑完保留供回归；口令随机、只落 `.auth/accounts.local.json`。非本租户用户仍需第二租户（G6）。
 
 ---
 
@@ -130,10 +130,10 @@
 | 角色 | 本轮 | 说明 |
 |---|---|---|
 | 租户所有者 owner | ✓ | `owner` 账号直接验证 |
-| 自定义角色成员（矩阵全勾） | ✓ | `member` 账号直接验证 |
-| 租户管理员 admin | 部分 | 通过「矩阵全勾但仍看不到数据」间接证明与资源授权解耦；建议补账号（G13） |
-| 部门管理员 | ✗ | 需部门树（G4） |
-| 普通成员（无自定义角色，内置「普通成员」） | ✗ | 需第三账号（G13） |
+| 自定义角色成员（矩阵全勾） | ✓ | `member` 账号直接验证（技术员） |
+| 租户管理员 admin | ✓ | `admin` 账号；`90-matrix` 口径快照（知识库与 owner 齐平，应用类为 0，见 D7） |
+| 部门管理员 | ✓ | `dept` 账号（技术部），矩阵三档受限身份之一；**跨部门**对照仍缺（G4） |
+| 普通成员（内置「普通成员」） | ✓ | `plain` 账号（培训部，无授权），矩阵的「不可见即不可读」对照组 |
 | 非本租户用户 | ✗ | 需第二租户（G6） |
 
 ---
@@ -184,7 +184,7 @@ E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts
 | S7 异常输入 | 畸形 JSON 400；非法 kind 102；缺参 102/101；无/伪 token 401；跨租户 id 403 |
 | S8 关键路径 | 授权页视图往返不丢选中库；角色矩阵连切 3 个角色不串台；member 树/列表页只出现可读资源 |
 | S9 排除 | `supports_deny` 三处为 true（文件夹 false）；界面有「不可见（排除）」；三类非法组合被拒；**发版后**补正向链路 |
-| S10 矩阵 | 五类资源的「可见 ⊆ owner」「可见即可读」「owner 有 member 无 → 拒绝」全部成立；数量以 annotation 形式写进报告（`owner=18 member=4` 等），owner=0 视为取数失败 |
+| S10 矩阵 | 五类资源 × 三档受限身份（member/dept/plain）：每个身份的列表 ⊆ owner；**任一**身份可见即可读（不再因 member 样本为空而整条跳过）；owner 有而 plain 无 → 拒绝；租户管理员单列口径快照。数量以 annotation 写进报告（`owner=18 member=4 dept=18 plain=1`），owner=0 视为取数失败 |
 
 ---
 
@@ -192,7 +192,7 @@ E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts
 
 | # | 标准 | 当前 |
 |---|---|---|
-| A1 | P0/P1 用例 100% 通过 | **72/72 通过**（79 条中 7 条为显式跳过：4 条写用例 + 3 条无样本） |
+| A1 | P0/P1 用例 100% 通过 | **76/76 通过**（80 条中 4 条为显式跳过，全部是需 `E2E_ALLOW_WRITE=1` 的写用例） |
 | A2 | 无 P1（高）缺陷；P2 缺陷有记录与责任人 | D1–D5 已修复；D6 经核查为**误报**（智能体对「不存在」与「别人的」返回逐字相同文案，属 IDOR 缓解），已关闭 |
 | A3 | 列表 / 详情 / 检索三处对同一资源给出一致结论 | 通过（`90-matrix` 三条互补断言 + D1 修复） |
 | A4 | 越权用例全部拦截，且事后校验无数据变更 | 通过（写用例用不存在 id 或幂等 payload，并在用例内二次核对） |
@@ -220,9 +220,10 @@ E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts
 发版：`46b8dc4`（后端重编 + 前端构建，`/root/deploy.sh`）。校验：`version=46b8dc4`、`healthz` 五项 ok、三服务 active、首页 200、四方一致（HEAD / `.deployed_sha` / `.frontend_sha` / nginx `dist_46b8dc4`）。
 
 ```
-e2e/ 全量 79 条：72 passed / 7 skipped / 0 failed
-  7 skipped = 85-exclude-flow ×2 + 87-file-deny ×2（写用例，需 E2E_ALLOW_WRITE=1）
-             + 90-matrix 的「可读」×3（member 对 知识问答/知识检索/记忆 均 0 条可见）
+e2e/ 全量 80 条：76 passed / 4 skipped / 0 failed
+  4 skipped = 85-exclude-flow ×2 + 87-file-deny ×2（写用例，需 E2E_ALLOW_WRITE=1）
+  原「member 无可见样本」3 条已消除：矩阵改成三档受限身份取并集，
+  dept 对 知识问答/知识检索/记忆 分别有 7/2/1 条可见样本，可读链路实跑
 
 写用例单独跑：E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts specs/87-file-deny.spec.ts
   → 85：全团队允许时 member 可读 → 追加排除后列表/详情均不可见 → 移除后恢复（2 passed）
@@ -230,10 +231,14 @@ e2e/ 全量 79 条：72 passed / 7 skipped / 0 failed
   → 两个 beforeAll 建库、afterAll 删库，跑完核对租户知识库数量回到 18，无残留
 ```
 
-矩阵实测（annotation）：知识库 `owner=18 member=4`；知识问答 `7/0`；知识检索 `2/0`；智能体 `27/1`；记忆 `1/0`；质检规则 `9/0`。
+矩阵实测（annotation，格式 `owner/member/dept/plain`）：知识库 `18/4/18/1`；知识问答 `7/0/7/0`；知识检索 `2/0/2/0`；智能体 `27/1/21/0`；记忆 `1/0/1/0`；质检规则 `9/0/0/0`。
+
+租户管理员（admin）口径快照：知识库 `18`（与 owner 齐平），知识问答/检索/智能体/记忆均为 `0`。原因是只有 dataset 的 `QueryScope` 认 `user_tenant.role_id` 指向的内置「租户管理员」，其余资源只看各自的 visibility 列与显式授权；控制台给该角色勾了 25 个模块，数据面却只有知识库跟着放大。记为 **D7（待确认预期）**，用例只断言「不超过 owner」，不固化错误结论。
 
 验收判定：**A1–A6 全部满足**（S9/S9b 转绿；D6 为低优先级文案问题，已记录）。
 
 补充用例 `95-idor.spec.ts`（4 条，发版后全通过）：不存在的 id 与「别人的 id」必须返回**逐字相同**的 code+message（智能体、知识库各一条），越界租户 403 同一句「租户不存在」，member 读矩阵放行 / 写矩阵 403。
 
-待办：G13 补账号以覆盖 admin / 部门管理员 / 普通成员、G2 文件级授权全路径、D6 措辞统一（可选，非缺陷）。
+待办：G4 跨部门对照（需第二个部门的成员样本）、G2 文件级授权全路径、D6 措辞统一（可选，非缺陷）、D7 租户管理员在应用类资源上的可见性口径。
+
+账号维护：`cd e2e && node scripts/seed-accounts.mjs` 幂等重建 `admin`/`dept`/`plain`（注册 → 直接入租户 → 绑角色/部门 → 重置随机口令），再跑 `node scripts/auth.mjs` 生成登录态。口令只写 `.auth/accounts.local.json`（已 gitignore），仓库里不再出现明文。

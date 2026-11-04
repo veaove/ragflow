@@ -1,5 +1,5 @@
 /**
- * 为两个测试账号产出 Playwright storageState。
+ * 为 `accounts.json` 里的每个测试身份产出 Playwright storageState。
  *
  * 为什么不能只用表单登录：登录接口强制图形验证码，答案只存在服务端
  * （Kvrocks 的 captcha:<id>，60 秒 TTL）。这里走「真接口 + 读一次验证码」：
@@ -11,36 +11,19 @@
  * 生产环境没有 SSH 时，改用手工登录一次后导出 storageState（见 README）。
  */
 import { spawnSync } from 'node:child_process';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { rsaPsw } from './lib/rsa.mjs';
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const AUTH_DIR = path.resolve(HERE, '..', '.auth');
 const ACCOUNTS_FILE = path.resolve(HERE, '..', 'accounts.json');
+const CREDENTIALS_FILE = path.join(AUTH_DIR, 'accounts.local.json');
 
 const BASE = process.env.E2E_BASE_URL || 'http://172.30.20.51';
 const SSH_HOST = process.env.E2E_SSH_HOST || 'root@172.30.20.51';
-
-// 与 web/src/utils/index.ts 的 rsaPsw 保持一致：RSA/PKCS1 + base64(password)。
-const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArq9XTUSeYr2+N1h3Afl/
-z8Dse/2yD0ZGrKwx+EEEcdsBLca9Ynmx3nIB5obmLlSfmskLpBo0UACBmB5rEjBp
-2Q2f3AG3Hjd4B+gNCG6BDaawuDlgANIhGnaTLrIqWrrcm4EMzJOnAOI1fgzJRsOO
-UEfaS318Eq9OVO3apEyCCt0lOQK6PuksduOjVxtltDav+guVAA068NrPYmRNabVKR
-NLJpL8w4D44sfth5RvZ3q9t+6RTArpEtc5sh5ChzvqPOzKGMXW83C95TxmXqpbK6
-olN4RevSfVjEAgCydH6HN6OhtOQEcnrU97r9H0iZOWwbw3pVrZiUkuRD1R56Wzs2w
-IDAQAB
------END PUBLIC KEY-----`;
-
-const rsaPsw = (password) =>
-  crypto
-    .publicEncrypt(
-      { key: PUBLIC_KEY, padding: crypto.constants.RSA_PKCS1_PADDING },
-      Buffer.from(Buffer.from(password, 'utf8').toString('base64'), 'utf8'),
-    )
-    .toString('base64');
 
 // 最小 RESP 客户端：只为读一个验证码 key，避免给测试机装 redis-cli。
 // 密码从测试机自己的 docker/.env 读，不经过本机。
@@ -136,11 +119,28 @@ const login = async (account) => {
   };
 };
 
+/**
+ * 密码来源：环境变量优先，其次 `.auth/accounts.local.json`（seed 脚本写入，已 gitignore）。
+ * `accounts.json` 只留身份描述，不放明文口令。
+ */
+const passwordOf = (account) => {
+  const envKey = `E2E_${account.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_PASSWORD`;
+  if (process.env[envKey]) return process.env[envKey];
+  if (fs.existsSync(CREDENTIALS_FILE)) {
+    const local = JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf8'));
+    const hit = local[account.name];
+    if (hit?.password) return hit.password;
+  }
+  throw new Error(
+    `${account.name} 没有可用密码：设置 ${envKey}，或先跑 node scripts/seed-accounts.mjs`,
+  );
+};
+
 const main = async () => {
   const accounts = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf8'));
   fs.mkdirSync(AUTH_DIR, { recursive: true });
   for (const account of accounts) {
-    const session = await login(account);
+    const session = await login({ ...account, password: passwordOf(account) });
     const state = {
       cookies: [],
       origins: [

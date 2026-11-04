@@ -7,10 +7,14 @@
 
 ```
 e2e/
-├── accounts.json          # 两个测试账号（owner / member）
+├── accounts.json          # 五个测试身份（owner / member / admin / dept / plain），不含口令
 ├── playwright.config.ts   # 单 worker、串行、失败留 trace
-├── scripts/               # auth.mjs 生成登录态；probe.mjs 探页面事实
-├── support/env.ts         # 账号、租户、真实资源 ID、接口前缀
+├── scripts/
+│   ├── auth.mjs           # 生成登录态（验证码从 Kvrocks 读）
+│   ├── seed-accounts.mjs  # 幂等创建 admin/dept/plain 并入租户、绑角色/部门
+│   ├── lib/rsa.mjs        # 登录/改密共用的 RSA 封装 + 随机强口令
+│   └── probe.mjs          # 探页面事实
+├── support/env.ts         # 身份、租户、真实资源 ID、接口前缀
 ├── support/global-setup.ts# .auth 缺失时自动跑 auth.mjs
 ├── support/hidden-dataset.ts # 「member 读不到的库」按数据求差集，不写死 id
 └── specs/
@@ -25,7 +29,7 @@ e2e/
     ├── 80-exclude.spec.ts      # 资源级「排除」：supports_deny、入口、非法组合
     ├── 85-exclude-flow.spec.ts # 排除的正向链路（建/删临时库，需 E2E_ALLOW_WRITE=1）
     ├── 87-file-deny.spec.ts    # 文件级排除（建库 + 传 2 个文件 + 删库，同上开关）
-    ├── 90-matrix.spec.ts       # 角色×资源×操作 矩阵回归（数据驱动，五类资源 + 质检）
+    ├── 90-matrix.spec.ts       # 角色×资源×操作 矩阵回归（三档受限身份 + 租户管理员口径）
     └── 95-idor.spec.ts         # 存在性不泄露：不存在的 id 与别人的 id 必须同一文案
 ```
 
@@ -60,13 +64,19 @@ E2E 里的 D1–D5 回归断言要等这次后端发版后才转绿，它们是�
 cd e2e
 npm install
 npx playwright install chromium   # 首次
+npm run seed                      # 首次/换环境：建 admin/dept/plain 三个账号
+npm run auth                      # 生成 .auth/*.json（seed 之后必须重跑）
 npm test                          # 全部
-npm run test:overreach            # 单个 spec
+npm run test:matrix               # 单个 spec
 npm run report                    # 看 HTML 报告
 ```
 
-登录态失效（token 被顶掉）时重跑 `node scripts/auth.mjs`，或删掉 `.auth/*.json` 交给
+登录态失效（token 被顶掉）时重跑 `npm run auth`，或删掉 `.auth/*.json` 交给
 `global-setup` 自动生成。
+
+`.auth/accounts.local.json` 保存每个身份的口令（`mode 0600`，已 gitignore）；
+也可以用 `E2E_ADMIN_PASSWORD` / `E2E_DEPT_PASSWORD` / `E2E_PLAIN_PASSWORD`
+（以及 `E2E_OWNER_PASSWORD` / `E2E_MEMBER_PASSWORD`）覆盖，仓库里不留明文。
 
 ## 资源级「排除」（2026-11-04）
 
@@ -92,6 +102,22 @@ npm run report                    # 看 HTML 报告
 | 库级排除 + 库内文件级允许 | 仍不可见（库级优先） |
 | 同一资源同时命中 allow + deny（不同主体） | deny 胜 |
 | 树摘要 | 有排除的节点显示「N 个主体 · 排除 M」，橙色 |
+
+## 测试账号（G13）
+
+| 身份 | 邮箱 | 角色 / 部门 | 用途 |
+|---|---|---|---|
+| `owner` | 123456789@qq.com | 租户所有者 | 对照基准，拥有租户内全部资源 |
+| `member` | hjzd@hjzd.com | 自定义角色「技术员」，技术部 | 矩阵全勾但数据靠授权：4/18 库、1/27 智能体 |
+| `admin` | e2e-admin@hjzd.com | 内置「租户管理员」，无部门 | 口径快照：知识库与 owner 齐平，应用类为 0（D7 待定） |
+| `dept` | e2e-dept@hjzd.com | 内置「部门管理员」，技术部 | 三档受限身份之一；部门范围的正向样本 |
+| `plain` | e2e-plain@hjzd.com | 内置「普通成员」，培训部 | 「不可见即不可读」的对照组（只有 1 个库可见） |
+
+三个 E2E 账号由 `scripts/seed-accounts.mjs` 幂等维护：已存在则复用、口令每次重置为新的
+随机强口令，跑完保留以便回归。删除账号不在脚本范围内（平台侧没有自助删号接口）。
+
+`90-matrix` 用 `VIEWERS = [member, dept, plain]` 三个身份取并集验证「可见即可读」，
+不再因为某个身份样本为空而整条跳过；`admin` 单独一条口径快照，只断言「不超过 owner」。
 
 ## 两个踩过的坑
 

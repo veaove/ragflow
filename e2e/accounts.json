@@ -2,15 +2,31 @@
   {
     "name": "owner",
     "email": "123456789@qq.com",
-    "password": "AsdQwe@123",
     "role": "owner",
     "note": "华夏基金租户创建者（owner 档）"
   },
   {
     "name": "member",
     "email": "hjzd@hjzd.com",
-    "password": "AsdQwe@123",
     "role": "normal",
     "note": "华夏基金普通成员，自定义角色「技术员」（矩阵全勾）"
+  },
+  {
+    "name": "admin",
+    "email": "e2e-admin@hjzd.com",
+    "role": "admin",
+    "note": "E2E 专用：内置「租户管理员」，部门留空"
+  },
+  {
+    "name": "dept",
+    "email": "e2e-dept@hjzd.com",
+    "role": "dept",
+    "note": "E2E 专用：内置「部门管理员」，挂在技术部"
+  },
+  {
+    "name": "plain",
+    "email": "e2e-plain@hjzd.com",
+    "role": "plain",
+    "note": "E2E 专用：内置「普通成员」，挂在培训部，无任何资源授权"
   }
 ]

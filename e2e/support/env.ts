@@ -10,7 +10,7 @@ import path from 'node:path';
 
 export const BASE_URL = process.env.E2E_BASE_URL || 'http://172.30.20.51';
 
-export type AccountName = 'owner' | 'member';
+export type AccountName = 'owner' | 'member' | 'admin' | 'dept' | 'plain';
 
 export const IDENTITIES: Record<
   AccountName,
@@ -28,7 +28,30 @@ export const IDENTITIES: Record<
     tenantId: '8d5c79460d6c46efb58353c68d8bf729',
     label: '普通成员（自定义角色「技术员」）',
   },
+  // 以下三个由 scripts/seed-accounts.mjs 创建，口令只写 .auth/accounts.local.json。
+  admin: {
+    name: 'admin',
+    email: 'e2e-admin@hjzd.com',
+    tenantId: '8d5c79460d6c46efb58353c68d8bf729',
+    label: '内置「租户管理员」（无部门）',
+  },
+  dept: {
+    name: 'dept',
+    email: 'e2e-dept@hjzd.com',
+    tenantId: '8d5c79460d6c46efb58353c68d8bf729',
+    label: '内置「部门管理员」（技术部）',
+  },
+  plain: {
+    name: 'plain',
+    email: 'e2e-plain@hjzd.com',
+    tenantId: '8d5c79460d6c46efb58353c68d8bf729',
+    label: '内置「普通成员」（培训部，无资源授权）',
+  },
 };
+
+/** 矩阵里作为「受限身份」参与比对的三档角色。 */
+export const VIEWERS = ['member', 'dept', 'plain'] as const;
+export type ViewerName = (typeof VIEWERS)[number];
 
 /** 华夏基金租户下用于断言的真实资源。 */
 export const RESOURCES = {

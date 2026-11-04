@@ -9,6 +9,9 @@
     "test:grant": "playwright test specs/20-grant.spec.ts",
     "test:scope": "playwright test specs/30-resource-scope.spec.ts",
     "test:overreach": "playwright test specs/40-overreach.spec.ts",
+    "test:matrix": "playwright test specs/90-matrix.spec.ts",
+    "auth": "node scripts/auth.mjs",
+    "seed": "node scripts/seed-accounts.mjs",
     "report": "playwright show-report",
     "probe": "node scripts/probe.mjs"
   },
