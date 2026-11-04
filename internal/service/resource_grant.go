@@ -63,6 +63,33 @@ func grantSubjectKey(kind, id string) string {
 	return kind + "\x00" + id
 }
 
+// validateGrantDenySupport 在写库之前否掉「排除了但判定不认」的组合。
+//
+// 两条规则：类型必须已经接入排除谓词（见 grantDenyKinds）；「全团队」不能作为
+// 排除对象 —— 那等价于清空授权，同一结果两个入口只会让人误用。
+func validateGrantDenySupport(spec *grantKindSpec, subjects []GrantSubject) error {
+	for _, sub := range subjects {
+		if sub.Kind != entity.GrantSubjectTeam &&
+			sub.Kind != entity.GrantSubjectDepartment &&
+			sub.Kind != entity.GrantSubjectUser {
+			continue
+		}
+		if sub.Kind != entity.GrantSubjectTeam && strings.TrimSpace(sub.ID) == "" {
+			continue
+		}
+		if normalizeGrantEffect(sub.Effect) != entity.GrantEffectDeny {
+			continue
+		}
+		if !grantDenyKinds[spec.Kind] {
+			return fmt.Errorf("%s 暂不支持「排除」：收回权限请改用可见范围或移除授权", spec.Label)
+		}
+		if sub.Kind == entity.GrantSubjectTeam {
+			return errors.New("不能把「全团队」设为排除：收回全部请直接移除规则")
+		}
+	}
+	return nil
+}
+
 // normalizeGrantEffect 把外部输入收敛成合法取向，空值按 allow 处理。
 func normalizeGrantEffect(v string) string {
 	if strings.EqualFold(strings.TrimSpace(v), entity.GrantEffectDeny) {
@@ -424,6 +451,11 @@ func (s *ResourceGrantService) SetGrants(ctx context.Context, tenantID, kind, re
 	if err != nil {
 		return err
 	}
+	// 「这类资源支不支持排除」是静态能力问题，不需要知道资源是否存在：放在
+	// 资源校验之前，配置错误先暴露，也避免为了报这个错去读业务表。
+	if err := validateGrantDenySupport(spec, subjects); err != nil {
+		return err
+	}
 	if spec.Kind == GrantKindDocument {
 		if err := s.assertDocumentInDataset(ctx, tenantID, parentID, resourceID); err != nil {
 			return err
@@ -460,20 +492,11 @@ func (s *ResourceGrantService) SetGrants(ctx context.Context, tenantID, kind, re
 			// 提交 effect="allow"。
 			effect = entity.GrantEffectDeny
 		}
-		if effect == entity.GrantEffectDeny {
-			if !grantDenyKinds[spec.Kind] {
-				// 目前只有知识库与库内文件开放「排除」：其余类型的可见性还没有
-				// 列表 SQL 的排除谓词，先写入会变成「看得见但点不进去」。
-				return fmt.Errorf("%s 暂不支持「排除」：收回权限请改用可见范围或移除授权", spec.Label)
-			}
-			if sub.Kind == entity.GrantSubjectTeam {
-				// 「排除全团队」等价于清空授权，同一结果两个入口只会让人误用。
-				return errors.New("不能把「全团队」设为排除：收回全部请直接移除规则")
-			}
-			if sub.Kind == entity.GrantSubjectUser {
-				if err := s.assertDenyTarget(ctx, tenantID, spec, resourceID, sub.ID); err != nil {
-					return err
-				}
+		if effect == entity.GrantEffectDeny && sub.Kind == entity.GrantSubjectUser {
+			// 静态校验已经在入口做过（类型是否支持、是否为 team），这里只剩
+			// 「排除对象在判定链里根本不受排除影响」这一类。
+			if err := s.assertDenyTarget(ctx, tenantID, spec, resourceID, sub.ID); err != nil {
+				return err
 			}
 		}
 		rows = append(rows, &entity.ResourceGrant{

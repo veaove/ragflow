@@ -129,18 +129,11 @@ func TestSetGrantsRejectsTeamDeny(t *testing.T) {
 }
 
 // 判定链还没接排除谓词的类型先拒绝写入：写成功但判定不认比不支持更糟。
+//
+// 这条校验在资源存在性之前，所以这里连 chat 表都不用建 —— 也顺带证明配置
+// 错误不会因为「资源不存在」而被混淆成 404。
 func TestSetGrantsRejectsDenyForUnsupportedKind(t *testing.T) {
-	fixture := setupGrantDenyFixture(t)
-	valid := string(entity.StatusValid)
-	if err := fixture.db.AutoMigrate(&entity.Chat{}); err != nil {
-		t.Fatalf("migrate chat: %v", err)
-	}
-	if err := fixture.db.Create(&entity.Chat{
-		ID: "chat1", TenantID: "t1", Name: sptr("基金咨询"), CreatedBy: "user-creator",
-		Permission: entity.ResourceVisibilityTenantOwner, Status: &valid,
-	}).Error; err != nil {
-		t.Fatalf("seed chat: %v", err)
-	}
+	setupGrantDenyFixture(t)
 	svc := NewResourceGrantService()
 
 	err := svc.SetGrants(context.Background(), "t1", "chat", "chat1", "", []GrantSubject{
