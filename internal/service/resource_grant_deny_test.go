@@ -132,6 +132,9 @@ func TestSetGrantsRejectsTeamDeny(t *testing.T) {
 func TestSetGrantsRejectsDenyForUnsupportedKind(t *testing.T) {
 	fixture := setupGrantDenyFixture(t)
 	valid := string(entity.StatusValid)
+	if err := fixture.db.AutoMigrate(&entity.Chat{}); err != nil {
+		t.Fatalf("migrate chat: %v", err)
+	}
 	if err := fixture.db.Create(&entity.Chat{
 		ID: "chat1", TenantID: "t1", Name: sptr("基金咨询"), CreatedBy: "user-creator",
 		Permission: entity.ResourceVisibilityTenantOwner, Status: &valid,

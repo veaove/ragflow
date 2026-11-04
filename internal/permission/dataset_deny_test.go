@@ -113,8 +113,6 @@ func newDatasetDenyFixture(t *testing.T) datasetDenyFixture {
 		{ID: "g-deny", ResourceKind: string(ResourceKindDataset), ResourceID: "kb-deny",
 			SubjectKind: entity.GrantSubjectUser, SubjectID: "member-1", Permission: "read", Effect: entity.GrantEffectDeny},
 		// 创建者被排除：应当无效（创建者在判定链最前面就返回了）。
-		{ID: "g-own-team", ResourceKind: string(ResourceKindDataset), ResourceID: "kb-own-deny",
-			SubjectKind: entity.GrantSubjectTeam, Permission: "read", Effect: entity.GrantEffectAllow},
 		{ID: "g-own-deny", ResourceKind: string(ResourceKindDataset), ResourceID: "kb-own-deny",
 			SubjectKind: entity.GrantSubjectUser, SubjectID: "member-1", Permission: "read", Effect: entity.GrantEffectDeny},
 	}
