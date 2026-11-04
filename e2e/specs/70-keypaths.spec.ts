@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { RESOURCES, api, authFile, tokenOf } from '../support/env';
+import { pickHiddenDataset } from '../support/hidden-dataset';
 
 /**
  * 关键路径。只读：页面往返、角色切换、成员自己的入口。
@@ -50,20 +51,22 @@ test.describe('关键路径 · 普通成员', () => {
   test.use({ storageState: authFile('member') });
 
   test('授权树页只列出自己可读的库（D2 的 UI 面）', async ({ page }) => {
+    const hidden = await pickHiddenDataset();
     await page.goto('/console/grants');
     await page.waitForLoadState('networkidle');
 
     const tree = page.locator('aside').filter({ hasText: /资源（\d+ 个库）/ });
-    // 预期：被授权的库出现在树里，owner 的私库不出现（接口收窄后 UI 自然一致）。
+    // 预期：被授权的库出现在树里，读不到的库（差集里挑一个）不出现。
     await expect(
       tree.getByText(RESOURCES.grantedKb.name, { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText(RESOURCES.privateKb.name, { exact: true }),
+      page.getByText(hidden.name, { exact: true }),
     ).toHaveCount(0);
   });
 
   test('知识库列表页：只出现被授权与自建的库', async ({ page, request }) => {
+    const hidden = await pickHiddenDataset();
     const body = await (
       await request.get(api.dataset(RESOURCES.grantedKb.id), {
         headers: { Authorization: tokenOf('member') },
@@ -75,12 +78,10 @@ test.describe('关键路径 · 普通成员', () => {
 
     await page.goto('/datasets');
     await page.waitForLoadState('networkidle');
-    // 预期：列表只渲染可见的库 —— 被授权的在，owner 的私库不在。
+    // 预期：列表只渲染可见的库 —— 被授权的在，读不到的库不在。
     await expect(
       page.getByText(RESOURCES.grantedKb.name, { exact: true }).first(),
     ).toBeVisible();
-    await expect(
-      page.getByText(RESOURCES.privateKb.name, { exact: true }),
-    ).toHaveCount(0);
+    await expect(page.getByText(hidden.name, { exact: true })).toHaveCount(0);
   });
 });

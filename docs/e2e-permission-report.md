@@ -2,13 +2,13 @@
 
 | 项 | 内容 |
 |---|---|
-| 报告日期 | 2026-11-03（第二轮：补边界/异常/关键路径用例 + 缺陷修复验证） |
-| 被测环境 | `http://172.30.20.51`（内网，线上版本 `311d615`；本轮修复尚未发版） |
+| 报告日期 | 2026-11-04（第三轮：资源级「排除」改造 + 全量回归） |
+| 被测环境 | `http://172.30.20.51`（内网）。线上已含 D1–D5 修复（实测 member 的授权树 `total` 已从 18 收窄到 4）；本轮「排除」功能尚未发版 |
 | 被测租户 | 华夏基金 `8d5c79460d6c46efb58353c68d8bf729` |
 | 测试账号 | `owner` = 123456789@qq.com（租户所有者）；`member` = hjzd@hjzd.com（自定义角色「技术员」，矩阵 25 模块全勾） |
 | 测试框架 | Playwright 1.64.1 / Chromium，单 worker 串行，`fullyParallel=false` |
-| 用例位置 | `e2e/specs/00~70-*.spec.ts`，设计说明见 `e2e/PLAN.md` |
-| 执行结果 | **48 用例：40 passed / 8 failed**，总耗时 5.0 min。8 条失败全部是「修复后行为」的回归断言，等这批后端改动发版后转绿（见 §2.3） |
+| 用例位置 | `e2e/specs/00~80-*.spec.ts`，设计说明见 `e2e/PLAN.md` |
+| 执行结果 | **55 用例：51 passed / 4 failed**，总耗时 1.3 min。4 条失败全部是「排除」功能的 `supports_deny` / 界面入口断言，等本轮改动发版后转绿（见 §1.9） |
 | 测试基线 | **默认只读**：不创建、不修改、不删除业务数据；写接口打不存在的资源或提交「与现状相同」的值 |
 
 ## 0. 只读基线与判定口径
@@ -114,6 +114,18 @@
 
 ---
 
+### 1.9 资源级「排除」（`80-exclude.spec.ts`，7 条）
+
+| 场景 | 预期 | 结果 |
+|---|---|---|
+| 授权列表对知识库声明 `supports_deny` | `supports_deny=true`，前端据此渲染「不可见（排除）」 | 失败（未发版） |
+| 授权树：知识库可排除、文件夹不可排除 | 库节点 `true`、文件夹节点 `false`（文件夹还没接排除谓词） | 失败（未发版） |
+| 子项例外：库内文件可排除 | `grant_kind=document` 的项 `supports_deny=true` | 失败（未发版） |
+| 设置可见范围里有「不可见（排除）」入口 | 下拉出现第三档 | 失败（未发版） |
+| 未接排除谓词的类型不许写排除 | HTTP 200 + code≠0（新旧版本都拒绝，文案不同） | 通过 |
+| 「全团队」不能作为排除对象 | HTTP 200 + code≠0 | 通过 |
+| 不能把租户所有者写进排除名单 | HTTP 200 + code≠0，且事后校验原有授权未被改动 | 通过 |
+
 ## 2. 发现的问题汇总
 
 ### 2.1 产品缺陷
@@ -154,6 +166,20 @@
 
 **过程中的一次事故（已恢复）**：D5 用例最初提交了一个新角色名「普通成员-改名」，在未发版的旧服务里**真的把线上内置角色改了名**（旧服务没有保护），导致后续「点普通成员」的用例超时。已用同接口改回，并把 D4/D5 两条用例改为提交「与现状相同的值」：旧服务幂等接受、新服务拒绝，修复前后都只读。
 
+### 2.4 资源级「排除」改造（2026-11-04）
+
+| 层 | 改动 | 验证 |
+|---|---|---|
+| 判定（单条） | `grantLevel` 增加 `denied` 计数并短路：deny 压过任何 allow；创建者、租户管理层、部门管理员不受影响 | `TestDatasetDenyBeatsTeamGrant`、`TestDatasetDenyIgnoredForCreatorAndManagement` |
+| 判定（列表） | dataset `QueryScope` 的授权子查询排除 deny 行，可见性表达式加 `NOT EXISTS(deny)` | `TestQueryScopeExcludesDeniedDatasets` |
+| 判定（文件） | 库级被排除时 `documentRuleClause` 返回恒假谓词（与 `CheckDocumentAccess` 口径一致） | `TestDocumentRuleClauseFailsClosedWhenDatasetDenied` |
+| 接口 | `grantDenyKinds`（dataset + document）：其他类型显式拒绝；拒绝 `team` 排除；拒绝把创建者 / 租户 owner 写进排除名单；`effect` 缺省时沿用库里的既有排除（防止老前端整表替换把排除变成允许） | `TestSetGrantsAcceptsDatasetDeny`、`...RejectsTeamDeny`、`...RejectsDenyForUnsupportedKind`、`...RejectsDenyOnCreatorAndTenantOwner`、`...KeepsDenyWhenEffectOmitted` |
+| 接口返回 | `supports_deny` 出现在授权列表、树节点、子项例外三处，前端不再按 kind 猜 | `80-exclude.spec.ts` 前 3 条（待发版） |
+| 界面 | 「设置可见范围」第三档「不可见（排除）」；已授权标签显示「已排除」；「开放给全团队」在排除模式下禁用；树摘要橙色标注「N 个主体 · 排除 M」 | `grant-views.test.tsx` 新增 2 条；`80-exclude` 第 4 条（待发版） |
+
+单测结论：`/root/rf-verify` 跑 `./build.sh --test ./internal/permission/... ./internal/service/...` → **0 FAIL**。
+前端：`jest src/pages/console` 通过，改动文件 `tsc` 无新增错误，`oxlint` 无 error。
+
 ---
 
 ## 3. 尚未覆盖 / 未测试的场景
@@ -171,6 +197,7 @@
 | G9 | 会话质检命中记录 / 实时质检的授权过滤 | 依赖实时会话数据，无法稳定造数 | 在测试租户跑一条固定会话，断言命中记录只对归属应用可见者返回 | P2 |
 | G10 | 并发与性能（多用户同时切换授权、权限缓存一致性） | 非功能类，需压测环境与监控 | 单独做一轮 10~50 并发的授权变更 + 立即读取一致性验证 | P3 |
 | G11 | 移动端 / 窄屏响应式与可用性 | 无对应设计稿与验收标准 | 待设计稿确认后补 `viewport` 项目 | P3 |
+| G12 | 资源级「排除」的正向路径（写入排除后验证列表/详情/检索） | 必须往真实知识库写一条排除规则，且旧版本会整表替换；等专用测试库 | 建一个专用测试库（含 2 个文件），发版后按 `e2e/PLAN.md` 的 7 条矩阵补自动化 | P0 |
 
 ### 3.1 本套件的已知局限（评审时请注意）
 

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { IDENTITIES, RESOURCES, api, authFile, tokenOf } from '../support/env';
+import { pickHiddenDataset } from '../support/hidden-dataset';
 
 /**
  * 六类核心资源在两个账号下的可见边界。
@@ -60,7 +61,11 @@ test.describe('资源可见性 · 所有者', () => {
 test.describe('资源可见性 · 普通成员', () => {
   test.use({ storageState: authFile('member') });
 
-  test('知识库只看到被授权的两个库，看不到私有库', async ({ page }) => {
+  test('知识库只看到被授权与自建的库，看不到私有库', async ({ page }) => {
+    // 「私有库」从数据里取（owner 可见 - member 可见的差集），不写死 id：
+    // 管理员把某个库临时开成全团队时，写死的断言会假红。
+    const hidden = await pickHiddenDataset();
+
     await page.goto('/datasets');
     await page.waitForLoadState('networkidle');
 
@@ -68,7 +73,7 @@ test.describe('资源可见性 · 普通成员', () => {
       page.getByText(RESOURCES.grantedKb.name, { exact: true }).first(),
     ).toBeVisible();
     await expect(
-      page.getByText(RESOURCES.privateKb.name, { exact: true }),
+      page.getByText(hidden.name, { exact: true }),
       '未授权的私有库不得出现在列表里',
     ).toHaveCount(0);
   });

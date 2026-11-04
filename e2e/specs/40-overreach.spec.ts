@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { IDENTITIES, RESOURCES, api, authFile, tokenOf } from '../support/env';
+import { pickHiddenDataset } from '../support/hidden-dataset';
 
 const TID = IDENTITIES.owner.tenantId;
 
@@ -12,10 +13,13 @@ test.describe('越权访问 · 普通成员', () => {
   test.use({ storageState: authFile('member') });
 
   test('读别人的私有知识库 → 404，且不泄露存在性', async ({ request }) => {
-    const res = await request.get(api.dataset(RESOURCES.privateKb.id), {
+    // 目标不写死：从两个账号的列表求差集，确保它此刻确实是「member 读不到」。
+    const hidden = await pickHiddenDataset();
+    const res = await request.get(api.dataset(hidden.id), {
       headers: { Authorization: tokenOf('member') },
     });
     const body = await res.json();
+    expect(res.status()).toBe(200);
     expect(body.code).not.toBe(0);
     expect(body.message).toContain('Resource not found');
   });
@@ -61,11 +65,12 @@ test.describe('越权访问 · 普通成员', () => {
     const tree = await (await request.get(api.grantTree(TID), { headers })).json();
     expect(tree.code).toBe(0);
 
-    // 预期：member 只看到自己可读的库（被授权库 + 自建库），看不到
-    // RESOURCES.privateKb（owner 的私库）。
+    // 预期：member 只看到自己可读的库（被授权库 + 自建库），看不到任何
+    // 「owner 可见但 member 不可见」的库（差集由数据决定，不写死 id）。
+    const hidden = await pickHiddenDataset();
     const ids = (tree.data.nodes as { id: string }[]).map((n) => n.id);
     expect(ids).toContain(RESOURCES.grantedKb.id);
-    expect(ids).not.toContain(RESOURCES.privateKb.id);
+    expect(ids).not.toContain(hidden.id);
     expect(tree.data.total).toBe(ids.length);
 
     // 与列表接口保持一致：树里的库必须都在 /datasets 里出现。
@@ -78,10 +83,11 @@ test.describe('越权访问 · 普通成员', () => {
 
   test('读不到的库按 id 展开子项 → 拒绝（D2 回归）', async ({ request }) => {
     const headers = { Authorization: tokenOf('member') };
+    const hidden = await pickHiddenDataset();
     // 预期：不能靠换 id 绕过树上的收窄，子项接口直接拒绝，不返回任何文件名。
     const denied = await (
       await request.get(
-        `${api.grantExceptions(TID)}?kind=dataset&dataset_id=${RESOURCES.privateKb.id}`,
+        `${api.grantExceptions(TID)}?kind=dataset&dataset_id=${hidden.id}`,
         { headers },
       )
     ).json();
