@@ -233,11 +233,22 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 		// 也让本包能在只迁移了部分表的测试库上跑通。
 		deptID := lookupDepartmentID(ctx, source.db, subject.UserID)
 		grantWhere, grantArgs := grantSubjectCondition(db, subject.UserID, deptID)
-		granted := db.Model(&entity.ResourceGrant{}).
-			Select("1").
-			Where("resource_grant.tenant_id = knowledgebase.tenant_id").
-			Where("resource_grant.resource_kind = ?", string(ResourceKindDataset)).
-			Where("resource_grant.resource_id = knowledgebase.id").
+		// 同一份主体条件既判「授予」也判「排除」：deny 必须和 allow 落在完全
+		// 相同的判定面上，否则「全团队允许 + 张三排除」里被排除的人会因为
+		// 两个子查询口径不同而漏网。
+		datasetRules := func() *gorm.DB {
+			return db.Model(&entity.ResourceGrant{}).
+				Select("1").
+				Where("resource_grant.tenant_id = knowledgebase.tenant_id").
+				Where("resource_grant.resource_kind = ?", string(ResourceKindDataset)).
+				Where("resource_grant.resource_id = knowledgebase.id")
+		}
+		// 空 effect 按 allow 处理：这列出现之前的存量行语义就是"授予"。
+		granted := datasetRules().
+			Where("COALESCE(NULLIF(resource_grant.effect, ''), ?) <> ?", entity.GrantEffectAllow, entity.GrantEffectDeny).
+			Where(grantWhere, grantArgs...)
+		denied := datasetRules().
+			Where("COALESCE(NULLIF(resource_grant.effect, ''), ?) = ?", entity.GrantEffectAllow, entity.GrantEffectDeny).
 			Where(grantWhere, grantArgs...)
 		// 部门管理员看得到本部门（含子部门）成员建的知识库，即使它仍是
 		// permission=me —— 与 resolveResource 里的 departmentAdminCovers 同一条
@@ -277,8 +288,14 @@ func (p *communityPolicy) QueryScope(ctx context.Context, subject Subject, query
 		// 创建者恒可见：permission=me 约束的是「别人」，不是本人。缺这一条时
 		// 成员自建的库详情能读、列表里却没有（E2E D1），用户会以为库丢了。
 		// 这里用列比较而不是 EXISTS 子查询：knowledgebase 就是当前行。
-		visible := "(EXISTS (?) OR (knowledgebase.permission = ? AND EXISTS (?)) OR EXISTS (?) OR knowledgebase.created_by = ?)"
-		args := []any{callerIsOwner, string(entity.TenantPermissionTeam), callerIsMember, granted, subject.UserID}
+		//
+		// 括号的位置是语义：deny 只压在「靠成员身份或显式授权拿到可见性」这一支
+		// 上，租户 owner 与创建者两支写在最外层，所以「把自己排除」不会真的让
+		// 自己进不去（与 resolveResource 的短路同一口径）。
+		visible := "(EXISTS (?) OR knowledgebase.created_by = ? OR (" +
+			"((knowledgebase.permission = ? AND EXISTS (?)) OR EXISTS (?)) AND NOT EXISTS (?)))"
+		args := []any{callerIsOwner, subject.UserID,
+			string(entity.TenantPermissionTeam), callerIsMember, granted, denied}
 		// 子树为空（不是部门管理员，或没被分配部门）时不接这一段：既省一次
 		// 判断，也避免拼出 `IN ()` 这种依赖 MySQL 容错性的语法。
 		if subtreeErr == nil && len(departmentSubtree) > 0 {
@@ -498,26 +515,37 @@ func grantSubjectCondition(db *gorm.DB, userID, deptID string) (string, []any) {
 
 // grantLevel 返回该主体在这条资源上的最高授权级别。
 //
-// 返回值："edit" / "read" / ""（无授权）。
+// 返回值："edit" / "read" / ""（无授权），denied 表示命中了一条「排除」规则。
 // 多条授权可能同时命中（部门只读 + 个人可编辑、或全团队 + 个人），取最高的：
 // 被单独授予编辑权的人，不该被部门级的只读授权覆盖掉。
 // 取最高不能用 MAX(permission) —— 字符串比较里 'read' > 'edit'，会取反。
-func (e *evaluation) grantLevel(ctx context.Context, subject Subject, resource Resource) (string, error) {
+//
+// deny 恒压 allow（与文件级规则同一条优先级）：只要命中一条 deny，level 一律
+// 返回空。调用方负责保留「创建者 / 管理层不受排除影响」的例外，否则一条 deny
+// 就能把资源锁到没人能取消它。
+func (e *evaluation) grantLevel(ctx context.Context, subject Subject, resource Resource) (string, bool, error) {
 	// 这张表是控制台「可见范围：全团队 / 部门 / 用户」与权限引擎之间的桥：
 	// 命中即覆盖资源原本的二值可见性。部门归属在子查询里解析，保持一次往返。
 	source, ok := e.source.(*databaseSource)
 	if !ok || source.db == nil {
-		return "", nil
+		return "", false, nil
 	}
 	var row struct {
-		Total int64
-		Edits int64
+		Total  int64
+		Denied int64
+		Edits  int64
 	}
+	// effect 列是后加的：空值按 allow 处理，否则这列出现之前的存量行会全部
+	// 变成"未授权"。两个 COUNT 都基于同一份收敛后的取值，避免一处漏判。
+	effectAllows := "COALESCE(NULLIF(resource_grant.effect, ''), ?)"
 	grantWhere, grantArgs := grantSubjectCondition(source.db.WithContext(ctx), subject.UserID, lookupDepartmentID(ctx, source.db, subject.UserID))
 	err := source.db.WithContext(ctx).
 		Model(&entity.ResourceGrant{}).
 		Select("COUNT(*) AS total, "+
-			"SUM(CASE WHEN resource_grant.permission = 'edit' THEN 1 ELSE 0 END) AS edits").
+			"COALESCE(SUM(CASE WHEN "+effectAllows+" = ? THEN 1 ELSE 0 END), 0) AS denied, "+
+			"COALESCE(SUM(CASE WHEN "+effectAllows+" <> ? AND resource_grant.permission = ? THEN 1 ELSE 0 END), 0) AS edits",
+			entity.GrantEffectAllow, entity.GrantEffectDeny,
+			entity.GrantEffectAllow, entity.GrantEffectDeny, "edit").
 		Where("resource_grant.tenant_id = ?", resource.TenantID).
 		Where("resource_grant.resource_kind = ?", string(resource.Ref.Kind)).
 		Where("resource_grant.resource_id = ?", resource.Ref.ID).
@@ -527,15 +555,18 @@ func (e *evaluation) grantLevel(ctx context.Context, subject Subject, resource R
 		// 授权是"额外放行"而不是"额外限制"：这张表不可用（老库未迁移、测试库
 		// 没建表）时降级回原有的二值可见性，private 资源仍然只有 owner 可见。
 		// 反过来把错误抛上去会让整次权限判定 500，等于一张附加表能拖垮全站。
-		return "", nil
+		return "", false, nil
 	}
 	if row.Total == 0 {
-		return "", nil
+		return "", false, nil
+	}
+	if row.Denied > 0 {
+		return "", true, nil
 	}
 	if row.Edits > 0 {
-		return "edit", nil
+		return "edit", false, nil
 	}
-	return "read", nil
+	return "read", false, nil
 }
 
 // tieredAccess 判定三级收窄档位（owner / tenant_owner / platform）里「租户
@@ -548,9 +579,15 @@ func (e *evaluation) tieredAccess(ctx context.Context, subject Subject, resource
 	if resource.CreatedBy != "" && subject.UserID == resource.CreatedBy {
 		return resourceAccess(resource, AccessSourceOwner), nil
 	}
-	level, err := e.grantLevel(ctx, subject, resource)
+	level, denied, err := e.grantLevel(ctx, subject, resource)
 	if err != nil {
 		return Access{}, err
+	}
+	// deny 压过任何 allow，但不作用于创建者（上面已返回）与部门管理员：
+	// 排除表达的是"看不见"，不是"降权"；管理角色能被排除的话，部门范围的
+	// 可见性承诺就自相矛盾了。
+	if denied {
+		level = ""
 	}
 	if level != "" {
 		operations := resource.TenantOperations
@@ -676,9 +713,13 @@ func (e *evaluation) resolveResource(ctx context.Context, subject Subject, resou
 		}
 		// private 默认只有 owner 可见；resource_grant 是它的唯一例外。
 		// 只在这一支查授权表：tenant 可见性已经放行，没必要为它多一次查询。
-		level, err := e.grantLevel(ctx, subject, resource)
+		level, denied, err := e.grantLevel(ctx, subject, resource)
 		if err != nil {
 			return Access{}, err
+		}
+		// deny 压过 allow，但不作用于创建者（上面已返回）与部门管理员（下面）。
+		if denied {
+			level = ""
 		}
 		if level != "" {
 			operations := resource.TenantOperations
@@ -742,9 +783,14 @@ func (e *evaluation) resolveResource(ctx context.Context, subject Subject, resou
 		}
 		// 共享资源同样接受逐人 / 逐部门授权：文件这类资源没法把"给某个成员
 		// 单独开权限"写进共享名单，只能落在 resource_grant 上。
-		if level, err := e.grantLevel(ctx, subject, resource); err != nil {
+		level, denied, err := e.grantLevel(ctx, subject, resource)
+		if err != nil {
 			return Access{}, err
-		} else if level != "" {
+		}
+		if denied {
+			level = ""
+		}
+		if level != "" {
 			operations := resource.TenantOperations
 			if operations == nil {
 				operations = resource.OwnerOperations

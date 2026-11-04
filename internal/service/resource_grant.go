@@ -11,6 +11,7 @@ import (
 
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 )
 
 // ResourceGrantService backs the console's "resource authorization" page.
@@ -46,6 +47,21 @@ const (
 // GrantKindDocument 是文件级授权的 resource_kind。文件永远挂在某个知识库下，
 // 库级是前提，文件级只做细化。
 const GrantKindDocument = "document"
+
+// grantDenyKinds 是允许写「排除」规则的类型。
+//
+// 只开放知识库与库内文件：这两类的判定（单条 + 列表 SQL + 检索）都有对应的
+// 排除谓词。其余类型先拒绝写入 —— 写入成功但判定不认，会变成「配置里排除了、
+// 实际照样能看」，比不支持更糟。
+var grantDenyKinds = map[string]bool{
+	GrantKindDocument: true,
+	"dataset":         true,
+}
+
+// grantSubjectKey 是「同一主体」的键：部门/用户带 id，全团队不带。
+func grantSubjectKey(kind, id string) string {
+	return kind + "\x00" + id
+}
 
 // normalizeGrantEffect 把外部输入收敛成合法取向，空值按 allow 处理。
 func normalizeGrantEffect(v string) string {
@@ -84,7 +100,10 @@ type GrantResourceView struct {
 	Visibility string `json:"visibility,omitempty"`
 	// DefaultScope 是历史的二值可见性（me / team / private / team），保留给
 	// 还没升级的前端读；新前端读 Visibility。
-	DefaultScope string         `json:"default_scope"`
+	DefaultScope string `json:"default_scope"`
+	// SupportsDeny 表示这类资源能否写「排除」规则。由后端注册表决定，前端不要
+	// 自己按 kind 猜：猜错的表现是"保存成功但判定不认"。
+	SupportsDeny bool           `json:"supports_deny"`
 	Grants       []GrantSubject `json:"grants"`
 	UpdateTime   int64          `json:"update_time"`
 }
@@ -173,6 +192,7 @@ func (s *ResourceGrantService) ListResources(ctx context.Context, tenantID, kind
 			ResourceName: r.ResourceName,
 			OwnerID:      r.OwnerID,
 			DefaultScope: r.Visibility,
+			SupportsDeny: grantDenyKinds[spec.Kind],
 			UpdateTime:   r.UpdateDate.UnixMilli(),
 		}
 		if spec.VisibilityColumn != "" {
@@ -414,6 +434,18 @@ func (s *ResourceGrantService) SetGrants(ctx context.Context, tenantID, kind, re
 
 	rows := make([]*entity.ResourceGrant, 0, len(subjects))
 	now := time.Now().UnixMilli()
+	// 已有规则用来兜住「调用方没表达取向」的情况（老前端不认 effect 字段，
+	// 整表替换时会把「已排除」写成 allow —— 那是悄悄放开权限）。
+	existing, err := dao.NewResourceGrantDAO().ListByResource(ctx, dao.DB, tenantID, kind, resourceID)
+	if err != nil {
+		return err
+	}
+	deniedSubjects := make(map[string]bool, len(existing))
+	for _, row := range existing {
+		if normalizeGrantEffect(row.Effect) == entity.GrantEffectDeny {
+			deniedSubjects[grantSubjectKey(row.SubjectKind, row.SubjectID)] = true
+		}
+	}
 	for _, sub := range subjects {
 		if sub.Kind != entity.GrantSubjectTeam && sub.Kind != entity.GrantSubjectDepartment && sub.Kind != entity.GrantSubjectUser {
 			continue
@@ -423,10 +455,26 @@ func (s *ResourceGrantService) SetGrants(ctx context.Context, tenantID, kind, re
 			continue
 		}
 		effect := normalizeGrantEffect(sub.Effect)
-		if effect == entity.GrantEffectDeny && kind != GrantKindDocument {
-			// 资源级的"不可见"用可见性档位或清空授权表达。允许多一套拒绝语义
-			// 会让同一个结果有两个入口，优先级就无从解释了。
-			return errors.New("资源级授权不支持「拒绝」，收回权限请改用可见范围或移除授权")
+		if strings.TrimSpace(sub.Effect) == "" && deniedSubjects[grantSubjectKey(sub.Kind, sub.ID)] {
+			// 空 effect = "没表达取向"，沿用库里的排除；要真的放开必须显式
+			// 提交 effect="allow"。
+			effect = entity.GrantEffectDeny
+		}
+		if effect == entity.GrantEffectDeny {
+			if !grantDenyKinds[spec.Kind] {
+				// 目前只有知识库与库内文件开放「排除」：其余类型的可见性还没有
+				// 列表 SQL 的排除谓词，先写入会变成「看得见但点不进去」。
+				return fmt.Errorf("%s 暂不支持「排除」：收回权限请改用可见范围或移除授权", spec.Label)
+			}
+			if sub.Kind == entity.GrantSubjectTeam {
+				// 「排除全团队」等价于清空授权，同一结果两个入口只会让人误用。
+				return errors.New("不能把「全团队」设为排除：收回全部请直接移除规则")
+			}
+			if sub.Kind == entity.GrantSubjectUser {
+				if err := s.assertDenyTarget(ctx, tenantID, spec, resourceID, sub.ID); err != nil {
+					return err
+				}
+			}
 		}
 		rows = append(rows, &entity.ResourceGrant{
 			TenantID:     tenantID,
@@ -498,6 +546,36 @@ func (s *ResourceGrantService) assertDocumentInDataset(ctx context.Context, tena
 }
 
 // assertResourceInTenant confirms the resource is owned by this tenant.
+// assertDenyTarget 拦掉「把不会被排除的人写进排除名单」。
+//
+// 判定链里创建者与租户 owner 在授权表之前就返回了，所以对他们写 deny 是一条
+// 永远不生效的规则：管理员会以为已经排除，实际照旧可见。宁可保存时报错。
+func (s *ResourceGrantService) assertDenyTarget(ctx context.Context, tenantID string, spec *grantKindSpec, resourceID, userID string) error {
+	if spec == nil || userID == "" {
+		return nil
+	}
+	if spec.TenantWhere != nil {
+		q := dao.DB.WithContext(ctx).Table(spec.Table).
+			Select(spec.OwnerExpr+" AS owner").Where("id = ?", resourceID)
+		if where, args := spec.TenantWhere(tenantID); where != "" {
+			q = q.Where(where, args...)
+		}
+		var row struct {
+			Owner string `gorm:"column:owner"`
+		}
+		if err := q.Take(&row).Error; err == nil && row.Owner == userID {
+			return errors.New("不能排除资源创建者：排除对创建者不生效")
+		}
+	}
+	var ownerCount int64
+	if err := dao.DB.WithContext(ctx).Model(&entity.UserTenant{}).
+		Where("tenant_id = ? AND user_id = ? AND role = ?", tenantID, userID, string(permission.RoleOwner)).
+		Count(&ownerCount).Error; err == nil && ownerCount > 0 {
+		return errors.New("不能排除租户所有者：排除对租户管理层不生效")
+	}
+	return nil
+}
+
 func (s *ResourceGrantService) assertResourceInTenant(ctx context.Context, tenantID string, spec *grantKindSpec, resourceID string) error {
 	if spec == nil || spec.TenantWhere == nil {
 		return errors.New("不支持的资源类型")

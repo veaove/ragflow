@@ -58,6 +58,11 @@ func documentRuleClause(ctx context.Context, db *gorm.DB, subject Subject, datas
 		ID:   datasetID,
 	})
 	if err != nil {
+		// 库级被明确拒绝（含被显式排除）时，文件不能比库更宽松：此时返回一个
+		// 恒假谓词，让列表直接空掉。与 CheckDocumentAccess 的分支一一对应。
+		if errorsIsPermissionDenial(err) {
+			return "0 = 1", nil, true
+		}
 		// 判定不出来时不做额外限制：库级检查已经先跑过，这里再 fail closed
 		// 会让一次偶发查询失败变成"整个库的文件全消失"。与 grantLevel 同一
 		// 条取舍：授权是额外收敛，不是全站的单点依赖。

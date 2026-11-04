@@ -52,7 +52,7 @@ function GrantChips({ grants }: { grants: GrantSubject[] }) {
         >
           {grant.kind === 'team' ? '全团队' : grant.name}
           {grant.effect === 'deny'
-            ? '·已拒绝'
+            ? '·已排除'
             : grant.permission === 'read'
               ? '·只读'
               : '·可编辑'}
@@ -325,6 +325,7 @@ export function GrantDetailPanel({
       parentId: node.parent_grant_id,
       parentName: trail.length > 1 ? trail[trail.length - 2].name : undefined,
       grants: node.grants ?? [],
+      supportsDeny: node.supports_deny,
       defaultScope:
         node.visibility ||
         (node.node_kind === 'dataset' || node.node_kind === 'file'
@@ -348,9 +349,10 @@ export function GrantDetailPanel({
         parentName: node.name,
         grants: item.grants ?? [],
         defaultScope: 'inherit',
-        // 「添加例外」在知识库内就是拒绝；文件管理的文件没有拒绝语义，
+        supportsDeny: item.supports_deny,
+        // 「添加例外」在知识库内就是排除；文件管理的文件没有排除语义，
         // 例外表现为单独放开，所以默认仍是允许。
-        initialEffect: item.grant_kind === 'document' ? 'deny' : 'allow',
+        initialEffect: item.supports_deny ? 'deny' : 'allow',
       }),
     [node.name, onEdit],
   );

@@ -198,7 +198,7 @@ export function GrantMemberView({ tenantId, members }: GrantMemberViewProps) {
                     <TableCell className="text-xs">
                       {row.effect === 'deny' ? (
                         <span className="rounded bg-state-error/10 px-1.5 py-0.5 text-state-error">
-                          已拒绝
+                          已排除
                         </span>
                       ) : (
                         <span className="text-text-secondary">

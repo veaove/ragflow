@@ -349,6 +349,7 @@ export default function ConsoleGrants() {
         grants: row.grants ?? [],
         defaultScope: row.visibility || row.default_scope,
         scopeHint: `本层资源；其下子项未单独设置时继承这里的规则`,
+        supportsDeny: row.supports_deny,
       });
     },
     [kind],

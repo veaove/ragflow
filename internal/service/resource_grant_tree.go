@@ -63,6 +63,8 @@ type GrantTreeNode struct {
 	// Visibility 是三级可见性；空串表示这类节点不参与三档。
 	Visibility         string `json:"visibility,omitempty"`
 	SupportsVisibility bool   `json:"supports_visibility"`
+	// SupportsDeny 表示这一层能否写「排除」规则（见 grantDenyKinds）。
+	SupportsDeny bool `json:"supports_deny"`
 	// FileCount 是本层及全部子孙里的文件数。
 	FileCount int64 `json:"file_count"`
 	// ExceptionCount 是有独立规则的子孙数量。
@@ -288,6 +290,7 @@ func (s *ResourceGrantService) datasetGrantTree(ctx context.Context, tenantID, k
 			OwnerName:          creatorNames[kb.CreatedBy],
 			Visibility:         entity.NormalizeResourceVisibility(kb.Permission),
 			SupportsVisibility: true,
+			SupportsDeny:       grantDenyKinds["dataset"],
 			FileCount:          kbRootDocs[kb.ID],
 			ExceptionCount:     kbRootExceptions[kb.ID],
 			Grants:             s.describeGrantsCached(ctx, tenantID, kbGrants[kb.ID], cache),
@@ -455,6 +458,23 @@ func summarizeGrantNode(node *GrantTreeNode) GrantNodeSummary {
 		return GrantNodeSummary{Tone: GrantToneException, Label: fmt.Sprintf("%d 项例外", node.ExceptionCount)}
 	}
 	if len(node.Grants) > 0 {
+		// 有排除规则时用橙色标出来：这类节点最容易被忽略 —— 看上去「全员可见」
+		//（green），实际有人被挡住了，抽查权限时正是要看这里。
+		denied := 0
+		for _, grant := range node.Grants {
+			if normalizeGrantEffect(grant.Effect) == entity.GrantEffectDeny {
+				denied++
+			}
+		}
+		if denied > 0 {
+			if len(node.Grants) == 1 {
+				return GrantNodeSummary{Tone: GrantToneException, Label: "已排除 1 人"}
+			}
+			return GrantNodeSummary{
+				Tone:  GrantToneException,
+				Label: fmt.Sprintf("%d 个主体 · 排除 %d", len(node.Grants), denied),
+			}
+		}
 		if len(node.Grants) == 1 {
 			return GrantNodeSummary{Tone: GrantToneVisible, Label: node.Grants[0].Name}
 		}
@@ -486,6 +506,9 @@ type GrantExceptionItem struct {
 	ResourceName string `json:"resource_name"`
 	GrantKind    string `json:"grant_kind"`
 	NodeKind     string `json:"node_kind"`
+	// SupportsDeny 表示这一项能否写「排除」规则（库内文件可以，文件管理的
+	// 文件不可以）。
+	SupportsDeny bool `json:"supports_deny"`
 	// ParentGrantID 是写文件级规则时要带上的所属知识库（知识库内文件）。
 	ParentGrantID string         `json:"parent_grant_id,omitempty"`
 	Path          string         `json:"path,omitempty"`
@@ -684,6 +707,7 @@ func (s *ResourceGrantService) datasetExceptions(
 			ResourceName:  name,
 			GrantKind:     GrantKindDocument,
 			NodeKind:      GrantNodeFile,
+			SupportsDeny:  grantDenyKinds[GrantKindDocument],
 			ParentGrantID: datasetID,
 			Path:          folderPath(folder),
 			Suffix:        row.Suffix,
@@ -821,6 +845,7 @@ func (s *ResourceGrantService) fileExceptions(
 			ResourceName:  row.Name,
 			GrantKind:     grantKind,
 			NodeKind:      nodeKind,
+			SupportsDeny:  grantDenyKinds[grantKind],
 			ParentGrantID: row.ParentID,
 			Path:          pathOf(row.ParentID),
 			Size:          row.Size,

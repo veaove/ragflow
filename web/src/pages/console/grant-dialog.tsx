@@ -38,6 +38,12 @@ export interface GrantTarget {
   scopeHint?: string;
   /** 新加规则的默认取向：从「添加例外」进来时直接是拒绝。 */
   initialEffect?: 'allow' | 'deny';
+  /**
+   * 这类资源能否写「排除」规则。由后端注册表给（supports_deny），前端不要按
+   * kind 自己判断：判定不认的类型上写进去会变成「配置里排除了、实际照样能看」。
+   * 缺省时退回历史行为（只有库内文件可以）。
+   */
+  supportsDeny?: boolean;
 }
 
 export interface GrantSubjectOptions {
@@ -90,28 +96,27 @@ export function GrantDialog({
   const [draft, setDraft] = useState<GrantSubject[]>([]);
   const [addKind, setAddKind] = useState<'department' | 'user'>('department');
   const [addId, setAddId] = useState('');
-  // 新添加的授权给什么级别。默认只读：给编辑权应当是显式动作。
-  const [addPermission, setAddPermission] = useState<'read' | 'edit'>('read');
-  const [addEffect, setAddEffect] = useState<'allow' | 'deny'>('allow');
+  // 新添加的规则给什么：可查看 / 可编辑 / 不可见（排除）。默认只读 ——
+  // 给编辑权和排除都应当是显式动作。
+  const [addAccess, setAddAccess] = useState<'read' | 'edit' | 'deny'>('read');
   const [saving, setSaving] = useState(false);
 
   // 文件级（知识库文件 / 文件管理里的文件）与库级的区别只在文案与提示。
   const isFileLevel = target?.kind === 'document' || target?.kind === 'file';
-  // 只有知识库内的文件支持「拒绝」：库、文件夹、文件管理的文件收回权限都用
-  // 清空授权表达，多一套拒绝语义会让优先级无从解释（后端同样会拒绝）。
-  const supportsDeny = target?.kind === 'document';
+  // 能否排除以接口为准；老接口没有这个字段时退回历史行为（只有库内文件可以）。
+  const supportsDeny = target?.supportsDeny ?? target?.kind === 'document';
 
   useEffect(() => {
     if (!target) return;
     setDraft(target.grants ?? []);
     setAddKind('department');
     setAddId('');
-    setAddPermission('read');
-    // 不支持拒绝的类型要落回允许，否则会提交一个后端明确拒绝的组合。
-    setAddEffect(
-      target.kind === 'document' && target.initialEffect === 'deny'
+    // 不支持排除的类型要落回允许，否则会提交一个后端明确拒绝的组合。
+    setAddAccess(
+      (target.supportsDeny ?? target.kind === 'document') &&
+        target.initialEffect === 'deny'
         ? 'deny'
-        : 'allow',
+        : 'read',
     );
   }, [target]);
 
@@ -130,22 +135,19 @@ export function GrantDialog({
     [],
   );
 
-  const handleAddPermissionChange = useCallback(
+  const handleAddAccessChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
-      setAddPermission(e.target.value as 'read' | 'edit');
-    },
-    [],
-  );
-
-  const handleAddEffectChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      setAddEffect(e.target.value as 'allow' | 'deny');
+      setAddAccess(e.target.value as 'read' | 'edit' | 'deny');
     },
     [],
   );
 
   const handleAddSubject = useCallback(() => {
     if (!addId) return;
+    // 排除规则不携带级别（判定时只认 effect），落库固定 read，避免读出来
+    // 一个「可编辑但被排除」的迷惑组合。
+    const permission = addAccess === 'deny' ? 'read' : addAccess;
+    const effect = addAccess === 'deny' ? 'deny' : 'allow';
     if (addKind === 'department') {
       const dept = options.departments.find((d) => d.id === addId);
       if (!dept) return;
@@ -158,8 +160,8 @@ export function GrantDialog({
                 kind: 'department',
                 id: dept.id,
                 name: dept.name.trim(),
-                permission: addPermission,
-                effect: addEffect,
+                permission,
+                effect,
               },
             ],
       );
@@ -175,16 +177,18 @@ export function GrantDialog({
                 kind: 'user',
                 id: member.id,
                 name: member.name,
-                permission: addPermission,
-                effect: addEffect,
+                permission,
+                effect,
               },
             ],
       );
     }
     setAddId('');
-  }, [addEffect, addId, addKind, addPermission, options]);
+  }, [addAccess, addId, addKind, options]);
 
   const handleAddTeam = useCallback(() => {
+    // 「排除全团队」等价于清空授权，后端会拒绝；这里直接不给入口。
+    if (addAccess === 'deny') return;
     setDraft((prev) =>
       prev.some((s) => s.kind === 'team')
         ? prev
@@ -194,12 +198,12 @@ export function GrantDialog({
               kind: 'team',
               id: '',
               name: '全团队',
-              permission: addPermission,
-              effect: addEffect,
+              permission: addAccess,
+              effect: 'allow',
             },
           ],
     );
-  }, [addEffect, addPermission]);
+  }, [addAccess]);
 
   const handleTogglePermission = useCallback((index: number) => {
     setDraft((prev) =>
@@ -295,7 +299,7 @@ export function GrantDialog({
                     为每次都开一个下拉不值当。拒绝时级别不生效，直接标出。 */}
                   {g.effect === 'deny' ? (
                     <span className="rounded bg-state-error/15 px-1">
-                      已拒绝
+                      已排除
                     </span>
                   ) : (
                     <button
@@ -307,14 +311,14 @@ export function GrantDialog({
                       {permissionLabel(g.permission)}
                     </button>
                   )}
-                  {supportsDeny && (
+                  {supportsDeny && g.kind !== 'team' && (
                     <button
                       type="button"
                       onClick={() => handleToggleEffect(idx)}
                       className="rounded bg-bg-list px-1 text-text-secondary hover:text-text-primary"
-                      title="点击切换允许 / 拒绝"
+                      title="点击切换允许 / 排除"
                     >
-                      {g.effect === 'deny' ? '拒绝' : '允许'}
+                      {g.effect === 'deny' ? '排除' : '允许'}
                     </button>
                   )}
                   <LucideX
@@ -359,25 +363,15 @@ export function GrantDialog({
               </div>
             </div>
             <select
-              value={addPermission}
-              onChange={handleAddPermissionChange}
+              value={addAccess}
+              onChange={handleAddAccessChange}
               className="h-9 rounded-md border border-border-default bg-bg-base px-2 text-sm text-text-primary outline-none"
               title="授予的权限级别"
             >
               <option value="read">可查看</option>
               <option value="edit">可编辑</option>
+              {supportsDeny && <option value="deny">不可见（排除）</option>}
             </select>
-            {supportsDeny && (
-              <select
-                value={addEffect}
-                onChange={handleAddEffectChange}
-                className="h-9 rounded-md border border-border-default bg-bg-base px-2 text-sm text-text-primary outline-none"
-                title="允许 / 拒绝"
-              >
-                <option value="allow">允许</option>
-                <option value="deny">拒绝</option>
-              </select>
-            )}
             <Button
               variant="secondary"
               onClick={handleAddSubject}
@@ -391,6 +385,8 @@ export function GrantDialog({
           <p className="text-xs text-text-secondary">
             可查看：能看到并使用该资源，但不能修改内容、不能删除、不能再授权；
             可编辑：可以修改内容、删除资源。
+            {supportsDeny &&
+              ' 不可见（排除）：命中后无论其他规则怎么给都看不到，用于「全员可见后排除个别人」；对资源创建者与管理层无效。'}
           </p>
 
           {isFileLevel && (
@@ -406,7 +402,14 @@ export function GrantDialog({
               variant="secondary"
               className="h-8"
               onClick={handleAddTeam}
-              disabled={draft.some((s) => s.kind === 'team')}
+              disabled={
+                draft.some((s) => s.kind === 'team') || addAccess === 'deny'
+              }
+              title={
+                addAccess === 'deny'
+                  ? '「排除全团队」等于收回全部授权，请改用可见范围或逐人排除'
+                  : undefined
+              }
             >
               开放给全团队
             </Button>

@@ -222,6 +222,8 @@ export interface GrantResource {
   visibility?: GrantVisibility | '';
   /** 旧二值语义：private（仅自己）/ team（全团队），保留给未升级的读法。 */
   default_scope: string;
+  /** 能否写「排除」规则；由后端注册表决定。 */
+  supports_deny?: boolean;
   grants: GrantSubject[];
   update_time: number;
 }
@@ -311,6 +313,8 @@ export interface GrantTreeNode {
   owner_name?: string;
   visibility?: GrantVisibility | '';
   supports_visibility: boolean;
+  /** 能否写「排除」规则；由后端 grantDenyKinds 决定。 */
+  supports_deny?: boolean;
   file_count: number;
   exception_count: number;
   summary: GrantNodeSummary;
@@ -332,6 +336,8 @@ export interface GrantExceptionItem {
   resource_name: string;
   grant_kind: string;
   node_kind: string;
+  /** 能否写「排除」规则（库内文件可以，文件管理的文件不可以）。 */
+  supports_deny?: boolean;
   parent_grant_id?: string;
   /** 文件夹路径，用于区分同名文件。 */
   path?: string;

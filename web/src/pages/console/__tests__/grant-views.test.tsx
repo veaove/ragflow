@@ -219,7 +219,62 @@ describe('GrantDialog', () => {
         '作用范围：本层及全部 4 个文件；子项自己设置过的规则优先',
       ),
     ).toBeInTheDocument();
-    // 从「添加例外」进来时默认就是拒绝，省掉一次下拉选择。
-    expect(screen.getByDisplayValue('拒绝')).toBeInTheDocument();
+    // 从「添加例外」进来时默认就是排除，省掉一次下拉选择。
+    expect(screen.getByDisplayValue('不可见（排除）')).toBeInTheDocument();
+  });
+
+  it('知识库弹窗支持「不可见（排除）」，且能看出这是资源级', () => {
+    render(
+      <GrantDialog
+        target={{
+          kind: 'dataset',
+          resourceId: 'kb1',
+          name: '07-帮助中心',
+          grants: [
+            { kind: 'team', id: '', name: '全团队', permission: 'edit' },
+            {
+              kind: 'user',
+              id: 'u2',
+              name: '李四',
+              permission: 'read',
+              effect: 'deny',
+            },
+          ],
+          defaultScope: 'owner',
+          supportsDeny: true,
+        }}
+        options={{ departments: [], members: [] }}
+        onClose={jest.fn()}
+        onSubmit={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('设置可见范围')).toBeInTheDocument();
+    // 资源级也能选「不可见（排除）」：这是「全员可见后排除个别人」的入口。
+    expect(
+      screen.getByRole('option', { name: '不可见（排除）' }),
+    ).toBeInTheDocument();
+    // 已排除的主体直接标出来，不必展开才知道。
+    expect(screen.getByText('已排除')).toBeInTheDocument();
+  });
+
+  it('不支持排除的资源只给查看/编辑两档', () => {
+    render(
+      <GrantDialog
+        target={{
+          kind: 'file',
+          resourceId: 'f1',
+          name: '合同.pdf',
+          grants: [],
+          defaultScope: 'owner',
+          supportsDeny: false,
+        }}
+        options={{ departments: [], members: [] }}
+        onClose={jest.fn()}
+        onSubmit={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('option', { name: '不可见（排除）' })).toBeNull();
   });
 });
