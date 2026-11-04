@@ -24,7 +24,9 @@ e2e/
     ├── 70-keypaths.spec.ts     # 页面往返、角色切换、成员入口不串台
     ├── 80-exclude.spec.ts      # 资源级「排除」：supports_deny、入口、非法组合
     ├── 85-exclude-flow.spec.ts # 排除的正向链路（建/删临时库，需 E2E_ALLOW_WRITE=1）
-    └── 90-matrix.spec.ts       # 角色×资源×操作 矩阵回归（数据驱动，五类资源 + 质检）
+    ├── 87-file-deny.spec.ts    # 文件级排除（建库 + 传 2 个文件 + 删库，同上开关）
+    ├── 90-matrix.spec.ts       # 角色×资源×操作 矩阵回归（数据驱动，五类资源 + 质检）
+    └── 95-idor.spec.ts         # 存在性不泄露：不存在的 id 与别人的 id 必须同一文案
 ```
 
 测试方案（范围、用例矩阵、验收标准）见 `docs/e2e-role-grant-test-plan.md`。

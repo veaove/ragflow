@@ -95,6 +95,8 @@
 | S8 | 关键路径：页面往返不串台、角色切换不串台、成员入口 | `70-keypaths` |
 | S9 | 资源级「排除」：`supports_deny`、界面入口、三类非法组合 | `80-exclude` |
 | S9b | 排除的**正向链路**：建临时库 → 全团队允许 → 单人排除 → 该成员列表/详情均不可见 → 移除排除后恢复 | `85-exclude-flow`（需 `E2E_ALLOW_WRITE=1`） |
+| S9c | **文件级**排除：建库 → 传 2 个文件 → 库级全团队 → 排除其中一个 → member 文件列表剩 1、owner 仍 2 | `87-file-deny`（需 `E2E_ALLOW_WRITE=1`） |
+| S11 | 存在性不泄露：不存在的 id 与「别人的 id」返回逐字相同的 code+message | `95-idor` |
 | S10 | **矩阵化回归**：五类资源 × 三件事（可见子集 / 可见即可读 / 不可见即不可读）+ 质检规则子集 | `90-matrix` |
 
 ---
@@ -190,8 +192,8 @@ E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts
 
 | # | 标准 | 当前 |
 |---|---|---|
-| A1 | P0/P1 用例 100% 通过 | **68/68 通过**（73 条中 5 条为显式跳过：2 条写用例 + 3 条无样本） |
-| A2 | 无 P1（高）缺陷；P2 缺陷有记录与责任人 | D1–D5 已修复；D6（智能体拒绝文案）待排期 |
+| A1 | P0/P1 用例 100% 通过 | **72/72 通过**（79 条中 7 条为显式跳过：4 条写用例 + 3 条无样本） |
+| A2 | 无 P1（高）缺陷；P2 缺陷有记录与责任人 | D1–D5 已修复；D6 经核查为**误报**（智能体对「不存在」与「别人的」返回逐字相同文案，属 IDOR 缓解），已关闭 |
 | A3 | 列表 / 详情 / 检索三处对同一资源给出一致结论 | 通过（`90-matrix` 三条互补断言 + D1 修复） |
 | A4 | 越权用例全部拦截，且事后校验无数据变更 | 通过（写用例用不存在 id 或幂等 payload，并在用例内二次核对） |
 | A5 | 权限矩阵与资源授权解耦（矩阵全勾 ≠ 数据全可见） | 通过（member 矩阵 25 全勾，仅见 4/18 库、1/27 智能体） |
@@ -218,17 +220,20 @@ E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts
 发版：`46b8dc4`（后端重编 + 前端构建，`/root/deploy.sh`）。校验：`version=46b8dc4`、`healthz` 五项 ok、三服务 active、首页 200、四方一致（HEAD / `.deployed_sha` / `.frontend_sha` / nginx `dist_46b8dc4`）。
 
 ```
-e2e/ 全量 73 条：68 passed / 5 skipped / 0 failed
-  5 skipped = 85-exclude-flow ×2（写用例，需 E2E_ALLOW_WRITE=1）
+e2e/ 全量 79 条：72 passed / 7 skipped / 0 failed
+  7 skipped = 85-exclude-flow ×2 + 87-file-deny ×2（写用例，需 E2E_ALLOW_WRITE=1）
              + 90-matrix 的「可读」×3（member 对 知识问答/知识检索/记忆 均 0 条可见）
 
-正向链路单独跑：E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts
-  → 2 passed：全团队允许时 member 可读 → 追加排除后列表/详情均不可见 → 移除后恢复
-  → 临时库 afterAll 自动删除，跑完核对租户知识库数量回到 18，无残留
+写用例单独跑：E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts specs/87-file-deny.spec.ts
+  → 85：全团队允许时 member 可读 → 追加排除后列表/详情均不可见 → 移除后恢复（2 passed）
+  → 87：库内 2 个文件对 member 可见 → 排除其一后剩 1 个、owner 仍 2 个（2 passed）
+  → 两个 beforeAll 建库、afterAll 删库，跑完核对租户知识库数量回到 18，无残留
 ```
 
 矩阵实测（annotation）：知识库 `owner=18 member=4`；知识问答 `7/0`；知识检索 `2/0`；智能体 `27/1`；记忆 `1/0`；质检规则 `9/0`。
 
 验收判定：**A1–A6 全部满足**（S9/S9b 转绿；D6 为低优先级文案问题，已记录）。
 
-待办：D6 文案统一、G13 补账号以覆盖 admin / 部门管理员 / 普通成员、G2 文件级授权全路径。
+补充用例 `95-idor.spec.ts`（4 条，发版后全通过）：不存在的 id 与「别人的 id」必须返回**逐字相同**的 code+message（智能体、知识库各一条），越界租户 403 同一句「租户不存在」，member 读矩阵放行 / 写矩阵 403。
+
+待办：G13 补账号以覆盖 admin / 部门管理员 / 普通成员、G2 文件级授权全路径、D6 措辞统一（可选，非缺陷）。
