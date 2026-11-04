@@ -137,6 +137,7 @@
 | **D3** | 中 | 质检规则未按资源授权过滤 | member `GET /qc/rules` 返回 9 条规则（与其可见应用无关） | 成员可读到不属于自己可见应用的质检规则配置（规则名 / 提示词 / 判定条件）；数据面越权读取 | `40-overreach.spec.ts` FINDING 用例；另见 `30-resource-scope` 中 member 的 `/qc` 页面确实「暂无可配置的应用」 | **已修复（未发版）** |
 | **D4** | 中 | 内置角色矩阵可被空写覆盖，随后被静默回填 | `PUT /roles/:id/permissions` 提交 `{permissions: []}` 返回成功；下一次 `ListRoles` 又按 `ConsoleModules` 把默认行补回 | 「撤销某模块 / 撤销全部」对内置角色**不可持久化**：保存成功但实际被改回默认，管理员会误以为权限已收紧；`backfillBuiltinRolePermissions` 无法区分「模块新增需补行」与「管理员主动删除」 | 本轮实测：Owner 提交空矩阵后仍为 25 行全勾（数据未丢，但语义被吞） | **已修复（未发版）** |
 | **D5** | 低 | 内置角色可被改名，多处逻辑按名字匹配 | `PUT /roles/:id` 前端已禁用编辑，接口层无 `is_builtin` 保护 | 改名后 `EnsureTenantAdminRole`（按「租户管理员」）、`backfillBuiltinRolePermissions`（按 spec name）静默失配，owner 移交与权限补行行为不可预期 | `internal/dao/role.go`（Delete 有内置保护，Update 无） | **已修复（未发版）** |
+| **D6** | 低 | 智能体详情拒绝文案不统一 | member 读不可见的智能体回「Make sure you have permission to access the agent.」，其它类型统一回「Resource not found」 | 文案等于承认该智能体存在，与「不泄露存在性」的约定不一致；不影响拦截结果 | `90-matrix` 的 annotation 记录；断言暂时容忍两种文案 | 待排期 |
 
 > 严重程度定义：**高** = 主流程不可用或权限边界判断错误；**中** = 越权/信息暴露或管理动作语义错误，但不阻断主流程；**低** = 需高权限前提或管理面边界问题。
 

@@ -22,8 +22,11 @@ e2e/
     ├── 50-boundary.spec.ts     # 分页上下界、通配符、超长参数、越界 id
     ├── 60-invalid-input.spec.ts# 畸形 JSON、非法 kind、缺参、401/403
     ├── 70-keypaths.spec.ts     # 页面往返、角色切换、成员入口不串台
-    └── 80-exclude.spec.ts      # 资源级「排除」：supports_deny、入口、非法组合
+    ├── 80-exclude.spec.ts      # 资源级「排除」：supports_deny、入口、非法组合
+    └── 90-matrix.spec.ts       # 角色×资源×操作 矩阵回归（数据驱动，五类资源 + 质检）
 ```
+
+测试方案（范围、用例矩阵、验收标准）见 `docs/e2e-role-grant-test-plan.md`。
 
 ## 只读基线
 
