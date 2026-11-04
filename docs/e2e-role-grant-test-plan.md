@@ -94,6 +94,7 @@
 | S7 | 异常输入：畸形 JSON、非法 kind、缺参、401/403 | `60-invalid-input` |
 | S8 | 关键路径：页面往返不串台、角色切换不串台、成员入口 | `70-keypaths` |
 | S9 | 资源级「排除」：`supports_deny`、界面入口、三类非法组合 | `80-exclude` |
+| S9b | 排除的**正向链路**：建临时库 → 全团队允许 → 单人排除 → 该成员列表/详情均不可见 → 移除排除后恢复 | `85-exclude-flow`（需 `E2E_ALLOW_WRITE=1`） |
 | S10 | **矩阵化回归**：五类资源 × 三件事（可见子集 / 可见即可读 / 不可见即不可读）+ 质检规则子集 | `90-matrix` |
 
 ---
@@ -157,6 +158,9 @@ npx playwright test --grep "矩阵"                # 按标题过滤
 
 # 5) 报告
 npx playwright show-report report
+
+# 6) 写用例（建/删临时知识库，仅发版验收时手动跑）
+E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts
 ```
 
 失败的用例在 `test-results/` 下留 `trace.zip`：`npx playwright show-trace <path>` 可逐帧回放。
@@ -186,7 +190,7 @@ npx playwright show-report report
 
 | # | 标准 | 当前 |
 |---|---|---|
-| A1 | P0/P1 用例 100% 通过 | 64/71 通过；4 条为「排除」功能待发版，3 条为「member 无可见样本」跳过 |
+| A1 | P0/P1 用例 100% 通过 | **68/68 通过**（73 条中 5 条为显式跳过：2 条写用例 + 3 条无样本） |
 | A2 | 无 P1（高）缺陷；P2 缺陷有记录与责任人 | D1–D5 已修复；D6（智能体拒绝文案）待排期 |
 | A3 | 列表 / 详情 / 检索三处对同一资源给出一致结论 | 通过（`90-matrix` 三条互补断言 + D1 修复） |
 | A4 | 越权用例全部拦截，且事后校验无数据变更 | 通过（写用例用不存在 id 或幂等 payload，并在用例内二次核对） |
@@ -209,14 +213,22 @@ npx playwright show-report report
 
 ---
 
-## 10. 当前结果（2026-11-04）
+## 10. 当前结果（2026-11-04，发版后）
+
+发版：`46b8dc4`（后端重编 + 前端构建，`/root/deploy.sh`）。校验：`version=46b8dc4`、`healthz` 五项 ok、三服务 active、首页 200、四方一致（HEAD / `.deployed_sha` / `.frontend_sha` / nginx `dist_46b8dc4`）。
 
 ```
-e2e/ 全量 71 条：64 passed / 4 failed / 3 skipped
-  4 failed = 80-exclude 的 supports_deny ×3 + 界面入口 ×1（待发版）
-  3 skipped = 90-matrix 的「可读」：member 对 知识问答/知识检索/记忆 均 0 条可见，无可读样本
+e2e/ 全量 73 条：68 passed / 5 skipped / 0 failed
+  5 skipped = 85-exclude-flow ×2（写用例，需 E2E_ALLOW_WRITE=1）
+             + 90-matrix 的「可读」×3（member 对 知识问答/知识检索/记忆 均 0 条可见）
+
+正向链路单独跑：E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts
+  → 2 passed：全团队允许时 member 可读 → 追加排除后列表/详情均不可见 → 移除后恢复
+  → 临时库 afterAll 自动删除，跑完核对租户知识库数量回到 18，无残留
 ```
 
 矩阵实测（annotation）：知识库 `owner=18 member=4`；知识问答 `7/0`；知识检索 `2/0`；智能体 `27/1`；记忆 `1/0`；质检规则 `9/0`。
 
-待办：发版后补 S9 的正向链路（需专用测试库）、D6 文案统一、G13 补账号以覆盖 admin / 部门管理员 / 普通成员。
+验收判定：**A1–A6 全部满足**（S9/S9b 转绿；D6 为低优先级文案问题，已记录）。
+
+待办：D6 文案统一、G13 补账号以覆盖 admin / 部门管理员 / 普通成员、G2 文件级授权全路径。

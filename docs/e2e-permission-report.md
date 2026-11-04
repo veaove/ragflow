@@ -8,7 +8,7 @@
 | 测试账号 | `owner` = 123456789@qq.com（租户所有者）；`member` = hjzd@hjzd.com（自定义角色「技术员」，矩阵 25 模块全勾） |
 | 测试框架 | Playwright 1.64.1 / Chromium，单 worker 串行，`fullyParallel=false` |
 | 用例位置 | `e2e/specs/00~80-*.spec.ts`，设计说明见 `e2e/PLAN.md` |
-| 执行结果 | **55 用例：51 passed / 4 failed**，总耗时 1.3 min。4 条失败全部是「排除」功能的 `supports_deny` / 界面入口断言，等本轮改动发版后转绿（见 §1.9） |
+| 执行结果 | **73 用例：68 passed / 5 skipped / 0 failed**，总耗时 1.1 min。5 条跳过为 2 条写用例（`E2E_ALLOW_WRITE=1` 才跑）+ 3 条「member 无可见样本」 |
 | 测试基线 | **默认只读**：不创建、不修改、不删除业务数据；写接口打不存在的资源或提交「与现状相同」的值 |
 
 ## 0. 只读基线与判定口径

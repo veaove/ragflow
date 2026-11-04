@@ -63,17 +63,24 @@ test.describe('资源级排除 · 结构与入口', () => {
   });
 
   test('子项例外：库内文件可排除', async ({ request }) => {
+    // 默认只返回「与父级不同的例外项」，本库的文件全部继承，item 数为 0；
+    // 要看全部文件必须 all=1。
     const body = await (
       await request.get(
-        `${api.grantExceptions(TID)}?kind=dataset&dataset_id=${RESOURCES.privateKb.id}`,
+        `${api.grantExceptions(TID)}?kind=dataset&dataset_id=${RESOURCES.privateKb.id}&all=1`,
         { headers: { Authorization: tokenOf('owner') } },
       )
     ).json();
     expect(body.code).toBe(0);
+    expect(body.data.total, '07-帮助中心 应有文件').toBeGreaterThan(0);
+
     const items = body.data.items as { grant_kind: string; supports_deny?: boolean }[];
-    const doc = items.find((i) => i.grant_kind === 'document');
-    expect(doc, '07-帮助中心 应有文件项').toBeTruthy();
-    expect(doc!.supports_deny).toBe(true);
+    const docs = items.filter((i) => i.grant_kind === 'document');
+    expect(docs.length, '文件项应带 grant_kind=document').toBeGreaterThan(0);
+    // 预期：库内文件与库自身都支持排除（文件级 deny 是既有能力）。
+    for (const doc of docs.slice(0, 5)) {
+      expect(doc.supports_deny, '文件项应支持排除').toBe(true);
+    }
   });
 
   test('设置可见范围里有「不可见（排除）」入口', async ({ page }) => {
@@ -86,9 +93,11 @@ test.describe('资源级排除 · 结构与入口', () => {
     await expect(page.getByText('设置可见范围')).toBeVisible();
 
     // 预期：和「可查看 / 可编辑」并列的第三档，用于全员可见后排除个别人。
-    await expect(
-      page.getByRole('option', { name: '不可见（排除）' }),
-    ).toBeVisible();
+    // 注意：<option> 永远不是「可见元素」（Playwright 只认 <select> 本身），
+    // 所以按属性 + 文本断言，不用 toBeVisible。
+    const option = page.locator('option[value="deny"]');
+    await expect(option).toHaveCount(1);
+    await expect(option).toHaveText('不可见（排除）');
   });
 });
 

@@ -23,6 +23,7 @@ e2e/
     ├── 60-invalid-input.spec.ts# 畸形 JSON、非法 kind、缺参、401/403
     ├── 70-keypaths.spec.ts     # 页面往返、角色切换、成员入口不串台
     ├── 80-exclude.spec.ts      # 资源级「排除」：supports_deny、入口、非法组合
+    ├── 85-exclude-flow.spec.ts # 排除的正向链路（建/删临时库，需 E2E_ALLOW_WRITE=1）
     └── 90-matrix.spec.ts       # 角色×资源×操作 矩阵回归（数据驱动，五类资源 + 质检）
 ```
 
