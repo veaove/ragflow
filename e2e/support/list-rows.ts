@@ -1,6 +1,16 @@
 import type { APIRequestContext } from '@playwright/test';
 
-export type ListRow = { id: string; name?: string };
+/**
+ * 列表条目。
+ *
+ * 除 id 外全部按需读取：各接口的字段名不一致（`title` / `name`），而且有的接口
+ * 会把「调用者自己的私有条目」混进同一份列表（例如 `/agents` 会并入
+ * `type=compilation_template_group` 的编译算子组），断言前需要看得到这些字段。
+ */
+export type ListRow = { id: string; name?: string; title?: string; type?: string } & Record<
+  string,
+  unknown
+>;
 
 /**
  * 列表接口统一抽出条目。

@@ -204,6 +204,16 @@
 
 同时回归 `90-matrix`（`pickRows` 抽到 `e2e/support/list-rows.ts` 后）→ **17 passed**，既有「子集 / 可读 / 不可见即不可读 / admin 不超过 owner」四条口径未被改动影响。
 
+**发版后复跑（2026-11-05，部署 `450fab4`）**：`/api/v1/system/version=450fab4`、healthz 五项 ok、`.deployed_sha`/`.frontend_sha`/nginx root(`dist_450fab4`) 四方一致、三服务 active。三条用例先报了两处**用例自身**的问题，产品侧无缺陷：
+
+| 现象 | 数据事实 | 结论与处理 |
+|---|---|---|
+| 智能体仍差 6 条（owner 27 / admin 21） | 那 6 条 id 不在 `user_canvas`，而是 `compilation_template_group`（`type=compilation_template_group`），接口按 `ListSaved(userID)` 只返回**调用者自己的** | 个人资产不参与租户共享可见性；比对前按 type 剔除 |
+| 授权弹窗用例找不到「设置」 | E2E 账号注册时各带一个个人租户（`bdad00b1…` = admin 自己的 id，role=owner），浏览器会话绑定该空租户；且知识库是层级视图，本来就没有「设置」按钮 | UI 用例改用 owner 登录态，并只覆盖四个平铺 Tab；知识库入口由 `80-exclude` 覆盖 |
+| `supports_deny` 用例报「MCP 服务没有资源」 | 本租户 `mcp_server`/`connector`/`skill_spaces` 均为 0 行 | 无样本的声明记入 annotation，五类+文件仍强制要求有样本（防空跑）；三类「不许写排除」由 `80-exclude` 的写拒绝守住 |
+
+修完后：`97-visibility-parity` **3 passed**；全量只读 E2E **79 passed / 4 skipped / 0 failed**（基线原为 76/4/0，新增三条即 79）。
+
 ---
 
 ## 3. 尚未覆盖 / 未测试的场景

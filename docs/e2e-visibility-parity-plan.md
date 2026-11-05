@@ -45,14 +45,14 @@
 
 | 编号 | 角色 | 资源 | 操作 | 预期 | 覆盖 |
 |---|---|---|---|---|---|
-| V1 | admin | 五类 | 可见 | 集合 **等于** owner | `97` |
+| V1 | admin | 五类 | 可见 | 集合 **等于** owner（智能体剔掉调用者私有的编译算子组） | `97` |
 | V2 | dept | 五类 | 可见 | ⊆ owner | `90` |
 | V3 | plain | 五类 | 可见 | ⊆ owner（样本极少） | `90` |
 | V4 | member | 五类 | 可见 | ⊆ owner | `90` |
 | R1 | admin/dept/plain | 五类 | 可读 | 任一可见条目详情 `code=0` | `90` |
 | D1 | plain | 五类 | 可读 | owner 有、plain 无 → 拒绝 + 统一文案 | `90`、`95` |
-| A1 | owner | 五类 + 文件类 | 声明 | `supports_deny`：五类 `true`，文件/MCP/数据源/技能空间 `false` | `97` |
-| A2 | admin | 五类 | 授权 UI | 弹窗出现「不可见（排除）」选项 | `97` |
+| A1 | owner | 五类 + 文件类 | 声明 | `supports_deny`：五类 `true`，文件/MCP/数据源/技能空间 `false`（本租户无 MCP/数据源/技能空间实例，声明记入 annotation） | `97` |
+| A2 | owner | 问答/搜索/智能体/记忆 | 授权 UI | 平铺列表的「设置」弹窗出现「不可见（排除）」；知识库侧由 `80` 的「添加授权」入口覆盖 | `97`、`80` |
 | A3 | owner | 知识库 | 授权 | 子项例外每行都带 `(已排除)` 标签 | `90`、`87` |
 | W1 | plain | 五类 | 可管理 | 越权写授权 403（打不存在 id，权限先拦） | `40`、`95` |
 | W2 | plain | 五类 | 可写 | 更新/运行 403 | `40` |
@@ -118,8 +118,8 @@ E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts specs/87-fil
 - **V2–V4**：三个受限身份的集合都是 owner 的子集，无「凭空多出」的 id。
 - **R1**：任一受限身份可见的条目，详情都返回 `code=0`（列表与详情同一口径）。
 - **D1**：plain 读 owner 独有资源返回非 0，且与「不存在 id」的响应逐字一致。
-- **A1**：`supports_deny` 声明与注册表一致（五类 true，其余 false）。
-- **A2**：五个 Tab 的授权弹窗都能选「不可见（排除）」。
+- **A1**：`supports_deny` 声明与注册表一致（五类 true，文件 false；本租户无 MCP/数据源/技能空间实例，那三条记入 annotation）。
+- **A2**：问答/搜索/智能体/记忆四个 Tab 的「设置」弹窗都能选「不可见（排除）」；知识库的入口在详情面板「添加授权」，由 `80` 覆盖。
 - **W1/W2**：越权写全部拒绝；用不存在 id 时错误必须是「权限不足」而不是「资源不存在」（证明权限先于存在性）。
 - **X1**：文件级排除生效，member 与 owner 的可见文件数出现 1 个差值，跑完无残留。
 
@@ -132,9 +132,9 @@ E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts specs/87-fil
 | A1 | Go 单测 `internal/permission`、`internal/service`、`internal/handler` 全绿 | `ok` 三行，无 `--- FAIL` |
 | A2 | 前端 `grant-chip` / `grant-views` 用例全绿 | 12 passed |
 | A3 | 只读 E2E 0 failed；新增 `97-visibility-parity` 全绿 | 无 failed |
-| A4 | admin 五类可见集合 = owner（严格相等） | `toEqual` 通过 |
+| A4 | admin 五类可见集合 = owner（严格相等，智能体剔私有编译算子组） | `toEqual` 通过 |
 | A5 | `supports_deny` 声明与 §3.1 A1 一致 | 逐行断言通过 |
-| A6 | 五个 Tab 弹窗均含「不可见（排除）」 | 断言通过 |
+| A6 | 四个平铺 Tab 弹窗均含「不可见（排除）」 | 断言通过 |
 | A7 | 越权写 100% 拒绝且文案不泄露存在性 | 断言通过 |
 | A8 | 写用例跑完租户知识库数回到 18，无残留 | 数量校验通过 |
 
@@ -145,5 +145,7 @@ E2E_ALLOW_WRITE=1 npx playwright test specs/85-exclude-flow.spec.ts specs/87-fil
 ## 8. 已知限制
 
 - **四类资源的排除写入未做端到端**：知识问答需要可用 LLM 配置、知识搜索需要 `search_config`、智能体需要合法 DSL，构造成本高于收益；当前由「后端声明 + 判定单测」覆盖，风险点是「前端能选、后端不认」，已由 A2 与单测 `TestSetGrantsAcceptsDenyForEveryVisibilityKind` 兜住。
+- **`/agents` 混入调用者私有条目**：编译算子组（`type=compilation_template_group`）按 `ListSaved(userID)` 取，是个人资产，不参与租户共享；比对「租户可见集合」前必须剔掉，否则会把 owner 自己的 6 组算成「管理员看不到的差异」（2026-11-05 复跑时踩到过）。
+- **E2E 账号各带一个个人租户**：`admin`/`dept`/`plain` 注册时自动生成 `X's Kingdom`（id = 自己的 user id，role=owner），浏览器会话绑定的是它，所以控制台 UI 用例要用 owner 登录态；接口级断言显式带 `8d5c…`，不受影响。
 - **租户停用只在单测覆盖**：线上停用会屏蔽整个租户，不能纳入 E2E（`TestDisabledTenantHidesEveryKind`）。
 - 会话质检没有三档可见性，只验证「不可见即不可读」与越权写。

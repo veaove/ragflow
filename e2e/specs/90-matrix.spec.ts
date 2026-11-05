@@ -8,7 +8,7 @@ import {
   type AccountName,
   type ViewerName,
 } from '../support/env';
-import { pickRows } from '../support/list-rows';
+import { pickRows, type ListRow } from '../support/list-rows';
 
 /**
  * 角色 × 资源 × 操作 的矩阵化校验（数据驱动）。
@@ -36,6 +36,14 @@ type Kind = {
   label: string;
   list: string;
   detail: (id: string) => string;
+  /**
+   * 剔除「调用者私有、不属于租户共享」的条目。
+   *
+   * `/agents` 会把调用者自己的编译算子组（`type=compilation_template_group`）
+   * 并进同一份列表 —— 它按 `ListSaved(userID)` 取，谁建的归谁。不剔掉的话，
+   * 一旦某个受限身份也建了算子组，就会以「owner 都看不到的 id」形式假失败。
+   */
+  exclude?: (row: ListRow) => boolean;
 };
 
 const KINDS: Kind[] = [
@@ -57,6 +65,7 @@ const KINDS: Kind[] = [
     label: '智能体',
     list: api.agents,
     detail: (id) => `/api/v1/agents/${id}`,
+    exclude: (row) => row.type === 'compilation_template_group',
   },
   {
     key: 'memory',
@@ -70,13 +79,13 @@ const auth = (who: AccountName) => ({ Authorization: tokenOf(who) });
 
 const idsOf = async (
   request: APIRequestContext,
-  path: string,
+  kind: Pick<Kind, 'label' | 'list' | 'exclude'>,
   who: AccountName,
 ) => {
-  const res = await request.get(path, { headers: auth(who) });
-  expect(res.status(), `${who} GET ${path} 应 200（401 通常是登录态过期）`).toBe(200);
+  const res = await request.get(kind.list, { headers: auth(who) });
+  expect(res.status(), `${who} GET ${kind.list} 应 200（401 通常是登录态过期）`).toBe(200);
   const body = await res.json();
-  return pickRows(body.data);
+  return pickRows(body.data).filter((row) => !kind.exclude?.(row));
 };
 
 for (const kind of KINDS) {
@@ -84,7 +93,7 @@ for (const kind of KINDS) {
     test.use({ storageState: authFile('member') });
 
     test('可见：受限身份的列表都是 owner 的子集', async ({ request }) => {
-      const ownerRows = await idsOf(request, kind.list, 'owner');
+      const ownerRows = await idsOf(request, kind, 'owner');
       const ownerIDs = new Set(ownerRows.map((r) => r.id));
       // owner 为空说明列表字段取错了，后面的子集断言会变成空对空的假绿。
       expect(ownerIDs.size, `${kind.label}: owner 列表为空，矩阵没有对照基准`)
@@ -92,7 +101,7 @@ for (const kind of KINDS) {
 
       const counts = [`owner=${ownerRows.length}`];
       for (const who of VIEWERS) {
-        const rows = await idsOf(request, kind.list, who);
+        const rows = await idsOf(request, kind, who);
         counts.push(`${who}=${rows.length}`);
         expect(rows.length, `${who} 的${kind.label}数量超过了 owner`).toBeLessThanOrEqual(
           ownerRows.length,
@@ -112,7 +121,7 @@ for (const kind of KINDS) {
     test('可读：任一受限身份可见的条目，详情都能打开', async ({ request }) => {
       const samples: { who: ViewerName; rows: { id: string }[] }[] = [];
       for (const who of VIEWERS) {
-        const rows = await idsOf(request, kind.list, who);
+        const rows = await idsOf(request, kind, who);
         if (rows.length) samples.push({ who, rows });
       }
       test.skip(samples.length === 0, `三个受限身份都看不到${kind.label}`);
@@ -130,9 +139,9 @@ for (const kind of KINDS) {
     test('不可见即不可读：owner 有、plain 无 → 拒绝且不泄露存在性', async ({
       request,
     }) => {
-      const ownerRows = await idsOf(request, kind.list, 'owner');
+      const ownerRows = await idsOf(request, kind, 'owner');
       const plainIDs = new Set(
-        (await idsOf(request, kind.list, 'plain')).map((r) => r.id),
+        (await idsOf(request, kind, 'plain')).map((r) => r.id),
       );
       const hidden = ownerRows.filter((r) => !plainIDs.has(r.id));
       test.skip(hidden.length === 0, `plain 能看到全部${kind.label}，没有对照组`);
@@ -196,8 +205,8 @@ test.describe('矩阵 · 租户管理员口径', () => {
   test('可见范围不超过 owner，知识库与 owner 齐平', async ({ request }) => {
     const lines: string[] = [];
     for (const kind of KINDS) {
-      const ownerIDs = new Set((await idsOf(request, kind.list, 'owner')).map((r) => r.id));
-      const adminRows = await idsOf(request, kind.list, 'admin');
+      const ownerIDs = new Set((await idsOf(request, kind, 'owner')).map((r) => r.id));
+      const adminRows = await idsOf(request, kind, 'admin');
       lines.push(`${kind.label}: owner=${ownerIDs.size} admin=${adminRows.length}`);
       for (const row of adminRows) {
         expect(ownerIDs, `租户管理员拿到了 owner 看不到的${kind.label} ${row.id}`).toContain(
