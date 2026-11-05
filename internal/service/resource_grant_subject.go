@@ -8,6 +8,7 @@ import (
 
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 )
 
 // ─── 按成员视角 ────────────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ type GrantBySubjectResult struct {
 }
 
 // GrantsBySubject 列出某个主体持有的全部规则，按来源分组。
-func (s *ResourceGrantService) GrantsBySubject(ctx context.Context, tenantID, subjectKind, subjectID string) (*GrantBySubjectResult, error) {
+func (s *ResourceGrantService) GrantsBySubject(ctx context.Context, tenantID, subjectKind, subjectID, viewerID string) (*GrantBySubjectResult, error) {
 	tenantID = strings.TrimSpace(tenantID)
 	subjectID = strings.TrimSpace(subjectID)
 	subjectKind = strings.TrimSpace(subjectKind)
@@ -115,6 +116,16 @@ func (s *ResourceGrantService) GrantsBySubject(ctx context.Context, tenantID, su
 		result.SubjectName = "全团队"
 	}
 
+	// 文件级规则同样按调用者的读权限收窄：被文件级 deny 排除的人既看不到文件，
+	// 也不该在这里看到它的名字与规则。
+	for i := range groups {
+		kept, filterErr := s.dropUnreadableDocumentGrants(ctx, tenantID, viewerID, groups[i].rows)
+		if filterErr != nil {
+			return nil, filterErr
+		}
+		groups[i].rows = kept
+	}
+
 	all := make([]*entity.ResourceGrant, 0)
 	for _, group := range groups {
 		all = append(all, group.rows...)
@@ -170,6 +181,70 @@ func (s *ResourceGrantService) GrantsBySubject(ctx context.Context, tenantID, su
 		return result.Rows[i].ResourceName < result.Rows[j].ResourceName
 	})
 	return result, nil
+}
+
+// dropUnreadableDocumentGrants 去掉「调用者读不到的文件」上的规则行。
+//
+// 文件级规则是名单制：文件一旦有规则，不在名单内的主体就看不到它（见 permission
+// 包里 DocumentRuleClause 的注释）。过去这里只按租户取行，于是被排除的人能在
+// 「按成员」视角里看到那个文件的名字、上级库名和「已排除」规则 —— 文件本身读不
+// 到，存在性和授权关系却照样公开。
+//
+// 管理视角查别人时调用者是管理层，本来就能读全部文件，这里的过滤对他们是空操作。
+func (s *ResourceGrantService) dropUnreadableDocumentGrants(
+	ctx context.Context, tenantID, viewerID string, rows []*entity.ResourceGrant,
+) ([]*entity.ResourceGrant, error) {
+	if strings.TrimSpace(viewerID) == "" || len(rows) == 0 {
+		return rows, nil
+	}
+	docIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.ResourceKind == GrantKindDocument {
+			docIDs = append(docIDs, row.ResourceID)
+		}
+	}
+	if len(docIDs) == 0 {
+		return rows, nil
+	}
+
+	type docRow struct {
+		ID   string `gorm:"column:id"`
+		KbID string `gorm:"column:kb_id"`
+	}
+	docs := make([]docRow, 0, len(docIDs))
+	if err := dao.DB.WithContext(ctx).Table("document").
+		Select("document.id AS id, document.kb_id AS kb_id").
+		Joins("JOIN knowledgebase ON knowledgebase.id = document.kb_id").
+		Where("knowledgebase.tenant_id = ?", tenantID).
+		Where("document.id IN ?", docIDs).
+		Scan(&docs).Error; err != nil {
+		return nil, err
+	}
+	kbOf := make(map[string]string, len(docs))
+	for _, doc := range docs {
+		kbOf[doc.ID] = doc.KbID
+	}
+
+	subject := permission.Subject{UserID: viewerID}
+	unreadable := make(map[string]struct{}, len(kbOf))
+	for id, kbID := range kbOf {
+		if err := permission.CheckDocumentAccess(ctx, dao.DB, subject, kbID, id, permission.OperationRead); err != nil {
+			unreadable[id] = struct{}{}
+		}
+	}
+	if len(unreadable) == 0 {
+		return rows, nil
+	}
+	kept := make([]*entity.ResourceGrant, 0, len(rows))
+	for _, row := range rows {
+		if row.ResourceKind == GrantKindDocument {
+			if _, hidden := unreadable[row.ResourceID]; hidden {
+				continue
+			}
+		}
+		kept = append(kept, row)
+	}
+	return kept, nil
 }
 
 // grantResourceLabels 把 (kind, id) 翻成展示名与上级名。

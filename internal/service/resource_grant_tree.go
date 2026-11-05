@@ -9,6 +9,7 @@ import (
 
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
+	"ragflow/internal/permission"
 )
 
 // ─── 资源树 ────────────────────────────────────────────────────────────────
@@ -160,6 +161,11 @@ func (s *ResourceGrantService) datasetGrantTree(ctx context.Context, tenantID, k
 		return nil, err
 	}
 
+	// 文件级规则是名单制：被排除的人连「有这个文件」都不该知道，所以文件数与
+	// 例外数都要按调用者看得到的文件算，否则「46 个文件 / 1 项例外」会直接把
+	// 隐藏文件的存在与数量透出去。
+	docWhere, docArgs, docScoped := documentVisibilityWhere(ctx, userID, kbIDs)
+
 	// 每个文件夹 / 库根下自己的文件数（子层最后逐层累加）。
 	type countRow struct {
 		KbID     string  `gorm:"column:kb_id"`
@@ -167,11 +173,13 @@ func (s *ResourceGrantService) datasetGrantTree(ctx context.Context, tenantID, k
 		Total    int64   `gorm:"column:total"`
 	}
 	docCounts := make([]countRow, 0)
-	if err := db.Model(&entity.Document{}).
+	countQuery := db.Model(&entity.Document{}).
 		Select("kb_id, folder_id, COUNT(*) AS total").
-		Where("kb_id IN ?", kbIDs).
-		Group("kb_id, folder_id").
-		Scan(&docCounts).Error; err != nil {
+		Where("kb_id IN ?", kbIDs)
+	if docScoped {
+		countQuery = countQuery.Where(docWhere, docArgs...)
+	}
+	if err := countQuery.Group("kb_id, folder_id").Scan(&docCounts).Error; err != nil {
 		return nil, err
 	}
 
@@ -207,20 +215,27 @@ func (s *ResourceGrantService) datasetGrantTree(ctx context.Context, tenantID, k
 			FolderID *string `gorm:"column:folder_id"`
 		}
 		rows := make([]docRow, 0, len(docIDs))
-		if err := db.Model(&entity.Document{}).
+		ruleDocs := db.Model(&entity.Document{}).
 			Select("id, kb_id, folder_id").
-			Where("id IN ?", docIDs).
-			Scan(&rows).Error; err != nil {
+			Where("id IN ?", docIDs)
+		if docScoped {
+			// 只看得到自己读得到的那些：读不到的文件连同它的规则一起从树上消失。
+			ruleDocs = ruleDocs.Where(docWhere, docArgs...)
+		}
+		if err := ruleDocs.Scan(&rows).Error; err != nil {
 			return nil, err
 		}
+		readableGrants := make(map[string][]*entity.ResourceGrant, len(rows))
 		for _, r := range rows {
 			docKB[r.ID] = r.KbID
+			readableGrants[r.ID] = docGrants[r.ID]
 			folder := ""
 			if r.FolderID != nil {
 				folder = *r.FolderID
 			}
 			docFolder[r.ID] = folder
 		}
+		docGrants = readableGrants
 	}
 
 	ownDocs := make(map[string]int64, len(docCounts))
@@ -554,7 +569,7 @@ func (s *ResourceGrantService) ListGrantExceptions(
 		if folderID != "" && !s.canReadGrantResource(ctx, userID, "folder", folderID) {
 			return nil, errors.New("资源不存在")
 		}
-		return s.datasetExceptions(ctx, tenantID, datasetID, folderID, keywords, includeAll, limit, offset)
+		return s.datasetExceptions(ctx, tenantID, datasetID, folderID, keywords, userID, includeAll, limit, offset)
 	case "file":
 		if folderID != "" && !s.canReadGrantResource(ctx, userID, "folder", folderID) {
 			return nil, errors.New("资源不存在")
@@ -566,7 +581,7 @@ func (s *ResourceGrantService) ListGrantExceptions(
 
 func (s *ResourceGrantService) datasetExceptions(
 	ctx context.Context,
-	tenantID, datasetID, folderID, keywords string,
+	tenantID, datasetID, folderID, keywords, userID string,
 	includeAll bool, limit, offset int,
 ) (*GrantExceptionResult, error) {
 	if strings.TrimSpace(datasetID) == "" {
@@ -630,12 +645,17 @@ func (s *ResourceGrantService) datasetExceptions(
 		}
 	}
 
+	// 文件级规则是名单制：读不到的文件不该出现在「子项例外 / 全部文件」里，更
+	// 不该把它的规则主体一起列出来。文件数、总数、例外数都跟着同一份谓词收窄，
+	// 否则计数和渲染行数对不上，等于用数字承认「还有一个你看不到」。
+	docScope := permission.DocumentVisibility(ctx, dao.DB, permission.Subject{UserID: userID}, datasetID)
+
 	fileScope := db.Model(&entity.Document{}).Where("document.kb_id = ?", datasetID)
 	if strings.TrimSpace(folderID) != "" {
 		fileScope = fileScope.Where("document.folder_id IN ?", scopeFolders)
 	}
 	var fileTotal int64
-	if err := fileScope.Count(&fileTotal).Error; err != nil {
+	if err := docScope.Apply(fileScope).Count(&fileTotal).Error; err != nil {
 		return nil, err
 	}
 
@@ -668,6 +688,7 @@ func (s *ResourceGrantService) datasetExceptions(
 		query = query.Where("document.id IN ?", ids)
 	}
 
+	query = docScope.Apply(query)
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, err
@@ -722,6 +743,7 @@ func (s *ResourceGrantService) datasetExceptions(
 	if strings.TrimSpace(folderID) != "" {
 		exceptionQuery = exceptionQuery.Where("document.folder_id IN ?", scopeFolders)
 	}
+	exceptionQuery = docScope.Apply(exceptionQuery)
 	if err := exceptionQuery.Count(&exceptionTotal).Error; err != nil {
 		// 例外总数只用于「其余 N 个继承」这句文案，查不出来不该让整页失败。
 		exceptionTotal = 0

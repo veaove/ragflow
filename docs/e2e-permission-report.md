@@ -214,6 +214,38 @@
 
 修完后：`97-visibility-parity` **3 passed**；全量只读 E2E **79 passed / 4 skipped / 0 failed**（基线原为 76/4/0，新增三条即 79）。
 
+### 2.6 文件级排除的「信息面」（2026-11-05，待发版）
+
+**现象**：普通成员 `hjzd@hjzd.com` 对「07-帮助中心 / 综合部 / 全触点分析产品功能说明书(1).docx」没有查看权限（文件级规则名单制：该文件只授权给「和君测试」），但在资源授权页仍能看到 —— 树上显示「综合部 1 例外」，展开「全部文件」能看到这个文件以及「和君测试(已排除)」。
+
+**根因**：授权树与子项例外只按**库**收窄（`canReadGrantResource(dataset)`），没有按文件级规则收窄。文件列表本身走 `permission.DocumentVisibility`，所以内容是真藏住了，但名字、数量与授权关系三样全漏。
+
+**改法**（判定仍只有一条路径，都来自 `permission.DocumentRuleClause`）：
+
+| 面 | 位置 | 处理 |
+|---|---|---|
+| 授权树文件数 | `datasetGrantTree` 的 `docCounts` | 叠加按库分组的文件可见性谓词，读不到的文件不计入 |
+| 授权树例外数 | `datasetGrantTree` 的 `docGrants` | 只有读得到的文档才保留它的规则行 |
+| 子项例外 / 全部文件 | `datasetExceptions` 的 `fileScope`、`query`、`exceptionQuery` | `DocumentVisibility.Apply`，`total` / `file_total` / `exception_total` 与渲染行同一份谓词 |
+| 按成员视角 | `GrantsBySubject` → `dropUnreadableDocumentGrants` | 丢掉调用者读不到的文件规则行（管理视角查别人时是空操作） |
+
+**边界与预期行为**：
+
+| 场景 | 预期 |
+|---|---|
+| 多级目录 | 计数逐层累加，谓词按库作用域生效，任一层子孙里的隐藏文件都不进入任何一层的数字 |
+| 按 `folder_id` 展开 | 与不带 folder 的列表同一谓词，不会「总览里藏了、按目录钻进来看得见」 |
+| 继承权限 | 只有带独立规则的文件才是「例外」；无规则的文件继承库 / 上级，不参与两侧计数，可见性随库 |
+| 跨知识库引用 | 规则落在 `document` 上、document 只属于一个库：同一物理文件在 A、B 两库各按自己那份规则判定，不互相外推 |
+| 文件管理（kind=file） | 仍是租户级资产（无逐文件权限模型），本次不动；但从某个库进入该文件的 document 视角仍受该库规则约束 |
+| 库级不可见 | 直接按「资源不存在」返回，不降级成空列表 |
+| 租户停用 | 整租户不可见，排在文件级判定之前 |
+| 写路径 | `SetGrants` 仍按租户模块权限 + 文档归属校验，不按文件读权限 —— 授权编辑是管理动作，本次未改；如需「读不到就不能改它的规则」需单独定口径 |
+
+**验证**：新增 `98-document-grant-visibility`（只读、文件 id 从真实租户解析、不硬编码）：断言成员的子项例外只含他能读的文件、树上例外数与之相等、按成员视角不出现隐藏文件名；并先断言「确实存在 owner 看得到而成员看不到的例外文件」，避免数据变薄后空跑通过。未发版时该用例**按预期为红**，报错文案即 `成员读不到 全触点分析产品功能说明书(1).docx，它不该出现在子项例外里（规则：和君测试:deny:edit）`。
+
+单测：`TestGrantTreeHidesDocumentsCallerCannotRead`、`TestListGrantExceptionsHidesUnreadableDocuments`、`TestGrantsBySubjectHidesUnreadableDocuments`（`/root/rf-docscope` 干净 worktree，`service`/`permission`/`handler` 三包 + native 全绿）。
+
 ---
 
 ## 3. 尚未覆盖 / 未测试的场景

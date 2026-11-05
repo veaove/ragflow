@@ -18,8 +18,10 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	"ragflow/internal/dao"
+	"ragflow/internal/entity"
 	"ragflow/internal/permission"
 )
 
@@ -107,4 +109,45 @@ func (s *ResourceGrantService) canReadGrantResource(ctx context.Context, userID,
 		}
 	}
 	return false
+}
+
+// documentVisibilityWhere 拼出「调用者在这些知识库里看得到哪些文件」的 SQL 条件，
+// 供一次查询覆盖多个库的调用方使用（授权树的文件数 / 例外数）。
+//
+// 文件级规则是「名单制」：文件一旦有规则，不在名单内的主体就看不到它（见
+// permission 包里 documentRuleClause 的注释）。授权树过去只按库收窄，于是普通
+// 成员能在「子项例外 / 全部文件」里看到自己被排除掉的文件，连规则一起看到 ——
+// 那是「文件读不到、但名字和授权关系照样公开」的信息泄露。
+//
+// ok=false 表示这些库都不需要额外过滤（库主人 / 租户管理层 / 库里没有任何规则）。
+func documentVisibilityWhere(ctx context.Context, userID string, kbIDs []string) (string, []any, bool) {
+	if strings.TrimSpace(userID) == "" || len(kbIDs) == 0 {
+		return "", nil, false
+	}
+	// 一条文件级规则都没有时逐库算谓词纯属浪费：授权页是高频页面，先用一次
+	// COUNT 短路。查失败就退回逐库判定，不因为一次优化查询影响可见性结果。
+	var ruleCount int64
+	if err := dao.DB.WithContext(ctx).Model(&entity.ResourceGrant{}).
+		Where("resource_kind = ?", GrantKindDocument).
+		Where("resource_id IN (?)", dao.DB.Model(&entity.Document{}).Select("id").Where("kb_id IN ?", kbIDs)).
+		Count(&ruleCount).Error; err == nil && ruleCount == 0 {
+		return "", nil, false
+	}
+
+	subject := permission.Subject{UserID: userID}
+	parts := make([]string, 0, len(kbIDs))
+	args := make([]any, 0, len(kbIDs)*4)
+	for _, kbID := range kbIDs {
+		clause, clauseArgs, ok := permission.DocumentRuleClause(ctx, dao.DB, subject, kbID)
+		if !ok {
+			continue
+		}
+		parts = append(parts, "(document.kb_id = ? AND ("+clause+"))")
+		args = append(args, kbID)
+		args = append(args, clauseArgs...)
+	}
+	if len(parts) == 0 {
+		return "", nil, false
+	}
+	return "(" + strings.Join(parts, " OR ") + ")", args, true
 }

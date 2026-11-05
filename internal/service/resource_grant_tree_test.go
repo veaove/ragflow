@@ -355,7 +355,7 @@ func TestGrantsBySubjectSeparatesSources(t *testing.T) {
 	seedGrant(t, db, "dataset", "kb1", entity.GrantSubjectTeam, "", "read", entity.GrantEffectAllow)
 	seedGrant(t, db, GrantKindDocument, "d1", entity.GrantSubjectUser, "u-owner", "read", entity.GrantEffectDeny)
 
-	result, err := NewResourceGrantService().GrantsBySubject(t.Context(), "t1", entity.GrantSubjectUser, "u-owner")
+	result, err := NewResourceGrantService().GrantsBySubject(t.Context(), "t1", entity.GrantSubjectUser, "u-owner", "u-owner")
 	if err != nil {
 		t.Fatalf("GrantsBySubject: %v", err)
 	}
@@ -416,6 +416,159 @@ func TestGrantTreeRejectsFlatKinds(t *testing.T) {
 		t.Context(), "t1", "chat", "", "", "", "u-owner", false, 20, 0,
 	); err == nil {
 		t.Fatal("expected error for flat kind")
+	}
+}
+
+// TestGrantTreeHidesDocumentsCallerCannotRead 覆盖「文件读不到、名字和授权关系却
+// 照样公开」：成员在授权树上不应看到被文件级规则排除掉的文件，文件数与例外数
+// 也不能把它们算进去 —— 数字本身就是「还有一个你看不到」的承认。
+func TestGrantTreeHidesDocumentsCallerCannotRead(t *testing.T) {
+	db := setupGrantTreeTestDB(t)
+	seedMemberReadableKB(t, db, "u-member")
+	// 名单制：d2 只给了 u-other，u-member 不在名单里 → 读不到 d2。
+	seedGrant(t, db, GrantKindDocument, "d2", entity.GrantSubjectUser, "u-other", "read", entity.GrantEffectAllow)
+
+	svc := NewResourceGrantService()
+	member, err := svc.GrantTree(t.Context(), "t1", "dataset", "", "u-member")
+	if err != nil {
+		t.Fatalf("GrantTree(member): %v", err)
+	}
+	kb := findTreeNode(t, member.Nodes, "kb1")
+	if kb.FileCount != 3 {
+		t.Errorf("member file_count = %d, want 3（d2 不可见）", kb.FileCount)
+	}
+	if kb.ExceptionCount != 0 {
+		t.Errorf("member exception_count = %d, want 0（d2 的规则也不能算进来）", kb.ExceptionCount)
+	}
+
+	// 库创建者不受文件级名单限制，仍是 4/1。
+	owner, err := svc.GrantTree(t.Context(), "t1", "dataset", "", "u-owner")
+	if err != nil {
+		t.Fatalf("GrantTree(owner): %v", err)
+	}
+	ownerKB := findTreeNode(t, owner.Nodes, "kb1")
+	if ownerKB.FileCount != 4 || ownerKB.ExceptionCount != 1 {
+		t.Errorf("owner file_count=%d exception_count=%d, want 4/1", ownerKB.FileCount, ownerKB.ExceptionCount)
+	}
+}
+
+// TestListGrantExceptionsHidesUnreadableDocuments 覆盖「全部文件」弹窗：读不到的
+// 文件既不能出现在列表里，也不能把它的规则主体一起列出来。
+func TestListGrantExceptionsHidesUnreadableDocuments(t *testing.T) {
+	db := setupGrantTreeTestDB(t)
+	seedMemberReadableKB(t, db, "u-member")
+	seedGrant(t, db, GrantKindDocument, "d2", entity.GrantSubjectUser, "u-other", "read", entity.GrantEffectAllow)
+
+	svc := NewResourceGrantService()
+
+	// 默认只列「有独立规则」的：d2 看不见 → 空，且不能报错。
+	page, err := svc.ListGrantExceptions(t.Context(), "t1", "dataset", "kb1", "", "", "u-member", false, 20, 0)
+	if err != nil {
+		t.Fatalf("ListGrantExceptions(member): %v", err)
+	}
+	if len(page.Items) != 0 {
+		t.Fatalf("member items = %+v, want empty", page.Items)
+	}
+	if page.FileTotal != 3 || page.ExceptionTotal != 0 {
+		t.Errorf("member file_total=%d exception_total=%d, want 3/0", page.FileTotal, page.ExceptionTotal)
+	}
+
+	all, err := svc.ListGrantExceptions(t.Context(), "t1", "dataset", "kb1", "", "", "u-member", true, 20, 0)
+	if err != nil {
+		t.Fatalf("ListGrantExceptions(member, all): %v", err)
+	}
+	if all.Total != 3 || len(all.Items) != 3 {
+		t.Fatalf("member all total=%d items=%d, want 3/3", all.Total, len(all.Items))
+	}
+	for _, item := range all.Items {
+		if item.ResourceID == "d2" {
+			t.Fatalf("d2 读不到，仍出现在全部文件里：%+v", item)
+		}
+	}
+
+	// 名单里加上他之后，文件与规则一起回来 —— 过滤的是读权限，不是「有规则就藏」。
+	seedGrant(t, db, GrantKindDocument, "d2", entity.GrantSubjectUser, "u-member", "read", entity.GrantEffectAllow)
+	granted, err := svc.ListGrantExceptions(t.Context(), "t1", "dataset", "kb1", "", "", "u-member", true, 20, 0)
+	if err != nil {
+		t.Fatalf("ListGrantExceptions(member granted): %v", err)
+	}
+	if granted.FileTotal != 4 || granted.ExceptionTotal != 1 {
+		t.Errorf("granted file_total=%d exception_total=%d, want 4/1", granted.FileTotal, granted.ExceptionTotal)
+	}
+	found := false
+	for _, item := range granted.Items {
+		if item.ResourceID == "d2" {
+			found = true
+			if len(item.Grants) != 2 {
+				t.Errorf("d2 grants = %d, want 2（u-other 与 u-member）", len(item.Grants))
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("d2 在名单内应可见，实际 %+v", granted.Items)
+	}
+}
+
+// TestGrantsBySubjectHidesUnreadableDocuments 覆盖「按成员」视角：被排除的人不
+// 该在别人的授权清单里看到那个文件的名字与「已排除」规则。
+func TestGrantsBySubjectHidesUnreadableDocuments(t *testing.T) {
+	db := setupGrantTreeTestDB(t)
+	seedMemberReadableKB(t, db, "u-member")
+	seedGrant(t, db, GrantKindDocument, "d2", entity.GrantSubjectUser, "u-other", "read", entity.GrantEffectAllow)
+
+	svc := NewResourceGrantService()
+
+	hidden, err := svc.GrantsBySubject(t.Context(), "t1", entity.GrantSubjectUser, "u-other", "u-member")
+	if err != nil {
+		t.Fatalf("GrantsBySubject(member viewer): %v", err)
+	}
+	for _, row := range hidden.Rows {
+		if row.ResourceKind == GrantKindDocument {
+			t.Fatalf("读不到的文件仍出现在按成员视角：%+v", row)
+		}
+	}
+
+	// 管理层视角不受影响（他们本来就能读全部文件）。
+	visible, err := svc.GrantsBySubject(t.Context(), "t1", entity.GrantSubjectUser, "u-other", "u-owner")
+	if err != nil {
+		t.Fatalf("GrantsBySubject(owner viewer): %v", err)
+	}
+	docRows := 0
+	for _, row := range visible.Rows {
+		if row.ResourceKind == GrantKindDocument {
+			docRows++
+		}
+	}
+	if docRows != 1 {
+		t.Fatalf("owner viewer document rows = %d, want 1（%+v）", docRows, visible.Rows)
+	}
+}
+
+// seedMemberReadableKB 把一个与库创建者无关的普通成员放进租户，并让 kb1 对他
+// 可见（team 档已收窄成「租户管理层可见」，普通成员要能看到必须有授权）。
+//
+// 这样文件级判定才有机会执行：库都读不到时先被库级拦下，测不到文件级名单制。
+func seedMemberReadableKB(t *testing.T, db *gorm.DB, userID string) {
+	t.Helper()
+
+	seedTenantMember(t, db, userID)
+	seedGrant(t, db, "dataset", "kb1", entity.GrantSubjectTeam, "", "read", entity.GrantEffectAllow)
+}
+
+// seedTenantMember 建一个与库创建者无关的普通成员：文件级名单制的「其他人」。
+func seedTenantMember(t *testing.T, db *gorm.DB, userID string) {
+	t.Helper()
+
+	status := string(entity.StatusValid)
+	if err := db.Create(&entity.User{
+		ID: userID, Nickname: userID, Email: userID + "@example.com",
+	}).Error; err != nil {
+		t.Fatalf("seed member %s: %v", userID, err)
+	}
+	if err := db.Create(&entity.UserTenant{
+		ID: "ut-" + userID, UserID: userID, TenantID: "t1", Role: "normal", Status: &status,
+	}).Error; err != nil {
+		t.Fatalf("seed member membership %s: %v", userID, err)
 	}
 }
 

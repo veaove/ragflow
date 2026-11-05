@@ -43,12 +43,16 @@ import (
 //   - CheckDocumentAccess：单文件内容（切片、预览、下载、详情）
 //   - HiddenDocumentIDs：检索链路（把被拒绝的文件从命中集合里摘掉）
 
-// documentRuleClause 返回「该主体在这个库的文件上不受文件级规则限制」的 SQL
+// DocumentRuleClause 返回「该主体在这个库的文件上不受文件级规则限制」的 SQL
 // 谓词；调用方查询的表必须是 document（谓词按 document.id 关联规则）。
 //
 // ok=false 表示不需要过滤：库主人 / 创建者 / 租户管理员，或判定不出库级访问
 // （此时沿用调用方已经做过的库级结论）。
-func documentRuleClause(ctx context.Context, db *gorm.DB, subject Subject, datasetID string) (string, []any, bool) {
+//
+// 导出给需要在一次查询里覆盖多个库的调用方（资源授权树的文件数 / 例外数、子项
+// 例外）。谓词本身与库无关、只有参数不同，所以多库调用方按库分组拼 OR 即可，
+// 不必为每个库各跑一次 COUNT。
+func DocumentRuleClause(ctx context.Context, db *gorm.DB, subject Subject, datasetID string) (string, []any, bool) {
 	if db == nil || strings.TrimSpace(subject.UserID) == "" || strings.TrimSpace(datasetID) == "" {
 		return "", nil, false
 	}
@@ -104,7 +108,7 @@ func documentRuleClause(ctx context.Context, db *gorm.DB, subject Subject, datas
 // dataset from the subject. 返回"无限制"的 scope 时调用方无需过滤。
 func DocumentVisibility(ctx context.Context, db *gorm.DB, subject Subject, datasetID string) QueryScope {
 	unrestricted := QueryScope{apply: func(query *gorm.DB) *gorm.DB { return query }}
-	clause, args, ok := documentRuleClause(ctx, db, subject, datasetID)
+	clause, args, ok := DocumentRuleClause(ctx, db, subject, datasetID)
 	if !ok {
 		return unrestricted
 	}
@@ -235,7 +239,7 @@ func HiddenDocumentIDs(ctx context.Context, db *gorm.DB, subject Subject, datase
 
 	hidden := make(map[string][]string, len(restrictedKBIDs))
 	for _, kbID := range restrictedKBIDs {
-		clause, args, ok := documentRuleClause(ctx, db, subject, kbID)
+		clause, args, ok := DocumentRuleClause(ctx, db, subject, kbID)
 		if !ok {
 			continue
 		}

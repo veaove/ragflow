@@ -786,7 +786,7 @@ func (h *ConsoleHandler) GrantsBySubject(c *gin.Context) {
 	}
 
 	result, err := service.NewResourceGrantService().GrantsBySubject(
-		c.Request.Context(), tenantID, subjectKind, subjectID,
+		c.Request.Context(), tenantID, subjectKind, subjectID, user.ID,
 	)
 	if err != nil {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())

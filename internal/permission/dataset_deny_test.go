@@ -208,7 +208,7 @@ func TestQueryScopeExcludesDeniedDatasets(t *testing.T) {
 func TestDocumentRuleClauseFailsClosedWhenDatasetDenied(t *testing.T) {
 	fixture := newDatasetDenyFixture(t)
 
-	clause, args, ok := documentRuleClause(context.Background(), fixture.db, Subject{UserID: "member-1"}, "kb-deny")
+	clause, args, ok := DocumentRuleClause(context.Background(), fixture.db, Subject{UserID: "member-1"}, "kb-deny")
 	if !ok {
 		t.Fatal("库级已被排除时，文件级必须收紧而不是「不过滤」")
 	}
