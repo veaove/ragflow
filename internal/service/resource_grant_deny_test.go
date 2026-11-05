@@ -130,13 +130,13 @@ func TestSetGrantsRejectsTeamDeny(t *testing.T) {
 
 // 判定链还没接排除谓词的类型先拒绝写入：写成功但判定不认比不支持更糟。
 //
-// 这条校验在资源存在性之前，所以这里连 chat 表都不用建 —— 也顺带证明配置
-// 错误不会因为「资源不存在」而被混淆成 404。
+// 这条校验在资源存在性之前，所以这里连 mcp_server 表都不用建 —— 也顺带证明
+// 配置错误不会因为「资源不存在」而被混淆成 404。
 func TestSetGrantsRejectsDenyForUnsupportedKind(t *testing.T) {
 	setupGrantDenyFixture(t)
 	svc := NewResourceGrantService()
 
-	err := svc.SetGrants(context.Background(), "t1", "chat", "chat1", "", []GrantSubject{
+	err := svc.SetGrants(context.Background(), "t1", "mcp_server", "mcp-1", "", []GrantSubject{
 		{Kind: entity.GrantSubjectUser, ID: "user-victim", Permission: GrantPermissionRead, Effect: entity.GrantEffectDeny},
 	})
 	if err == nil || !strings.Contains(err.Error(), "暂不支持") {

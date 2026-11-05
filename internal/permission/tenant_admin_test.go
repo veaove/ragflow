@@ -153,39 +153,32 @@ func (f teamFixture) scopeIDs(t *testing.T, userID string, kind ResourceKind, op
 	return ids
 }
 
-// 收窄语义下，租户管理员（控制台只写 role_id）只进得了「租户管理层可见」
-// 这一档：私有资源仍归资源所有者，知识问答 / 知识搜索默认也是所有者档。
-func TestTenantAdminSeesTenantOwnerTierOnly(t *testing.T) {
+// 租户管理员（控制台只写 role_id、枚举仍是 normal）看得到本租户的全部资源，
+// 含 owner（仅所有者可见）档 —— 与知识库列表 SQL 的 callerIsOwner 分支同一
+// 口径。五类资源共用这条判定，否则同一份授权会在知识库生效、在知识问答 /
+// 知识搜索 / 智能体 / 记忆里失效。
+func TestTenantAdminSeesEveryTier(t *testing.T) {
 	fixture := newTeamFixture(t)
 
-	if err := fixture.check(t, "u-admin", ResourceKindDataset, "ds-private", OperationRead); !errors.Is(err, ErrPermissionDenied) {
-		t.Errorf("租户管理员读私有知识库 error = %v, want %v", err, ErrPermissionDenied)
-	}
-	if err := fixture.check(t, "u-admin", ResourceKindDataset, "ds-private", OperationDelete); !errors.Is(err, ErrPermissionDenied) {
-		t.Errorf("租户管理员删私有知识库 error = %v, want %v", err, ErrPermissionDenied)
+	for _, op := range []Operation{OperationRead, OperationDelete} {
+		if err := fixture.check(t, "u-admin", ResourceKindDataset, "ds-private", op); err != nil {
+			t.Errorf("租户管理员 owner 档知识库 %v error = %v, want nil", op, err)
+		}
 	}
 	if err := fixture.check(t, "u-admin", ResourceKindDataset, "ds-team", OperationRead); err != nil {
 		t.Errorf("租户管理员读团队知识库 error = %v, want nil", err)
 	}
-	if ids := fixture.scopeIDs(t, "u-admin", ResourceKindDataset, OperationRead); len(ids) != 1 || ids[0] != "ds-team" {
-		t.Errorf("租户管理员知识库列表 = %v, want [ds-team]", ids)
+	if ids := fixture.scopeIDs(t, "u-admin", ResourceKindDataset, OperationRead); len(ids) != 2 ||
+		ids[0] != "ds-private" || ids[1] != "ds-team" {
+		t.Errorf("租户管理员知识库列表 = %v, want [ds-private ds-team]", ids)
 	}
 
-	// 问答 / 搜索默认 owner 档，租户管理员也进不去，除非把它调成管理层可见。
-	if err := fixture.check(t, "u-admin", ResourceKindChat, "chat-1", OperationRead); !errors.Is(err, ErrPermissionDenied) {
-		t.Errorf("租户管理员读默认档知识问答 error = %v, want %v", err, ErrPermissionDenied)
-	}
-	if err := fixture.check(t, "u-admin", ResourceKindSearchApp, "search-1", OperationUpdate); !errors.Is(err, ErrPermissionDenied) {
-		t.Errorf("租户管理员改默认档知识搜索 error = %v, want %v", err, ErrPermissionDenied)
-	}
-
-	fixture.setVisibility(t, "dialog", "chat-1", entity.ResourceVisibilityTenantOwner)
-	fixture.setVisibility(t, "search", "search-1", entity.ResourceVisibilityTenantOwner)
+	// 问答 / 搜索默认 owner 档：同样对租户管理员可见，不必先改成管理层可见。
 	if err := fixture.check(t, "u-admin", ResourceKindChat, "chat-1", OperationRead); err != nil {
-		t.Errorf("租户管理员读管理层可见知识问答 error = %v, want nil", err)
+		t.Errorf("租户管理员读 owner 档知识问答 error = %v, want nil", err)
 	}
 	if err := fixture.check(t, "u-admin", ResourceKindSearchApp, "search-1", OperationUpdate); err != nil {
-		t.Errorf("租户管理员改管理层可见知识搜索 error = %v, want nil", err)
+		t.Errorf("租户管理员改 owner 档知识搜索 error = %v, want nil", err)
 	}
 }
 
