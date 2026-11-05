@@ -204,11 +204,11 @@ test.describe('矩阵 · 会话质检', () => {
 /**
  * 租户管理员的口径快照。
  *
- * 实测（2026-11-04）：admin 的知识库列表 18/18 与 owner 相同（dataset 的
+ * 2026-11-04 实测：admin 的知识库列表 18/18 与 owner 相同（dataset 的
  * QueryScope 认 `user_tenant.role_id` = 内置「租户管理员」），但问答/检索/
- * 智能体/记忆列表是 0 —— 这几类资源的可见性只看各自的 visibility 列与
- * 显式授权，不认租户管理员角色。控制台把该角色 25 个模块全勾，数据面却
- * 只有知识库跟着放大，属口径分裂，先记录不判死：用例只断言「不超过 owner」。
+ * 智能体/记忆是 0 —— 这几类走逐条判定，只认 visibility 列与显式授权。
+ * 2026-11-05 已统一（`resolveResource` 把租户管理员判定提到三档之前），
+ * 发版后 admin 应与 owner 齐平；用例只断言「不超过 owner」，两种行为都成立。
  */
 test.describe('矩阵 · 租户管理员口径', () => {
   test.use({ storageState: authFile('admin') });
