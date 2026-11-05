@@ -355,8 +355,14 @@ func (s *ResourceGrantService) describeGrantsCached(ctx context.Context, tenantI
 		cache = newGrantNameCache()
 	}
 
+	// deptIDs / userIDs 是「名字还没查过、需要回库的 id」，deptOrder / userOrder
+	// 才是要输出的主体列表。两者不能合并：缓存命中时不会再入队查名字，若拿
+	// deptIDs 当输出列表，同一批里第二个起共享同一主体的行就会返回空 grants
+	// （子项例外里只有第一行有标签，其余留白）。
 	deptIDs := make([]string, 0)
 	userIDs := make([]string, 0)
+	deptOrder := make([]string, 0)
+	userOrder := make([]string, 0)
 	teamHit := false
 	teamGrant := grantAggregate{}
 	deptGrants := make(map[string]grantAggregate, len(rows))
@@ -371,6 +377,7 @@ func (s *ResourceGrantService) describeGrantsCached(ctx context.Context, tenantI
 		case entity.GrantSubjectDepartment:
 			if !seenDept[r.SubjectID] {
 				seenDept[r.SubjectID] = true
+				deptOrder = append(deptOrder, r.SubjectID)
 				if _, ok := cache.deptNames[r.SubjectID]; !ok {
 					deptIDs = append(deptIDs, r.SubjectID)
 				}
@@ -379,6 +386,7 @@ func (s *ResourceGrantService) describeGrantsCached(ctx context.Context, tenantI
 		case entity.GrantSubjectUser:
 			if !seenUser[r.SubjectID] {
 				seenUser[r.SubjectID] = true
+				userOrder = append(userOrder, r.SubjectID)
 				if _, ok := cache.userNames[r.SubjectID]; !ok {
 					userIDs = append(userIDs, r.SubjectID)
 				}
@@ -416,7 +424,7 @@ func (s *ResourceGrantService) describeGrantsCached(ctx context.Context, tenantI
 			Permission: teamGrant.permission, Effect: teamGrant.effect,
 		})
 	}
-	for _, id := range deptIDs {
+	for _, id := range deptOrder {
 		name := deptNames[id]
 		if name == "" {
 			name = "已删除部门"
@@ -426,7 +434,7 @@ func (s *ResourceGrantService) describeGrantsCached(ctx context.Context, tenantI
 			Permission: deptGrants[id].permission, Effect: deptGrants[id].effect,
 		})
 	}
-	for _, id := range userIDs {
+	for _, id := range userOrder {
 		name := userNames[id]
 		if name == "" {
 			name = id

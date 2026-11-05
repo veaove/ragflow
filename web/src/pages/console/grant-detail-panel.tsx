@@ -52,10 +52,10 @@ function GrantChips({ grants }: { grants: GrantSubject[] }) {
         >
           {grant.kind === 'team' ? '全团队' : grant.name}
           {grant.effect === 'deny'
-            ? '·已排除'
+            ? '(已排除)'
             : grant.permission === 'read'
-              ? '·只读'
-              : '·可编辑'}
+              ? '(只读)'
+              : '(可编辑)'}
         </span>
       ))}
     </div>
