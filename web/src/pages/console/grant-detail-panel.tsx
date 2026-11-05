@@ -37,14 +37,38 @@ const NODE_KIND_LABEL: Record<string, string> = {
   file: '文件',
 };
 
-/** 规则标签：允许是蓝底，拒绝是红底 —— 拒绝在这份列表里最需要被看见。 */
-function GrantChips({ grants }: { grants: GrantSubject[] }) {
+/**
+ * 规则标签：允许是蓝底，拒绝是红底 —— 拒绝在这份列表里最需要被看见。
+ *
+ * grants 为空不等于「没有规则」：例外列表里的每一行都至少有一条规则，只是
+ * 主体可能已经解析不出名字（成员被移出租户、历史脏数据）。这时必须给一个
+ * 明确占位，否则整个标签格留白，看起来像这一行渲染坏了。
+ */
+function GrantChips({
+  grants,
+  restricted,
+}: {
+  grants: GrantSubject[];
+  restricted?: boolean;
+}) {
+  if (grants.length === 0) {
+    if (!restricted) return null;
+    return (
+      <span
+        className="rounded bg-background-second px-1.5 py-0.5 text-[11px] leading-4 text-text-secondary"
+        title="这一项有独立规则，但规则主体已不可解析；点「调整」重新设置"
+      >
+        规则主体未知
+      </span>
+    );
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-1">
       {grants.map((grant, idx) => (
         <span
           key={`${grant.kind}-${grant.id}-${idx}`}
-          className={`rounded px-1.5 py-0.5 text-[11px] leading-4 ${
+          className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] leading-4 ${
             grant.effect === 'deny'
               ? 'bg-state-error/10 text-state-error'
               : 'bg-accent-primary/10 text-accent-primary'
@@ -73,22 +97,26 @@ function ExceptionRow({ item, onEdit, onClear }: ExceptionRowProps) {
   const handleClear = useCallback(() => onClear(item), [item, onClear]);
 
   return (
-    <div className="flex items-center gap-3 border-t border-border-default px-3 py-2 first:border-t-0">
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm text-text-primary" title={item.resource_name}>
-          {item.node_kind === 'folder' ? '📁 ' : ''}
-          {item.resource_name}
-        </div>
-        {item.path && (
-          <div className="truncate text-[11px] text-text-secondary" title={item.path}>
-            {item.path}
+    <div className="flex items-center gap-4 border-t border-border-default px-3 py-2 first:border-t-0">
+      {/* 名称、路径与规则标签同一列：名字长时截断，标签始终紧跟名字右侧，
+          不会再飘到行中间、和右边的操作按钮挤在一起。 */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm text-text-primary" title={item.resource_name}>
+            {item.node_kind === 'folder' ? '📁 ' : ''}
+            {item.resource_name}
           </div>
-        )}
+          {item.path && (
+            <div className="truncate text-[11px] text-text-secondary" title={item.path}>
+              {item.path}
+            </div>
+          )}
+        </div>
+        <div className="shrink-0">
+          <GrantChips grants={item.grants ?? []} restricted={item.restricted} />
+        </div>
       </div>
-      <div className="max-w-[46%] shrink-0">
-        <GrantChips grants={item.grants} />
-      </div>
-      <div className="flex shrink-0 items-center gap-3 text-xs">
+      <div className="ml-auto flex shrink-0 items-center gap-3 text-xs">
         <button
           type="button"
           className="text-accent-primary hover:underline"
