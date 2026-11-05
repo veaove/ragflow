@@ -66,6 +66,11 @@ func setupServiceTestDB(t *testing.T) *gorm.DB {
 		&entity.IngestionTaskLog{},
 		&entity.PipelineOperationLog{},
 		&entity.UserCanvas{},
+		// 授权相关的用例要覆盖知识问答 / 知识搜索 / 记忆中心：这三张表与
+		// 知识库一样带三档可见性列，缺表时只能测 dataset。
+		&entity.Chat{},
+		&entity.Search{},
+		&entity.Memory{},
 		&entity.File2Document{},
 		&entity.File{},
 		&entity.User{},

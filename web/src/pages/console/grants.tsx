@@ -34,6 +34,7 @@ import {
   setGrantVisibility,
 } from '@/services/console-service';
 
+import { GrantChips } from './grant-chip';
 import { GrantDetailPanel } from './grant-detail-panel';
 import {
   GrantDialog,
@@ -119,17 +120,7 @@ function ResourceRow({
             </select>
           ) : null}
           {row.grants?.length ? (
-            <div className="flex flex-wrap gap-1">
-              {row.grants.map((g, idx) => (
-                <span
-                  key={`${g.kind}-${g.id}-${idx}`}
-                  className="rounded bg-accent-primary/10 px-1.5 py-0.5 text-accent-primary"
-                >
-                  {g.name}
-                  {g.permission === 'read' ? '·只读' : ''}
-                </span>
-              ))}
-            </div>
+            <GrantChips grants={row.grants} />
           ) : row.visibility ? null : (
             <span className="text-text-secondary">
               {defaultScopeLabel(row.default_scope)}

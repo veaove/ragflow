@@ -23,6 +23,7 @@ import {
   fetchGrantExceptions,
 } from '@/services/console-service';
 
+import { GrantChips } from './grant-chip';
 import { GrantTarget, VISIBILITY_OPTIONS } from './grant-dialog';
 import { GrantKeys } from './grant-keys';
 import { GrantSummaryBadge } from './grant-tree';
@@ -36,31 +37,6 @@ const NODE_KIND_LABEL: Record<string, string> = {
   folder: '文件夹',
   file: '文件',
 };
-
-/** 规则标签：允许是蓝底，拒绝是红底 —— 拒绝在这份列表里最需要被看见。 */
-function GrantChips({ grants }: { grants: GrantSubject[] }) {
-  return (
-    <div className="flex flex-wrap items-center gap-1">
-      {grants.map((grant, idx) => (
-        <span
-          key={`${grant.kind}-${grant.id}-${idx}`}
-          className={`rounded px-1.5 py-0.5 text-[11px] leading-4 ${
-            grant.effect === 'deny'
-              ? 'bg-state-error/10 text-state-error'
-              : 'bg-accent-primary/10 text-accent-primary'
-          }`}
-        >
-          {grant.kind === 'team' ? '全团队' : grant.name}
-          {grant.effect === 'deny'
-            ? '(已排除)'
-            : grant.permission === 'read'
-              ? '(只读)'
-              : '(可编辑)'}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 interface ExceptionRowProps {
   item: GrantExceptionItem;

@@ -34,6 +34,12 @@ type grantKindSpec struct {
 	// Hidden 为真时不在 Tab 清单里出现：它仍是一个合法的授权类型（树上的
 	// 文件夹节点就用它写规则），只是不值得单独占一个入口。
 	Hidden bool
+	// SupportsDeny 表示这类资源能写「排除」（effect=deny）规则。
+	//
+	// 判定侧对五类资产统一走 tieredAccess + grantLevel：deny 会清空该主体
+	// 拿到的级别，创建者与租户 owner 不受影响。所以放开的前提只有一条 ——
+	// 这类资源确实走了同一套判定，否则就是「配置里排除了、实际照样能看」。
+	SupportsDeny bool
 }
 
 // tenantByColumn 是绝大多数资源的租户条件：表里有 tenant_id。
@@ -53,18 +59,21 @@ var grantKindCatalog = []*grantKindSpec{
 		NameExpr: "knowledgebase.name", OwnerExpr: "knowledgebase.created_by",
 		VisibilityColumn: "knowledgebase.permission",
 		TenantWhere:      tenantByColumn("knowledgebase.tenant_id"),
+		SupportsDeny:     true,
 	},
 	{
 		Kind: "chat", Label: "知识问答", Table: "dialog",
 		NameExpr: "COALESCE(dialog.name, '')", OwnerExpr: "dialog.created_by",
 		VisibilityColumn: "dialog.permission",
 		TenantWhere:      tenantByColumn("dialog.tenant_id"),
+		SupportsDeny:     true,
 	},
 	{
 		Kind: "search_app", Label: "知识搜索", Table: "search",
 		NameExpr: "search.name", OwnerExpr: "search.created_by",
 		VisibilityColumn: "search.permission",
 		TenantWhere:      tenantByColumn("search.tenant_id"),
+		SupportsDeny:     true,
 	},
 	{
 		Kind: "canvas", Label: "智能体", Table: "user_canvas",
@@ -75,12 +84,14 @@ var grantKindCatalog = []*grantKindSpec{
 			return "(user_canvas.tenant_id = ? OR ((user_canvas.tenant_id IS NULL OR user_canvas.tenant_id = '') AND user_canvas.user_id = ?))",
 				[]any{tenantID, tenantID}
 		},
+		SupportsDeny: true,
 	},
 	{
 		Kind: "memory", Label: "记忆中心", Table: "memory",
 		NameExpr: "memory.name", OwnerExpr: "memory.created_by",
 		VisibilityColumn: "memory.permissions",
 		TenantWhere:      tenantByColumn("memory.tenant_id"),
+		SupportsDeny:     true,
 	},
 	{
 		Kind: "file", Label: "文件", Table: "file",
@@ -125,6 +136,21 @@ var grantKindSpecs = func() map[string]*grantKindSpec {
 	out[GrantKindDocument] = &grantKindSpec{
 		Kind: GrantKindDocument, Label: "文件（知识库内）", Table: "document",
 		NameExpr: "document.name", OwnerExpr: "document.created_by",
+		SupportsDeny: true,
+	}
+	return out
+}()
+
+// grantDenyKinds 是「允许写排除规则」的类型集合，由 grantKindSpecs 派生。
+//
+// 单独维护一份清单会出现「注册表加了类型、排除清单忘了加」的漂移，
+// 表现是弹窗里能选「不可见」但后端拒写，或者反过来写进去了判定不认。
+var grantDenyKinds = func() map[string]bool {
+	out := make(map[string]bool, len(grantKindSpecs))
+	for kind, spec := range grantKindSpecs {
+		if spec != nil && spec.SupportsDeny {
+			out[kind] = true
+		}
 	}
 	return out
 }()

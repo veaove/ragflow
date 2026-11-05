@@ -34,7 +34,8 @@ type GrantSubject struct {
 	// 空值按 "edit" 处理：老前端不传这个字段，保持它原来的行为（授权即编辑）。
 	Permission string `json:"permission,omitempty"`
 	// Effect 是这条规则的取向："allow"（授予）或 "deny"（排除）。
-	// 只有文件级授权支持 deny，空值按 allow 处理。
+	// 能否写 deny 由资源类型决定（见 grantKindSpec.SupportsDeny），空值按
+	// allow 处理。
 	Effect string `json:"effect,omitempty"`
 }
 
@@ -48,16 +49,6 @@ const (
 // 库级是前提，文件级只做细化。
 const GrantKindDocument = "document"
 
-// grantDenyKinds 是允许写「排除」规则的类型。
-//
-// 只开放知识库与库内文件：这两类的判定（单条 + 列表 SQL + 检索）都有对应的
-// 排除谓词。其余类型先拒绝写入 —— 写入成功但判定不认，会变成「配置里排除了、
-// 实际照样能看」，比不支持更糟。
-var grantDenyKinds = map[string]bool{
-	GrantKindDocument: true,
-	"dataset":         true,
-}
-
 // grantSubjectKey 是「同一主体」的键：部门/用户带 id，全团队不带。
 func grantSubjectKey(kind, id string) string {
 	return kind + "\x00" + id
@@ -65,8 +56,8 @@ func grantSubjectKey(kind, id string) string {
 
 // validateGrantDenySupport 在写库之前否掉「排除了但判定不认」的组合。
 //
-// 两条规则：类型必须已经接入排除谓词（见 grantDenyKinds）；「全团队」不能作为
-// 排除对象 —— 那等价于清空授权，同一结果两个入口只会让人误用。
+// 两条规则：类型必须声明 SupportsDeny（见 grantKindCatalog）；「全团队」不能
+// 作为排除对象 —— 那等价于清空授权，同一结果两个入口只会让人误用。
 func validateGrantDenySupport(spec *grantKindSpec, subjects []GrantSubject) error {
 	for _, sub := range subjects {
 		if sub.Kind != entity.GrantSubjectTeam &&
@@ -80,7 +71,7 @@ func validateGrantDenySupport(spec *grantKindSpec, subjects []GrantSubject) erro
 		if normalizeGrantEffect(sub.Effect) != entity.GrantEffectDeny {
 			continue
 		}
-		if !grantDenyKinds[spec.Kind] {
+		if !spec.SupportsDeny {
 			return fmt.Errorf("%s 暂不支持「排除」：收回权限请改用可见范围或移除授权", spec.Label)
 		}
 		if sub.Kind == entity.GrantSubjectTeam {

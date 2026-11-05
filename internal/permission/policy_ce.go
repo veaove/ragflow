@@ -58,6 +58,9 @@ type evaluation struct {
 	// on the user row and never changes mid-evaluation, so one read per user is
 	// enough even when a listing walks hundreds of resources.
 	platformAdmins map[string]bool
+	// disabledTenants caches "is this tenant switched off", keyed by tenant id.
+	// A listing walks many resources of the same tenant; one read is enough.
+	disabledTenants map[string]bool
 }
 
 func newPolicy(source Source) policy {
@@ -368,6 +371,7 @@ func newEvaluation(source Source) *evaluation {
 		creatorDepartments: make(map[string]string),
 		tenantAdmins:       make(map[string]bool),
 		platformAdmins:     make(map[string]bool),
+		disabledTenants:    make(map[string]bool),
 	}
 }
 
@@ -656,11 +660,44 @@ func (e *evaluation) resolveAccess(ctx context.Context, subject Subject, ref Res
 	return e.resolveResource(ctx, subject, resource)
 }
 
+// tenantDisabled 判断租户是否已停用。
+//
+// 停用语义是「整个租户暂停」，不是某个成员被降权，所以判定必须排在 owner /
+// 创建者短路之前 —— 否则停用之后资源 owner 仍读得到自己名下的内容。
+//
+// 口径与知识库列表 SQL（QueryScope 里的 tenantDisabled 子查询）一致：只有存在
+// enabled=0 的记录才算停用；租户行缺失（历史脏数据、部分迁移）按启用处理，
+// 避免一次把所有人的内容全隐藏。
+func (e *evaluation) tenantDisabled(ctx context.Context, tenantID string) bool {
+	if strings.TrimSpace(tenantID) == "" {
+		return false
+	}
+	if cached, ok := e.disabledTenants[tenantID]; ok {
+		return cached
+	}
+	disabled := false
+	if source, ok := e.source.(*databaseSource); ok && source.db != nil {
+		var count int64
+		err := source.db.WithContext(ctx).Model(&entity.Tenant{}).
+			Where("id = ? AND IFNULL(enabled, 1) = 0", tenantID).
+			Count(&count).Error
+		disabled = err == nil && count > 0
+	}
+	e.disabledTenants[tenantID] = disabled
+	return disabled
+}
+
 func (e *evaluation) resolveResource(ctx context.Context, subject Subject, resource Resource) (Access, error) {
 	if resource.TenantID == "" || resource.OwnerUserID == "" || !validResourceRef(resource.Ref) {
 		return Access{}, fmt.Errorf("%w: incomplete resource authorization facts", ErrInvalidPermission)
 	}
 	if !resource.Active {
+		return Access{}, ErrResourceNotFound
+	}
+	// 租户停用后，租户内资源对所有人不可见。知识库的列表 SQL 里已经有这条
+	// 谓词，其余四类（知识问答/知识搜索/智能体/记忆）走逐条判定，在这里补齐
+	// 才能得到同样的结果，而不是「列表里还在、点进去也没事」。
+	if e.tenantDisabled(ctx, resource.TenantID) {
 		return Access{}, ErrResourceNotFound
 	}
 	if !validOperations(resource.OwnerOperations) {
@@ -683,23 +720,22 @@ func (e *evaluation) resolveResource(ctx context.Context, subject Subject, resou
 	if e.isPlatformAdmin(ctx, subject.UserID) {
 		return resourceAccess(resource, AccessSourcePlatformAdmin), nil
 	}
-	// 收窄档位：租户管理员只在 tenant_owner / platform 里可见。owner 档连
-	// 租户管理员都不放行 —— 否则「仅资源 owner 可见」会被管理层无声穿透。
-	switch resource.Visibility {
-	case VisibilityOwner:
-		return e.tieredAccess(ctx, subject, resource)
-	case VisibilityTenantOwner, VisibilityPlatform:
-		if e.isTenantAdmin(ctx, subject.UserID, resource.TenantID) {
-			return resourceAccess(resource, AccessSourceTenant), nil
-		}
-		return e.tieredAccess(ctx, subject, resource)
-	}
-	// 租户管理员看得到本租户的一切。枚举 owner 由上面那条命中（知识库的
-	// OwnerUserID 就是租户 owner 的 user id），但控制台分配的「租户管理员」
-	// 只落在 role_id 上、枚举仍是 normal，这里补上。
-	// 跨租户不会误放：判定用的是 resource.TenantID 上的成员关系。
+	// 租户管理员看得到本租户的一切，包括 owner（仅所有者可见）档。
+	//
+	// 与知识库列表 SQL 的 callerIsOwner 分支同一口径：那条 SQL 不看可见性列，
+	// 租户管理员对 permission=owner 的库照样可见。这条判定必须对五类资源都成立，
+	// 否则同一份授权在知识库能看到、在知识问答/搜索/智能体/记忆里看不到。
+	//
+	// 控制台分配的「租户管理员」只落在 role_id 上、枚举仍是 normal，所以按角色判，
+	// 不能只看枚举。跨租户不会误放：用的是 resource.TenantID 上的成员关系。
 	if e.isTenantAdmin(ctx, subject.UserID, resource.TenantID) {
-		return resourceAccess(resource, AccessSourceOwner), nil
+		return resourceAccess(resource, AccessSourceTenant), nil
+	}
+	// 三档收窄在这里收口：管理层已在上面放行，剩下的人一律逐主体判定
+	// （创建者、显式授权、部门管理员）。
+	switch resource.Visibility {
+	case VisibilityOwner, VisibilityTenantOwner, VisibilityPlatform:
+		return e.tieredAccess(ctx, subject, resource)
 	}
 
 	switch resource.Visibility {
