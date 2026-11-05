@@ -192,6 +192,8 @@
 | 声明 | `grantKindSpec.SupportsDeny`；`dataset/chat/search_app/canvas/memory` + `document` 为 true，文件/MCP/数据源/技能空间为 false；`grantDenyKinds` 由注册表派生 | `resource_grant_deny_kinds_test.go` |
 | 界面 | 资源授权页平铺列表与子项例外共用 `grant-chip.tsx`，列表也把「(已排除)」标红 | `grant-chip.test.tsx`、`grant-views.test.tsx` |
 
+**单测结论（2026-11-05 实跑）**：`/root/rf-verify` 上 `git diff --cached origin/main -- internal/permission internal/service` 为空（被测树与 `origin/main` 同树），`bash build.sh --test ./internal/permission/ ./internal/service/ ./internal/handler/` → `ok` 三行、`EXIT_CODE=0`，native 单测同时通过；前端 `npx jest src/pages/console` → **2 suites / 12 passed**。
+
 **本次实测（未发版环境）**：线上 `.deployed_sha` = `3a7b04942`，早于本批改动（`d1d54f3bd`），因此新增的 `97-visibility-parity` 三条**全部为红，且逐条对应待发版的差异**——这是发版验收条件，不是为了变绿而放宽：
 
 | 用例 | 预发版实测 | 对应改动 |
