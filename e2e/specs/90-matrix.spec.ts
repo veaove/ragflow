@@ -8,6 +8,7 @@ import {
   type AccountName,
   type ViewerName,
 } from '../support/env';
+import { pickRows } from '../support/list-rows';
 
 /**
  * 角色 × 资源 × 操作 的矩阵化校验（数据驱动）。
@@ -66,27 +67,6 @@ const KINDS: Kind[] = [
 ];
 
 const auth = (who: AccountName) => ({ Authorization: tokenOf(who) });
-
-/**
- * 列表统一抽出条目。
- *
- * 各接口的集合字段名不统一（知识库直接是数组，其余是 { total, chats } /
- * { total, searches } / …），逐个列举字段名一旦猜错就会得到「owner 也 0 条」，
- * 矩阵随即静默全 skip —— 那是最难发现的假绿。所以按「data 里最长的对象数组」
- * 取，并且把两边的数量作为 annotation 写进报告，方便一眼看出是不是取错了。
- */
-const pickRows = (data: unknown): { id: string; name?: string }[] => {
-  if (Array.isArray(data)) return data as { id: string; name?: string }[];
-  if (!data || typeof data !== 'object') return [];
-  const arrays = Object.values(data as Record<string, unknown>).filter((v) =>
-    Array.isArray(v),
-  ) as unknown[][];
-  const longest = arrays.sort((a, b) => b.length - a.length)[0] ?? [];
-  return longest.filter(
-    (row): row is { id: string; name?: string } =>
-      !!row && typeof row === 'object' && 'id' in (row as Record<string, unknown>),
-  );
-};
 
 const idsOf = async (
   request: APIRequestContext,

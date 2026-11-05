@@ -183,6 +183,25 @@
 单测结论：`/root/rf-verify` 跑 `./build.sh --test ./internal/permission/... ./internal/service/...` → **0 FAIL**。
 前端：`jest src/pages/console` 通过，改动文件 `tsc` 无新增错误，`oxlint` 无 error。
 
+### 2.5 可见范围统一到五类资源（2026-11-05）
+
+| 层 | 改动 | 验证 |
+|---|---|---|
+| 判定 | `resolveResource` 把 `isTenantAdmin` 提到三档 switch 之前：租户管理员对 `owner`（仅所有者可见）档同样放行，与知识库列表 SQL 的 `callerIsOwner` 分支同口径（D7） | `TestTenantAdminSeesEveryTier` |
+| 判定 | 租户停用下沉到 `resolveResource`，五类资源统一「停用即不可见」，不再出现「列表里有、点进去也不拦」 | `TestDisabledTenantHidesEveryKind` |
+| 声明 | `grantKindSpec.SupportsDeny`；`dataset/chat/search_app/canvas/memory` + `document` 为 true，文件/MCP/数据源/技能空间为 false；`grantDenyKinds` 由注册表派生 | `resource_grant_deny_kinds_test.go` |
+| 界面 | 资源授权页平铺列表与子项例外共用 `grant-chip.tsx`，列表也把「(已排除)」标红 | `grant-chip.test.tsx`、`grant-views.test.tsx` |
+
+**本次实测（未发版环境）**：线上 `.deployed_sha` = `3a7b04942`，早于本批改动（`d1d54f3bd`），因此新增的 `97-visibility-parity` 三条**全部为红，且逐条对应待发版的差异**——这是发版验收条件，不是为了变绿而放宽：
+
+| 用例 | 预发版实测 | 对应改动 |
+|---|---|---|
+| 可见集合 = owner | 知识问答 owner 7 条 / admin 0 条（知识库一档已齐平） | `resolveResource` 的 `isTenantAdmin` 前移 |
+| `supports_deny` 声明 | 知识问答 `华小夏-沙箱（模拟测试）` 为 `false`，应为 `true` | `grantKindSpec.SupportsDeny` |
+| 弹窗「不可见（排除）」 | 授权页连知识库 Tab 都是「资源（0 个库）」——admin 读不到 owner 档资源，没有可点「设置」的行 | 上两条的合并表现（列表收窄走同一个 `Scope`） |
+
+同时回归 `90-matrix`（`pickRows` 抽到 `e2e/support/list-rows.ts` 后）→ **17 passed**，既有「子集 / 可读 / 不可见即不可读 / admin 不超过 owner」四条口径未被改动影响。
+
 ---
 
 ## 3. 尚未覆盖 / 未测试的场景
