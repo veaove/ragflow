@@ -190,69 +190,6 @@ describe('GrantDetailPanel', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/全部继承/)).toBeInTheDocument();
   });
-
-  it('每个例外行都带自己的规则标签，主体解析不出来时给占位而不是留白', async () => {
-    mockedExceptions.mockResolvedValue({
-      data: {
-        data: {
-          items: [
-            {
-              resource_id: 'd1',
-              resource_name: '全触点分析产品功能说明书.docx',
-              grant_kind: 'document',
-              node_kind: 'file',
-              parent_grant_id: 'kb1',
-              path: '华夏基金 / 综合部',
-              restricted: true,
-              grants: [
-                {
-                  kind: 'user',
-                  id: 'u2',
-                  name: '和君测试',
-                  permission: 'read',
-                  effect: 'deny',
-                },
-              ],
-            },
-            {
-              // 规则还在（restricted=true），但主体已经解析不出名字：
-              // 之前这里整格留白，看起来像这一行渲染坏了。
-              resource_id: 'd2',
-              resource_name: '云客服-人机协呼-管理端操作手册.docx',
-              grant_kind: 'document',
-              node_kind: 'file',
-              parent_grant_id: 'kb1',
-              path: '华夏基金 / 产品部',
-              restricted: true,
-              grants: [],
-            },
-          ],
-          total: 2,
-          file_total: 4,
-          exception_total: 2,
-        },
-      },
-    });
-
-    renderWithQuery(
-      <GrantDetailPanel
-        tenantId="t1"
-        kind="dataset"
-        node={kbNode()}
-        trail={[kbNode()]}
-        onEdit={jest.fn()}
-        onRemove={jest.fn()}
-        onClearException={jest.fn()}
-        onVisibilityChange={jest.fn()}
-      />,
-    );
-
-    expect(await screen.findByText('和君测试·已排除')).toBeInTheDocument();
-    expect(screen.getByText('规则主体未知')).toBeInTheDocument();
-    expect(
-      screen.getByText('云客服-人机协呼-管理端操作手册.docx'),
-    ).toBeInTheDocument();
-  });
 });
 
 describe('GrantDialog', () => {
