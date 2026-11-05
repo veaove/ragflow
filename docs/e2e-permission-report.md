@@ -246,6 +246,18 @@
 
 单测：`TestGrantTreeHidesDocumentsCallerCannotRead`、`TestListGrantExceptionsHidesUnreadableDocuments`、`TestGrantsBySubjectHidesUnreadableDocuments`（`/root/rf-docscope` 干净 worktree，`service`/`permission`/`handler` 三包 + native 全绿）。
 
+**发版后复跑（2026-11-05，部署 `e9baa7c`）**：`/api/v1/system/version=e9baa7c`、healthz 五项 ok；`98-document-grant-visibility` **1 passed**（同一份用例、同一份数据，发版前红、发版后绿），综合部的「1 例外」在成员视角归零。全量只读 E2E **80 passed / 4 skipped / 0 failed**。
+
+同批复跑暴露了 `30-resource-scope` 的三条**旧数据前提**失效：租户里三个问答/搜索被显式开成「全团队」（`resource_grant`：chat×2 `team:allow`、search_app×1 `team:allow`），而用例写的是「成员一定是空态」。已改成数据驱动，并且比原来更强：
+
+| 用例 | 旧断言 | 新断言 |
+|---|---|---|
+| 问答/搜索/记忆页面 | 成员一定看到空态文案 | 逐条断言「owner 看得到、成员看不到」的条目名不出现在内容区（`main`，避开顶栏租户名）；只有成员真的一条都没有时才校验空态 |
+| 会话质检 | 「暂无可配置的应用」 | 成员无问答 → 空态；有 → 未授权的应用名不得出现在可选列表 |
+| 接口计数 | 成员 chats/searches 计数 == 0 | 五类资源都要求 `member ⊆ owner`，且每条都满足「自建 ∨ 在按成员授权清单里」，即**来源可解释**（比「==0」更能表达原意） |
+
+数据前提不再写死的公共件：`e2e/support/scope-diff.ts`（`compareScope` / `displayName`）。当前基线：**84 条 = 80 passed / 4 skipped / 0 failed**。
+
 ---
 
 ## 3. 尚未覆盖 / 未测试的场景

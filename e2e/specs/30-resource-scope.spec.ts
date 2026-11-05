@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 
 import { IDENTITIES, RESOURCES, api, authFile, tokenOf } from '../support/env';
 import { pickHiddenDataset } from '../support/hidden-dataset';
+import { pickRows } from '../support/list-rows';
+import { compareScope, displayName } from '../support/scope-diff';
 
 /**
  * 六类核心资源在两个账号下的可见边界。
@@ -78,18 +80,41 @@ test.describe('资源可见性 · 普通成员', () => {
     ).toHaveCount(0);
   });
 
-  test('知识问答 / 知识搜索 / 记忆为空态', async ({ page }) => {
-    await page.goto('/chats');
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByText('尚未创建聊天应用')).toBeVisible();
+  test('知识问答 / 知识搜索 / 记忆不展示未授权的条目', async ({ page }) => {
+    // 不再断「一定是空态」：管理员随时可能把某个问答/搜索开成全团队（2026-11-05
+    // 就有两条问答 + 一条搜索被这样授权过）。真正的不变量是「owner 看得到、
+    // member 看不到的条目不得出现在页面上」，空态文案只在成员真的一条都没有时校验。
+    for (const [path, route, emptyText] of [
+      [api.chats, '/chats', '尚未创建聊天应用'],
+      [api.searches, '/searches', '尚未创建搜索应用'],
+      [api.memories, '/memories', '尚未创建记忆'],
+    ] as const) {
+      const { member, hidden } = await compareScope(path);
 
-    await page.goto('/searches');
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByText('尚未创建搜索应用')).toBeVisible();
+      await page.goto(route);
+      await page.waitForLoadState('networkidle');
 
-    await page.goto('/memories');
-    await page.waitForLoadState('networkidle');
-    await expect(page.getByText('尚未创建记忆')).toBeVisible();
+      // 只在内容区断言：顶栏的租户切换器会显示「华夏基金」，拿整页文本比对会把
+      // 租户名当成「泄露的资源名」。
+      const content = page.locator('main');
+
+      for (const row of hidden) {
+        const name = displayName(row);
+        if (!name) continue;
+        await expect(
+          content.getByText(name, { exact: true }),
+          `${route}: ${name} 未授权，不得出现在成员页面上`,
+        ).toHaveCount(0);
+      }
+      if (member.length === 0) {
+        await expect(content.getByText(emptyText)).toBeVisible();
+      }
+
+      test.info().annotations.push({
+        type: 'scope',
+        description: `${route}: member=${member.length} hidden=${hidden.length}`,
+      });
+    }
   });
 
   test('智能体只看到被授权的那一个', async ({ page }) => {
@@ -105,44 +130,89 @@ test.describe('资源可见性 · 普通成员', () => {
     ).toHaveCount(0);
   });
 
-  test('会话质检没有可配置的应用', async ({ page }) => {
+  test('会话质检只提供成员看得到的应用', async ({ page }) => {
+    const { member, hidden } = await compareScope(api.chats);
+
     await page.goto('/qc');
     await page.waitForLoadState('networkidle');
-    // 正则同时会命中下拉里的 <option>暂无可用应用</option>，而 option 永远
-    // 不是「可见元素」（Playwright 只认 select 本身），所以直接断空态文案。
-    await expect(
-      page.getByText('暂无可配置的应用，请先创建聊天应用或对话流'),
-    ).toBeVisible();
+
+    // 成员一条问答都没有时才是空态；有授权就有可选项，但不能出现未授权的应用名。
+    const content = page.locator('main');
+    if (member.length === 0) {
+      await expect(
+        content.getByText('暂无可配置的应用，请先创建聊天应用或对话流'),
+      ).toBeVisible();
+      return;
+    }
+    for (const row of hidden) {
+      const name = displayName(row);
+      if (!name) continue;
+      await expect(
+        content.getByText(name, { exact: true }),
+        `/qc: ${name} 未授权，不得出现在可选应用里`,
+      ).toHaveCount(0);
+    }
   });
 });
 
 test.describe('资源可见性 · 接口计数对齐', () => {
-  const count = async (
-    request: import('@playwright/test').APIRequestContext,
-    path: string,
-    who: 'owner' | 'member',
-  ) => {
-    const res = await request.get(path, {
-      headers: { Authorization: tokenOf(who) },
-    });
-    const body = await res.json();
-    const data = body.data;
-    // 两种返回形态：知识库直接给数组，聊天/搜索/智能体给 { total, list }。
-    // 解错一层会得到 -1，看起来像「比预期多」，实际是解析失败。
-    if (Array.isArray(data)) return data.length;
-    if (typeof data?.total === 'number') return data.total;
-    return -1;
-  };
+  const TID = IDENTITIES.owner.tenantId;
 
-  test('member 的可见集合是 owner 的子集', async ({ request }) => {
-    const ownerKb = await count(request, api.datasets, 'owner');
-    const memberKb = await count(request, api.datasets, 'member');
-    expect(memberKb).toBeGreaterThan(0);
-    expect(memberKb).toBeLessThan(ownerKb);
+  test('member 的可见集合是 owner 的子集，且每条都能解释来源', async ({ request }) => {
+    const get = async (path: string, who: 'owner' | 'member') => {
+      const res = await request.get(path, { headers: { Authorization: tokenOf(who) } });
+      expect(res.status(), `${who} GET ${path}`).toBe(200);
+      const body = await res.json();
+      expect(body.code, `${who} GET ${path}: ${body.message}`).toBe(0);
+      return body.data;
+    };
+    const rowsOf = async (path: string, who: 'owner' | 'member') =>
+      pickRows(await get(path, who));
 
-    expect(await count(request, api.chats, 'member')).toBe(0);
-    expect(await count(request, api.searches, 'member')).toBe(0);
-    expect(await count(request, api.agents, 'member')).toBe(1);
-    expect(await count(request, api.agents, 'owner')).toBeGreaterThan(1);
+    // 「他为什么能看到」的权威口径：按成员视角的授权清单（直接 / 部门 / 全团队三条来源）。
+    const members = pickRows(await get(api.members(TID), 'owner'));
+    const member = members.find((row) => row.email === IDENTITIES.member.email);
+    expect(member, `成员列表里没有 ${IDENTITIES.member.email}`).toBeTruthy();
+    const audit = await get(api.grantsBySubject(TID, String(member!.id)), 'owner');
+    const explained = new Set(
+      (audit.rows as { resource_kind: string; resource_id: string }[]).map(
+        (row) => `${row.resource_kind}:${row.resource_id}`,
+      ),
+    );
+
+    const KINDS = [
+      [api.datasets, 'dataset', '知识库'],
+      [api.chats, 'chat', '知识问答'],
+      [api.searches, 'search_app', '知识搜索'],
+      [api.agents, 'canvas', '智能体'],
+      [api.memories, 'memory', '记忆'],
+    ] as const;
+
+    for (const [path, kind, label] of KINDS) {
+      const ownerRows = await rowsOf(path, 'owner');
+      const memberRows = await rowsOf(path, 'member');
+      const ownerIDs = new Set(ownerRows.map((row) => row.id));
+
+      for (const row of memberRows) {
+        const name = displayName(row) || row.id;
+        expect(ownerIDs.has(row.id), `${label}/${name}：成员看得到但 owner 看不到`).toBe(true);
+        const createdBy = String(row.user_id ?? row.created_by ?? '');
+        expect(
+          createdBy === member!.id || explained.has(`${kind}:${row.id}`),
+          `${label}/${name}：成员看得到，却既不是自建也没有任何授权记录（来源不明）`,
+        ).toBe(true);
+      }
+
+      test.info().annotations.push({
+        type: 'scope',
+        description: `${label}: owner=${ownerRows.length} member=${memberRows.length}`,
+      });
+    }
+
+    // 知识库仍是严格子集：成员不该看到全部库。
+    expect((await rowsOf(api.datasets, 'member')).length).toBeGreaterThan(0);
+    expect((await rowsOf(api.datasets, 'member')).length).toBeLessThan(
+      (await rowsOf(api.datasets, 'owner')).length,
+    );
   });
 });
