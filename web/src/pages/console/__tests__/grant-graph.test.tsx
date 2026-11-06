@@ -113,7 +113,7 @@ describe('buildGraphModel', () => {
 
     const unconfigured = model.resources.find((r) => r.key === 'chat:a1');
     expect(unconfigured?.unconfigured).toBe(true);
-    expect(unconfigured?.sub).toBe('未配置授权');
+    expect(unconfigured?.sub).toBe('未单独授权');
     expect(model.edges.some((e) => e.to === 'chat:a1')).toBe(false);
 
     // 只列图上真正出现的资源类型，图例不该出现空的分类。

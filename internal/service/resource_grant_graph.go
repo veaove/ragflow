@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	"gorm.io/gorm"
+
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 )
@@ -153,7 +155,7 @@ func (s *ResourceGrantService) GrantGraph(ctx context.Context, tenantID, userID 
 	result.Stats.Visible += docTotal
 
 	// 知识库的「N 项例外」一次性算出来：图谱上库节点要能看出子项偏离了多少。
-	s.fillDatasetExceptionCounts(ctx, tenantID, result.Resources)
+	s.fillDatasetExceptionCounts(ctx, tenantID, userID, result.Resources)
 
 	// ── 成员 / 团队 ─────────────────────────────────────────────────────
 	result.Members = s.grantGraphMembers(ctx, tenantID)
@@ -193,6 +195,10 @@ func (s *ResourceGrantService) GrantGraph(ctx context.Context, tenantID, userID 
 //
 // 与子项例外同一份判定：文件先按所含知识库的可见性收窄，再按文件级规则收窄
 // （读不到的文件连同规则一起消失），否则图谱会成为绕过列表的泄露通道。
+//
+// 第二条不是可选项：文件级规则是名单制，文件一旦有规则，不在名单内的主体就
+// 读不到它（见 permission.DocumentRuleClause）。少了这一步，被排除的人会在图上
+// 看到那个文件的文件名、以及「谁被排除」——文件读不到，存在性与授权关系却公开。
 func (s *ResourceGrantService) appendDocumentNodes(ctx context.Context, tenantID, userID string, result *GrantGraphResult) (int64, error) {
 	visibleDatasets, scoped, err := s.visibleGrantIDs(ctx, userID, grantGraphKindDataset)
 	if err != nil {
@@ -206,12 +212,25 @@ func (s *ResourceGrantService) appendDocumentNodes(ctx context.Context, tenantID
 		return 0, nil
 	}
 
-	base := dao.DB.WithContext(ctx).Table("document")
+	// 只有做了库级收窄的调用者才需要再叠一层文件级谓词；租户管理层 / 库主人
+	// 本来就能读全部文件，helper 会返回 ok=false（空操作）。
+	docWhere, docArgs, docScoped := "", []any(nil), false
 	if scoped {
-		base = base.Where("document.kb_id IN ?", kbIDs)
+		docWhere, docArgs, docScoped = documentVisibilityWhere(ctx, userID, kbIDs)
 	}
+	docQuery := func() *gorm.DB {
+		q := dao.DB.WithContext(ctx).Table("document")
+		if scoped {
+			q = q.Where("document.kb_id IN ?", kbIDs)
+		}
+		if docScoped {
+			q = q.Where(docWhere, docArgs...)
+		}
+		return q
+	}
+
 	var docTotal int64
-	if err := base.Count(&docTotal).Error; err != nil {
+	if err := docQuery().Count(&docTotal).Error; err != nil {
 		return 0, err
 	}
 
@@ -223,7 +242,7 @@ func (s *ResourceGrantService) appendDocumentNodes(ctx context.Context, tenantID
 		return docTotal, err
 	}
 	if len(docGrants) == 0 {
-		s.appendBareDocumentSamples(ctx, tenantID, kbIDs, scoped, nil, result)
+		s.appendBareDocumentSamples(ctx, userID, kbIDs, scoped, nil, result)
 		return docTotal, nil
 	}
 
@@ -241,13 +260,10 @@ func (s *ResourceGrantService) appendDocumentNodes(ctx context.Context, tenantID
 		Name string `gorm:"column:name"`
 	}
 	docs := make([]docRow, 0, len(grantedIDs))
-	docQuery := dao.DB.WithContext(ctx).Table("document").
+	docSelect := docQuery().
 		Select("document.id AS id, document.name AS name").
 		Where("document.id IN ?", grantedIDs)
-	if scoped {
-		docQuery = docQuery.Where("document.kb_id IN ?", kbIDs)
-	}
-	if err := docQuery.Scan(&docs).Error; err != nil {
+	if err := docSelect.Scan(&docs).Error; err != nil {
 		return docTotal, err
 	}
 
@@ -267,12 +283,12 @@ func (s *ResourceGrantService) appendDocumentNodes(ctx context.Context, tenantID
 		})
 	}
 
-	s.appendBareDocumentSamples(ctx, tenantID, kbIDs, scoped, grantedIDs, result)
+	s.appendBareDocumentSamples(ctx, userID, kbIDs, scoped, grantedIDs, result)
 	return docTotal, nil
 }
 
 // appendBareDocumentSamples 补几个「从未配置授权」的文件样例。
-func (s *ResourceGrantService) appendBareDocumentSamples(ctx context.Context, _ string, kbIDs []string, scoped bool, grantedIDs []string, result *GrantGraphResult) {
+func (s *ResourceGrantService) appendBareDocumentSamples(ctx context.Context, userID string, kbIDs []string, scoped bool, grantedIDs []string, result *GrantGraphResult) {
 	type docRow struct {
 		ID   string `gorm:"column:id"`
 		Name string `gorm:"column:name"`
@@ -281,6 +297,10 @@ func (s *ResourceGrantService) appendBareDocumentSamples(ctx context.Context, _ 
 		Select("document.id AS id, document.name AS name")
 	if scoped {
 		query = query.Where("document.kb_id IN ?", kbIDs)
+		// 样例同样要过文件级谓词：被排除的文件不该以「样例」的身份露名字。
+		if where, args, ok := documentVisibilityWhere(ctx, userID, kbIDs); ok {
+			query = query.Where(where, args...)
+		}
 	}
 	if len(grantedIDs) > 0 {
 		query = query.Where("document.id NOT IN ?", grantedIDs)
@@ -302,8 +322,9 @@ func (s *ResourceGrantService) appendBareDocumentSamples(ctx context.Context, _ 
 
 // fillDatasetExceptionCounts 给知识库节点补上「N 项例外」。
 //
-// 与授权树同一个口径：只数调用者读得到的、带独立规则的文件。
-func (s *ResourceGrantService) fillDatasetExceptionCounts(ctx context.Context, tenantID string, resources []GrantGraphResource) {
+// 与授权树同一个口径：只数调用者读得到的、带独立规则的文件 —— 例外数同样是
+// 「还有一个你看不到的文件」的承认，不能把读不到的文件算进去。
+func (s *ResourceGrantService) fillDatasetExceptionCounts(ctx context.Context, tenantID, userID string, resources []GrantGraphResource) {
 	kbIDs := make([]string, 0)
 	for _, res := range resources {
 		if res.Kind == grantGraphKindDataset {
@@ -318,13 +339,15 @@ func (s *ResourceGrantService) fillDatasetExceptionCounts(ctx context.Context, t
 		Total int    `gorm:"column:total"`
 	}
 	counts := make([]countRow, 0)
-	if err := dao.DB.WithContext(ctx).Table("resource_grant").
+	q := dao.DB.WithContext(ctx).Table("resource_grant").
 		Select("document.kb_id AS kb_id, COUNT(*) AS total").
 		Joins("JOIN document ON document.id = resource_grant.resource_id").
 		Where("resource_grant.tenant_id = ? AND resource_grant.resource_kind = ?", tenantID, GrantKindDocument).
-		Where("document.kb_id IN ?", kbIDs).
-		Group("document.kb_id").
-		Scan(&counts).Error; err != nil {
+		Where("document.kb_id IN ?", kbIDs)
+	if where, args, ok := documentVisibilityWhere(ctx, userID, kbIDs); ok {
+		q = q.Where(where, args...)
+	}
+	if err := q.Group("document.kb_id").Scan(&counts).Error; err != nil {
 		return
 	}
 	byKB := make(map[string]int, len(counts))

@@ -44,6 +44,16 @@ const EDGE_COLOR: Record<GraphEdgeType, string> = {
   team: '#9ca3af',
 };
 
+/**
+ * 这个统计的口径是「自己没有规则」，不是「没人管」。
+ *
+ * 绝大多数文件本来就不单独授权，而是继承所在知识库的可见范围 —— 把它们叫「未配置」
+ * 会让人以为这些资源没人负责，也让「可见 198 但图上只有 14 个点」显得像 bug。
+ */
+const UNCONFIGURED_LABEL = '未单独授权';
+const UNCONFIGURED_HINT =
+  '这些资源自己没有规则；多数文件继承所在知识库的可见范围，仍会随库一起被授权';
+
 const truncate = (label: string, compact: boolean): string => {
   const limit = compact ? 7 : 10;
   return label.length > limit ? `${label.slice(0, limit)}…` : label;
@@ -54,7 +64,7 @@ const truncate = (label: string, compact: boolean): string => {
  *
  * 列表视图有两个天花板：一屏只能看一个主体，而且只显示「有权限的」。图谱回答的
  * 是「谁和谁有关系」——尤其能看见三种「权限外」的区别：明确拒绝（红边）、
- * 本层无授权（灰点、无连线）、从未配置（虚线灰框 / 只进统计）。
+ * 本层无授权（灰点、无连线）、未单独授权（虚线灰框 / 只进统计）。
  *
  * 布局固定三列而不是力导向：位置稳定比好看重要，管理员要能形成空间记忆。
  */
@@ -397,12 +407,14 @@ export function GrantGraph({ tenantId }: GrantGraphProps) {
     testId: string,
     onClick?: () => void,
     on?: boolean,
+    hint?: string,
   ) => (
     <div
       key={label}
       data-testid={testId}
       data-value={value}
       onClick={onClick}
+      title={hint}
       className={`flex items-center gap-1 text-xs ${onClick ? 'cursor-pointer' : ''} ${
         on === false ? 'opacity-40' : ''
       }`}
@@ -452,10 +464,13 @@ export function GrantGraph({ tenantId }: GrantGraphProps) {
         RESOURCE_KINDS.every((kind) => activeFilter.nodes.includes(kind)),
       )}
       {stat(
-        '未配置',
+        UNCONFIGURED_LABEL,
         model.stats.unconfigured,
         '#b9b8b1',
         'graph-stat-unconfigured',
+        undefined,
+        undefined,
+        UNCONFIGURED_HINT,
       )}
     </div>
   );
@@ -483,12 +498,15 @@ export function GrantGraph({ tenantId }: GrantGraphProps) {
         '#d6d5cf',
         'graph-stat-focus-none',
       )}
-      {/* 这一行不能省：它才是"绝大多数资源没人管"的唯一出处。 */}
+      {/* 这一行不能省：它才是"绝大多数资源没人单独配规则"的唯一出处。 */}
       {stat(
-        '从未配置',
+        UNCONFIGURED_LABEL,
         model.stats.unconfigured,
         '#b9b8b1',
         'graph-stat-unconfigured',
+        undefined,
+        undefined,
+        UNCONFIGURED_HINT,
       )}
     </div>
   );
@@ -634,11 +652,13 @@ export function GrantGraph({ tenantId }: GrantGraphProps) {
               : globalStats}
         </div>
       </div>
-      {model.stats.truncated && (
-        <div className="border-t border-border-default px-3 py-1 text-xs text-text-secondary">
-          资源过多，图上只画了一部分；「未配置」按全部可见资源统计
-        </div>
-      )}
+      {/* 一行口径说明：图上画的是「有授权记录的资源」，其余只在统计里。不写这句，
+          「可见 198 但图上 14 个点」就会被当成漏画。 */}
+      <div className="border-t border-border-default px-3 py-1 text-xs text-text-secondary">
+        图上只画有授权记录的资源，另配少量「{UNCONFIGURED_LABEL}
+        」样例；其余计入右下角统计
+        {model.stats.truncated ? '（某类资源超过取数上限，是部分数据）' : ''}
+      </div>
     </div>
   );
 }

@@ -176,7 +176,7 @@ export const buildGraphModel = (data?: GrantGraph | null): GraphModel => {
       key,
       kind,
       label: trim(res.name) || res.id,
-      sub: res.unconfigured ? '未配置授权' : KIND_META[kind].label,
+      sub: res.unconfigured ? '未单独授权' : KIND_META[kind].label,
       title: [
         trim(res.name),
         KIND_META[kind].label,
