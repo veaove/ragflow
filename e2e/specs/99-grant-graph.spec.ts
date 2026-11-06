@@ -249,7 +249,48 @@ test.describe('授权图谱 · 受限身份不越权', () => {
     const res = await request.get(api.grantGraph(TID));
     expect(res.status(), '没有 Authorization 时不应放行').toBe(401);
   });
+
+  // 线上此刻跑的是 b02ccc1：图谱只按知识库收窄，没有叠文件级谓词，于是被文件级
+  // 规则排除的成员仍能看到那个文件的节点、文件名和「谁被排除」。修复在 f3c852b，
+  // Go 单测 TestGrantGraphHidesDocumentsCallerCannotRead 已覆盖；那一版发上去之后，
+  // 把这条 fixme 改成 test 即可 —— 断言就是「图上的每个文件，本人在文件列表里都读得到」。
+  test.fixme('读不到的文件不出现在图谱里（f3c852b 发版后启用）', async ({ request }) => {
+    const readable = await readableDocumentIDs(request, 'member');
+    const graph = await graphOf(request, 'member');
+
+    for (const resource of graph.resources) {
+      if (resource.kind !== 'document') continue;
+      expect(
+        readable.has(resource.id),
+        `成员读不到 ${resource.name}，屏幕上却画着它`,
+      ).toBe(true);
+    }
+  });
 });
+
+/** 查看者真正读得到的文件 id：把他能读的知识库逐个翻页取全（接口每页上限 10）。 */
+const readableDocumentIDs = async (
+  request: APIRequestContext,
+  who: keyof typeof IDENTITIES,
+): Promise<Set<string>> => {
+  const seen = new Set<string>();
+  const res = await request.get(`${api.grants(TID, 'dataset')}&page=1&page_size=500`, {
+    headers: { Authorization: tokenOf(who) },
+  });
+  const body = await res.json();
+  for (const row of body.data?.resources ?? []) {
+    for (let page = 1; page <= 60; page += 1) {
+      const docs = await request.get(
+        `${api.datasetDocuments(row.resource_id)}?page=${page}&page_size=10`,
+        { headers: { Authorization: tokenOf(who) } },
+      );
+      const items = (await docs.json()).data?.docs ?? [];
+      for (const doc of items) seen.add(doc.id);
+      if (items.length < 10) break;
+    }
+  }
+  return seen;
+};
 
 test.describe('授权图谱 · 控制台界面', () => {
   // UI 用例只能用 owner：其余 E2E 账号的浏览器会话绑定的是它们各自的空租户。

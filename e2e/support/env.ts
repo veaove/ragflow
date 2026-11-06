@@ -122,6 +122,7 @@ export const api = {
     `/api/v1/tenants/${tenantId}/grants-by-subject?subject_kind=${subjectKind}&subject_id=${subjectId}`,
   /** 授权图谱：一次返回 members / teams / resources(+grants) / stats。 */
   grantGraph: (tenantId: string) => `/api/v1/tenants/${tenantId}/grant-graph`,
+  datasetDocuments: (datasetId: string) => `/api/v1/datasets/${datasetId}/documents`,
   setGrants: (tenantId: string, kind: string, resourceId: string) =>
     `/api/v1/tenants/${tenantId}/grants/${kind}/${resourceId}`,
 };
