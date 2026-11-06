@@ -340,7 +340,7 @@ func (s *ResourceGrantService) fillDatasetExceptionCounts(ctx context.Context, t
 	}
 	counts := make([]countRow, 0)
 	q := dao.DB.WithContext(ctx).Table("resource_grant").
-		Select("document.kb_id AS kb_id, COUNT(*) AS total").
+		Select("document.kb_id AS kb_id, COUNT(DISTINCT document.id) AS total").
 		Joins("JOIN document ON document.id = resource_grant.resource_id").
 		Where("resource_grant.tenant_id = ? AND resource_grant.resource_kind = ?", tenantID, GrantKindDocument).
 		Where("document.kb_id IN ?", kbIDs)

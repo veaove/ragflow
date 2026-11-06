@@ -56,8 +56,9 @@ func TestGrantGraphHidesDocumentsCallerCannotRead(t *testing.T) {
 	if member.Stats.Visible != 4 {
 		t.Errorf("成员可见资源数 = %d, want 4（不含读不到的 d2）", member.Stats.Visible)
 	}
-	if member.Stats.Unconfigured != 4 {
-		t.Errorf("成员未配置数 = %d, want 4（kb1 有全团队规则，但 4 个文件都没有自己的规则）",
+	// 4 个可见资源里只有 kb1 自己有规则，其余 3 个文件都是继承库级可见范围。
+	if member.Stats.Unconfigured != 3 {
+		t.Errorf("成员未单独授权数 = %d, want 3（kb1 有规则，3 个可读文件都没有自己的规则）",
 			member.Stats.Unconfigured)
 	}
 
