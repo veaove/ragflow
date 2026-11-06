@@ -13,6 +13,8 @@ export const GrantKeys = {
   exceptionsRoot: ['console/grant-exceptions'] as const,
   /** 成员视角。 */
   subjectRoot: ['console/grants-by-subject'] as const,
+  /** 授权图谱前缀：一次取全成员 / 团队 / 资源，写操作后整份失效。 */
+  graphRoot: ['console/grant-graph'] as const,
   resources: (
     tenantId: string,
     kind: string,
@@ -45,4 +47,5 @@ export const GrantKeys = {
     ] as const,
   subject: (tenantId: string, subjectId: string) =>
     ['console/grants-by-subject', tenantId, subjectId] as const,
+  graph: (tenantId: string) => ['console/grant-graph', tenantId] as const,
 };

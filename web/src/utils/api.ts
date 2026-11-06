@@ -547,6 +547,9 @@ export default {
   /** 成员视角：某人凭哪些规则看到哪些资源 */
   tenantGrantsBySubject: (tenantId: string) =>
     `${restAPIv1}/tenants/${tenantId}/grants-by-subject`,
+  /** 授权图谱：成员 / 团队 / 资源三列 + 统计，一次取全 */
+  tenantGrantGraph: (tenantId: string) =>
+    `${restAPIv1}/tenants/${tenantId}/grant-graph`,
   adminCreateTenant: `${restAPIv1}/admin/tenants`,
   adminCreateUser: `${restAPIv1}/admin/users`,
   adminUpdateUser: (username: string) => `${restAPIv1}/admin/users/${username}`,

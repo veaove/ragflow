@@ -386,6 +386,57 @@ export const fetchGrantExceptions = (
     },
   );
 
+/** 图谱上的一个资源节点。 */
+export interface GrantGraphResource {
+  id: string;
+  /** dataset / chat / search_app / canvas / memory / document */
+  kind: string;
+  name: string;
+  owner_name?: string;
+  /** 资源下带独立规则的子项数（只有知识库有层级）。 */
+  exception_count?: number;
+  /** 从未配置授权的样例节点：默认仅所有者可见，画出来是为了让状态可见。 */
+  unconfigured?: boolean;
+  grants: GrantSubject[];
+}
+
+export interface GrantGraphMember {
+  id: string;
+  name: string;
+  email: string;
+  department_id?: string;
+  department_name?: string;
+}
+
+/** 中间列的团队：部门，或那条没有 id 的「全团队」。 */
+export interface GrantGraphTeam {
+  kind: 'department' | 'team';
+  id?: string;
+  name: string;
+}
+
+export interface GrantGraphStats {
+  /** 调用者可读的 6 类资源总数。 */
+  visible: number;
+  /** 其中有授权记录、因而画在图上的资源数（不含样例）。 */
+  configured: number;
+  /** 从未配置授权的资源数。 */
+  unconfigured: number;
+  /** 某类资源超过取数上限时置真，图与 configured 都不是全量。 */
+  truncated?: boolean;
+}
+
+export interface GrantGraph {
+  members: GrantGraphMember[];
+  teams: GrantGraphTeam[];
+  resources: GrantGraphResource[];
+  stats: GrantGraphStats;
+}
+
+/** 授权图谱：一次取全，节点与边都在这一份响应里。 */
+export const fetchGrantGraph = (tenantId: string) =>
+  request.get<ApiEnvelope<GrantGraph>>(api.tenantGrantGraph(tenantId));
+
 /** 一行可见来源：同一资源经不同路径到达同一个人时分多行。 */
 export interface GrantSubjectRow {
   resource_kind: string;

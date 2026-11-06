@@ -712,6 +712,31 @@ func (h *ConsoleHandler) GrantTree(c *gin.Context) {
 	common.SuccessWithData(c, tree, "success")
 }
 
+// GrantGraph handles GET /tenants/:tenant_id/grant-graph.
+//
+// 第三个视角：把「谁 −→ 哪个资源」摊平在一张图上，回答列表回答不了的两件事
+// ——「这个库里谁被挡在外面」和「未配置授权的资源长什么样」。返回的是画图需要
+// 的节点/边/统计，资源已按调用者读权限收窄。
+func (h *ConsoleHandler) GrantGraph(c *gin.Context) {
+	user, code, msg := GetUser(c)
+	if code != common.CodeSuccess {
+		common.ErrorWithCode(c, code, msg)
+		return
+	}
+	tenantID := consoleTenantID(c)
+	if err := requireTenantAccess(c, user.ID, tenantID, false); err != nil {
+		common.ResponseWithHttpCodeData(c, http.StatusForbidden, common.CodeForbidden, nil, err.Error())
+		return
+	}
+
+	graph, err := service.NewResourceGrantService().GrantGraph(c.Request.Context(), tenantID, user.ID)
+	if err != nil {
+		common.ResponseWithCodeData(c, common.CodeDataError, nil, err.Error())
+		return
+	}
+	common.SuccessWithData(c, graph, "success")
+}
+
 // GrantExceptions handles GET /tenants/:tenant_id/grant-exceptions.
 //
 // 参数：kind=dataset|file，dataset_id（知识库）/ folder_id（作用范围），

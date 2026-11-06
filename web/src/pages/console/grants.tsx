@@ -36,6 +36,7 @@ import {
 
 import { GrantChips } from './grant-chip';
 import { GrantDetailPanel } from './grant-detail-panel';
+import { GrantGraph } from './grant-graph';
 import {
   GrantDialog,
   GrantTarget,
@@ -141,12 +142,15 @@ function ResourceRow({
   );
 }
 
+type GrantView = 'resource' | 'member' | 'graph';
+
 /**
  * 资源授权：配置「谁能看」。
  *
- * 两种视角共用同一份数据：按资源回答「这个库给了谁」，按成员回答「他为什么能
- * 看」。有层级的资源（知识库 / 文件管理）走左侧树 + 右侧详情：树只画骨架和
- * 每层摘要，文件不进树、集中在「子项例外」里，避免几十层嵌套下拉。
+ * 三种视角共用同一份数据：按资源回答「这个库给了谁」，按成员回答「他为什么能
+ * 看」，图谱回答「谁和谁有关系」。有层级的资源（知识库 / 文件管理）走左侧树 +
+ * 右侧详情：树只画骨架和每层摘要，文件不进树、集中在「子项例外」里，避免几十
+ * 层嵌套下拉。
  */
 export default function ConsoleGrants() {
   const { t } = useTranslation();
@@ -155,7 +159,7 @@ export default function ConsoleGrants() {
   const tenantId = tenantInfo?.tenant_id as string | undefined;
 
   const [kind, setKind] = useState<GrantKind>('dataset');
-  const [view, setView] = useState<'resource' | 'member'>('resource');
+  const [view, setView] = useState<GrantView>('resource');
   const [keywords, setKeywords] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
@@ -309,7 +313,7 @@ export default function ConsoleGrants() {
 
   const handleViewChange = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
-      setView(e.currentTarget.value as 'resource' | 'member');
+      setView(e.currentTarget.value as GrantView);
     },
     [],
   );
@@ -374,6 +378,7 @@ export default function ConsoleGrants() {
     queryClient.invalidateQueries({ queryKey: GrantKeys.treeRoot });
     queryClient.invalidateQueries({ queryKey: GrantKeys.exceptionsRoot });
     queryClient.invalidateQueries({ queryKey: GrantKeys.subjectRoot });
+    queryClient.invalidateQueries({ queryKey: GrantKeys.graphRoot });
   }, [queryClient]);
 
   const handleSubmit = useCallback(
@@ -437,13 +442,15 @@ export default function ConsoleGrants() {
             <p className="mt-1 text-sm text-text-secondary">
               知识库与文件管理的授权按层级展示：每层只回答「给了谁」和「哪些子项
               例外」，可见范围分「仅所有者 / 租户管理层 / 平台管理员」三档，普通
-              成员需逐人授权
+              成员需逐人授权；图谱把成员、团队、资源摊平在一张图上，看清谁和谁
+              有关系
             </p>
           </div>
           <div className="flex shrink-0 gap-1 rounded-md bg-background-second p-1">
             {[
               { value: 'resource', label: '按资源' },
               { value: 'member', label: '按成员' },
+              { value: 'graph', label: '授权图谱' },
             ].map((item) => (
               <button
                 key={item.value}
@@ -462,54 +469,64 @@ export default function ConsoleGrants() {
           </div>
         </header>
 
-        <div className="mb-3 flex flex-wrap items-end gap-3 border-b border-border-default">
-          {/*
-            用下划线而不是小胶囊：胶囊的选中色和页面底色太接近，十几个 sheet
-            排在一起时根本看不出当前在哪一个。
-          */}
-          <div
-            role="tablist"
-            aria-label="资源类型"
-            className="flex flex-wrap items-center gap-1"
-          >
-            {kinds.map((tab) => {
-              const active = kind === tab.kind;
-              return (
-                <button
-                  key={tab.kind}
-                  type="button"
-                  role="tab"
-                  value={tab.kind}
-                  aria-selected={active}
-                  onClick={handleKindChange}
-                  className={`-mb-px border-b-2 px-3 pb-2 pt-1 text-sm transition-colors duration-150 ${
-                    active
-                      ? 'border-accent-primary font-medium text-accent-primary'
-                      : 'border-transparent text-text-secondary hover:border-border-default hover:text-text-primary'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* 有层级的类型把搜索放进左栏，按资源宽度优先给树和详情面板。 */}
-          {!hierarchical && (
-            <div className="relative mb-1 ml-auto">
-              <LucideSearch className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
-              <Input
-                value={keywords}
-                onChange={handleKeywordsChange}
-                placeholder="搜索资源名称"
-                className="w-56 pl-8"
-              />
+        {/* 图谱一次画全 6 类资源，Tab 与搜索对它是死控件，不渲染。 */}
+        {view !== 'graph' && (
+          <div className="mb-3 flex flex-wrap items-end gap-3 border-b border-border-default">
+            {/*
+              用下划线而不是小胶囊：胶囊的选中色和页面底色太接近，十几个 sheet
+              排在一起时根本看不出当前在哪一个。
+            */}
+            <div
+              role="tablist"
+              aria-label="资源类型"
+              className="flex flex-wrap items-center gap-1"
+            >
+              {kinds.map((tab) => {
+                const active = kind === tab.kind;
+                return (
+                  <button
+                    key={tab.kind}
+                    type="button"
+                    role="tab"
+                    value={tab.kind}
+                    aria-selected={active}
+                    onClick={handleKindChange}
+                    className={`-mb-px border-b-2 px-3 pb-2 pt-1 text-sm transition-colors duration-150 ${
+                      active
+                        ? 'border-accent-primary font-medium text-accent-primary'
+                        : 'border-transparent text-text-secondary hover:border-border-default hover:text-text-primary'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </div>
+
+            {/* 有层级的类型把搜索放进左栏，按资源宽度优先给树和详情面板。 */}
+            {!hierarchical && (
+              <div className="relative mb-1 ml-auto">
+                <LucideSearch className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary" />
+                <Input
+                  value={keywords}
+                  onChange={handleKeywordsChange}
+                  placeholder="搜索资源名称"
+                  className="w-56 pl-8"
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 每个分支自己带 key + 淡入：切 sheet / 切视角时内容区明显换一片。 */}
-        {view === 'member' ? (
+        {view === 'graph' ? (
+          <div
+            key="graph"
+            className="flex min-h-0 flex-1 animate-in flex-col fade-in-0 duration-200"
+          >
+            <GrantGraph tenantId={tenantId ?? ''} />
+          </div>
+        ) : view === 'member' ? (
           <div
             key="member"
             className="flex min-h-0 flex-1 animate-in flex-col fade-in-0 duration-200"

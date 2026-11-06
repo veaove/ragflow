@@ -394,6 +394,8 @@ func (r *Router) Setup(engine *gin.Engine) {
 				tenants.GET("/:tenant_id/grant-exceptions", r.consoleHandler.GrantExceptions)
 				// 成员视角：某人凭哪些规则看到哪些资源，按来源分行
 				tenants.GET("/:tenant_id/grants-by-subject", r.consoleHandler.GrantsBySubject)
+				// 授权图谱：谁 −→ 哪个资源，含从未配置的样例与统计
+				tenants.GET("/:tenant_id/grant-graph", r.consoleHandler.GrantGraph)
 				tenants.PUT("/:tenant_id/grants/:kind/:resource_id", r.consoleHandler.SetResourceGrants)
 				// 三级可见性：owner / tenant_owner / platform
 				tenants.PUT("/:tenant_id/grants/:kind/:resource_id/visibility", r.consoleHandler.SetResourceGrantVisibility)
