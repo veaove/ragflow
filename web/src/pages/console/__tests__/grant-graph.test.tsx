@@ -488,4 +488,73 @@ describe('GrantGraph 组件', () => {
     fireEvent.click(node!);
     expect(screen.getByTestId('graph-stat-allow')).toBeInTheDocument();
   });
+
+  // 控制柄的位移断言只看「前后差」，不绑死画布中心：jsdom 里容器尺寸随环境不同。
+  const translateOf = (transform: string | null) => {
+    const match = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(transform ?? '');
+    return { x: Number(match?.[1] ?? 0), y: Number(match?.[2] ?? 0) };
+  };
+
+  const sceneOf = (container: HTMLElement) =>
+    container.querySelector('[data-testid=grant-graph] svg > g') as SVGGElement;
+
+  it('小手指拖动是 1:1 跟手的平移，松手后停止', async () => {
+    const { container } = renderGraph();
+    const handle = await screen.findByTestId('graph-pan-handle');
+    const scene = sceneOf(container);
+    const before = translateOf(scene.getAttribute('transform'));
+
+    fireEvent.pointerDown(handle, {
+      pointerId: 1,
+      clientX: 100,
+      clientY: 100,
+    });
+    expect(handle).toHaveAttribute('data-dragging', 'true');
+    fireEvent.pointerMove(handle, {
+      pointerId: 1,
+      clientX: 140,
+      clientY: 120,
+    });
+
+    await waitFor(() => {
+      const after = translateOf(scene.getAttribute('transform'));
+      expect(after.x - before.x).toBe(40);
+      expect(after.y - before.y).toBe(20);
+    });
+
+    fireEvent.pointerUp(handle, { pointerId: 1 });
+    expect(handle).toHaveAttribute('data-dragging', 'false');
+  });
+
+  it('控制柄滚轮缩放，双击回到原位', async () => {
+    renderGraph();
+    const handle = await screen.findByTestId('graph-pan-handle');
+    expect(handle).toHaveAttribute('data-scale', '1.00');
+
+    fireEvent.wheel(handle, { deltaY: -200, clientX: 100, clientY: 100 });
+    await waitFor(() =>
+      expect(Number(handle.getAttribute('data-scale'))).toBeGreaterThan(1),
+    );
+
+    fireEvent.doubleClick(handle);
+    await waitFor(() => expect(handle).toHaveAttribute('data-scale', '1.00'));
+  });
+
+  it('方向键平移，缩放封顶在上限', async () => {
+    const { container } = renderGraph();
+    const handle = await screen.findByTestId('graph-pan-handle');
+    const scene = sceneOf(container);
+    const before = translateOf(scene.getAttribute('transform'));
+
+    fireEvent.keyDown(handle, { key: 'ArrowLeft', shiftKey: true });
+    await waitFor(() => {
+      const after = translateOf(scene.getAttribute('transform'));
+      expect(after.x - before.x).toBe(-48);
+    });
+
+    for (let i = 0; i < 20; i += 1) {
+      fireEvent.keyDown(handle, { key: '+' });
+    }
+    await waitFor(() => expect(handle).toHaveAttribute('data-scale', '1.90'));
+  });
 });

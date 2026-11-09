@@ -34,6 +34,16 @@ import {
   toggleResourceKinds,
   toggleValue,
 } from './grant-graph-layout';
+import {
+  GraphView,
+  IDENTITY_VIEW,
+  clampView,
+  distanceBetween,
+  midpoint,
+  panBy,
+  pinchScale,
+  zoomAt,
+} from './grant-graph-viewport';
 
 interface GrantGraphProps {
   tenantId: string;
@@ -62,6 +72,34 @@ const truncate = (label: string, compact: boolean): string => {
   return label.length > limit ? `${label.slice(0, limit)}…` : label;
 };
 
+/** 手指形控制柄：一根竖起的食指加手掌轮廓，和「拖动」这个动作对应。 */
+const FingerIcon = () => (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M10 12.6V5.6a2 2 0 1 1 4 0v5.9" />
+    <path d="M14 11.5a1.9 1.9 0 0 1 1.9 1.9" />
+    <path d="M15.9 13.4a1.8 1.8 0 0 1 1.8 1.8v2.5a4.6 4.6 0 0 1-4.6 4.6h-1a5 5 0 0 1-3.5-1.4l-3.2-3.2a1.9 1.9 0 0 1 2.6-2.7l1.9 1.5V5.6" />
+  </svg>
+);
+
+/** 一次手势的起点快照：单指是平移，双指是捏合。 */
+interface GraphGesture {
+  mode: 'pan' | 'pinch';
+  startView: GraphView;
+  startPoint: { x: number; y: number };
+  startDistance: number;
+  startMid: { x: number; y: number };
+}
+
 /**
  * 授权图谱：第三个视角，把「谁 −→ 哪个资源」摊平在一张图上。
  *
@@ -77,6 +115,17 @@ export function GrantGraph({ tenantId, viewerId }: GrantGraphProps) {
   const [size, setSize] = useState({ width: 960, height: 560 });
   const [barHeight, setBarHeight] = useState(78);
   const [focus, setFocus] = useState<GraphFocus>(null);
+
+  // 画布视图：缩放 + 平移只作用于 SVG 内容，聚焦条 / 图例 / 统计都留在原位。
+  const [view, setView] = useState<GraphView>(IDENTITY_VIEW);
+  const [dragging, setDragging] = useState(false);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const handleRef = useRef<HTMLButtonElement | null>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const gesture = useRef<GraphGesture | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const pendingView = useRef<GraphView | null>(null);
 
   const { data, isFetching, isError } = useQuery({
     queryKey: GrantKeys.graph(tenantId),
@@ -125,9 +174,19 @@ export function GrantGraph({ tenantId, viewerId }: GrantGraphProps) {
     return () => observer.disconnect();
   }, []);
 
+  // SVG 绘制区至少有 320×240（窄容器也要画得下）。变换与钳制都按这个尺寸算，
+  // 否则窗口很窄时节点坐标与 transform 各用一套宽高，图会整体偏出去。
+  const canvas = useMemo(
+    () => ({
+      width: Math.max(320, size.width),
+      height: Math.max(240, size.height),
+    }),
+    [size.width, size.height],
+  );
+
   const layout = useMemo(
-    () => layoutGraph(model, { ...size, barHeight }),
-    [model, size, barHeight],
+    () => layoutGraph(model, { ...canvas, barHeight }),
+    [model, canvas, barHeight],
   );
 
   // 底部横条在窄窗口会换行（1 行 39px、2 行 77px），固定估算必然压住节点。
@@ -190,6 +249,201 @@ export function GrantGraph({ tenantId, viewerId }: GrantGraphProps) {
     },
     [model],
   );
+
+  /** 拖动时每帧只提交一次：pointermove 的频率高于渲染帧，逐次 setState 会掉帧。 */
+  const scheduleView = useCallback((next: GraphView) => {
+    pendingView.current = next;
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      const queued = pendingView.current;
+      pendingView.current = null;
+      if (queued) setView(queued);
+    });
+  }, []);
+
+  /**
+   * 同一帧内的连续操作（按住方向键、连滚滚轮）必须基于「待提交值」累加：
+   * 每步都从 viewRef 起算的话，前一步会被后一步覆盖，缩放会卡在第一格。
+   */
+  const latestView = useCallback(
+    () => pendingView.current ?? viewRef.current,
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    },
+    [],
+  );
+
+  // 容器尺寸变了之后旧的平移量可能越界（窗口缩小时最常见），重新收一次。
+  useEffect(() => {
+    setView((prev) => clampView(prev, canvas));
+  }, [canvas]);
+
+  const resetView = useCallback(() => {
+    pointers.current.clear();
+    gesture.current = null;
+    pendingView.current = null;
+    if (frameRef.current !== null) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+    setDragging(false);
+    setView(IDENTITY_VIEW);
+  }, []);
+
+  /** 屏幕坐标 → 画布内坐标：缩放锚点必须用画布内的点。 */
+  const toCanvasPoint = useCallback((clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    return { x: clientX - (rect?.left ?? 0), y: clientY - (rect?.top ?? 0) };
+  }, []);
+
+  // 单指拖动 = 平移；两指 = 捏合缩放（锚点是两指中点，两指整体挪动时画布跟着走）。
+  const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = toCanvasPoint(event.clientX, event.clientY);
+    pointers.current.set(event.pointerId, point);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
+    if (pointers.current.size === 1) {
+      gesture.current = {
+        mode: 'pan',
+        startView: viewRef.current,
+        startPoint: point,
+        startDistance: 0,
+        startMid: point,
+      };
+    } else if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      gesture.current = {
+        mode: 'pinch',
+        startView: viewRef.current,
+        startPoint: point,
+        startDistance: Math.max(1, distanceBetween(a, b)),
+        startMid: midpoint(a, b),
+      };
+    }
+    setDragging(true);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!pointers.current.has(event.pointerId) || !gesture.current) return;
+    const point = toCanvasPoint(event.clientX, event.clientY);
+    pointers.current.set(event.pointerId, point);
+
+    if (gesture.current.mode === 'pinch' && pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const nextScale = pinchScale(
+        gesture.current.startView.scale,
+        gesture.current.startDistance,
+        Math.max(1, distanceBetween(a, b)),
+      );
+      const mid = midpoint(a, b);
+      const zoomed = zoomAt(
+        gesture.current.startView,
+        nextScale,
+        gesture.current.startMid,
+        canvas,
+      );
+      scheduleView(
+        clampView(
+          {
+            ...zoomed,
+            x: zoomed.x + (mid.x - gesture.current.startMid.x),
+            y: zoomed.y + (mid.y - gesture.current.startMid.y),
+          },
+          canvas,
+        ),
+      );
+      return;
+    }
+
+    scheduleView(
+      panBy(
+        gesture.current.startView,
+        point.x - gesture.current.startPoint.x,
+        point.y - gesture.current.startPoint.y,
+        canvas,
+      ),
+    );
+  };
+
+  const handlePointerEnd = (event: React.PointerEvent<HTMLButtonElement>) => {
+    pointers.current.delete(event.pointerId);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (pointers.current.size === 0) {
+      gesture.current = null;
+      setDragging(false);
+      return;
+    }
+    // 双指松开一根：剩下那根接管平移，否则画面会按旧起点突然跳一下。
+    const [point] = [...pointers.current.values()];
+    gesture.current = {
+      mode: 'pan',
+      startView: viewRef.current,
+      startPoint: point,
+      startDistance: 0,
+      startMid: point,
+    };
+  };
+
+  // 滚轮缩放只挂在控制柄上：整个画布接管滚轮会把页面滚动一起吃掉。
+  useEffect(() => {
+    const el = handleRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const anchor = toCanvasPoint(event.clientX, event.clientY);
+      // exp 曲线：deltaY 大时缩得快，但不会一格从 1× 跳到上限。
+      const factor = Math.exp(-event.deltaY * 0.0015);
+      const current = latestView();
+      scheduleView(zoomAt(current, current.scale * factor, anchor, canvas));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+    // 控制柄在数据到位后才渲染，依赖 model 让监听在按钮出现后重新挂一次。
+  }, [canvas, latestView, model, scheduleView, toCanvasPoint]);
+
+  const handleHandleKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+  ) => {
+    const current = latestView();
+    const step = event.shiftKey ? 48 : 12;
+    const center = { x: canvas.width / 2, y: canvas.height / 2 };
+    switch (event.key) {
+      case 'ArrowLeft':
+        scheduleView(panBy(current, -step, 0, canvas));
+        break;
+      case 'ArrowRight':
+        scheduleView(panBy(current, step, 0, canvas));
+        break;
+      case 'ArrowUp':
+        scheduleView(panBy(current, 0, -step, canvas));
+        break;
+      case 'ArrowDown':
+        scheduleView(panBy(current, 0, step, canvas));
+        break;
+      case '+':
+      case '=':
+        scheduleView(zoomAt(current, current.scale * 1.1, center, canvas));
+        break;
+      case '-':
+      case '_':
+        scheduleView(zoomAt(current, current.scale / 1.1, center, canvas));
+        break;
+      case '0':
+      case 'Home':
+        resetView();
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+  };
 
   const focusedEdges = useMemo(() => {
     if (!focus) return [];
@@ -559,6 +813,11 @@ export function GrantGraph({ tenantId, viewerId }: GrantGraphProps) {
 
   const empty = model.resources.length === 0 && model.members.length === 0;
 
+  // 以画布中心为基准缩放，pan 是中心偏移（见 grant-graph-viewport.ts）。
+  const viewTransform = `translate(${canvas.width / 2 + view.x} ${
+    canvas.height / 2 + view.y
+  }) scale(${view.scale}) translate(${-canvas.width / 2} ${-canvas.height / 2})`;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border-default bg-bg-base">
       <div
@@ -583,43 +842,75 @@ export function GrantGraph({ tenantId, viewerId }: GrantGraphProps) {
         )}
 
         {!empty && (
-          <svg
-            width={Math.max(320, size.width)}
-            height={Math.max(240, size.height)}
-            role="img"
-            aria-label="授权图谱"
-          >
-            <g>
-              {model.memberships.map((link) => {
-                const from = positionOf.get(link.member);
-                const to = positionOf.get(link.team);
-                if (!from || !to) return null;
-                if (
-                  !visibility.nodes.has(from.key) ||
-                  !visibility.nodes.has(to.key)
-                ) {
-                  return null;
-                }
-                return (
-                  <path
-                    key={`${link.member}->${link.team}`}
-                    d={edgePath(from, to)}
-                    fill="none"
-                    stroke="#c9c8c2"
-                    strokeWidth={1.2}
-                    strokeDasharray="3 4"
-                    opacity={0.45}
-                  />
-                );
-              })}
-            </g>
-            <g>{model.edges.map(renderEdge)}</g>
-            <g>
-              {layout.resources.map(renderNode)}
-              {layout.teams.map(renderNode)}
-              {layout.members.map(renderNode)}
-            </g>
-          </svg>
+          <>
+            <svg
+              width={canvas.width}
+              height={canvas.height}
+              role="img"
+              aria-label="授权图谱"
+            >
+              <g transform={viewTransform}>
+                {model.memberships.map((link) => {
+                  const from = positionOf.get(link.member);
+                  const to = positionOf.get(link.team);
+                  if (!from || !to) return null;
+                  if (
+                    !visibility.nodes.has(from.key) ||
+                    !visibility.nodes.has(to.key)
+                  ) {
+                    return null;
+                  }
+                  return (
+                    <path
+                      key={`${link.member}->${link.team}`}
+                      d={edgePath(from, to)}
+                      fill="none"
+                      stroke="#c9c8c2"
+                      strokeWidth={1.2}
+                      strokeDasharray="3 4"
+                      opacity={0.45}
+                    />
+                  );
+                })}
+              </g>
+              <g>{model.edges.map(renderEdge)}</g>
+              <g>
+                {layout.resources.map(renderNode)}
+                {layout.teams.map(renderNode)}
+                {layout.members.map(renderNode)}
+              </g>
+            </svg>
+
+            {/* 小手指：拖它平移，双指 / 滚轮缩放，双击复位。 */}
+            <button
+              ref={handleRef}
+              type="button"
+              data-testid="graph-pan-handle"
+              data-scale={view.scale.toFixed(2)}
+              data-dragging={dragging ? 'true' : 'false'}
+              aria-label="画布控制柄：拖动平移，双指或滚轮缩放，双击回到原位"
+              title="拖动平移 · 双指或滚轮缩放 · 双击复位"
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerEnd}
+              onPointerCancel={handlePointerEnd}
+              onDoubleClick={resetView}
+              onKeyDown={handleHandleKeyDown}
+              className={`absolute bottom-3 right-3 z-20 flex size-10 touch-none items-center justify-center rounded-full border border-border-default bg-bg-base/90 text-text-secondary shadow-md backdrop-blur transition-colors hover:border-accent-primary hover:text-accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary ${
+                dragging ? 'scale-95 cursor-grabbing' : 'cursor-grab'
+              }`}
+            >
+              <FingerIcon />
+            </button>
+            {(dragging || view.scale !== 1) && (
+              <span
+                data-testid="graph-zoom-badge"
+                className="pointer-events-none absolute bottom-6 right-16 z-20 rounded bg-bg-base/90 px-1.5 py-0.5 text-[11px] tabular-nums text-text-secondary shadow-sm"
+              >
+                {Math.round(view.scale * 100)}%
+              </span>
+            )}
+          </>
         )}
 
         {/* 聚焦条：回答"现在我在看谁"。全部 + 前 4 个成员，够用且不占地方。 */}

@@ -39,6 +39,25 @@ if (typeof globalThis.fetch === 'undefined') {
     Promise.reject(new Error('fetch is not available in tests'));
 }
 
+// jsdom does not implement PointerEvent; fireEvent.pointerDown would otherwise
+// dispatch a plain Event without clientX, so drag handlers compute NaN offsets.
+// Deriving from MouseEvent keeps clientX/clientY and adds the pointer fields.
+if (typeof globalThis.PointerEvent === 'undefined') {
+  class PointerEventPolyfill extends MouseEvent {
+    pointerId: number;
+    pointerType: string;
+    isPrimary: boolean;
+
+    constructor(type: string, params: PointerEventInit = {}) {
+      super(type, params);
+      this.pointerId = params.pointerId ?? 0;
+      this.pointerType = params.pointerType ?? 'mouse';
+      this.isPrimary = params.isPrimary ?? true;
+    }
+  }
+  (globalThis as Record<string, unknown>).PointerEvent = PointerEventPolyfill;
+}
+
 // jsdom does not implement ResizeObserver; radix primitives that observe
 // element size (ScrollArea, Popper-based tooltips via use-size) construct it
 // on mount and would crash any page-level render test.
