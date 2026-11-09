@@ -6,38 +6,21 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
 	"ragflow/internal/common"
-	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 	"ragflow/internal/service"
+	"ragflow/internal/testdb"
 )
 
 func setupChatHandlerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		TranslateError: true,
-	})
-	if err != nil {
-		t.Fatalf("failed to open sqlite: %v", err)
-	}
-
-	// ResourceGrant 也要建：删除/批量删除问答的权限校验会走
-	// resource_grant 子查询，缺表会让整个 handler 报 no such table。
-	// 与同包的 dataset_list_test.go、searchbot_detail_test.go 保持一致。
-	if err = db.AutoMigrate(&entity.Chat{}, &entity.Tenant{}, &entity.UserTenant{}, &entity.ResourceGrant{}); err != nil {
-		t.Fatalf("failed to migrate test schema: %v", err)
-	}
-
-	origDB := dao.DB
-	dao.DB = db
-	t.Cleanup(func() { dao.DB = origDB })
+	db := testdb.New(t, &entity.Chat{}, &entity.Tenant{}, &entity.UserTenant{})
 
 	status := string(entity.StatusValid)
-	if err = db.Create(&entity.Tenant{
+	if err := db.Create(&entity.Tenant{
 		ID:        "user-1",
 		LLMID:     "model-a",
 		EmbdID:    "embd-a",

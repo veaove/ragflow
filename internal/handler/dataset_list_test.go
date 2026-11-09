@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 	dataset "ragflow/internal/service/dataset"
+	"ragflow/internal/testdb"
 )
 
 const (
@@ -28,24 +28,8 @@ const (
 func setupListDatasetsTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open("file:"+url.QueryEscape(t.Name())+"?mode=memory&cache=shared"), &gorm.Config{
-		TranslateError: true,
-	})
-	if err != nil {
-		t.Fatalf("failed to open sqlite: %v", err)
-	}
-
-	// ResourceGrant 也要建：知识库列表的权限过滤 SQL 里有一层
-	// resource_grant 子查询，缺表会让整个列表查询报 no such table。
-	if err := db.AutoMigrate(&entity.Knowledgebase{}, &entity.User{}, &entity.UserTenant{}, &entity.Tenant{}, &entity.ResourceGrant{}); err != nil {
-		t.Fatalf("failed to migrate test schema: %v", err)
-	}
-
-	origDB := dao.DB
-	dao.DB = db
-	t.Cleanup(func() { dao.DB = origDB })
-
-	return db
+	return testdb.NewShared(t, t.Name(),
+		&entity.Knowledgebase{}, &entity.User{}, &entity.UserTenant{}, &entity.Tenant{})
 }
 
 func insertListDatasetsTestKB(t *testing.T, id, tenantID, name string) {

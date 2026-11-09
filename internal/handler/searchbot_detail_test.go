@@ -27,33 +27,15 @@ import (
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
 	"ragflow/internal/service"
+	"ragflow/internal/testdb"
 
 	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
-	"gorm.io/gorm"
 )
 
 func setupSearchbotDetailHandlerDB(t *testing.T) {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		TranslateError: true,
-	})
-	if err != nil {
-		t.Fatalf("failed to open sqlite: %v", err)
-	}
-
-	// ResourceGrant 也要建：详情页的权限校验会查 resource_grant，
-	// 缺表时拿不到 401 而是 102，断言直接挂。
-	if err := db.AutoMigrate(&entity.User{}, &entity.UserTenant{}, &entity.Search{}, &entity.APIToken{}, &entity.ResourceGrant{}); err != nil {
-		t.Fatalf("failed to migrate: %v", err)
-	}
-
-	orig := dao.DB
-	dao.DB = db
-	t.Cleanup(func() {
-		dao.DB = orig
-	})
+	testdb.New(t, &entity.User{}, &entity.UserTenant{}, &entity.Search{}, &entity.APIToken{})
 }
 
 func newSearchbotDetailRouter() *gin.Engine {
