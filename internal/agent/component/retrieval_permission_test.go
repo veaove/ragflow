@@ -83,8 +83,8 @@ func TestCheckCanvasRetrievalDependencies(t *testing.T) {
 	if err := checkCanvasRetrievalDependencies(ctx, db, map[string]any{"dataset_ids": []string{dataset.ID}}); err != nil {
 		t.Fatalf("check accessible dataset dependency: %v", err)
 	}
-	if err := checkCanvasRetrievalDependencies(ctx, db, map[string]any{"dataset_ids": []string{privateDataset.ID}}); !errors.Is(err, permission.ErrPermissionDenied) {
-		t.Fatalf("check private dataset dependency error = %v, want permission denied", err)
+	if err := checkCanvasRetrievalDependencies(ctx, db, map[string]any{"dataset_ids": []string{privateDataset.ID}}); !errors.Is(err, errNoVisibleRetrievalDataset) {
+		t.Fatalf("check private dataset dependency error = %v, want no visible dataset", err)
 	}
 	if err := checkCanvasRetrievalDependencies(ctx, db, map[string]any{"memory_ids": []string{sharedMemory.ID}}); err != nil {
 		t.Fatalf("check shared memory dependency: %v", err)
