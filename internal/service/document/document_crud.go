@@ -473,6 +473,12 @@ func (s *DocumentService) deleteDocRecordWithCounters(ctx context.Context, doc *
 			return nil // already deleted by a concurrent request — skip counters
 		}
 
+		// The document's own visibility rules must not outlive it; otherwise the
+		// console keeps listing a rule whose resource can no longer be resolved.
+		if err := dao.NewResourceGrantDAO().DeleteByResources(ctx, tx, string(permission.ResourceKindDocument), []string{doc.ID}); err != nil {
+			return fmt.Errorf("failed to delete grants of document %s: %w", doc.ID, err)
+		}
+
 		result = tx.Model(&entity.Knowledgebase{}).
 			Where("id = ?", kbID).
 			Updates(map[string]interface{}{

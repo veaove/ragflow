@@ -481,6 +481,17 @@ func (d *DatasetService) deleteDataset(ctx context.Context, kb *entity.Knowledge
 			return fmt.Errorf("delete dataset error for %s", kb.ID)
 		}
 
+		// Rules must not outlive their resources: dataset-level rules point at this
+		// KB, document-level rules at its files. Leaving them behind makes the
+		// console list rules whose resource can no longer be resolved.
+		grants := dao.NewResourceGrantDAO()
+		if err := grants.DeleteByResources(ctx, tx, string(permission.ResourceKindDataset), []string{kb.ID}); err != nil {
+			return fmt.Errorf("delete dataset error for %s", kb.ID)
+		}
+		if err := grants.DeleteByResources(ctx, tx, string(permission.ResourceKindDocument), docIDs); err != nil {
+			return fmt.Errorf("delete dataset error for %s", kb.ID)
+		}
+
 		if err := tx.Where("id = ?", kb.ID).Delete(&entity.Knowledgebase{}).Error; err != nil {
 			return fmt.Errorf("delete dataset error for %s", kb.ID)
 		}

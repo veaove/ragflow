@@ -105,6 +105,22 @@ func (dao *ResourceGrantDAO) Replace(ctx context.Context, db *gorm.DB, tenantID,
 	})
 }
 
+// DeleteByResources drops every rule attached to the given resources, called
+// while the resources are being deleted so no rule outlives them.
+//
+// Kind scopes the delete instead of tenant: resource ids are globally unique,
+// and a resource can only ever carry rules of its own kind. Passing an empty
+// id list is a no-op rather than a table-wide delete.
+func (dao *ResourceGrantDAO) DeleteByResources(ctx context.Context, db *gorm.DB, kind string, resourceIDs []string) error {
+	if len(resourceIDs) == 0 {
+		return nil
+	}
+	return db.WithContext(ctx).
+		Where("resource_kind = ?", kind).
+		Where("resource_id IN ?", resourceIDs).
+		Delete(&entity.ResourceGrant{}).Error
+}
+
 // DeleteBySubject drops every grant held by a department or user, called when
 // the subject itself is deleted so no rule outlives its owner.
 func (dao *ResourceGrantDAO) DeleteBySubject(ctx context.Context, db *gorm.DB, tenantID, subjectKind, subjectID string) error {
