@@ -130,9 +130,23 @@ func (s *ResourceGrantService) GrantsBySubject(ctx context.Context, tenantID, su
 	for _, group := range groups {
 		all = append(all, group.rows...)
 	}
-	names, parents, err := s.grantResourceLabels(ctx, tenantID, all)
+	names, parents, missing, err := s.grantResourceLabels(ctx, tenantID, all)
 	if err != nil {
 		return nil, err
+	}
+
+	// 删资源不会级联删规则：库里会留着指向已删库/已删文件的孤儿行。这些行取不
+	// 到名字，展示出来是一行空白 —— 既解释不了来源，也点不进去，还让「授权数」
+	// 比实际能管的资源多。不列它们，比列一行空白诚实。
+	for i := range groups {
+		kept := make([]*entity.ResourceGrant, 0, len(groups[i].rows))
+		for _, row := range groups[i].rows {
+			if missing[row.ResourceKind+"\x00"+row.ResourceID] {
+				continue
+			}
+			kept = append(kept, row)
+		}
+		groups[i].rows = kept
 	}
 
 	for _, group := range groups {
@@ -247,12 +261,16 @@ func (s *ResourceGrantService) dropUnreadableDocumentGrants(
 	return kept, nil
 }
 
-// grantResourceLabels 把 (kind, id) 翻成展示名与上级名。
+// grantResourceLabels 把 (kind, id) 翻成展示名与上级名，并报告哪些资源已经不存在。
+//
+// missing 只装「确定查无此资源」的键：查得到就叫名字，查不到才进 missing。没有
+// 独立租户列的 kind 不参与判断（宁可留一行空白，也不误删一条真规则）。
 func (s *ResourceGrantService) grantResourceLabels(
 	ctx context.Context, tenantID string, rows []*entity.ResourceGrant,
-) (names map[string]string, parents map[string]string, err error) {
+) (names map[string]string, parents map[string]string, missing map[string]bool, err error) {
 	names = make(map[string]string, len(rows))
 	parents = make(map[string]string, len(rows))
+	missing = make(map[string]bool)
 	idsByKind := make(map[string][]string, 4)
 	for _, row := range rows {
 		key := row.ResourceKind + "\x00" + row.ResourceID
@@ -263,7 +281,7 @@ func (s *ResourceGrantService) grantResourceLabels(
 		idsByKind[row.ResourceKind] = append(idsByKind[row.ResourceKind], row.ResourceID)
 	}
 	if len(idsByKind) == 0 {
-		return names, parents, nil
+		return names, parents, missing, nil
 	}
 
 	db := dao.DB.WithContext(ctx)
@@ -272,6 +290,9 @@ func (s *ResourceGrantService) grantResourceLabels(
 		ResourceName string `gorm:"column:resource_name"`
 	}
 	for kind, ids := range idsByKind {
+		labelKey := func(id string) string { return kind + "\x00" + id }
+		found := make(map[string]bool, len(ids))
+
 		if kind == GrantKindDocument {
 			// 文件级规则要显示「库 / 文件」，并受所属库的租户约束。
 			type docLabelRow struct {
@@ -286,24 +307,26 @@ func (s *ResourceGrantService) grantResourceLabels(
 				Where("knowledgebase.tenant_id = ?", tenantID).
 				Where("document.id IN ?", ids).
 				Scan(&list).Error; qErr != nil {
-				return names, parents, qErr
+				return names, parents, missing, qErr
 			}
 			kbIDs := make([]string, 0, len(list))
 			for _, row := range list {
-				names[kind+"\x00"+row.ResourceID] = row.ResourceName
+				names[labelKey(row.ResourceID)] = row.ResourceName
+				found[row.ResourceID] = true
 				kbIDs = append(kbIDs, row.ParentID)
 			}
 			kbNames := s.ownerKBNames(ctx, tenantID, kbIDs)
 			for _, row := range list {
 				// 上级名记在文件自己的 key 上，「库 / 文件」才拼得出来。
-				parents[kind+"\x00"+row.ResourceID] = kbNames[row.ParentID]
+				parents[labelKey(row.ResourceID)] = kbNames[row.ParentID]
 			}
+			markMissing(ids, found, labelKey, missing)
 			continue
 		}
 
 		spec, specErr := grantKindSpecFor(kind)
 		if specErr != nil {
-			return names, parents, specErr
+			return names, parents, missing, specErr
 		}
 		if spec.TenantWhere == nil {
 			// 这类资源没有独立的租户列（文件级规则已在上面单独处理），
@@ -320,13 +343,24 @@ func (s *ResourceGrantService) grantResourceLabels(
 			q = q.Where(where, args...)
 		}
 		if qErr := q.Where("id IN ?", ids).Scan(&list).Error; qErr != nil {
-			return names, parents, qErr
+			return names, parents, missing, qErr
 		}
 		for _, row := range list {
-			names[kind+"\x00"+row.ResourceID] = row.ResourceName
+			names[labelKey(row.ResourceID)] = row.ResourceName
+			found[row.ResourceID] = true
+		}
+		markMissing(ids, found, labelKey, missing)
+	}
+	return names, parents, missing, nil
+}
+
+// markMissing 把「查不到」的 id 记进 missing。
+func markMissing(ids []string, found map[string]bool, labelKey func(string) string, missing map[string]bool) {
+	for _, id := range ids {
+		if !found[id] {
+			missing[labelKey(id)] = true
 		}
 	}
-	return names, parents, nil
 }
 
 func (s *ResourceGrantService) ownerKBNames(ctx context.Context, tenantID string, ids []string) map[string]string {
