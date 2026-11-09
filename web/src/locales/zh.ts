@@ -2921,6 +2921,9 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       uploadSourcesTip:
         '支持文件 ID、文件 URL 或变量。可用逗号分隔多个值，也支持 JSON 数组格式（如 ["id1","https://example.com/a.pdf"]）。',
       advancedSettings: '高级设置',
+      allowPartialKb: '部分知识库可用',
+      allowPartialKbTip:
+        '助手绑定的知识库中有当前用户无权访问的库时，仍用有权限的库检索，而不是整体失败。关闭后，只要有一个绑定库无权访问就拒绝本次检索。',
       addTools: '添加工具',
       sysPromptDefultValue: `
 <role>
@@ -3931,6 +3934,7 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       enableWebSearch: '启用网页搜索',
       enableRelatedSearch: '启用相关搜索',
       showQueryMindmap: '显示查询 Mindmap',
+      allowPartialKb: '部分知识库可用',
       embedApp: '嵌入网站',
       relatedSearch: '相关搜索',
       descriptionValue: '你是一位智能助手。',

@@ -221,6 +221,7 @@ export interface ISearchAppDetailProps {
     keywords_similarity_weight?: number;
     web_search: boolean;
     chat_settingcross_languages: string[];
+    allow_partial_kb?: boolean;
     meta_data_filter?: {
       method: string;
       manual: { key: string; op: string; value: string }[];

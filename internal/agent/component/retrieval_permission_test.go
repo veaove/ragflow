@@ -1,6 +1,7 @@
 package component
 
 import (
+	"context"
 	"errors"
 	"net/url"
 	"testing"
@@ -112,5 +113,30 @@ func TestCheckCanvasRetrievalDependencies(t *testing.T) {
 	missingCanvasState.Sys["user_id"] = "caller"
 	if err := checkCanvasRetrievalDependencies(runtime.WithState(t.Context(), missingCanvasState), db, nil); !errors.Is(err, permission.ErrInvalidPermission) {
 		t.Fatalf("check missing canvas identity error = %v, want invalid permission", err)
+	}
+}
+
+// allow_partial_kb 默认必须为 true：存量画布没有这个参数，要让它们立刻按可
+// 见库返回，而不是整轮失败。
+func TestAllowPartialRetrievalKBDefaultsToTrue(t *testing.T) {
+	if !allowPartialRetrievalKB(map[string]any{}) {
+		t.Error("allowPartialRetrievalKB(empty) = false, want true")
+	}
+	if !allowPartialRetrievalKB(map[string]any{"allow_partial_kb": "true"}) {
+		t.Error("allowPartialRetrievalKB(non-bool) = false, want the default true")
+	}
+	if allowPartialRetrievalKB(map[string]any{"allow_partial_kb": false}) {
+		t.Error("allowPartialRetrievalKB(explicit false) = true, want false")
+	}
+}
+
+// 非画布调用没有入口依赖，绑定原样保留，交给各自的资源校验。
+func TestCheckCanvasRetrievalDependenciesKeepsBindingsOutsideCanvas(t *testing.T) {
+	inputs := map[string]any{"dataset_ids": []string{"dataset-a", "dataset-b"}}
+	if err := checkCanvasRetrievalDependencies(context.Background(), nil, inputs); err != nil {
+		t.Fatalf("checkCanvasRetrievalDependencies(outside canvas) error = %v", err)
+	}
+	if got, _ := inputs["dataset_ids"].([]string); len(got) != 2 {
+		t.Fatalf("dataset_ids = %v, want both bindings kept", inputs["dataset_ids"])
 	}
 }

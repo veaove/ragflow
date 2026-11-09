@@ -9,6 +9,7 @@ import {
 import { RAGFlowFormItem } from '@/components/ragflow-form';
 import { RerankFormFields } from '@/components/rerank';
 import { SimilaritySliderFormField } from '@/components/similarity-slider';
+import { SwitchFormField } from '@/components/switch-form-field';
 import {
   RerankCandidatesCountFormField,
   rerankCandidatesCountSchema,
@@ -52,6 +53,7 @@ export const RetrievalPartialSchema = {
   dataset_ids: z.array(z.string()).optional(),
   rerank_id: z.string(),
   cross_languages: z.array(z.string()),
+  allow_partial_kb: z.boolean().optional(),
   ...MetadataFilterSchema,
   memory_ids: z.array(z.string()).optional(),
   retrieval_from: z.string(),
@@ -212,6 +214,11 @@ function RetrievalForm({ node }: INextOperatorForm) {
                 <CrossLanguageFormField name="cross_languages"></CrossLanguageFormField>
               </>
             )}
+            <SwitchFormField
+              name="allow_partial_kb"
+              label={t('flow.allowPartialKb')}
+              tooltip={t('flow.allowPartialKbTip')}
+            ></SwitchFormField>
           </section>
         </Collapse>
         <Output list={outputList}></Output>

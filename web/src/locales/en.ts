@@ -3336,6 +3336,9 @@ Best for: Documents with flowing, contextually connected content — such as boo
       uploadSourcesTip:
         'Supports file IDs, file URLs, or variables. You can separate multiple values with commas or use a JSON array format (for example ["id1","https://example.com/a.pdf"]).',
       advancedSettings: 'Advanced settings',
+      allowPartialKb: 'Partial knowledge base access',
+      allowPartialKbTip:
+        'When some bound knowledge bases are not accessible to the current user, retrieve from the accessible ones instead of failing the whole retrieval. Turn this off to require every bound knowledge base to be accessible.',
       addTools: 'Add tools',
       sysPromptDefaultValue: `
       <role>
@@ -4437,6 +4440,7 @@ Important structured information may include: names, dates, locations, events, k
       enableWebSearch: 'Enable web search',
       enableRelatedSearch: 'Enable related search',
       showQueryMindmap: 'Show query mindmap',
+      allowPartialKb: 'Partial knowledge base access',
       embedApp: 'Embed app',
       relatedSearch: 'Related search',
       descriptionValue: 'You are an intelligent assistant.',

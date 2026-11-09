@@ -2269,23 +2269,13 @@ func (s *ChatPipelineService) scopeChatKBsForUser(ctx context.Context, userID st
 // (deleted or disabled datasets) are dropped without being reported as denied:
 // they hold no content and getModels skips them anyway.
 func (s *ChatPipelineService) visibleChatKBsForUser(ctx context.Context, userID string, chat *entity.Chat) (allowed []string, denied []string) {
-	subject := permission.Subject{UserID: userID}
+	ids := make([]string, 0, len(chat.KBIDs))
 	for _, raw := range chat.KBIDs {
-		kbID, ok := raw.(string)
-		if !ok || kbID == "" {
-			continue
+		if kbID, ok := raw.(string); ok && kbID != "" {
+			ids = append(ids, kbID)
 		}
-		err := CheckDatasetAccess(ctx, subject, kbID, permission.OperationUse)
-		if err == nil {
-			allowed = append(allowed, kbID)
-			continue
-		}
-		if errors.Is(err, permission.ErrResourceNotFound) {
-			continue
-		}
-		denied = append(denied, kbID)
 	}
-	return allowed, denied
+	return VisibleDatasetIDs(ctx, permission.Subject{UserID: userID}, ids)
 }
 
 // requireChatKBsForUser refuses a turn whose chat is bound to datasets the

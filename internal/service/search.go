@@ -18,10 +18,13 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"gorm.io/gorm"
+
+	"go.uber.org/zap"
 
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
@@ -331,6 +334,25 @@ type SearchCompletionPlan struct {
 	Options    AskStreamOptions
 }
 
+// errNoVisibleSearchDataset rejects a search turn whose every bound dataset is
+// out of the caller's reach: there is nothing to retrieve from, so answering
+// would invent content.
+var errNoVisibleSearchDataset = errors.New("no knowledge base in this search is available to the caller")
+
+// searchConfigAllowsPartialKB reports whether a search app may answer from the
+// subset of its bindings the caller can use. It defaults to true; set
+// search_config.allow_partial_kb = false to restore the strict "every binding or
+// nothing" policy.
+func searchConfigAllowsPartialKB(searchConfig map[string]interface{}) bool {
+	if searchConfig == nil {
+		return true
+	}
+	if value, ok := searchConfig["allow_partial_kb"].(bool); ok {
+		return value
+	}
+	return true
+}
+
 func (s *SearchService) PrepareCompletion(ctx context.Context, userID, searchID string, req *SearchCompletionsRequest) (*SearchCompletionPlan, common.ErrorCode, error) {
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
@@ -370,10 +392,26 @@ func (s *SearchService) PrepareCompletion(ctx context.Context, userID, searchID 
 		return nil, common.CodeDataError, fmt.Errorf("`kb_ids` is required")
 	}
 
-	for _, datasetID := range datasetIDs {
-		if err := CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, datasetID, permission.OperationUse); err != nil {
-			code, permissionErr := permissionresponse.Normalize(err)
-			return nil, code, permissionErr
+	// 搜索应用是团队资产，绑定的知识库不一定每个使用者都能打开。默认只收敛到
+	// 调用者可见的库继续检索；allow_partial_kb=false 恢复「任一绑定不可用即拒绝」。
+	subject := permission.Subject{UserID: userID}
+	if searchConfigAllowsPartialKB(searchConfig) {
+		allowed, denied := VisibleDatasetIDs(ctx, subject, datasetIDs)
+		if len(denied) > 0 {
+			common.Warn("search app narrowed to the caller's visible datasets",
+				zap.String("search_id", searchID), zap.String("user_id", userID),
+				zap.Strings("denied_dataset_ids", denied))
+		}
+		if len(allowed) == 0 {
+			return nil, common.CodeDataError, errNoVisibleSearchDataset
+		}
+		datasetIDs = allowed
+	} else {
+		for _, datasetID := range datasetIDs {
+			if err := CheckDatasetAccess(ctx, subject, datasetID, permission.OperationUse); err != nil {
+				code, permissionErr := permissionresponse.Normalize(err)
+				return nil, code, permissionErr
+			}
 		}
 	}
 

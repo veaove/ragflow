@@ -156,6 +156,7 @@ export const initialRetrievalValues = {
   ...initialSimilarityThresholdValue,
   ...initialKeywordsSimilarityWeightValue,
   cross_languages: [],
+  allow_partial_kb: true,
   retrieval_from: RetrievalFrom.Dataset,
   outputs: {
     formalized_content: {

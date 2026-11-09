@@ -84,6 +84,7 @@ type retrievalParams struct {
 	UseKG                    bool
 	MetaDataFilter           map[string]any
 	RetrievalFrom            string
+	AllowPartialKB           *bool
 }
 
 // parseRetrievalParams reads the v1 DSL node params for Retrieval.
@@ -148,6 +149,9 @@ func parseRetrievalParams(params map[string]any) retrievalParams {
 	}
 	if v, ok := params["retrieval_from"].(string); ok {
 		out.RetrievalFrom = v
+	}
+	if v, ok := params["allow_partial_kb"].(bool); ok {
+		out.AllowPartialKB = &v
 	}
 	return out
 }
@@ -265,8 +269,40 @@ func checkCanvasRetrievalDependencies(ctx context.Context, db *gorm.DB, inputs m
 	case strings.TrimSpace(retrievalFrom) == "" && len(datasetIDs) == 0 && len(memoryIDs) > 0:
 		return agenttool.CheckCanvasDependencies(ctx, db, permission.ResourceKindMemory, memoryIDs)
 	default:
-		return agenttool.CheckCanvasDependencies(ctx, db, permission.ResourceKindDataset, datasetIDs)
+		if !allowPartialRetrievalKB(inputs) {
+			return agenttool.CheckCanvasDependencies(ctx, db, permission.ResourceKindDataset, datasetIDs)
+		}
+		allowed, denied, err := agenttool.FilterCanvasDependencies(ctx, db, permission.ResourceKindDataset, datasetIDs)
+		if err != nil {
+			return err
+		}
+		if len(denied) > 0 {
+			common.Warn("agent retrieval narrowed to the caller's visible datasets",
+				zap.Strings("denied_dataset_ids", denied))
+		}
+		if len(datasetIDs) > 0 && len(allowed) == 0 {
+			return errNoVisibleRetrievalDataset
+		}
+		if len(allowed) > 0 {
+			inputs["dataset_ids"] = allowed
+		}
+		return nil
 	}
+}
+
+// errNoVisibleRetrievalDataset rejects a retrieval whose every bound dataset is
+// out of reach for the canvas caller or the canvas owner: there is nothing to
+// retrieve from, so returning an empty answer would look like a bad corpus.
+var errNoVisibleRetrievalDataset = errors.New("no dataset bound to this retrieval is available to the caller")
+
+// allowPartialRetrievalKB reports whether the retrieval node may answer from the
+// subset of its bound datasets the caller can use. It defaults to true; set
+// allow_partial_kb=false to restore the strict "every binding or nothing" policy.
+func allowPartialRetrievalKB(inputs map[string]any) bool {
+	if value, ok := inputs["allow_partial_kb"].(bool); ok {
+		return value
+	}
+	return true
 }
 
 func (c *retrievalComponent) Stream(_ context.Context, _ *gorm.DB, _ map[string]any) (<-chan map[string]any, error) {
@@ -377,6 +413,9 @@ func (c *retrievalComponent) applyDefaults(inputs map[string]any) map[string]any
 	}
 	if _, ok := out["retrieval_from"]; !ok && c.params.RetrievalFrom != "" {
 		out["retrieval_from"] = c.params.RetrievalFrom
+	}
+	if _, ok := out["allow_partial_kb"]; !ok && c.params.AllowPartialKB != nil {
+		out["allow_partial_kb"] = *c.params.AllowPartialKB
 	}
 	// Translate v1 DSL name `kb_ids` to the tool's expected
 	// name `dataset_ids`. dataset_ids already-set wins; kb_ids

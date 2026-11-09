@@ -18,6 +18,7 @@ package tool
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -64,6 +65,57 @@ func CheckCanvasDependencies(ctx context.Context, db *gorm.DB, kind permission.R
 		}
 	}
 	return nil
+}
+
+// FilterCanvasDependencies splits ids into the ones both the canvas caller and
+// the canvas owner can use and the ones at least one of them cannot. Calls
+// outside a canvas have no entry dependency, so every id is returned as allowed
+// and the normal resource checks still apply.
+//
+// A dependency that no longer resolves (deleted or disabled) lands in neither
+// list: it holds no content to leak and must not fail the whole retrieval. Any
+// other error is infrastructure failure and is returned to the caller.
+func FilterCanvasDependencies(ctx context.Context, db *gorm.DB, kind permission.ResourceKind, ids []string) (allowed []string, denied []string, err error) {
+	state, stateErr := runtime.GetStateFromContext(ctx)
+	if stateErr != nil || state == nil {
+		return append([]string(nil), ids...), nil, nil
+	}
+	canvasID, _ := state.Sys["canvas_id"].(string)
+	userID, _ := state.Sys["user_id"].(string)
+	canvasID = strings.TrimSpace(canvasID)
+	userID = strings.TrimSpace(userID)
+	if canvasID == "" {
+		return append([]string(nil), ids...), nil, nil
+	}
+	if userID == "" {
+		return nil, nil, permission.ErrUnauthenticated
+	}
+
+	checker := permission.NewDatabaseChecker(db)
+	entry := permission.ResourceRef{Kind: permission.ResourceKindCanvas, ID: canvasID}
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		dependency := permission.ResourceRef{Kind: kind, ID: id}
+		checkErr := checker.CheckDependency(ctx, permission.Subject{UserID: userID}, entry, dependency, permission.OperationRun, permission.OperationUse)
+		switch {
+		case checkErr == nil:
+			allowed = append(allowed, id)
+		case errors.Is(checkErr, permission.ErrResourceNotFound):
+		case errors.Is(checkErr, permission.ErrPermissionDenied):
+			denied = append(denied, id)
+		default:
+			return nil, nil, fmt.Errorf("%s %q: %w", kind, id, checkErr)
+		}
+	}
+	return allowed, denied, nil
 }
 
 // canvasTenantID derives the tenant id from canvas state, falling back to

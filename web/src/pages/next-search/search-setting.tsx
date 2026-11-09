@@ -111,6 +111,8 @@ function SearchSetting({
         rerank_candidates_count: search_config?.rerank_candidates_count ?? 100,
         summary: search_config?.summary || false,
         chat_id: search_config?.chat_id || '',
+        // 存量搜索应用没有这个字段，语义上默认允许部分库可用，与后端默认一致。
+        allow_partial_kb: search_config?.allow_partial_kb ?? true,
         llm_setting: {
           llm_id: search_config?.chat_id || '',
           parameter: llm_setting?.parameter || '',
@@ -253,6 +255,21 @@ function SearchSetting({
               name="search_config.kb_ids"
               required
             ></KnowledgeBaseFormField>
+            <FormField
+              control={formMethods.control}
+              name="search_config.allow_partial_kb"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                  <FormControl>
+                    <Switch
+                      checked={field.value ?? true}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <FormLabel>{t('search.allowPartialKb')}</FormLabel>
+                </FormItem>
+              )}
+            />
             <MetadataFilter prefix="search_config."></MetadataFilter>
             <SimilaritySliderFormField
               isTooltipShown

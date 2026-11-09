@@ -4,6 +4,7 @@ import { FormContainer } from '@/components/form-container';
 import { MetadataFilter } from '@/components/metadata-filter';
 import { RerankFormFields } from '@/components/rerank';
 import { SimilaritySliderFormField } from '@/components/similarity-slider';
+import { SwitchFormField } from '@/components/switch-form-field';
 import { RerankCandidatesCountFormField } from '@/components/rerank-candidates-count-item';
 
 import { TopNFormField } from '@/components/top-n-item';
@@ -88,6 +89,11 @@ const RetrievalForm = () => {
                 <CrossLanguageFormField name="cross_languages"></CrossLanguageFormField>
               </>
             )}
+            <SwitchFormField
+              name="allow_partial_kb"
+              label={t('flow.allowPartialKb')}
+              tooltip={t('flow.allowPartialKbTip')}
+            ></SwitchFormField>
           </FormContainer>
         </Collapse>
       </FormWrapper>
