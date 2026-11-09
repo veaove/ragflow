@@ -4579,3 +4579,46 @@ func TestFileDeleteRemovesLinkedDocument(t *testing.T) {
 		t.Fatal("document should have been deleted but still exists")
 	}
 }
+
+// 删除文件时必须把它的授权规则一起删掉：规则留下就成了指向已删资源的孤儿。
+// 接口靠 missing 过滤不再展示，但数据会一直积累（线上 2026-11-09 清过 8 条）。
+func TestDeleteDocumentFullDropsItsGrantRules(t *testing.T) {
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+
+	insertTestKB(t, "kb-1", "tenant-1", 2, 0, 0)
+	insertTestDoc(t, "doc-1", "kb-1", 0, 0)
+	insertTestDoc(t, "doc-2", "kb-1", 0, 0)
+	insertTestIngestionTask(t, "task-1", "user-1", "doc-1", "kb-1")
+
+	now := time.Now().UnixMilli()
+	for _, grant := range []*entity.ResourceGrant{
+		{
+			ID: "grant-doc-1", TenantID: "tenant-1", ResourceKind: "document", ResourceID: "doc-1",
+			SubjectKind: entity.GrantSubjectUser, SubjectID: "user-2", Permission: "read",
+			Effect: entity.GrantEffectDeny, BaseModel: entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+		},
+		{
+			ID: "grant-doc-2", TenantID: "tenant-1", ResourceKind: "document", ResourceID: "doc-2",
+			SubjectKind: entity.GrantSubjectUser, SubjectID: "user-2", Permission: "read",
+			Effect: entity.GrantEffectDeny, BaseModel: entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+		},
+	} {
+		if err := db.Create(grant).Error; err != nil {
+			t.Fatalf("insert grant %s: %v", grant.ID, err)
+		}
+	}
+
+	svc := testDocumentService(t)
+	if err := svc.deleteDocumentFull(t.Context(), "doc-1"); err != nil {
+		t.Fatalf("deleteDocumentFull failed: %v", err)
+	}
+
+	var rules []entity.ResourceGrant
+	if err := db.Where("resource_kind = ?", "document").Order("id").Find(&rules).Error; err != nil {
+		t.Fatalf("reload grants: %v", err)
+	}
+	if len(rules) != 1 || rules[0].ID != "grant-doc-2" {
+		t.Fatalf("remaining document grants = %v, want only grant-doc-2", rules)
+	}
+}

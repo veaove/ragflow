@@ -5,12 +5,10 @@ import { api, authFile, IDENTITIES, tokenOf } from '../support/env';
 /**
  * 孤儿授权：指向「已删除资源」的规则。
  *
- * 删知识库 / 删文件都不会级联删 `resource_grant`，于是库里留着这些行。它们既
- * 没有名字也没有归属，在「按成员」视角里表现为一行空白 —— 解释不了来源，点不
- * 进去，还把页头的授权条数抬高。线上 2026-11-09 实测有 8 条（5 库 + 3 文件）。
- *
- * 修法是不展示（`grantResourceLabels` 报 missing，`GrantsBySubject` 丢行），
- * 数据本身仍然建议清一次。
+ * 删除资源时会在同一事务里清掉它的规则（deleteDataset / deleteDocRecordWithCounters），
+ * 这条用例守的是更外一层：即使库里混进了历史孤儿行（清理被绕过、直接改库），
+ * 「按成员」视角也不能把它们列成空白 —— 解释不了来源，点不进去，还把页头的
+ * 授权条数抬高。线上 2026-11-09 清理过 8 条历史孤儿（5 库 + 3 文件）。
  */
 
 type Row = { resource_kind: string; resource_id: string; resource_name: string };
