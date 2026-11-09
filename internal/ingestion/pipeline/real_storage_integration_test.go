@@ -123,10 +123,10 @@ func TestPipelineRun_TemplateGeneral_RealMySQLMinIO_OutputShape(t *testing.T) {
 	}
 	// The GeneralChunker merges the two short paragraphs into one chunk under
 	// the global token-size budget (chunk_token_size=512, no backtick
-	// delimiter): this matches Python's _merge_text_chunks_by_token_size and
-	// is the intended behaviour. TextParser emits one normalized json item;
-	// GeneralChunker owns the delimiter split and collapses the atoms.
-	wantChunkTexts := []string{"Alpha paragraph.\nBeta paragraph."}
+	// delimiter). TextParser emits one normalized json item that keeps the blank
+	// line between paragraphs, and the chunker emits that item unchanged rather
+	// than re-splitting and re-joining it, so the paragraph separator survives.
+	wantChunkTexts := []string{"Alpha paragraph.\n\nBeta paragraph."}
 	if len(chunks) != len(wantChunkTexts) {
 		t.Fatalf("len(chunks) = %d, want %d", len(chunks), len(wantChunkTexts))
 	}

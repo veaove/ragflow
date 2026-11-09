@@ -1074,7 +1074,17 @@ func requiresEmbeddingVector(ck schema.ChunkDoc, fields []string) bool {
 	return strings.TrimSpace(cleanEmbeddingText(concatFields(ck, fields))) != ""
 }
 
+// embeddingHTMLTagRE strips markup before deciding whether a chunk has anything
+// worth embedding. A chunk that only carries empty table scaffolding
+// ("<table><tr><td></td></tr></table>") otherwise looks non-empty and burns an
+// embedding call on markup with no retrievable text. Chunks with real cell text
+// still pass because the text survives tag removal.
+var embeddingHTMLTagRE = regexp.MustCompile(`<[^>]*>`)
+
 func cleanEmbeddingText(text string) string {
+	if strings.ContainsAny(text, "<>") {
+		text = embeddingHTMLTagRE.ReplaceAllString(text, " ")
+	}
 	return strings.TrimSpace(text)
 }
 
