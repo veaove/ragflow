@@ -456,6 +456,55 @@ func autoMigrateRuntimeModels(ctx context.Context, db *gorm.DB) error {
 	if err := ensureAppVisibilityColumns(ctx, db); err != nil {
 		return err
 	}
+
+	// 三级可见性上线前写入的 me / team 存量值收敛成 owner / tenant_owner。
+	if err := migrateLegacyVisibilityValues(ctx, db); err != nil {
+		return err
+	}
+	return nil
+}
+
+// migrateLegacyVisibilityValues 把三级可见性模型上线前写入的旧档位收敛成规范三档。
+//
+// 读取侧用 entity.NormalizeResourceVisibility 兼容旧值，这里让库里的取值与新写入
+// 路径一致：只认规范值的新链路（例如按 visibility 列做的 SQL 过滤）不会再因为
+// 碰到 me / team 而静默漏行。只改非规范值，重复执行不产生写入。
+func migrateLegacyVisibilityValues(ctx context.Context, db *gorm.DB) error {
+	targets := []struct {
+		model  interface{ TableName() string }
+		column string
+	}{
+		{&entity.Knowledgebase{}, "permission"},
+		{&entity.UserCanvas{}, "permission"},
+		{&entity.Chat{}, "permission"},
+		{&entity.Search{}, "permission"},
+		{&entity.Memory{}, "permissions"},
+	}
+	for _, target := range targets {
+		table := target.model.TableName()
+		// 只建了部分表的单测与本表无关，缺表跳过，别把一次补数据变成启动失败。
+		if !db.Migrator().HasTable(table) || !db.Migrator().HasColumn(table, target.column) {
+			continue
+		}
+		col := target.column
+		normalized := "CASE " +
+			"WHEN LOWER(TRIM(" + col + ")) IN ('me', 'private', '') THEN ? " +
+			"WHEN LOWER(TRIM(" + col + ")) IN ('team', 'tenant') THEN ? " +
+			"WHEN LOWER(TRIM(" + col + ")) IN ('public', 'platform_admin') THEN ? " +
+			"ELSE " + col + " END"
+		if err := db.WithContext(ctx).Exec(
+			"UPDATE "+table+" SET "+col+" = "+normalized+
+				" WHERE LOWER(TRIM("+col+")) NOT IN (?, ?, ?)",
+			entity.ResourceVisibilityOwner,
+			entity.ResourceVisibilityTenantOwner,
+			entity.ResourceVisibilityPlatform,
+			entity.ResourceVisibilityOwner,
+			entity.ResourceVisibilityTenantOwner,
+			entity.ResourceVisibilityPlatform,
+		).Error; err != nil {
+			return fmt.Errorf("normalize %s.%s: %w", table, col, err)
+		}
+	}
 	return nil
 }
 
