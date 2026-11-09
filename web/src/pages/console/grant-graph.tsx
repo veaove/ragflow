@@ -37,6 +37,8 @@ import {
 import {
   GraphView,
   IDENTITY_VIEW,
+  MAX_SCALE,
+  MIN_SCALE,
   clampView,
   distanceBetween,
   midpoint,
@@ -44,6 +46,12 @@ import {
   pinchScale,
   zoomAt,
 } from './grant-graph-viewport';
+
+/** 按钮与键盘的缩放步进：每次 10%，1× → 1.9× 约 7 次到位。 */
+const ZOOM_STEP = 1.1;
+
+const ZOOM_BUTTON_CLASS =
+  'flex size-7 items-center justify-center rounded-full text-base leading-none text-text-secondary transition-colors hover:text-accent-primary disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary';
 
 interface GrantGraphProps {
   tenantId: string;
@@ -429,11 +437,15 @@ export function GrantGraph({ tenantId, viewerId }: GrantGraphProps) {
         break;
       case '+':
       case '=':
-        scheduleView(zoomAt(current, current.scale * 1.1, center, canvas));
+        scheduleView(
+          zoomAt(current, current.scale * ZOOM_STEP, center, canvas),
+        );
         break;
       case '-':
       case '_':
-        scheduleView(zoomAt(current, current.scale / 1.1, center, canvas));
+        scheduleView(
+          zoomAt(current, current.scale / ZOOM_STEP, center, canvas),
+        );
         break;
       case '0':
       case 'Home':
@@ -443,6 +455,13 @@ export function GrantGraph({ tenantId, viewerId }: GrantGraphProps) {
         return;
     }
     event.preventDefault();
+  };
+
+  /** 按钮缩放：以视口中心为基准，与键盘 +/- 共用同一套步进与边界。 */
+  const zoomByStep = (factor: number) => {
+    const current = latestView();
+    const center = { x: canvas.width / 2, y: canvas.height / 2 };
+    scheduleView(zoomAt(current, current.scale * factor, center, canvas));
   };
 
   const focusedEdges = useMemo(() => {
@@ -902,14 +921,43 @@ export function GrantGraph({ tenantId, viewerId }: GrantGraphProps) {
             >
               <FingerIcon />
             </button>
-            {(dragging || view.scale !== 1) && (
-              <span
-                data-testid="graph-zoom-badge"
-                className="pointer-events-none absolute bottom-6 right-16 z-20 rounded bg-bg-base/90 px-1.5 py-0.5 text-[11px] tabular-nums text-text-secondary shadow-sm"
+            {/* 显式缩放入口：不习惯手势的鼠标用户也能放大缩小，百分比即复位键。 */}
+            <div className="absolute bottom-3 right-16 z-20 flex items-center rounded-full border border-border-default bg-bg-base/90 p-0.5 shadow-md backdrop-blur">
+              <button
+                type="button"
+                data-testid="graph-zoom-out"
+                aria-label="缩小画布"
+                title={`缩小（键盘 -），最小 ${Math.round(MIN_SCALE * 100)}%`}
+                disabled={view.scale <= MIN_SCALE + 0.005}
+                onClick={() => zoomByStep(1 / ZOOM_STEP)}
+                className={ZOOM_BUTTON_CLASS}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                data-testid="graph-zoom-reset"
+                aria-label={`当前缩放 ${Math.round(
+                  view.scale * 100,
+                )}%，点击回到 100%`}
+                title="回到 100%（键盘 0）"
+                onClick={resetView}
+                className="min-w-11 rounded-full px-1 py-1 text-[11px] tabular-nums text-text-secondary transition-colors hover:text-accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-primary"
               >
                 {Math.round(view.scale * 100)}%
-              </span>
-            )}
+              </button>
+              <button
+                type="button"
+                data-testid="graph-zoom-in"
+                aria-label="放大画布"
+                title={`放大（键盘 +），最大 ${Math.round(MAX_SCALE * 100)}%`}
+                disabled={view.scale >= MAX_SCALE - 0.005}
+                onClick={() => zoomByStep(ZOOM_STEP)}
+                className={ZOOM_BUTTON_CLASS}
+              >
+                +
+              </button>
+            </div>
           </>
         )}
 

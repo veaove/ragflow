@@ -557,4 +557,35 @@ describe('GrantGraph 组件', () => {
     }
     await waitFor(() => expect(handle).toHaveAttribute('data-scale', '1.90'));
   });
+
+  it('缩放按钮：每次 10%，百分比即复位，到上下限置灰', async () => {
+    renderGraph();
+    const handle = await screen.findByTestId('graph-pan-handle');
+    const zoomIn = screen.getByTestId('graph-zoom-in');
+    const zoomOut = screen.getByTestId('graph-zoom-out');
+    const reset = screen.getByTestId('graph-zoom-reset');
+
+    expect(zoomOut).toBeEnabled();
+
+    fireEvent.click(zoomIn);
+    await waitFor(() =>
+      expect(Number(handle.getAttribute('data-scale'))).toBeCloseTo(1.1, 2),
+    );
+    expect(reset).toHaveTextContent('110%');
+
+    for (let i = 0; i < 12; i += 1) {
+      fireEvent.click(zoomIn);
+    }
+    await waitFor(() => expect(handle).toHaveAttribute('data-scale', '1.90'));
+    expect(zoomIn).toBeDisabled();
+
+    fireEvent.click(reset);
+    await waitFor(() => expect(handle).toHaveAttribute('data-scale', '1.00'));
+
+    for (let i = 0; i < 12; i += 1) {
+      fireEvent.click(zoomOut);
+    }
+    await waitFor(() => expect(handle).toHaveAttribute('data-scale', '0.60'));
+    expect(zoomOut).toBeDisabled();
+  });
 });
