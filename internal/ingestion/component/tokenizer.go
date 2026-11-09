@@ -470,10 +470,14 @@ func (c *TokenizerComponent) embedChunks(ctx context.Context, tenantID, kbID, na
 	cacheHits := 0
 	for i, ck := range chunks {
 		raw := concatFields(ck, c.param.Fields)
-		txt := strings.TrimSpace(raw)
-		if txt == "" {
+		// Markup-only chunks (empty table scaffolding) have nothing to embed,
+		// so the skip decision uses the cleaned text while the embedded text
+		// keeps the markup: table chunks are embedded with their <table>
+		// rendering by design.
+		if cleanEmbeddingText(raw) == "" {
 			continue
 		}
+		txt := strings.TrimSpace(raw)
 		// Per-chunk embedding cache: identical (dataset embd_id, chunk, embedded
 		// text) triples reuse the previous content vector, skipping the embed
 		// round-trip on resume. The key includes the text that is actually

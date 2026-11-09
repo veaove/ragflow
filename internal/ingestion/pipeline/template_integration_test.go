@@ -41,6 +41,7 @@ import (
 	componentpkg "ragflow/internal/ingestion/component"
 	_ "ragflow/internal/ingestion/component/chunker"
 	"ragflow/internal/ingestion/testutil"
+	"ragflow/internal/parser/parser"
 	"ragflow/internal/storage"
 
 	"github.com/signintech/gopdf"
@@ -216,11 +217,11 @@ func TestPipelineRun_TemplateOne_RealComponents(t *testing.T) {
 	if got := parserState["output_format"]; got != "json" {
 		t.Fatalf("parser output_format = %v, want json", got)
 	}
-	jsonItems, ok := parserState["json"].([]map[string]any)
+	jsonItems, ok := parserState["json"].([]parser.DocItem)
 	if !ok || len(jsonItems) != 1 {
 		t.Fatalf("parser json = %T/%v, want 1 item", parserState["json"], parserState["json"])
 	}
-	if got := jsonItems[0]["text"]; got != "Alpha paragraph.\n\nBeta paragraph." {
+	if got := jsonItems[0].ToMap()["text"]; got != "Alpha paragraph.\n\nBeta paragraph." {
 		t.Fatalf("parser json[0].text = %v, want normalized full text", got)
 	}
 	chunkerState, ok := state["OneChunker:DryDrinksVisit"]
@@ -318,9 +319,9 @@ func TestPipelineRun_TemplateOne_RealComponents_PDFDeepdocChunking(t *testing.T)
 	if got := fileState["page_count"]; got != fixture.PageCount {
 		t.Fatalf("parser file.page_count = %v, want %d", got, fixture.PageCount)
 	}
-	jsonItems, ok := parserState["json"].([]map[string]any)
+	jsonItems, ok := parserState["json"].([]parser.DocItem)
 	if !ok || len(jsonItems) == 0 {
-		t.Fatalf("parser json = %T/%v, want non-empty []map[string]any", parserState["json"], parserState["json"])
+		t.Fatalf("parser json = %T/%v, want non-empty []parser.DocItem", parserState["json"], parserState["json"])
 	}
 	parserJoined := joinJSONItemTexts(jsonItems)
 	assertNormalizedContainsAll(t, parserJoined, fixture.ExpectContains...)
@@ -380,22 +381,25 @@ func TestPipelineRun_TemplateManual_RealComponents(t *testing.T) {
 	if !ok {
 		t.Fatalf("chunks = %T, want []map[string]any", payload["chunks"])
 	}
-	wantChunkTexts := []string{
-		"PART ONE\n\nIntro paragraph.\n\nSection 1\n\nDetail paragraph.\n\nPART TWO\n\nTail paragraph.",
-	}
+	// parser 保留原文（空行在内）；ManualChunker 的分组把正文拆成按行的
+	// record 后用 "\n" 重新拼接、每条各补一个换行（python common.py
+	// `"".join(record["text"] + "\n" ...)`），所以 chunk 文本没有空行、
+	// 但以换行结尾。
+	const wantText = "PART ONE\n\nIntro paragraph.\n\nSection 1\n\nDetail paragraph.\n\nPART TWO\n\nTail paragraph."
+	wantChunkTexts := []string{"PART ONE\nIntro paragraph.\nSection 1\nDetail paragraph.\nPART TWO\nTail paragraph.\n"}
 	if len(chunks) != len(wantChunkTexts) {
 		t.Fatalf("len(chunks) = %d, want %d; chunks=%v", len(chunks), len(wantChunkTexts), chunks)
 	}
 	totalTokens := 0
-	for i, wantText := range wantChunkTexts {
-		if got := chunks[i]["text"]; got != wantText {
-			t.Fatalf("chunks[%d].text = %v, want %q", i, got, wantText)
+	for i, wantChunkText := range wantChunkTexts {
+		if got := chunks[i]["text"]; got != wantChunkText {
+			t.Fatalf("chunks[%d].text = %q, want %q", i, got, wantChunkText)
 		}
 		if _, ok := chunks[i]["content_ltks"].(string); !ok || chunks[i]["content_ltks"] == "" {
 			t.Fatalf("chunks[%d].content_ltks missing or empty: %v", i, chunks[i]["content_ltks"])
 		}
 		vec := floatSliceFromAny(t, chunks[i]["q_4_vec"])
-		wantEmbedText := strings.TrimSpace(wantText)
+		wantEmbedText := strings.TrimSpace(wantChunkText)
 		wantFirst := expectedFixedEmbedderFirst(filename, wantEmbedText)
 		if len(vec) != 4 || !approxFloat(vec[0], wantFirst) {
 			t.Fatalf("chunks[%d].q_4_vec = %v, want first=%v", i, vec, wantFirst)
@@ -413,12 +417,12 @@ func TestPipelineRun_TemplateManual_RealComponents(t *testing.T) {
 	}
 	// TextParser 对 .txt 只产出一个归一化 item（空行保留在正文里），
 	// 段落切分交给 chunker，与 TemplateOne 的契约一致。
-	jsonItems, ok := parserState["json"].([]map[string]any)
+	jsonItems, ok := parserState["json"].([]parser.DocItem)
 	if !ok || len(jsonItems) != 1 {
 		t.Fatalf("parser json = %T/%v, want 1 item", parserState["json"], parserState["json"])
 	}
-	if got := jsonItems[0]["text"]; got != wantChunkTexts[0] {
-		t.Fatalf("parser json[0].text = %v, want %q", got, wantChunkTexts[0])
+	if got := jsonItems[0].ToMap()["text"]; got != wantText {
+		t.Fatalf("parser json[0].text = %v, want %q", got, wantText)
 	}
 	chunkerState, ok := state["ManualChunker:NineInsectsFind"]
 	if !ok {

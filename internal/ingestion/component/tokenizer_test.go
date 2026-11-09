@@ -659,9 +659,10 @@ func TestTokenizerComponent_Embedding_SkipsEmptyCleanedTextsButReturnsZeroWhenAl
 	if err != nil {
 		t.Fatalf("Invoke: %v", err)
 	}
-	// 1 次是文件名（title）向量，内容批次必须为 0：两个 chunk 清洗后都为空。
-	if got := stub.calls.Load(); got != 1 {
-		t.Fatalf("embedder calls = %d, want 1 (title only)", got)
+	// 两个 chunk 清洗后都是空文本，内容批次与文件名向量都不需要发起：
+	// 没有任何内容向量时 title 向量也无处可加，embedChunks 直接返回。
+	if got := stub.calls.Load(); got != 0 {
+		t.Fatalf("embedder calls = %d, want 0", got)
 	}
 	if got := out["embedding_token_consumption"]; got != 0 {
 		t.Fatalf("embedding_token_consumption = %v, want 0", got)

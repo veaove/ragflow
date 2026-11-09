@@ -41,8 +41,7 @@ func TestMain(m *testing.M) {
 	// Run the test cases
 	code := m.Run()
 
-	err = TestConfig.Logout()
-	if err != nil {
+	if err := TestConfig.Logout(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to logout: %v\n", err)
 		os.Exit(1)
 	}
