@@ -23,19 +23,23 @@ import "testing"
 // to the strictest tier instead of opening up.
 func TestNormalizeResourceVisibility(t *testing.T) {
 	cases := map[string]string{
-		"":             ResourceVisibilityOwner,
-		"owner":        ResourceVisibilityOwner,
-		"me":           ResourceVisibilityOwner,
-		"private":      ResourceVisibilityOwner,
-		"owner ":       ResourceVisibilityOwner,
-		"tenant_owner": ResourceVisibilityTenantOwner,
-		"team":         ResourceVisibilityTenantOwner,
-		"tenant":       ResourceVisibilityTenantOwner,
-		"TENANT_OWNER": ResourceVisibilityTenantOwner,
-		"platform":     ResourceVisibilityPlatform,
-		"public":       ResourceVisibilityPlatform,
+		"":               ResourceVisibilityOwner,
+		"owner":          ResourceVisibilityOwner,
+		"me":             ResourceVisibilityOwner,
+		"private":        ResourceVisibilityOwner,
+		"owner ":         ResourceVisibilityOwner,
+		"tenant_owner":   ResourceVisibilityTenantOwner,
+		"team":           ResourceVisibilityTenantOwner,
+		"tenant":         ResourceVisibilityTenantOwner,
+		"TENANT_OWNER":   ResourceVisibilityTenantOwner,
+		"platform":       ResourceVisibilityPlatform,
+		"public":         ResourceVisibilityPlatform,
 		"platform_admin": ResourceVisibilityPlatform,
-		"unknown":      ResourceVisibilityOwner,
+		// memory.permissions 允许 "all"（所有租户可见）：落到 owner 会让
+		// 用户设了「公开」却只有自己看得见，所以按最外一档处理。
+		"all":     ResourceVisibilityPlatform,
+		"ALL":     ResourceVisibilityPlatform,
+		"unknown": ResourceVisibilityOwner,
 	}
 	for input, want := range cases {
 		if got := NormalizeResourceVisibility(input); got != want {

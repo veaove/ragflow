@@ -51,7 +51,7 @@ func TestMigrateLegacyVisibilityValuesNormalizesEveryTable(t *testing.T) {
 	mustExec(t, db, `INSERT INTO user_canvas (id, permission) VALUES ('canvas-me', 'me')`)
 	mustExec(t, db, `INSERT INTO dialog (id, permission) VALUES ('chat-team', 'team')`)
 	mustExec(t, db, `INSERT INTO search (id, permission) VALUES ('search-empty', '')`)
-	mustExec(t, db, `INSERT INTO memory (id, permissions) VALUES ('memory-team', 'team')`)
+	mustExec(t, db, `INSERT INTO memory (id, permissions) VALUES ('memory-team', 'team'), ('memory-all', 'all')`)
 
 	if err := migrateLegacyVisibilityValues(context.Background(), db); err != nil {
 		t.Fatalf("migrateLegacyVisibilityValues: %v", err)
@@ -67,6 +67,8 @@ func TestMigrateLegacyVisibilityValuesNormalizesEveryTable(t *testing.T) {
 		{"dialog", "permission", "chat-team", "tenant_owner"},
 		{"search", "permission", "search-empty", "owner"},
 		{"memory", "permissions", "memory-team", "tenant_owner"},
+		// memory 允许 "all"（所有租户可见），三档里只有 platform 覆盖跨租户。
+		{"memory", "permissions", "memory-all", "platform"},
 	}
 	for _, tc := range cases {
 		if got := legacyVisibility(t, db, tc.table, tc.column, tc.id); got != tc.want {

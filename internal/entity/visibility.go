@@ -30,13 +30,15 @@ const (
 // me → owner：语义本来就是「只有自己」。
 // team → tenant_owner：原来表示「全团队可见」，现在收窄成「租户管理层可见」，
 // 普通成员改为逐人授权。这是本次权限改版里唯一一处**破坏性收窄**。
+// all → platform：memory.permissions 允许「所有租户可见」，三档里只有 platform
+// 覆盖跨租户；落到 owner 会让用户设了「公开」却只有自己看得见。
 // 读取侧始终归一化（兼容尚未迁移的行），启动时另由
-// dao.migrateLegacyVisibilityValues 把存量 me / team 改写成规范值。
+// dao.migrateLegacyVisibilityValues 把存量旧值改写成规范值。
 func NormalizeResourceVisibility(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case ResourceVisibilityTenantOwner, legacyVisibilityTeam, "tenant":
 		return ResourceVisibilityTenantOwner
-	case ResourceVisibilityPlatform, "public", "platform_admin":
+	case ResourceVisibilityPlatform, "public", "platform_admin", "all":
 		return ResourceVisibilityPlatform
 	case ResourceVisibilityOwner, legacyVisibilityMe, "private", "":
 		return ResourceVisibilityOwner

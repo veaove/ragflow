@@ -495,7 +495,7 @@ func migrateLegacyVisibilityValues(ctx context.Context, db *gorm.DB) error {
 		normalized := "CASE " +
 			"WHEN LOWER(TRIM(" + col + ")) IN ('me', 'private', '') THEN ? " +
 			"WHEN LOWER(TRIM(" + col + ")) IN ('team', 'tenant') THEN ? " +
-			"WHEN LOWER(TRIM(" + col + ")) IN ('public', 'platform_admin') THEN ? " +
+			"WHEN LOWER(TRIM(" + col + ")) IN ('public', 'platform_admin', 'all') THEN ? " +
 			"ELSE " + col + " END"
 		if err := db.WithContext(ctx).Exec(
 			"UPDATE "+table+" SET "+col+" = "+normalized+
