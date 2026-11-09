@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"strings"
 
+	"gorm.io/gorm"
+
 	"ragflow/internal/common"
 	"ragflow/internal/dao"
 	"ragflow/internal/entity"
@@ -301,11 +303,16 @@ func (s *SearchService) DeleteSearch(ctx context.Context, userID string, searchI
 	if err := checkSearchAppPermission(ctx, userID, searchID, permission.OperationDelete); err != nil {
 		return err
 	}
-	if err := s.searchDAO.DeleteByID(ctx, dao.DB, searchID); err != nil {
-		return fmt.Errorf("failed to delete search App %s: %w", searchID, err)
-	}
-
-	return nil
+	return dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.searchDAO.DeleteByID(ctx, tx, searchID); err != nil {
+			return fmt.Errorf("failed to delete search App %s: %w", searchID, err)
+		}
+		// 应用已删除，指向它的规则不再有意义；留着只会变成孤儿数据。
+		if err := dao.NewResourceGrantDAO().DeleteByResources(ctx, tx, string(permission.ResourceKindSearchApp), []string{searchID}); err != nil {
+			return fmt.Errorf("failed to delete grants of search App %s: %w", searchID, err)
+		}
+		return nil
+	})
 }
 
 // SearchCompletionPlan carries everything needed to stream one search

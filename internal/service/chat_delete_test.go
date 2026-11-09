@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -23,7 +24,7 @@ func setupChatDeleteServiceTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to open sqlite: %v", err)
 	}
 
-	if err := db.AutoMigrate(&entity.Chat{}, &entity.UserTenant{}); err != nil {
+	if err := db.AutoMigrate(&entity.Chat{}, &entity.UserTenant{}, &entity.ResourceGrant{}); err != nil {
 		t.Fatalf("failed to migrate test schema: %v", err)
 	}
 
@@ -147,5 +148,42 @@ func TestChatServiceBulkDeleteChatsReturnsPartialSuccessErrors(t *testing.T) {
 	}
 	if !strings.Contains(joined, "Chat(chat-2) not found.") {
 		t.Fatalf("expected not found error, got %v", errorsList)
+	}
+}
+
+// 软删只是把 status 置 0，规则若不同步清掉，就会变成指向"已删应用"的孤儿。
+func TestChatServiceDeleteChatDropsItsGrants(t *testing.T) {
+	db := setupChatDeleteServiceTestDB(t)
+	createChatDeleteServiceTestChat(t, db, "chat-1", "user-1")
+
+	now := time.Now().UnixMilli()
+	for _, grant := range []*entity.ResourceGrant{
+		{
+			ID: "grant-chat-1", TenantID: "user-1", ResourceKind: "chat", ResourceID: "chat-1",
+			SubjectKind: entity.GrantSubjectUser, SubjectID: "user-2", Permission: "read",
+			Effect: entity.GrantEffectAllow, BaseModel: entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+		},
+		{
+			ID: "grant-chat-2", TenantID: "user-1", ResourceKind: "chat", ResourceID: "chat-2",
+			SubjectKind: entity.GrantSubjectUser, SubjectID: "user-2", Permission: "read",
+			Effect: entity.GrantEffectAllow, BaseModel: entity.BaseModel{CreateTime: &now, UpdateTime: &now},
+		},
+	} {
+		if err := db.Create(grant).Error; err != nil {
+			t.Fatalf("insert grant %s: %v", grant.ID, err)
+		}
+	}
+
+	svc := NewChatService()
+	if err := svc.DeleteChat(t.Context(), "user-1", "chat-1"); err != nil {
+		t.Fatalf("DeleteChat failed: %v", err)
+	}
+
+	var rules []entity.ResourceGrant
+	if err := db.Order("id").Find(&rules).Error; err != nil {
+		t.Fatalf("reload grants: %v", err)
+	}
+	if len(rules) != 1 || rules[0].ID != "grant-chat-2" {
+		t.Fatalf("remaining chat grants = %v, want only grant-chat-2", rules)
 	}
 }

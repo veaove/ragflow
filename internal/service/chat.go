@@ -28,6 +28,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"gorm.io/gorm"
+
 	"ragflow/internal/dao"
 	"ragflow/internal/dao/transaction"
 )
@@ -1163,13 +1165,18 @@ func (s *ChatService) DeleteChat(ctx context.Context, userID, chatID string) err
 	if _, err := s.getChatForOperation(ctx, userID, chatID, permission.OperationDelete); err != nil {
 		return err
 	}
-	if err := s.chatDAO.UpdateByID(ctx, dao.DB, chatID, map[string]interface{}{
-		"status": string(entity.StatusInvalid),
-	}); err != nil {
-		return fmt.Errorf("failed to delete chat %s", chatID)
-	}
-
-	return nil
+	return dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.chatDAO.UpdateByID(ctx, tx, chatID, map[string]interface{}{
+			"status": string(entity.StatusInvalid),
+		}); err != nil {
+			return fmt.Errorf("failed to delete chat %s", chatID)
+		}
+		// 应用已停用，指向它的授权规则不再有意义；留着只会在控制台堆孤儿规则。
+		if err := dao.NewResourceGrantDAO().DeleteByResources(ctx, tx, string(permission.ResourceKindChat), []string{chatID}); err != nil {
+			return fmt.Errorf("failed to delete grants of chat %s: %w", chatID, err)
+		}
+		return nil
+	})
 }
 
 // BulkDeleteChatsRequest matches DELETE /api/v1/chats request semantics.
@@ -1227,8 +1234,13 @@ func (s *ChatService) BulkDeleteChats(ctx context.Context, userID string, req *B
 			errorsList = append(errorsList, fmt.Sprintf("Chat(%s) not found.", chatID))
 			continue
 		}
-		if err := s.chatDAO.UpdateByID(ctx, dao.DB, chatID, map[string]interface{}{
-			"status": string(entity.StatusInvalid),
+		if err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := s.chatDAO.UpdateByID(ctx, tx, chatID, map[string]interface{}{
+				"status": string(entity.StatusInvalid),
+			}); err != nil {
+				return err
+			}
+			return dao.NewResourceGrantDAO().DeleteByResources(ctx, tx, string(permission.ResourceKindChat), []string{chatID})
 		}); err != nil {
 			errorsList = append(errorsList, fmt.Sprintf("Failed to delete chat %s", chatID))
 			continue

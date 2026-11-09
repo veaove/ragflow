@@ -975,8 +975,13 @@ func (s *MemoryService) DeleteMemory(ctx context.Context, userID, memoryID strin
 		}
 	}
 
-	// Delete memory record
-	if err := s.memoryDAO.DeleteByID(ctx, dao.DB, memoryID); err != nil {
+	// 记录和它的授权规则同进同退：只删记录会把规则留成孤儿。
+	if err := dao.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := s.memoryDAO.DeleteByID(ctx, tx, memoryID); err != nil {
+			return err
+		}
+		return dao.NewResourceGrantDAO().DeleteByResources(ctx, tx, string(permission.ResourceKindMemory), []string{memoryID})
+	}); err != nil {
 		return errors.New("failed to delete memory")
 	}
 

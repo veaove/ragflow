@@ -1319,6 +1319,9 @@ func (s *AgentService) DeleteAgent(ctx context.Context, userID, canvasID string)
 		if _, err := s.versionDAO.DeleteByCanvasIDTx(ctx, tx, canvasID); err != nil {
 			return fmt.Errorf("delete agent: cascade versions: %w", err)
 		}
+		if err := dao.NewResourceGrantDAO().DeleteByResources(ctx, tx, string(permission.ResourceKindCanvas), []string{canvasID}); err != nil {
+			return fmt.Errorf("delete agent: cascade grants: %w", err)
+		}
 		if err := s.canvasDAO.DeleteTx(ctx, tx, canvasID); err != nil {
 			return fmt.Errorf("delete agent %s: %w", canvasID, err)
 		}
