@@ -481,11 +481,16 @@ func migrateLegacyVisibilityValues(ctx context.Context, db *gorm.DB) error {
 		{&entity.Memory{}, "permissions"},
 	}
 	for _, target := range targets {
-		table := target.model.TableName()
+		// 必须把结构体交给 Migrator，不能传表名字符串：gorm 的 RunWithValue 对
+		// 字符串只填 stmt.Table、把 stmt.Schema 留成 nil，而 MySQL 驱动没有覆写
+		// HasColumn，通用实现会直接解引用 stmt.Schema 并 panic。sqlite 驱动自己
+		// 覆写时加了 nil 判断，所以只用 sqlite 单测覆盖不到这条差异。
+		model := target.model
 		// 只建了部分表的单测与本表无关，缺表跳过，别把一次补数据变成启动失败。
-		if !db.Migrator().HasTable(table) || !db.Migrator().HasColumn(table, target.column) {
+		if !db.Migrator().HasTable(model) || !db.Migrator().HasColumn(model, target.column) {
 			continue
 		}
+		table := model.TableName()
 		col := target.column
 		normalized := "CASE " +
 			"WHEN LOWER(TRIM(" + col + ")) IN ('me', 'private', '') THEN ? " +
