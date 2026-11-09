@@ -1552,6 +1552,9 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       multiTurn: 'Multi-turn optimization',
       multiTurnTip:
         'This optimizes user queries using context in a multi-round conversation. When enabled, it will consume additional LLM tokens.',
+      allowPartialKb: 'Partial knowledge base access',
+      allowPartialKbTip:
+        'When some bound knowledge bases are not accessible to the current user, answer from the accessible ones instead of failing the request. Turn this off to reject the request unless every bound knowledge base is accessible.',
       howUseId: 'How to use chat ID?',
       description: 'Description of assistant',
       descriptionPlaceholder: "I'm a chat assistant.",

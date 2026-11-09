@@ -236,7 +236,10 @@ func (s *ChatPipelineService) AsyncChat(
 
 	// 会话能检索的库必须同时受「会话绑定」和「调用者的知识库权限」约束。
 	// 放在分流之前：后面每个分支（含 agentic）都直接读 chat.KBIDs。
-	if err := s.requireChatKBsForUser(ctx, userID, chat); err != nil {
+	// 校验在副本上收窄 KBIDs，避免把调用方持有的 chat 改坏。
+	scoped := *chat
+	chat = &scoped
+	if err := s.scopeChatKBsForUser(ctx, userID, chat); err != nil {
 		return nil, err
 	}
 
@@ -2206,6 +2209,85 @@ func (s *ChatPipelineService) buildLLMModelConfig(info *modelModule.ModelInfo) (
 	return cfg, info.Name, info.ProviderName, "", nil
 }
 
+// errNoVisibleChatKB rejects a turn whose bindings are all invisible to the
+// caller: there is nothing to retrieve from, so answering would invent content.
+var errNoVisibleChatKB = errors.New("no knowledge base bound to this assistant is available to the caller")
+
+// allowPartialChatKB reports whether a turn may run on the subset of bindings
+// the caller can use. It defaults to true: an assistant is routinely bound to
+// datasets only some members can open, and refusing the whole turn made those
+// assistants unusable. Set prompt_config.allow_partial_kb = false to restore the
+// strict "every binding or nothing" behaviour.
+func allowPartialChatKB(chat *entity.Chat) bool {
+	if chat == nil || chat.PromptConfig == nil {
+		return true
+	}
+	if value, ok := chat.PromptConfig["allow_partial_kb"].(bool); ok {
+		return value
+	}
+	return true
+}
+
+// scopeChatKBsForUser narrows chat.KBIDs to the bindings the caller may
+// retrieve from.
+//
+// Default (allow_partial_kb unset or true): each binding is authorized
+// independently, denied bindings are dropped, and the visible ones still
+// answer. All bindings denied means there is no corpus to answer from, so the
+// turn fails instead of falling back to a bare LLM answer.
+//
+// allow_partial_kb=false keeps the strict policy: one denied binding refuses
+// the whole turn.
+func (s *ChatPipelineService) scopeChatKBsForUser(ctx context.Context, userID string, chat *entity.Chat) error {
+	if chat == nil || len(chat.KBIDs) == 0 {
+		return nil
+	}
+	if !allowPartialChatKB(chat) {
+		return s.requireChatKBsForUser(ctx, userID, chat)
+	}
+
+	allowed, denied := s.visibleChatKBsForUser(ctx, userID, chat)
+	if len(denied) > 0 {
+		common.Warn("Chat turn narrowed to the caller's visible datasets",
+			zap.String("chat_id", chat.ID), zap.String("user_id", userID),
+			zap.Strings("denied_kb_ids", denied))
+	}
+	if len(allowed) == 0 {
+		return errNoVisibleChatKB
+	}
+
+	scoped := make(entity.JSONSlice, 0, len(allowed))
+	for _, kbID := range allowed {
+		scoped = append(scoped, kbID)
+	}
+	chat.KBIDs = scoped
+	return nil
+}
+
+// visibleChatKBsForUser splits the assistant's bindings into the ones the
+// caller may retrieve from and the ones it may not. Unresolvable bindings
+// (deleted or disabled datasets) are dropped without being reported as denied:
+// they hold no content and getModels skips them anyway.
+func (s *ChatPipelineService) visibleChatKBsForUser(ctx context.Context, userID string, chat *entity.Chat) (allowed []string, denied []string) {
+	subject := permission.Subject{UserID: userID}
+	for _, raw := range chat.KBIDs {
+		kbID, ok := raw.(string)
+		if !ok || kbID == "" {
+			continue
+		}
+		err := CheckDatasetAccess(ctx, subject, kbID, permission.OperationUse)
+		if err == nil {
+			allowed = append(allowed, kbID)
+			continue
+		}
+		if errors.Is(err, permission.ErrResourceNotFound) {
+			continue
+		}
+		denied = append(denied, kbID)
+	}
+	return allowed, denied
+}
+
 // requireChatKBsForUser refuses a turn whose chat is bound to datasets the
 // caller may not retrieve from.
 //
@@ -2217,10 +2299,12 @@ func (s *ChatPipelineService) buildLLMModelConfig(info *modelModule.ModelInfo) (
 // 知识库 list. The agentic path and /api/v1/retrieval already authorize their
 // datasets as the caller; this brings the naive RAG path in line.
 //
-// The turn is refused rather than narrowed to the datasets the caller happens to
-// hold, because a partial corpus answers a different question than the assistant
-// was configured to. Bindings that no longer resolve (deleted, or disabled) are
-// left alone: getModels already skips them, and they cannot leak anything.
+// This is the strict entry point, selected by prompt_config.allow_partial_kb =
+// false: the turn is refused rather than narrowed, because a partial corpus
+// answers a different question than the assistant was configured to. The default
+// path is scopeChatKBsForUser, which narrows instead. Bindings that no longer
+// resolve (deleted, or disabled) are left alone: getModels already skips them,
+// and they cannot leak anything.
 func (s *ChatPipelineService) requireChatKBsForUser(ctx context.Context, userID string, chat *entity.Chat) error {
 	if chat == nil || len(chat.KBIDs) == 0 {
 		return nil

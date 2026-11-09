@@ -90,7 +90,8 @@ export default {
         trendTitle: '近{{days}}日檢索趨勢',
         trendApi: 'API 檢索',
         trendWeb: '網頁手工檢索',
-        trendEmptyHint: '兩條曲線分別統計 API Key 調用與網頁端在知識庫中的提問檢索，目前兩者都還沒有記錄。',
+        trendEmptyHint:
+          '兩條曲線分別統計 API Key 調用與網頁端在知識庫中的提問檢索，目前兩者都還沒有記錄。',
       },
     },
     login: {
@@ -149,8 +150,10 @@ export default {
     knowledgeGraph: {
       nav: '知識圖譜',
       title: '知識圖譜',
-      summary: '{{entities}} 個實體 · {{relations}} 條關係 · {{evidence}} 條帶證據',
-      searchPlaceholder: '搜實體、搜關係，或直接提問，例如：哪些基金支持 T+0 贖回',
+      summary:
+        '{{entities}} 個實體 · {{relations}} 條關係 · {{evidence}} 條帶證據',
+      searchPlaceholder:
+        '搜實體、搜關係，或直接提問，例如：哪些基金支持 T+0 贖回',
       clearSearch: '清空搜尋',
       searchModes: {
         auto: '智能',
@@ -173,7 +176,8 @@ export default {
         evidence: '帶證據',
         showing: '當前顯示（實體/關係）',
       },
-      truncated: '僅展示前 {{entities}} 個實體、{{relations}} 條關係，其餘已截斷。',
+      truncated:
+        '僅展示前 {{entities}} 個實體、{{relations}} 條關係，其餘已截斷。',
       unnormalized: '{{count}} 條關係使用了未歸一化的類型，按抽取原樣保留。',
       domains: {
         finance: '金融領域',
@@ -729,6 +733,9 @@ export default {
       multiTurn: '多輪對話優化',
       multiTurnTip:
         '在多輪對話的中，對去知識庫查詢的問題進行最佳化。會呼叫大模型額外消耗token。',
+      allowPartialKb: '部分知識庫可用',
+      allowPartialKbTip:
+        '助手綁定的知識庫中有目前使用者無權存取時，仍用有權限的知識庫作答，而不是直接報錯。關閉後，只要有一個綁定知識庫無權存取就拒絕本次提問。',
       howUseId: '如何使用聊天ID？',
       description: '助理描述',
       descriptionPlaceholder:

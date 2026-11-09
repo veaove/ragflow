@@ -573,8 +573,10 @@ export default {
     knowledgeGraph: {
       nav: '知识图谱',
       title: '知识图谱',
-      summary: '{{entities}} 个实体 · {{relations}} 条关系 · {{evidence}} 条带证据',
-      searchPlaceholder: '搜实体、搜关系，或直接提问，例如：哪些基金支持 T+0 赎回',
+      summary:
+        '{{entities}} 个实体 · {{relations}} 条关系 · {{evidence}} 条带证据',
+      searchPlaceholder:
+        '搜实体、搜关系，或直接提问，例如：哪些基金支持 T+0 赎回',
       clearSearch: '清空搜索',
       searchModes: {
         auto: '智能',
@@ -597,7 +599,8 @@ export default {
         evidence: '带证据',
         showing: '当前显示（实体/关系）',
       },
-      truncated: '仅展示前 {{entities}} 个实体、{{relations}} 条关系，其余已截断。',
+      truncated:
+        '仅展示前 {{entities}} 个实体、{{relations}} 条关系，其余已截断。',
       unnormalized: '{{count}} 条关系使用了未归一化的类型，按抽取原样保留。',
       domains: {
         finance: '金融领域',
@@ -1456,6 +1459,9 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       multiTurn: '多轮对话优化',
       multiTurnTip:
         '在多轮对话时，对查询问题根据上下文进行优化。会调用大模型额外消耗 token。',
+      allowPartialKb: '部分知识库可用',
+      allowPartialKbTip:
+        '助手绑定的知识库中有当前用户无权访问的库时，仍用有权限的库作答，而不是直接报错。关闭后，只要有一个绑定库无权访问就拒绝本次提问。',
       howUseId: '如何使用聊天 ID？',
       description: '助理描述',
       descriptionPlaceholder: '我是一个聊天助手。',

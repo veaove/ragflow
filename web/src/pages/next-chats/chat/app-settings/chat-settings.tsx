@@ -79,6 +79,7 @@ export function ChatSettings({ hasSingleChatBox }: ChatSettingsProps) {
         keyword: false,
         tts: false,
         refine_multiturn: true,
+        allow_partial_kb: true,
         system: '',
         parameters: [],
         reasoning: false,
@@ -140,6 +141,8 @@ export function ChatSettings({ hasSingleChatBox }: ChatSettingsProps) {
       ...omit(data, ['top_k']),
       prompt_config: {
         ...data.prompt_config,
+        // 存量助手没有这个字段，语义上默认允许部分库可用，与后端默认一致。
+        allow_partial_kb: data.prompt_config?.allow_partial_kb ?? true,
         // reset() skips undefined values, so fall back to '' to clear the field
         web_search_provider: getWebSearchProvider(data.prompt_config) ?? '',
       },

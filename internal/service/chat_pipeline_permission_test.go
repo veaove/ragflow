@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"testing"
 
 	"gorm.io/gorm"
@@ -65,8 +66,9 @@ func TestRequireChatKBsForUserDeniesPrivateDatasetOfAnotherUser(t *testing.T) {
 	}
 }
 
-// One unauthorized dataset in the binding is enough to refuse the turn: the
-// remaining subset would answer for a corpus the assistant was not built on.
+// Strict mode (allow_partial_kb=false): one unauthorized dataset in the binding
+// is enough to refuse the turn, because the remaining subset would answer for a
+// corpus the assistant was not built on.
 func TestRequireChatKBsForUserDeniesMixedBinding(t *testing.T) {
 	setupChatPermissionTestDB(t)
 
@@ -108,5 +110,127 @@ func TestRequireChatKBsForUserSkipsChatsWithoutDatasets(t *testing.T) {
 
 	if err := NewChatPipelineService().requireChatKBsForUser(t.Context(), "member-1", chatWithKBs()); err != nil {
 		t.Fatalf("requireChatKBsForUser(member, no datasets) error = %v, want nil", err)
+	}
+}
+
+func chatWithPromptKBs(allowPartial bool, kbIDs ...string) *entity.Chat {
+	chat := chatWithKBs(kbIDs...)
+	chat.PromptConfig = entity.JSONMap{"allow_partial_kb": allowPartial}
+	return chat
+}
+
+func kbIDsOf(chat *entity.Chat) []string {
+	ids := make([]string, 0, len(chat.KBIDs))
+	for _, raw := range chat.KBIDs {
+		if id, ok := raw.(string); ok {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// allow_partial_kb 默认必须为 true：存量助手没有这个字段，语义变化要让它们
+// 立刻按可见库返回，而不是继续整体失败。
+func TestAllowPartialChatKBDefaultsToTrue(t *testing.T) {
+	if !allowPartialChatKB(nil) {
+		t.Error("allowPartialChatKB(nil) = false, want true")
+	}
+	if !allowPartialChatKB(&entity.Chat{}) {
+		t.Error("allowPartialChatKB(no prompt_config) = false, want true")
+	}
+	if !allowPartialChatKB(&entity.Chat{PromptConfig: entity.JSONMap{}}) {
+		t.Error("allowPartialChatKB(empty prompt_config) = false, want true")
+	}
+	if !allowPartialChatKB(&entity.Chat{PromptConfig: entity.JSONMap{"allow_partial_kb": "true"}}) {
+		t.Error("allowPartialChatKB(non-bool value) = false, want the default true")
+	}
+	if allowPartialChatKB(&entity.Chat{PromptConfig: entity.JSONMap{"allow_partial_kb": false}}) {
+		t.Error("allowPartialChatKB(explicit false) = true, want false")
+	}
+}
+
+// 默认路径：混合绑定收敛到调用者可见的库，不再整体拒绝。
+func TestScopeChatKBsForUserNarrowsMixedBindingByDefault(t *testing.T) {
+	setupChatPermissionTestDB(t)
+
+	chat := chatWithKBs("team-dataset", "private-dataset")
+	if err := NewChatPipelineService().scopeChatKBsForUser(t.Context(), "member-1", chat); err != nil {
+		t.Fatalf("scopeChatKBsForUser(member, mixed binding) error = %v, want nil", err)
+	}
+	got := kbIDsOf(chat)
+	if len(got) != 1 || got[0] != "team-dataset" {
+		t.Fatalf("scoped KBIDs = %v, want [team-dataset]", got)
+	}
+}
+
+// 显式开启与默认行为一致。
+func TestScopeChatKBsForUserNarrowsWhenPartialAllowed(t *testing.T) {
+	setupChatPermissionTestDB(t)
+
+	chat := chatWithPromptKBs(true, "team-dataset", "private-dataset")
+	if err := NewChatPipelineService().scopeChatKBsForUser(t.Context(), "member-1", chat); err != nil {
+		t.Fatalf("scopeChatKBsForUser(allow_partial_kb=true) error = %v, want nil", err)
+	}
+	if got := kbIDsOf(chat); len(got) != 1 || got[0] != "team-dataset" {
+		t.Fatalf("scoped KBIDs = %v, want [team-dataset]", got)
+	}
+}
+
+// 严格模式仍然整体拒绝，供需要「全库一致」语义的助手回退。
+func TestScopeChatKBsForUserRefusesMixedBindingWhenStrict(t *testing.T) {
+	setupChatPermissionTestDB(t)
+
+	chat := chatWithPromptKBs(false, "team-dataset", "private-dataset")
+	if err := NewChatPipelineService().scopeChatKBsForUser(t.Context(), "member-1", chat); err == nil {
+		t.Fatal("scopeChatKBsForUser(allow_partial_kb=false, mixed binding) = nil, want permission error")
+	}
+}
+
+// 每个绑定都不可见时不能退化成纯 LLM 回答，否则等于绕开知识库。
+func TestScopeChatKBsForUserRejectsWhenEveryBindingDenied(t *testing.T) {
+	setupChatPermissionTestDB(t)
+
+	chat := chatWithKBs("private-dataset")
+	err := NewChatPipelineService().scopeChatKBsForUser(t.Context(), "member-1", chat)
+	if !errors.Is(err, errNoVisibleChatKB) {
+		t.Fatalf("scopeChatKBsForUser(member, only denied binding) error = %v, want errNoVisibleChatKB", err)
+	}
+}
+
+// 已删除或停用的绑定不算「拒绝」：它们没有内容可泄露，直接丢弃。
+func TestScopeChatKBsForUserDropsUnresolvableBinding(t *testing.T) {
+	setupChatPermissionTestDB(t)
+
+	chat := chatWithKBs("team-dataset", "deleted-dataset")
+	if err := NewChatPipelineService().scopeChatKBsForUser(t.Context(), "member-1", chat); err != nil {
+		t.Fatalf("scopeChatKBsForUser(stale binding) error = %v, want nil", err)
+	}
+	if got := kbIDsOf(chat); len(got) != 1 || got[0] != "team-dataset" {
+		t.Fatalf("scoped KBIDs = %v, want [team-dataset]", got)
+	}
+}
+
+// 全部可见时列表原样保留，顺序不变。
+func TestScopeChatKBsForUserKeepsAllVisibleBindings(t *testing.T) {
+	setupChatPermissionTestDB(t)
+
+	chat := chatWithKBs("team-dataset")
+	if err := NewChatPipelineService().scopeChatKBsForUser(t.Context(), "member-1", chat); err != nil {
+		t.Fatalf("scopeChatKBsForUser(all visible) error = %v, want nil", err)
+	}
+	if got := kbIDsOf(chat); len(got) != 1 || got[0] != "team-dataset" {
+		t.Fatalf("scoped KBIDs = %v, want [team-dataset]", got)
+	}
+}
+
+func TestScopeChatKBsForUserSkipsChatsWithoutDatasets(t *testing.T) {
+	setupChatPermissionTestDB(t)
+
+	chat := chatWithKBs()
+	if err := NewChatPipelineService().scopeChatKBsForUser(t.Context(), "member-1", chat); err != nil {
+		t.Fatalf("scopeChatKBsForUser(no datasets) error = %v, want nil", err)
+	}
+	if got := kbIDsOf(chat); len(got) != 0 {
+		t.Fatalf("scoped KBIDs = %v, want empty", got)
 	}
 }

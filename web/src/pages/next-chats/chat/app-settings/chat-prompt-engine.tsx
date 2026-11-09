@@ -123,6 +123,11 @@ export function ChatPromptEngine({
           name={prefixName(prefix, 'prompt_config.cross_languages')}
         ></CrossLanguageFormField>
         <SwitchFormField
+          name={prefixName(prefix, 'prompt_config.allow_partial_kb')}
+          label={t('chat.allowPartialKb')}
+          tooltip={t('chat.allowPartialKbTip')}
+        ></SwitchFormField>
+        <SwitchFormField
           name={prefixName(prefix, 'prompt_config.refine_multiturn')}
           label={t('chat.multiTurn')}
           tooltip={t('chat.multiTurnTip')}
