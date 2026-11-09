@@ -196,16 +196,31 @@ test.describe('授权图谱 · 响应契约', () => {
 });
 
 test.describe('授权图谱 · 受限身份不越权', () => {
-  test('租户管理员与部门管理员的已授权集合与 owner 完全一致', async ({ request }) => {
-    const owner = new Set(
-      (await graphOf(request, 'owner')).resources
-        .filter((r) => !r.unconfigured)
-        .map(keyOf),
+  // 五类平铺资源上，管理层与 owner 齐平（D7 基线）。文件是例外：文件级规则是
+  // 名单制，一个只点名了别人的文件，管理员也读不到 —— 所以这里只比平铺资源，
+  // 文件的「画了就要读得到」由下一条用例按本人文件列表逐个核对。
+  test('租户管理员与部门管理员的平铺资源与 owner 完全一致', async ({ request }) => {
+    const ownerGraph = await graphOf(request, 'owner');
+    const flatKeys = (graph: Graph) =>
+      graph.resources
+        .filter((r) => !r.unconfigured && r.kind !== 'document')
+        .map(keyOf);
+    const ownerFlat = new Set(flatKeys(ownerGraph));
+    const ownerDocs = new Set(
+      ownerGraph.resources.filter((r) => r.kind === 'document').map((r) => r.id),
     );
+
     for (const who of ['admin', 'dept'] as const) {
       const graph = await graphOf(request, who);
-      const mine = graph.resources.filter((r) => !r.unconfigured).map(keyOf);
-      expect(new Set(mine), `${who} 应与 owner 看到同一批已授权资源`).toEqual(owner);
+      expect(new Set(flatKeys(graph)), `${who} 应与 owner 看到同一批已授权资源`).toEqual(
+        ownerFlat,
+      );
+      // 文件节点只能是 owner 的子集：多出来就是越权。
+      for (const doc of graph.resources.filter((r) => r.kind === 'document')) {
+        expect(ownerDocs.has(doc.id), `${who} 看到了 owner 都没有的文件 ${doc.name}`).toBe(
+          true,
+        );
+      }
     }
   });
 
@@ -250,21 +265,28 @@ test.describe('授权图谱 · 受限身份不越权', () => {
     expect(res.status(), '没有 Authorization 时不应放行').toBe(401);
   });
 
-  // 线上此刻跑的是 b02ccc1：图谱只按知识库收窄，没有叠文件级谓词，于是被文件级
-  // 规则排除的成员仍能看到那个文件的节点、文件名和「谁被排除」。修复在 f3c852b，
-  // Go 单测 TestGrantGraphHidesDocumentsCallerCannotRead 已覆盖；那一版发上去之后，
-  // 把这条 fixme 改成 test 即可 —— 断言就是「图上的每个文件，本人在文件列表里都读得到」。
-  test.fixme('读不到的文件不出现在图谱里（f3c852b 发版后启用）', async ({ request }) => {
-    const readable = await readableDocumentIDs(request, 'member');
-    const graph = await graphOf(request, 'member');
+  // 图谱是「绕过列表的泄露通道」里最容易被漏掉的一条：文件级规则是名单制，
+  // 有规则的文件对不在名单内的人不可读，但图谱从资源表出发画图，一个不留神就
+  // 把文件名和「谁被排除」透出去了。b02ccc1 就漏了这一层（4 个文件对 member /
+  // plain 可见），c9059ce 补上。断言用的是同一个事实来源：文件列表里读得到才算数。
+  test('读不到的文件不出现在图谱里', async ({ request }) => {
+    const counts: string[] = [];
 
-    for (const resource of graph.resources) {
-      if (resource.kind !== 'document') continue;
-      expect(
-        readable.has(resource.id),
-        `成员读不到 ${resource.name}，屏幕上却画着它`,
-      ).toBe(true);
+    for (const who of ['member', 'plain', 'admin', 'dept'] as const) {
+      const readable = await readableDocumentIDs(request, who);
+      const graph = await graphOf(request, who);
+      const docs = graph.resources.filter((resource) => resource.kind === 'document');
+      counts.push(`${who}: 图上文件 ${docs.length} / 本人可读 ${readable.size}`);
+
+      for (const resource of docs) {
+        expect(
+          readable.has(resource.id),
+          `${who} 读不到 ${resource.name}，屏幕上却画着它`,
+        ).toBe(true);
+      }
     }
+
+    test.info().annotations.push({ type: 'counts', description: counts.join(' | ') });
   });
 });
 
@@ -322,12 +344,17 @@ test.describe('授权图谱 · 控制台界面', () => {
     const edgeTotal = await edges.count();
     expect(edgeTotal, '图谱没有画出任何连线').toBeGreaterThan(0);
 
-    // 底部「未配置」必须与接口一致，否则图与数字各说各话。
+    // 底部「未单独授权」必须与接口一致，否则图与数字各说各话。
     const graph = await graphOf(request, 'owner');
-    await expect(page.getByTestId('graph-stat-unconfigured')).toHaveAttribute(
+    const unconfigured = page.getByTestId('graph-stat-unconfigured');
+    await expect(unconfigured).toHaveAttribute(
       'data-value',
       String(graph.stats.unconfigured),
     );
+    // 口径说明不能丢：「可见 198 / 图上 14 个点」全靠这两行解释，缺了就像漏画。
+    // 它在画布容器外面（ct 是 data-testid="grant-graph" 的 svg 容器），按文案找。
+    await expect(unconfigured).toContainText('未单独授权');
+    await expect(page.getByText('图上只画有授权记录的资源').first()).toBeVisible();
 
     // 关掉「明确拒绝」：连线数与统计里的拒绝数一起归零。
     const denyEdges = await page.locator('[data-edge-type="deny"]').count();
