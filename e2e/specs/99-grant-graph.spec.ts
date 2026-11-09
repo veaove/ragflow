@@ -27,6 +27,7 @@ type GraphResource = {
   id: string;
   kind: string;
   name: string;
+  owner_id?: string;
   owner_name: string;
   exception_count: number;
   unconfigured: boolean;
@@ -373,5 +374,37 @@ test.describe('授权图谱 · 控制台界面', () => {
     await expect(page.getByTestId('graph-stat-allow')).toBeVisible();
 
     expect(apiErrors, '图谱页出现 4xx/5xx 接口').toEqual([]);
+  });
+
+  // 线上 c9059ce 还没有这一版：聚焦条只按顺序截前 4 个成员，当前登录用户（租户
+  // 所有者）排第 5 就从条上消失；而且所有者一条规则都没有，点开只会看到「可访问 0」。
+  // 修复在本地（聚焦条自己第一 + 成员节点标「所有者」+ 聚焦时说明「属他所有」），
+  // 发版后把这条 fixme 改成 test。
+  test.fixme('聚焦条第一位是当前登录用户，并能说明「属他所有」（发版后启用）', async ({
+    page,
+    request,
+  }) => {
+    const graph = await graphOf(request, 'owner');
+    const owner = graph.members.find((member) => member.email === IDENTITIES.owner.email);
+    expect(owner, '图谱成员列里应有当前登录用户').toBeDefined();
+    const owned = graph.resources.filter((r) => r.owner_id === owner!.id).length;
+    expect(owned, '所有者名下应有资源（否则这条用例没有意义）').toBeGreaterThan(0);
+
+    await page.goto('/console/grants');
+    await page.waitForLoadState('networkidle');
+    await page.getByRole('button', { name: '授权图谱' }).click();
+    await page.waitForSelector('[data-testid=graph-node]');
+
+    const chips = page.getByTestId(/^graph-focus-member-/);
+    await expect(chips.first()).toHaveAttribute(
+      'data-testid',
+      `graph-focus-member-${owner!.id}`,
+    );
+
+    await chips.first().click();
+    await expect(page.getByTestId('graph-stat-focus-owned')).toHaveAttribute(
+      'data-value',
+      String(owned),
+    );
   });
 });

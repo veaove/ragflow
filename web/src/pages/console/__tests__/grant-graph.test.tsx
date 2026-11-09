@@ -10,6 +10,7 @@ import {
   defaultFilter,
   focusStats,
   layoutGraph,
+  pickFocusMembers,
   subjectStats,
   toggleResourceKinds,
 } from '../grant-graph-layout';
@@ -55,6 +56,8 @@ const payload = () => ({
       id: 'kb1',
       kind: 'dataset',
       name: '帮助中心',
+      owner_id: 'u1',
+      owner_name: '张伟',
       grants: [
         {
           kind: 'user' as const,
@@ -69,6 +72,8 @@ const payload = () => ({
       id: 'kb2',
       kind: 'dataset',
       name: '对账单',
+      owner_id: 'u1',
+      owner_name: '张伟',
       grants: [
         {
           kind: 'user' as const,
@@ -89,6 +94,8 @@ const payload = () => ({
       id: 'a1',
       kind: 'chat',
       name: '问答助手',
+      owner_id: 'u2',
+      owner_name: '李四',
       unconfigured: true,
       grants: [],
     },
@@ -109,7 +116,8 @@ describe('buildGraphModel', () => {
 
     expect(model.members.map((m) => m.key)).toEqual(['member:u1', 'member:u2']);
     expect(model.teams.map((t) => t.key)).toEqual(['team:d1', 'team:__team__']);
-    expect(model.members[0].sub).toBe('风控部');
+    // 张伟是图上资源的创建者，成员节点会标出「所有者」。
+    expect(model.members[0].sub).toBe('所有者 · 风控部');
 
     const unconfigured = model.resources.find((r) => r.key === 'chat:a1');
     expect(unconfigured?.unconfigured).toBe(true);
@@ -157,6 +165,51 @@ describe('buildGraphModel', () => {
     const model = buildGraphModel(payload());
     expect(model.memberships).toEqual([
       { member: 'member:u1', team: 'team:d1' },
+    ]);
+  });
+
+  it('资源所有者标到成员节点上：所有者没有规则也不会像个空节点', () => {
+    // 租户所有者通常一条规则都没有，访问全靠「资源是我建的」。
+    const data = payload();
+    data.resources.forEach((res) => {
+      res.grants = [];
+    });
+    const model = buildGraphModel(data);
+
+    // 没有规则就没有边。
+    expect(model.edges).toEqual([]);
+    // 张伟拥有 kb1 / kb2；李四拥有样例节点 a1。
+    expect(model.members[0].owned).toBe(2);
+    expect(model.members[0].sub).toBe('所有者 · 风控部');
+    expect(model.members[1].owned).toBe(1);
+    expect(model.members[1].sub).toBe('所有者 · 客服部');
+    expect(model.members[0].title).toContain('所有者');
+  });
+});
+
+describe('pickFocusMembers', () => {
+  const member = (id: string) => ({ key: `member:${id}` });
+
+  it('自己永远进聚焦条，哪怕排在第 5 位', () => {
+    const members = ['a', 'b', 'c', 'd', 'me'].map(member);
+    const picked = pickFocusMembers(members, [], 'member:me');
+    expect(picked[0].key).toBe('member:me');
+    expect(picked).toHaveLength(4);
+  });
+
+  it('其余名额按规则条数补齐，规则越多越靠前', () => {
+    const members = ['a', 'b', 'c', 'me'].map(member);
+    const edges = [
+      ...Array.from({ length: 3 }, () => ({ from: 'member:b' })),
+      ...Array.from({ length: 2 }, () => ({ from: 'member:c' })),
+      { from: 'member:a' },
+    ];
+    const picked = pickFocusMembers(members, edges, 'member:me');
+    expect(picked.map((m) => m.key)).toEqual([
+      'member:me',
+      'member:b',
+      'member:c',
+      'member:a',
     ]);
   });
 });
@@ -332,14 +385,14 @@ describe('统计', () => {
 });
 
 describe('GrantGraph 组件', () => {
-  const renderGraph = () => {
+  const renderGraph = (viewerId?: string) => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     return render(
       <QueryClientProvider client={client}>
         <div style={{ width: 960, height: 700 }}>
-          <GrantGraph tenantId="t1" />
+          <GrantGraph tenantId="t1" viewerId={viewerId} />
         </div>
       </QueryClientProvider>,
     );
@@ -392,6 +445,24 @@ describe('GrantGraph 组件', () => {
     expect(screen.getByTestId('graph-stat-deny')).toHaveAttribute(
       'data-value',
       '0',
+    );
+  });
+
+  it('当前登录用户排在聚焦条第一位，点开能看到「属他所有」', async () => {
+    renderGraph('u2');
+
+    const chips = await screen.findAllByTestId(/^graph-focus-member-/);
+    expect(chips[0]).toHaveAttribute('data-testid', 'graph-focus-member-u2');
+
+    fireEvent.click(chips[0]);
+    // 李四没有规则，只有 1 个自己创建的样例节点。
+    expect(screen.getByTestId('graph-stat-focus-allow')).toHaveAttribute(
+      'data-value',
+      '0',
+    );
+    expect(screen.getByTestId('graph-stat-focus-owned')).toHaveAttribute(
+      'data-value',
+      '1',
     );
   });
 

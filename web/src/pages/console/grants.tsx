@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
+import { useFetchTenantInfo, useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import {
   ConsoleMember,
   DepartmentNode,
@@ -156,6 +156,7 @@ export default function ConsoleGrants() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data: tenantInfo } = useFetchTenantInfo();
+  const { data: userInfo } = useFetchUserInfo();
   const tenantId = tenantInfo?.tenant_id as string | undefined;
 
   const [kind, setKind] = useState<GrantKind>('dataset');
@@ -524,7 +525,7 @@ export default function ConsoleGrants() {
             key="graph"
             className="flex min-h-0 flex-1 animate-in flex-col fade-in-0 duration-200"
           >
-            <GrantGraph tenantId={tenantId ?? ''} />
+            <GrantGraph tenantId={tenantId ?? ''} viewerId={userInfo?.id} />
           </div>
         ) : view === 'member' ? (
           <div

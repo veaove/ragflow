@@ -114,6 +114,39 @@ func TestGrantGraphReturnsDocumentOnceGranted(t *testing.T) {
 	}
 }
 
+// TestGrantGraphReportsResourceOwner 锁定「资源带所有者 id」。
+//
+// 所有权是隐式权限：租户所有者往往一条 resource_grant 都没有，图上就是个孤立
+// 点。前端要靠 owner_id 把这层关系标到成员节点上（「所有者」），只给名字没法
+// 可靠对应到成员（重名、改名）。
+func TestGrantGraphReportsResourceOwner(t *testing.T) {
+	db := setupGrantTreeTestDB(t)
+	seedMemberReadableKB(t, db, "u-member")
+	// kb1 上有全团队规则 → 库节点进图；d2 上有文件规则 → 文件节点进图。
+	seedGrant(t, db, GrantKindDocument, "d2", entity.GrantSubjectUser, "u-owner", "read", entity.GrantEffectAllow)
+
+	graph := mustGraph(t, NewResourceGrantService(), "u-owner")
+
+	kb := findGraphResource(graph, grantGraphKindDataset, "kb1")
+	if kb == nil {
+		t.Fatal("kb1 有规则，应该进图")
+	}
+	if kb.OwnerID != "u-owner" {
+		t.Errorf("kb1 的 owner_id = %q, want u-owner", kb.OwnerID)
+	}
+	if kb.OwnerName != "张伟" {
+		t.Errorf("kb1 的 owner_name = %q, want 张伟", kb.OwnerName)
+	}
+
+	doc := findGraphResource(graph, GrantKindDocument, "d2")
+	if doc == nil {
+		t.Fatal("d2 有规则，应该进图")
+	}
+	if doc.OwnerID != "u-owner" {
+		t.Errorf("d2 的 owner_id = %q, want u-owner（文件同样要带所有者）", doc.OwnerID)
+	}
+}
+
 func mustGraph(t *testing.T, svc *ResourceGrantService, userID string) *GrantGraphResult {
 	t.Helper()
 	graph, err := svc.GrantGraph(t.Context(), "t1", userID)

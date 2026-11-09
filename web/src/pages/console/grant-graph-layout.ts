@@ -70,6 +70,14 @@ export interface GraphNode {
   unconfigured?: boolean;
   /** 知识库的「N 项例外」。 */
   exceptionCount?: number;
+  /**
+   * 成员 owns：图上由他创建的资源数（含样例）。
+   *
+   * 所有权是隐式权限，不写 resource_grant —— 租户所有者常常一条规则都没有，
+   * 在图上就是个孤零零的点。有了这个数，成员节点能标出「所有者」，聚焦时也
+   * 才解释得清「他没有规则，但看得见东西」。
+   */
+  owned?: number;
 }
 
 export interface GraphEdge {
@@ -222,6 +230,21 @@ export const buildGraphModel = (data?: GrantGraph | null): GraphModel => {
         resourceName: trim(res.name) || res.id,
       });
     }
+  }
+
+  // 所有权落回成员节点：前端不做二次请求，用资源自带的 owner_id 归集。
+  const ownedByMember = new Map<string, number>();
+  for (const res of data.resources ?? []) {
+    const ownerId = trim(res.owner_id);
+    if (!ownerId) continue;
+    ownedByMember.set(ownerId, (ownedByMember.get(ownerId) ?? 0) + 1);
+  }
+  for (const node of memberNodes) {
+    const owned = ownedByMember.get(node.key.replace('member:', '')) ?? 0;
+    if (owned === 0) continue;
+    node.owned = owned;
+    node.sub = node.sub === '成员' ? '所有者' : `所有者 · ${node.sub}`;
+    node.title = `${node.title} · 所有者（${owned} 个图中的资源）`;
   }
 
   const memberships: { member: string; team: string }[] = [];
@@ -422,6 +445,31 @@ export const defaultFilter = (model: GraphModel): GraphFilter => ({
   edges: ['allow', 'deny', 'team'],
   nodes: ['member', 'team', ...model.kindsInUse],
 });
+
+/**
+ * 挑出聚焦条上的成员：自己永远第一，其次是规则最多的，其余按原顺序补满。
+ *
+ * 只按原顺序截前 N 个，租户所有者很容易排在第 5 位而从条上消失 —— 那正是
+ * 「我看不到自己的数据」的一半原因（另一半是没有规则行，见 owned）。
+ */
+export function pickFocusMembers<T extends { key: string }>(
+  members: T[],
+  edges: { from: string }[],
+  viewerKey: string,
+  limit = 4,
+): T[] {
+  const edgeCount = new Map<string, number>();
+  for (const edge of edges) {
+    edgeCount.set(edge.from, (edgeCount.get(edge.from) ?? 0) + 1);
+  }
+  return [...members]
+    .sort((a, b) => {
+      if (a.key === viewerKey) return -1;
+      if (b.key === viewerKey) return 1;
+      return (edgeCount.get(b.key) ?? 0) - (edgeCount.get(a.key) ?? 0);
+    })
+    .slice(0, limit);
+}
 
 export type GraphFocus =
   | { kind: 'member'; key: string }

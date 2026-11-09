@@ -42,6 +42,9 @@ type GrantGraphResource struct {
 	ID   string `json:"id"`
 	Kind string `json:"kind"`
 	Name string `json:"name"`
+	// OwnerID 是资源所有者 id。前端靠它把「这个人拥有哪些资源」标到成员节点上
+	// —— 所有权是隐式权限，不写 resource_grant，只有名字没法对应到成员。
+	OwnerID string `json:"owner_id"`
 	// OwnerName 是资源所有者，聚焦时用来解释「为什么他有权限」。
 	OwnerName string `json:"owner_name"`
 	// ExceptionCount 是该资源下带独立规则的子项数（目前只有知识库有层级）。
@@ -141,6 +144,7 @@ func (s *ResourceGrantService) GrantGraph(ctx context.Context, tenantID, userID 
 				ID:        row.ResourceID,
 				Kind:      kind,
 				Name:      row.ResourceName,
+				OwnerID:   row.OwnerID,
 				OwnerName: row.OwnerName,
 				Grants:    row.Grants,
 			})
@@ -256,12 +260,13 @@ func (s *ResourceGrantService) appendDocumentNodes(ctx context.Context, tenantID
 	}
 
 	type docRow struct {
-		ID   string `gorm:"column:id"`
-		Name string `gorm:"column:name"`
+		ID      string `gorm:"column:id"`
+		Name    string `gorm:"column:name"`
+		OwnerID string `gorm:"column:owner_id"`
 	}
 	docs := make([]docRow, 0, len(grantedIDs))
 	docSelect := docQuery().
-		Select("document.id AS id, document.name AS name").
+		Select("document.id AS id, document.name AS name, COALESCE(document.created_by, '') AS owner_id").
 		Where("document.id IN ?", grantedIDs)
 	if err := docSelect.Scan(&docs).Error; err != nil {
 		return docTotal, err
@@ -271,15 +276,24 @@ func (s *ResourceGrantService) appendDocumentNodes(ctx context.Context, tenantID
 	for _, row := range docGrants {
 		byDoc[row.ResourceID] = append(byDoc[row.ResourceID], row)
 	}
+	docOwnerIDs := make([]string, 0, len(docs))
+	for _, doc := range docs {
+		if doc.OwnerID != "" {
+			docOwnerIDs = append(docOwnerIDs, doc.OwnerID)
+		}
+	}
+	docOwnerNames := s.ownerNames(ctx, docOwnerIDs)
 	for _, doc := range docs {
 		if len(byDoc[doc.ID]) == 0 {
 			continue
 		}
 		result.Resources = append(result.Resources, GrantGraphResource{
-			ID:     doc.ID,
-			Kind:   GrantKindDocument,
-			Name:   doc.Name,
-			Grants: s.describeGrants(ctx, tenantID, byDoc[doc.ID]),
+			ID:        doc.ID,
+			Kind:      GrantKindDocument,
+			Name:      doc.Name,
+			OwnerID:   doc.OwnerID,
+			OwnerName: docOwnerNames[doc.OwnerID],
+			Grants:    s.describeGrants(ctx, tenantID, byDoc[doc.ID]),
 		})
 	}
 
@@ -290,11 +304,12 @@ func (s *ResourceGrantService) appendDocumentNodes(ctx context.Context, tenantID
 // appendBareDocumentSamples 补几个「从未配置授权」的文件样例。
 func (s *ResourceGrantService) appendBareDocumentSamples(ctx context.Context, userID string, kbIDs []string, scoped bool, grantedIDs []string, result *GrantGraphResult) {
 	type docRow struct {
-		ID   string `gorm:"column:id"`
-		Name string `gorm:"column:name"`
+		ID      string `gorm:"column:id"`
+		Name    string `gorm:"column:name"`
+		OwnerID string `gorm:"column:owner_id"`
 	}
 	query := dao.DB.WithContext(ctx).Table("document").
-		Select("document.id AS id, document.name AS name")
+		Select("document.id AS id, document.name AS name, COALESCE(document.created_by, '') AS owner_id")
 	if scoped {
 		query = query.Where("document.kb_id IN ?", kbIDs)
 		// 样例同样要过文件级谓词：被排除的文件不该以「样例」的身份露名字。
@@ -309,11 +324,20 @@ func (s *ResourceGrantService) appendBareDocumentSamples(ctx context.Context, us
 	if err := query.Order("document.update_date DESC").Limit(grantGraphBareSamples).Scan(&samples).Error; err != nil {
 		return
 	}
+	ownerIDs := make([]string, 0, len(samples))
+	for _, sample := range samples {
+		if sample.OwnerID != "" {
+			ownerIDs = append(ownerIDs, sample.OwnerID)
+		}
+	}
+	ownerNames := s.ownerNames(ctx, ownerIDs)
 	for _, sample := range samples {
 		result.Resources = append(result.Resources, GrantGraphResource{
 			ID:           sample.ID,
 			Kind:         GrantKindDocument,
 			Name:         sample.Name,
+			OwnerID:      sample.OwnerID,
+			OwnerName:    ownerNames[sample.OwnerID],
 			Unconfigured: true,
 			Grants:       []GrantSubject{},
 		})

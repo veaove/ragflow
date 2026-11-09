@@ -29,6 +29,7 @@ import {
   edgePath,
   focusStats,
   layoutGraph,
+  pickFocusMembers,
   subjectStats,
   toggleResourceKinds,
   toggleValue,
@@ -36,6 +37,8 @@ import {
 
 interface GrantGraphProps {
   tenantId: string;
+  /** 当前登录用户 id：聚焦条要保证「我自己」在里面，否则前 4 个名额根本没我。 */
+  viewerId?: string;
 }
 
 const EDGE_COLOR: Record<GraphEdgeType, string> = {
@@ -68,7 +71,7 @@ const truncate = (label: string, compact: boolean): string => {
  *
  * 布局固定三列而不是力导向：位置稳定比好看重要，管理员要能形成空间记忆。
  */
-export function GrantGraph({ tenantId }: GrantGraphProps) {
+export function GrantGraph({ tenantId, viewerId }: GrantGraphProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 960, height: 560 });
@@ -219,6 +222,17 @@ export function GrantGraph({ tenantId }: GrantGraphProps) {
   const focusSubjectStats = useMemo(
     () => (focus?.kind === 'resource' ? subjectStats(focusedEdges) : null),
     [focus, focusedEdges],
+  );
+
+  // 聚焦条名额：自己第一，其次规则最多的（通常就是问题中心），见 pickFocusMembers。
+  const focusChips = useMemo(
+    () =>
+      pickFocusMembers(
+        layout.members,
+        model.edges,
+        viewerId ? `member:${viewerId}` : '',
+      ),
+    [layout.members, model.edges, viewerId],
   );
 
   // 全局统计只数「此刻画在图上的」：图例关掉拒绝边，这里的拒绝数就得跟着变 0，
@@ -498,6 +512,18 @@ export function GrantGraph({ tenantId }: GrantGraphProps) {
         '#d6d5cf',
         'graph-stat-focus-none',
       )}
+      {/* 所有权是隐式权限，不写规则也不画线。不说明这一点，租户所有者点开自己
+          只会看到「可访问 0」，像是被收权了。 */}
+      {focusNode?.owned ? (
+        <span
+          data-testid="graph-stat-focus-owned"
+          data-value={focusNode.owned}
+          className="text-xs text-text-secondary"
+          title="这些资源你以创建者身份可见，不经过授权规则，所以图上没有连线"
+        >
+          另：{focusNode.owned} 个属他所有
+        </span>
+      ) : null}
       {/* 这一行不能省：它才是"绝大多数资源没人单独配规则"的唯一出处。 */}
       {stat(
         UNCONFIGURED_LABEL,
@@ -609,7 +635,7 @@ export function GrantGraph({ tenantId }: GrantGraphProps) {
           >
             全部
           </button>
-          {layout.members.slice(0, 4).map((m) => (
+          {focusChips.map((m) => (
             <button
               key={m.key}
               type="button"

@@ -392,6 +392,8 @@ export interface GrantGraphResource {
   /** dataset / chat / search_app / canvas / memory / document */
   kind: string;
   name: string;
+  /** 资源所有者 id：所有权是隐式权限，靠它把「谁的资源」标到成员节点上。 */
+  owner_id?: string;
   owner_name?: string;
   /** 资源下带独立规则的子项数（只有知识库有层级）。 */
   exception_count?: number;
