@@ -34,10 +34,7 @@ const rowsOf = async (
 test.describe('按成员视角 · 孤儿授权', () => {
   test.use({ storageState: authFile('owner') });
 
-  // 线上此刻是 c9059ce：这一版还没有 missing 过滤，空白行仍在。本地修复已带
-  // Go 单测（TestGrantsBySubjectDropsRulesOnDeletedResources），发版后把这条
-  // fixme 改成 test。
-  test.fixme('不展示指向已删资源的规则（发版后启用）', async ({ request }) => {
+  test('不展示指向已删资源的规则', async ({ request }) => {
     const graph = await request.get(api.grantGraph(TID), {
       headers: { Authorization: tokenOf('owner') },
     });
