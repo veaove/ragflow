@@ -66,6 +66,7 @@ e2e/
 | D4 | 内置角色矩阵可被空写覆盖，随后被静默回填 | `PUT /roles/:id/permissions` 提交 `{permissions: []}` 返回成功，下次 `ListRoles` 又按 `ConsoleModules` 补回默认行 | 不写成用例（要写线上数据）；`dao.backfillBuiltinRolePermissions` 无法区分「模块新增」与「管理员撤销」 | `8ba40d72e`：保存时补满 25 行（false 也落库），Owner 矩阵拒绝写入 |
 | D5 | 内置角色可被改名，而多处逻辑按名字匹配 | `PUT /roles/:id` 无 `is_builtin` 保护；`EnsureTenantAdminRole` / backfill 按 `name` 查 | 前端已禁用编辑，接口层未拦；同上，只记录 | `8ba40d72e`：`UpdateRole` 拒绝内置角色 |
 | D8 | 部门管理员被当成租户管理层：能写全租户资源授权、能读全部 18 个库 | `e2e-dept` 的 `user_tenant.role` 是 `admin`（role_id 却是「部门管理员」）；`PUT /grants/dataset/{ghost}` 返回 `code=102 资源不存在` 说明已穿过管理层闸门 | `91` 的 FINDING 用例断言当前行为；`92` 因此改用 `member` 跑 read/edit 阶梯、`plain` 做反面对照 | 未修。`UpdateMember` 只写 `role_id` 不动 `role` 枚举，新租户里正常分配的部门管理员是 `normal` 反而写不了授权 —— 需要先定口径（枚举与角色对齐，或判定只认 role_id） |
+| D9 | 三档可见范围不参与判定：owner / tenant_owner / platform 对同一身份行为完全一致 | 临时库依次切三档，member/plain 始终不可见、admin/dept 始终可见；`tieredAccess` 只读「创建者 / 显式授权 / 部门管理员」，列表 SQL 唯一读 `permission` 的是历史 `team` 分支（迁移后无命中） | `92` 的 FINDING 用例固化当前行为；`entity/visibility.go` 的文档写的是三层递进，与实现不符 | 未修。要真落地需让档位决定「哪些管理角色放行」，并同步列表 SQL 与前端文案 |
 
 修复的单测结论：`/root/rf-verify` 全量 `./build.sh --test` → **0 FAIL / 131 packages ok**（2026-11-03）。
 E2E 里的 D1–D5 回归断言要等这次后端发版后才转绿，它们是发版的验收条件。

@@ -322,4 +322,39 @@ test.describe('角色授权与资源授权 · 写入链路', () => {
       expect(res.message, `${who} 的回收后文案不一致`).toBe(phantomMessage);
     }
   });
+
+  /**
+   * FINDING：三档可见范围目前不参与判定，只改标签。
+   *
+   * 五类资源的单资源判定在档位分支前就放行了资源 owner、平台超管、租户管理员，
+   * 剩下的进 `tieredAccess`，而它只认「创建者 / 显式授权 / 部门管理员」，根本不读
+   * 档位；列表 SQL 同理（唯一读 permission 的是历史 'team' 分支，迁移后已无命中）。
+   * 所以「仅所有者 / 租户管理层可见 / 平台管理员可见」当前完全等价。
+   *
+   * 一旦有人把档位接进判定（例如 owner 档不再放行租户管理员），这条会红，正好提醒
+   * 同步改文案与文档。
+   */
+  test('FINDING：三档可见范围对成员/管理层行为完全一致', async ({ request }) => {
+    for (const tier of ['owner', 'tenant_owner', 'platform']) {
+      const put = await call(request, 'put', api.dataset(kbID), 'owner', {
+        permission: tier,
+      });
+      expect(put.code, `切换可见范围到 ${tier} 失败：${put.message}`).toBe(0);
+
+      const readBack = await call(request, 'get', api.dataset(kbID), 'owner');
+      expect(readBack.data?.permission, `可见范围没有落库：${tier}`).toBe(tier);
+
+      for (const who of ['member', 'plain'] as AccountName[]) {
+        const res = await call(request, 'get', api.dataset(kbID), who);
+        expect(
+          res.code,
+          `${tier} 档下 ${who} 仍不可见；若档位已接入判定，请更新这条 FINDING 与文案`,
+        ).not.toBe(0);
+      }
+      for (const who of ['admin', 'dept'] as AccountName[]) {
+        const res = await call(request, 'get', api.dataset(kbID), who);
+        expect(res.code, `${tier} 档下管理层 ${who} 应可见`).toBe(0);
+      }
+    }
+  });
 });
