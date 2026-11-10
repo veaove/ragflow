@@ -39,6 +39,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useKnowledgeBaseContext } from '../contexts/knowledge-base-context';
+import {
+  type ChangeSetEditAction,
+  isEditPermissionDenied,
+} from './edit-permission';
+import { EditPermissionDialog } from './edit-permission-dialog';
 import { TestCompareDialog } from './test-compare-dialog';
 
 /**
@@ -51,12 +57,20 @@ import { TestCompareDialog } from './test-compare-dialog';
  */
 export default function ChangeCenter() {
   const { id: datasetId = '' } = useParams();
+  const { knowledgeBase } = useKnowledgeBaseContext();
   const [changeSets, setChangeSets] = useState<IChangeSet[]>([]);
   const [diff, setDiff] = useState<IChangeSetDiff | null>(null);
   const [loading, setLoading] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
   // 勾选项的稳定 key：`sq:<chunk_id>` / `syn:<group_id>`。
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // 非空表示「这次发布 / 放弃没有编辑权限」，弹框说明原因而不是报错误码。
+  const [deniedAction, setDeniedAction] = useState<ChangeSetEditAction | null>(
+    null,
+  );
+  // 只有资源层明确说「不可编辑」时才拦；字段缺失（旧后端 / 详情未加载）一律
+  // 放行，交给后端判定，避免把能编辑的人挡在门外。
+  const canEdit = knowledgeBase?.capabilities?.update !== false;
 
   const reload = useCallback(async () => {
     if (!datasetId) return;
@@ -147,6 +161,43 @@ export default function ChangeCenter() {
 
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 
+  /**
+   * runEdit 跑一次写操作（发布 / 放弃），返回是否真的成功。
+   *
+   * 只读成员点这两个按钮不能只是「接口报错」：权限位说不行就直接弹框，不发
+   * 注定被拒的请求；后端仍然拒绝（模块矩阵、并发撤销授权）时同样归到弹框，
+   * 而不是把错误码或英文 message 打成 toast。其它失败照旧走 toast。
+   */
+  const runEdit = async (
+    action: ChangeSetEditAction,
+    call: () => Promise<unknown>,
+  ) => {
+    if (!canEdit) {
+      setDeniedAction(action);
+      return false;
+    }
+    try {
+      const res = (await call()) as { data?: { code?: number; message?: string } };
+      if (isEditPermissionDenied(res)) {
+        setDeniedAction(action);
+        return false;
+      }
+      const code = res?.data?.code;
+      if (typeof code === 'number' && code !== 0) {
+        toast.error(res?.data?.message || '操作失败');
+        return false;
+      }
+      return true;
+    } catch (e: any) {
+      if (isEditPermissionDenied(e)) {
+        setDeniedAction(action);
+        return false;
+      }
+      toast.error(e?.message || '操作失败');
+      return false;
+    }
+  };
+
   const doPublishSelected = async () => {
     if (!diff || !scope) return;
     if (
@@ -155,14 +206,13 @@ export default function ChangeCenter() {
       )
     )
       return;
-    try {
-      await publishChangeSet(datasetId, diff.change_set_id, scope);
-      toast.success('已发布选中变更');
-      setSelected(new Set());
-      reload();
-    } catch (e: any) {
-      toast.error(e?.message || '发布失败');
-    }
+    const ok = await runEdit('publish', () =>
+      publishChangeSet(datasetId, diff.change_set_id, scope),
+    );
+    if (!ok) return;
+    toast.success('已发布选中变更');
+    setSelected(new Set());
+    reload();
   };
 
   const doPublishAll = async () => {
@@ -173,14 +223,13 @@ export default function ChangeCenter() {
       )
     )
       return;
-    try {
-      await publishChangeSet(datasetId, diff.change_set_id);
-      toast.success('发布成功');
-      setSelected(new Set());
-      reload();
-    } catch (e: any) {
-      toast.error(e?.message || '发布失败');
-    }
+    const ok = await runEdit('publish', () =>
+      publishChangeSet(datasetId, diff.change_set_id),
+    );
+    if (!ok) return;
+    toast.success('发布成功');
+    setSelected(new Set());
+    reload();
   };
 
   const doDiscardSelected = async () => {
@@ -191,14 +240,13 @@ export default function ChangeCenter() {
       )
     )
       return;
-    try {
-      await discardChangeSet(datasetId, diff.change_set_id, scope);
-      toast.success('已放弃选中变更');
-      setSelected(new Set());
-      reload();
-    } catch {
-      toast.error('放弃失败');
-    }
+    const ok = await runEdit('discard', () =>
+      discardChangeSet(datasetId, diff.change_set_id, scope),
+    );
+    if (!ok) return;
+    toast.success('已放弃选中变更');
+    setSelected(new Set());
+    reload();
   };
 
   const hasPending = changeCount > 0;
@@ -388,8 +436,14 @@ export default function ChangeCenter() {
           datasetId={datasetId}
           changeSetId={diff.change_set_id}
           scope={scope}
+          onPublishDenied={() => setDeniedAction('publish')}
         />
       )}
+
+      <EditPermissionDialog
+        action={deniedAction}
+        onClose={() => setDeniedAction(null)}
+      />
     </div>
   );
 }

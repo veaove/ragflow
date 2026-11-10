@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { isEditPermissionDenied } from './edit-permission';
 
 const DEFAULT_TOP_K = 5;
 const DEFAULT_THRESHOLD = 0.2;
@@ -62,6 +63,7 @@ export function TestCompareDialog({
   datasetId,
   changeSetId,
   scope,
+  onPublishDenied,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -69,6 +71,11 @@ export function TestCompareDialog({
   changeSetId: string;
   /** 有勾选时只对比选中项；undefined 表示对比整个变更集。 */
   scope?: IChangeSetScope;
+  /**
+   * 弹窗里也带「确认发布」，只读成员点它同样会被资源层拒绝。权限提示统一由
+   * 变更中心渲染（一个弹框实例），这里只把「被拒了」这件事交出去。
+   */
+  onPublishDenied?: () => void;
 }) {
   const [diff, setDiff] = useState<IChangeSetDiff | null>(null);
   const [query, setQuery] = useState('');
@@ -263,13 +270,26 @@ export function TestCompareDialog({
 
   const handlePublish = useCallback(async () => {
     try {
-      await publishChangeSet(datasetId, changeSetId, scope);
+      const res = await publishChangeSet(datasetId, changeSetId, scope);
+      if (isEditPermissionDenied(res)) {
+        onPublishDenied?.();
+        return;
+      }
+      const code = (res as { data?: { code?: number; message?: string } })?.data;
+      if (typeof code?.code === 'number' && code.code !== 0) {
+        toast.error(code.message || '发布失败');
+        return;
+      }
       toast.success(scope ? '已发布选中变更' : '变更集已发布');
       onOpenChange(false);
     } catch (e: any) {
-      toast.error(e?.response?.data?.message || '发布失败');
+      if (isEditPermissionDenied(e)) {
+        onPublishDenied?.();
+        return;
+      }
+      toast.error(e?.message || '发布失败');
     }
-  }, [datasetId, changeSetId, scope, onOpenChange]);
+  }, [datasetId, changeSetId, scope, onOpenChange, onPublishDenied]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

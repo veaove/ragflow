@@ -59,6 +59,13 @@ export interface IDataset {
   update_time: number;
   keywords_similarity_weight: number;
   connectors: IConnector[];
+  /**
+   * 后端按资源层逐个操作判定的能力位。只用于在点按钮之前给出确定的话术，
+   * 不能当授权依据：真正的判定仍在后端。
+   */
+  capabilities?: {
+    update?: boolean;
+  };
 }
 
 export type IDatasetReferenceKind = 'chat' | 'search' | 'agent' | 'evaluation';

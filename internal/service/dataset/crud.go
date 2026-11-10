@@ -298,6 +298,15 @@ func (d *DatasetService) GetDataset(ctx context.Context, datasetID, userID strin
 	}
 	data["connectors"] = datasetConnectorsOrEmpty(connectors)
 
+	// capabilities.update：前端据此在点「发布 / 放弃变更」之前就告诉用户没有
+	// 编辑权限，而不是发一次注定被拒的请求、再把人话翻译成错误码。
+	//
+	// 只读授权的成员和部门管理员都能读到详情，但没有写权限。判定必须由资源层
+	// 给出：前端看到「能进这个库」就渲染可点按钮，点下去只会拿到 403。
+	data["capabilities"] = map[string]bool{
+		"update": d.CheckAccess(ctx, permission.Subject{UserID: userID}, datasetID, permission.OperationUpdate) == nil,
+	}
+
 	return data, common.CodeSuccess, nil
 }
 
