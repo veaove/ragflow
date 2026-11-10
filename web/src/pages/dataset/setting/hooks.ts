@@ -5,6 +5,7 @@ import {
 } from '@/hooks/use-knowledge-request';
 import { IConnector } from '@/interfaces/database/dataset';
 import { useDataSourceInfo } from '@/pages/user-setting/data-source/constant';
+import { useKnowledgeBaseContext } from '../contexts/knowledge-base-context';
 import {
   getOperatorType,
   transformFormConfigToApi,
@@ -17,6 +18,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useState,
 } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { z } from 'zod';
@@ -79,9 +81,20 @@ export const useFetchDatasetSettingOnMount = (
 
 export const useSaveDatasetSetting = () => {
   const { saveKnowledgeConfiguration, loading } = useUpdateKnowledge();
+  const { knowledgeBase } = useKnowledgeBaseContext();
+  // 配置页对只读成员是可读的（语言、解析方式都得看得见），但保存要「可编辑」。
+  // 能力位说不行就别发那次注定被收敛成 404 Resource not found 的请求——
+  // 由页面弹框说清缺哪条授权。
+  const canUpdate = knowledgeBase?.capabilities?.update !== false;
+  const [saveDenied, setSaveDenied] = useState(false);
 
   const handleSave = useCallback(
     async (values: z.infer<typeof formSchema>) => {
+      if (!canUpdate) {
+        setSaveDenied(true);
+        return undefined;
+      }
+
       const payload = { ...values };
 
       // Apply forward transforms to parser_config if in pipeline mode. Each node
@@ -113,10 +126,15 @@ export const useSaveDatasetSetting = () => {
       }
       return saveKnowledgeConfiguration(payload);
     },
-    [saveKnowledgeConfiguration],
+    [canUpdate, saveKnowledgeConfiguration],
   );
 
-  return { handleSave, loading };
+  return {
+    handleSave,
+    loading,
+    saveDenied,
+    closeSaveDenied: useCallback(() => setSaveDenied(false), []),
+  };
 };
 
 export const usePipelineDataList = (sourceData: any[] | undefined) => {

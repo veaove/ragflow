@@ -18,6 +18,7 @@ import { useHandleFilterSubmit } from '@/components/list-filter-bar/use-handle-f
 import message from '@/components/ui/message';
 import { isDatasetId } from '@/utils/dataset-util';
 import { markListItemsDeleted } from '@/utils/list-deletion-util';
+import { isEditPermissionDenied } from '@/utils/permission-error';
 import { ParseType } from '@/constants/knowledge';
 import { ListDeletionKey } from '@/constants/list-deletion';
 import { ResponsePostType, ResponseType } from '@/interfaces/database/base';
@@ -431,7 +432,19 @@ export const useUpdateKnowledge = (shouldFetchList = false) => {
         isUndefined,
       );
 
-      const { data = {} } = await updateKb(kbId, requestBody);
+      // 写配置被资源层拒绝时，后端把「无权」收敛成 404 Resource not found；
+      // 这里自己接住，改用说得清的提示，不让请求层弹一条只有错误码的框。
+      const { data = {} } = await updateKb(kbId, requestBody, {
+        skipErrorCodes: [404],
+      });
+      if (isEditPermissionDenied(data)) {
+        message.error({
+          message: '知识库配置未保存',
+          description:
+            '该知识库当前无法修改：你可能只有「可查看」权限，或它已被删除。保存配置需要「可编辑」授权，请联系知识库所有者或本租户管理员在「资源授权」中调整。',
+        });
+        return data;
+      }
       if (data.code === 0) {
         message.success(i18n.t(`message.updated`));
         // 保存分类后立刻刷新筛选项，新填的分类不用等缓存过期才出现。

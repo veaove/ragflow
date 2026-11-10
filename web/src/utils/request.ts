@@ -322,6 +322,14 @@ request.interceptors.response.use(async (response: Response, options) => {
     // 权限不足——后端可能打 108/403，也可能误打 103（OperatingError），
     // 所以统一用 message 文本识别。弹友好的中文提示，5 秒内同一模块只弹一次。
     notifyPermissionDenied(response?.url, data?.message);
+  } else if (data?.code === 404 && !skipErrorCodes?.includes(data?.code)) {
+    // 404 有两层含义：资源真的没了，或者资源层把「无权访问」收敛成了
+    // 404 Resource not found。原样甩给用户等于没说，这里把两种可能都讲清。
+    notification.error({
+      message: '资源不存在或无权访问',
+      description: `${i18n.t('message.404')}若该资源确实存在，说明当前账号没有操作它的权限，请联系所有者或本租户管理员调整授权。（${i18n.t('message.requestError')} 404）`,
+      duration: 5,
+    });
   } else if (data?.code !== 0 && !skipErrorCodes?.includes(data?.code)) {
     // 标题用后端给的人话，错误码退到说明里给支持用：以前把「错误 : 404」放在
     // 标题上，弹框第一眼全是代码。

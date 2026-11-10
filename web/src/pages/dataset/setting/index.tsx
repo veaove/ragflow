@@ -1,4 +1,5 @@
 import { ParserSelect } from '@/components/parser-select';
+import { PermissionDeniedDialog } from '@/components/permission-denied-dialog';
 import PipelineOperatorTabs from '@/components/pipeline-operator-tabs';
 import { Button, ButtonLoading } from '@/components/ui/button';
 import {
@@ -72,7 +73,12 @@ export default function DatasetSetting() {
     loading: datasetSettingLoading,
     sourceData,
   } = useFetchDatasetSettingOnMount(form);
-  const { handleSave, loading: saveLoading } = useSaveDatasetSetting();
+  const {
+    handleSave,
+    loading: saveLoading,
+    saveDenied,
+    closeSaveDenied,
+  } = useSaveDatasetSetting();
 
   const [sourceDataState, setSourceDataState] =
     useState<IDataSourceNodeProps[]>();
@@ -310,6 +316,14 @@ export default function DatasetSetting() {
           </div>
         </CardContent>
       </Card>
+
+      <PermissionDeniedDialog
+        open={saveDenied}
+        title="无法保存知识库配置"
+        description="你对这个知识库只有「可查看」权限，配置无法保存。保存需要「可编辑」授权：请联系知识库所有者或本租户管理员，在「资源授权」中把该知识库的可编辑权限授予你。"
+        testId="dataset-setting-save-denied"
+        onClose={closeSaveDenied}
+      />
     </div>
   );
 }
