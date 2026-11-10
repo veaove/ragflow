@@ -34,6 +34,7 @@ import {
   setGrantVisibility,
 } from '@/services/console-service';
 
+import { GrantBoundaryHint } from './grant-boundary-hint';
 import { GrantChips } from './grant-chip';
 import { GrantDetailPanel } from './grant-detail-panel';
 import { GrantGraph } from './grant-graph';
@@ -442,8 +443,9 @@ export default function ConsoleGrants() {
             </h1>
             <p className="mt-1 text-sm text-text-secondary">
               知识库与文件管理的授权按层级展示：每层只回答「给了谁」和「哪些子项
-              例外」，可见范围分「仅所有者 / 租户管理层 / 平台管理员」三档，普通
-              成员需逐人授权；图谱把成员、团队、资源摊平在一张图上，看清谁和谁
+              例外」，可见范围分「仅所有者 / 租户管理层 / 平台管理员」三档
+              <GrantBoundaryHint />
+              ，普通成员需逐人授权；图谱把成员、团队、资源摊平在一张图上，看清谁和谁
               有关系
             </p>
           </div>
