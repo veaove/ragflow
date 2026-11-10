@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { CrossLanguageFormField } from '@/components/cross-language-form-field';
 import { FormContainer } from '@/components/form-container';
+import { PermissionDeniedDialog } from '@/components/permission-denied-dialog';
 import {
   RerankCandidatesCountFormField,
   rerankCandidatesCountSchema,
@@ -40,13 +41,17 @@ import {
 import { IDataset } from '@/interfaces/database/dataset';
 import { ITestRetrievalRequestBody } from '@/interfaces/request/knowledge';
 import { updateKb } from '@/services/knowledge-service';
+import { isEditPermissionDenied } from '@/utils/permission-error';
 import { trim } from 'lodash';
 import { Send } from 'lucide-react';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { toast } from 'sonner';
-import { useOwnerTenantId } from '../contexts/knowledge-base-context';
+import {
+  useKnowledgeBaseContext,
+  useOwnerTenantId,
+} from '../contexts/knowledge-base-context';
 
 type TestingFormProps = Pick<
   ReturnType<typeof useTestRetrieval>,
@@ -162,6 +167,12 @@ export default function TestingForm({
   const { id } = useParams();
   const ownerTenantId = useOwnerTenantId();
   const knowledgeBaseId = id;
+  // 测试设置要写回知识库（rerank 模型、阈值、权重），这需要「可编辑」权限；
+  // 只读成员读得到知识库、也跑得了检索测试，但保存每一次都会被资源层拒绝。
+  // 判定由资源层给出（详情里的 capabilities.update），本页只负责别再发那次请求。
+  const { knowledgeBase } = useKnowledgeBaseContext();
+  const canPersistSettings = knowledgeBase?.capabilities?.update !== false;
+  const [saveDeniedOpen, setSaveDeniedOpen] = useState(false);
 
   const { data: configuration } = useFetchKnowledgeBaseConfiguration();
 
@@ -211,6 +222,8 @@ export default function TestingForm({
   const initializedRef = useRef(false);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 「保存不了」只解释一次：滑块每动一格都是一次改动，反复弹框等于骚扰。
+  const saveDeniedShownRef = useRef(false);
 
   useEffect(() => {
     if (initializedRef.current || !configuration?.id) {
@@ -241,12 +254,16 @@ export default function TestingForm({
     if (!initializedRef.current || !knowledgeBaseId) {
       return;
     }
-    if (settingsSnapshot === lastSavedSnapshotRef.current) {
-      return;
-    }
-
+    // 先取消上一次待写，再判断要不要写：配置到达时这一轮快照取自 reset 之前的
+    // 默认值，会被当成一次「改动」；随后 reset 把快照拉回基线，那个定时器必须
+    // 一起撤销，否则打开页面就会白写一次知识库（只读成员还会平白被拒一次）。
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+
+    if (settingsSnapshot === lastSavedSnapshotRef.current) {
+      return;
     }
 
     const pendingSnapshot = settingsSnapshot;
@@ -255,22 +272,42 @@ export default function TestingForm({
       const settings = JSON.parse(pendingSnapshot) as PersistedTestingSettings;
       // 先落本地：跨语言/元数据/重排候选/TopN 后端没有列，只能存这里。
       saveLocalTestingSettings(knowledgeBaseId, settings);
+
+      // 只读成员写不回知识库。改动已经在本地生效、本次检索测试也按新值跑，
+      // 所以这里不再发那次注定被资源层拒绝（并被收敛成 404）的请求，只在
+      // 第一次挡住时说清楚：改动能用，但不会被保存到知识库。
+      if (!canPersistSettings) {
+        if (!saveDeniedShownRef.current) {
+          saveDeniedShownRef.current = true;
+          setSaveDeniedOpen(true);
+        }
+        return;
+      }
+
       try {
-        const { data } = await updateKb(knowledgeBaseId, {
-          similarity_threshold: settings.similarity_threshold,
-          keywords_similarity_weight: settings.keywords_similarity_weight,
-          // An empty string is meaningful here: it clears the saved model.
-          rerank_id: settings.rerank_id ?? '',
-        });
+        const { data } = await updateKb(
+          knowledgeBaseId,
+          {
+            similarity_threshold: settings.similarity_threshold,
+            keywords_similarity_weight: settings.keywords_similarity_weight,
+            // An empty string is meaningful here: it clears the saved model.
+            rerank_id: settings.rerank_id ?? '',
+          },
+          // 权限拒绝被后端收敛成 404 "Resource not found"，由弹框解释；
+          // 不让请求层再弹一条「错误 : 404」。其它业务码仍走全局提示。
+          { skipErrorCodes: [404] },
+        );
 
         if (data?.code === 0) {
           lastSavedSnapshotRef.current = pendingSnapshot;
           toast.success(t('knowledgeDetails.testingSettingsSaved'));
+          return;
         }
-        // A non-zero code is already reported by the request interceptor's
-        // global error notification, so adding another toast here would show
-        // the same failure twice. Leaving the baseline untouched means the
-        // next edit retries instead of pretending the settings were saved.
+        if (isEditPermissionDenied(data)) {
+          setSaveDeniedOpen(true);
+        }
+        // 其余非零码由请求层的全局提示负责，这里不重复弹。
+        // 基线不前进，下一次改动会重试，而不是假装已经保存。
       } catch {
         // Network-layer failures are surfaced by the interceptor too.
       }
@@ -281,7 +318,7 @@ export default function TestingForm({
     // re-run would also cancel it on unmount, so changing a setting and
     // leaving the page within 600ms would silently lose the change. The body
     // above already cancels the previous timer before scheduling a new one.
-  }, [settingsSnapshot, knowledgeBaseId, t]);
+  }, [settingsSnapshot, knowledgeBaseId, t, canPersistSettings]);
 
   function onSubmit() {
     refetch();
@@ -344,6 +381,14 @@ export default function TestingForm({
           </div>
         </footer>
       </form>
+
+      <PermissionDeniedDialog
+        open={saveDeniedOpen}
+        title="测试设置未能保存"
+        description="你对这个知识库只有「可查看」权限，测试设置无法保存到知识库。本次改动会立即用于当前检索测试，并记在本机浏览器里（换设备或清缓存后会恢复原设置）。如需长期保存，请联系知识库所有者或本租户管理员调整授权。"
+        testId="testing-settings-save-denied"
+        onClose={() => setSaveDeniedOpen(false)}
+      />
     </Form>
   );
 }

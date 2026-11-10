@@ -16,7 +16,8 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import { isEditPermissionDenied } from '../edit-permission';
+import { isEditPermissionDenied } from '@/utils/permission-error';
+
 import ChangeCenter from '../index';
 
 jest.mock('react-router', () => ({

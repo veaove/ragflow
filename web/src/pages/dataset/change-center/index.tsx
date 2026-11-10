@@ -39,11 +39,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { isEditPermissionDenied } from '@/utils/permission-error';
+
 import { useKnowledgeBaseContext } from '../contexts/knowledge-base-context';
-import {
-  type ChangeSetEditAction,
-  isEditPermissionDenied,
-} from './edit-permission';
+import type { ChangeSetEditAction } from './edit-permission';
 import { EditPermissionDialog } from './edit-permission-dialog';
 import { TestCompareDialog } from './test-compare-dialog';
 

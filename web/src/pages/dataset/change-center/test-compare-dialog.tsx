@@ -41,7 +41,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { isEditPermissionDenied } from './edit-permission';
+import { isEditPermissionDenied } from '@/utils/permission-error';
 
 const DEFAULT_TOP_K = 5;
 const DEFAULT_THRESHOLD = 0.2;

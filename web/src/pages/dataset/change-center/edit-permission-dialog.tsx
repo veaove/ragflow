@@ -14,15 +14,7 @@
  *  limitations under the License.
  */
 
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { PermissionDeniedDialog } from '@/components/permission-denied-dialog';
 
 import type { ChangeSetEditAction } from './edit-permission';
 
@@ -57,25 +49,12 @@ export function EditPermissionDialog({
   const copy = action ? COPY[action] : null;
 
   return (
-    <Dialog
+    <PermissionDeniedDialog
       open={!!action}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <DialogContent className="max-w-[440px]" data-testid="change-set-edit-denied">
-        <DialogHeader>
-          <DialogTitle>{copy?.title ?? ''}</DialogTitle>
-        </DialogHeader>
-        <DialogDescription className="text-sm text-text-secondary">
-          {copy?.description ?? ''}
-        </DialogDescription>
-        <DialogFooter>
-          <Button size="sm" onClick={onClose}>
-            知道了
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      title={copy?.title ?? ''}
+      description={copy?.description ?? ''}
+      testId="change-set-edit-denied"
+      onClose={onClose}
+    />
   );
 }

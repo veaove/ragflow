@@ -382,8 +382,18 @@ export const listDatasetByIds = (ids: string[], canvasID?: string) =>
 
 export const datasetFilter = () => request.get(api.datasetFilter);
 
-export const updateKb = (datasetId: string, data: Record<string, any>) =>
-  request.put(api.updateKb(datasetId), { data });
+/**
+ * 更新知识库配置。
+ *
+ * `skipErrorCodes` 让调用方自己处理这些业务码的提示：检索测试页会保存测试设置，
+ * 只读成员拿到的是被收敛成 404 的权限拒绝，那里要用弹框说清楚，不能弹出
+ * 「错误 : 404 Resource not found」。
+ */
+export const updateKb = (
+  datasetId: string,
+  data: Record<string, any>,
+  options?: { skipErrorCodes?: number[] },
+) => request.put(api.updateKb(datasetId), { data, ...options });
 
 /**
  * Lists the apps that bind this dataset. The list must be empty before the
