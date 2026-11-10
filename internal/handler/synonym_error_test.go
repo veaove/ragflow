@@ -54,6 +54,12 @@ func TestRespondSynonymErrorKeepsDatasetAndGroupApart(t *testing.T) {
 			wantCode:    float64(common.CodeDataError),
 			wantMessage: "synonym group not found",
 		},
+		{
+			name:        "read-only share",
+			err:         service.ErrDatasetReadOnly,
+			wantCode:    float64(common.CodeForbidden),
+			wantMessage: "dataset is read-only for this user",
+		},
 	}
 
 	for _, tc := range cases {

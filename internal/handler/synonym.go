@@ -196,6 +196,12 @@ func respondSynonymError(c *gin.Context, err error) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, "dataset not found or access denied")
 		return
 	}
+	// 只读授权与部门管理员能打开词表页（Read），但改不了（Update）。这是权限不足，
+	// 不是库不存在：返回 403 让前端提示「没有编辑权限」，而不是让它以为库被删了。
+	if errors.Is(err, service.ErrDatasetReadOnly) {
+		common.ResponseWithCodeData(c, common.CodeForbidden, nil, "dataset is read-only for this user")
+		return
+	}
 	if errors.Is(err, service.ErrSynonymGroupNotFound) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, "synonym group not found")
 		return

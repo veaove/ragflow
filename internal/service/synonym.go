@@ -45,6 +45,11 @@ var ErrSynonymGroupNotFound = errors.New("synonym group not found")
 // 看到「暂无词组」加一句「synonym group not found」，既看不懂也查不下去。
 var ErrDatasetNotFound = errors.New("dataset not found")
 
+// ErrDatasetReadOnly 表示调用者对知识库有读权限、但没有写权限（只读授权或
+// 部门管理员）。与 ErrDatasetNotFound 分开是为了让前端说清楚「你被挡住了」还是
+// 「这个库不存在」——把只读降级成「不存在」时，用户会以为库被删了。
+var ErrDatasetReadOnly = errors.New("dataset is read-only for this user")
+
 // ErrSynonymGroupReplaced is returned when a caller edits a version that a later
 // publish replaced (status=disabled). Those rows are kept as an audit trail and
 // the manager does not list them; the live version that superseded them is the
@@ -97,7 +102,7 @@ type UpdateSynonymGroupRequest struct {
 
 // ListSynonymGroups returns the vocabulary groups of one knowledge base.
 func (s *SynonymService) ListSynonymGroups(ctx context.Context, userID, datasetID, domain string) ([]*entity.SynonymGroup, error) {
-	tenantID, err := s.resolveTenant(ctx, userID, datasetID)
+	tenantID, err := s.resolveTenantRead(ctx, userID, datasetID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +138,7 @@ func (s *SynonymService) ListSynonymGroups(ctx context.Context, userID, datasetI
 
 // GetSynonymGroup returns one group with its words attached.
 func (s *SynonymService) GetSynonymGroup(ctx context.Context, userID, groupID string) (*entity.SynonymGroup, error) {
-	group, tenantID, err := s.resolveGroup(ctx, userID, groupID)
+	group, tenantID, err := s.resolveGroupRead(ctx, userID, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +390,17 @@ type SynonymImportRow struct {
 // vocabulary page renders as an empty list beside an English error nobody can
 // act on. Writing rows under the caller's tenant was wrong for the same reason:
 // retrieval asks with the base's tenant, so those words would never expand.
+// resolveTenant 是写路径的入口（Update）。
 func (s *SynonymService) resolveTenant(ctx context.Context, userID, datasetID string) (string, error) {
+	return s.resolveTenantOp(ctx, userID, datasetID, permission.OperationUpdate)
+}
+
+// resolveTenantRead 是只读入口（列表 / 详情）：可查看授权必须能打开词表页。
+func (s *SynonymService) resolveTenantRead(ctx context.Context, userID, datasetID string) (string, error) {
+	return s.resolveTenantOp(ctx, userID, datasetID, permission.OperationRead)
+}
+
+func (s *SynonymService) resolveTenantOp(ctx context.Context, userID, datasetID string, op permission.Operation) (string, error) {
 	datasetID = strings.TrimSpace(datasetID)
 	if datasetID == "" {
 		return "", errors.New("dataset_id is required")
@@ -422,12 +437,16 @@ func (s *SynonymService) resolveTenant(ctx context.Context, userID, datasetID st
 			return "", err
 		}
 	}
-	// Update rather than Read: this service exposes the vocabulary manager, which
-	// writes. The dataset policy grants Update to the same principals that may
-	// read it, so this does not narrow who can open the page — it keeps a
-	// read-only share from rewriting the words behind retrieval.
-	if err := checker.CheckResource(ctx, subject, permission.ResourceRef{Kind: permission.ResourceKindDataset, ID: kb.ID}, permission.OperationUpdate); err != nil {
+	// 读走 Read、写走 Update：只读授权（readOnlyOperations）与部门管理员都没有
+	// Update，早期统一按 Update 判定会让「可查看」的成员连词表页都打不开，
+	// 而错误又被折成"数据集不存在"，用户只能看到一个 500。
+	ref := permission.ResourceRef{Kind: permission.ResourceKindDataset, ID: kb.ID}
+	if err := checker.CheckResource(ctx, subject, ref, op); err != nil {
 		if datasetAccessDenied(err) {
+			if op != permission.OperationRead &&
+				checker.CheckResource(ctx, subject, ref, permission.OperationRead) == nil {
+				return "", ErrDatasetReadOnly
+			}
 			return "", ErrDatasetNotFound
 		}
 		return "", err
@@ -443,6 +462,14 @@ func (s *SynonymService) resolveTenant(ctx context.Context, userID, datasetID st
 // base's tenant is not addressable under the base's scope and is reported as
 // missing, so a stale row can never be rewritten across tenants.
 func (s *SynonymService) resolveGroup(ctx context.Context, userID, groupID string) (*entity.SynonymGroup, string, error) {
+	return s.resolveGroupOp(ctx, userID, groupID, permission.OperationUpdate)
+}
+
+func (s *SynonymService) resolveGroupRead(ctx context.Context, userID, groupID string) (*entity.SynonymGroup, string, error) {
+	return s.resolveGroupOp(ctx, userID, groupID, permission.OperationRead)
+}
+
+func (s *SynonymService) resolveGroupOp(ctx context.Context, userID, groupID string, op permission.Operation) (*entity.SynonymGroup, string, error) {
 	groupID = strings.TrimSpace(groupID)
 	if groupID == "" {
 		return nil, "", ErrSynonymGroupNotFound
@@ -454,7 +481,7 @@ func (s *SynonymService) resolveGroup(ctx context.Context, userID, groupID strin
 		}
 		return nil, "", err
 	}
-	tenantID, err := s.resolveTenant(ctx, userID, group.DatasetID)
+	tenantID, err := s.resolveTenantOp(ctx, userID, group.DatasetID, op)
 	if err != nil {
 		return nil, "", err
 	}

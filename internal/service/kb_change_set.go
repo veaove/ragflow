@@ -122,7 +122,7 @@ func (s *ChangeSetService) GetOrCreateChangeSet(ctx context.Context, userID, dat
 
 // ListChangeSets returns the caller's open change sets for a kb.
 func (s *ChangeSetService) ListChangeSets(ctx context.Context, userID, datasetID string) ([]*entity.KbChangeSet, error) {
-	tenantID, err := resolveTenantID(ctx, userID, datasetID)
+	tenantID, err := resolveTenantIDRead(ctx, userID, datasetID)
 	if err != nil {
 		return nil, err
 	}
@@ -139,6 +139,12 @@ func (s *ChangeSetService) ListChangeSets(ctx context.Context, userID, datasetID
 func resolveTenantID(ctx context.Context, userID, datasetID string) (string, error) {
 	syn := NewSynonymService()
 	return syn.resolveTenant(ctx, userID, datasetID)
+}
+
+// resolveTenantIDRead 供只读的变更中心页面使用：可查看授权要能列待生效变更。
+func resolveTenantIDRead(ctx context.Context, userID, datasetID string) (string, error) {
+	syn := NewSynonymService()
+	return syn.resolveTenantRead(ctx, userID, datasetID)
 }
 
 // StageSimilarQuestions writes a chunk's full similar-question list as pending
@@ -372,7 +378,7 @@ type SynonymGroupDiff struct {
 // the source live group's words (empty for a new group) and "after" is the
 // pending group's words.
 func (s *ChangeSetService) GetChangeSetDiff(ctx context.Context, userID, datasetID, changeSetID string) (*ChangeSetDiff, error) {
-	tenantID, err := resolveTenantID(ctx, userID, datasetID)
+	tenantID, err := resolveTenantIDRead(ctx, userID, datasetID)
 	if err != nil {
 		return nil, err
 	}

@@ -261,6 +261,12 @@ func respondChangeSetError(c *gin.Context, err error) {
 		common.ResponseWithCodeData(c, common.CodeDataError, nil, "change set not found")
 		return
 	}
+	// 待生效变更可以看（Read），发布/丢弃改的是库内容（Update）。只读授权在这里
+	// 是 403，不能折成「库不存在」。
+	if errors.Is(err, service.ErrDatasetReadOnly) {
+		common.ResponseWithCodeData(c, common.CodeForbidden, nil, "dataset is read-only for this user")
+		return
+	}
 	if respondPermissionErrorIf(c, err, true) {
 		return
 	}
