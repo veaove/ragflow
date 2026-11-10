@@ -151,6 +151,45 @@ export function useDisableDifferenceEmbeddingDataset(
   };
 }
 
+export type DatasetAvailabilityHint = {
+  messageKey: string;
+  /** `error` only when the binding actually breaks the search; everything the
+   * runtime silently skips is a note, not a failure. */
+  tone: 'error' | 'muted';
+};
+
+/**
+ * Advisory hints for dataset bindings the current account cannot use.
+ *
+ * With partial access on (the default) unreadable datasets are skipped at
+ * search time, so the field must not shout at the user: it only says what will
+ * happen. With partial access off the same binding fails the search outright,
+ * and that is the one case worth an error.
+ */
+export const buildDatasetAvailabilityHints = ({
+  allowsPartialKb,
+  unavailableCount,
+  emptyCount,
+}: {
+  allowsPartialKb: boolean;
+  unavailableCount: number;
+  emptyCount: number;
+}): DatasetAvailabilityHint[] => {
+  const hints: DatasetAvailabilityHint[] = [];
+  if (unavailableCount > 0) {
+    hints.push({
+      messageKey: allowsPartialKb
+        ? 'chat.datasetUnavailableSkip'
+        : 'chat.datasetUnavailableStrict',
+      tone: allowsPartialKb ? 'muted' : 'error',
+    });
+  }
+  if (emptyCount > 0) {
+    hints.push({ messageKey: 'chat.datasetEmpty', tone: 'muted' });
+  }
+  return hints;
+};
+
 export function KnowledgeBaseFormField({
   showVariable = false,
   name = 'dataset_ids',
@@ -188,25 +227,18 @@ export function KnowledgeBaseFormField({
   } = useDisableDifferenceEmbeddingDataset(name, canvasID);
 
   // Advisory only: the runtime tolerates unusable bindings when partial access
-  // is on, so this must not block saving. Both causes are spelled out instead
-  // of the old "deleted or empty of chunks", which mislabeled a dataset the
-  // current account simply cannot read.
-  const availabilityHint = useMemo(() => {
-    const hints: string[] = [];
-    if (unavailableIds.size > 0) {
-      hints.push(
-        t(
-          allowsPartialKb
-            ? 'chat.datasetUnavailableSkip'
-            : 'chat.datasetUnavailableStrict',
-        ),
-      );
-    }
-    if (emptyIds.size > 0) {
-      hints.push(t('chat.datasetEmpty'));
-    }
-    return hints.join(' ');
-  }, [allowsPartialKb, unavailableIds, emptyIds, t]);
+  // is on, so this must not block saving, and it must not be painted as an
+  // error either — a red line for something the search just skips reads like a
+  // defect the user has to fix.
+  const availabilityHints = useMemo(
+    () =>
+      buildDatasetAvailabilityHints({
+        allowsPartialKb,
+        unavailableCount: unavailableIds.size,
+        emptyCount: emptyIds.size,
+      }),
+    [allowsPartialKb, unavailableIds, emptyIds],
+  );
 
   const nextOptions = buildQueryVariableOptionsByShowVariable(showVariable)();
 
@@ -257,8 +289,22 @@ export function KnowledgeBaseFormField({
       required={required}
       label={label ?? t('chat.knowledgeBases')}
       description={
-        availabilityHint ? (
-          <span className="text-state-error">{availabilityHint}</span>
+        availabilityHints.length > 0 ? (
+          <span className="flex flex-col gap-0.5">
+            {availabilityHints.map((hint) => (
+              <span
+                key={hint.messageKey}
+                data-tone={hint.tone}
+                className={
+                  hint.tone === 'error'
+                    ? 'text-state-error'
+                    : 'text-text-secondary'
+                }
+              >
+                {t(hint.messageKey)}
+              </span>
+            ))}
+          </span>
         ) : undefined
       }
     >

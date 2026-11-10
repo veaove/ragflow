@@ -22,7 +22,10 @@ import {
 } from '@/hooks/use-knowledge-request';
 import { renderHook } from '@testing-library/react';
 import { FormProvider, useForm } from 'react-hook-form';
-import { useDisableDifferenceEmbeddingDataset } from '../knowledge-base-item';
+import {
+  buildDatasetAvailabilityHints,
+  useDisableDifferenceEmbeddingDataset,
+} from '../knowledge-base-item';
 
 type IDataset = import('@/interfaces/database/dataset').IDataset;
 
@@ -217,6 +220,55 @@ describe('dataset embedding selection', () => {
       });
     },
   );
+});
+
+describe('dataset availability hint tone', () => {
+  it('treats a skipped dataset as a note, not an error', () => {
+    expect(
+      buildDatasetAvailabilityHints({
+        allowsPartialKb: true,
+        unavailableCount: 2,
+        emptyCount: 0,
+      }),
+    ).toEqual([
+      { messageKey: 'chat.datasetUnavailableSkip', tone: 'muted' },
+    ]);
+  });
+
+  it('keeps the error tone only when the search would fail', () => {
+    expect(
+      buildDatasetAvailabilityHints({
+        allowsPartialKb: false,
+        unavailableCount: 1,
+        emptyCount: 0,
+      }),
+    ).toEqual([
+      { messageKey: 'chat.datasetUnavailableStrict', tone: 'error' },
+    ]);
+  });
+
+  it('reports empty datasets as a note of their own', () => {
+    expect(
+      buildDatasetAvailabilityHints({
+        allowsPartialKb: true,
+        unavailableCount: 1,
+        emptyCount: 3,
+      }),
+    ).toEqual([
+      { messageKey: 'chat.datasetUnavailableSkip', tone: 'muted' },
+      { messageKey: 'chat.datasetEmpty', tone: 'muted' },
+    ]);
+  });
+
+  it('stays silent when every binding resolves', () => {
+    expect(
+      buildDatasetAvailabilityHints({
+        allowsPartialKb: true,
+        unavailableCount: 0,
+        emptyCount: 0,
+      }),
+    ).toEqual([]);
+  });
 });
 
 describe('dataset availability hint data', () => {
