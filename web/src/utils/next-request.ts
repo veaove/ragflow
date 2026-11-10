@@ -16,7 +16,6 @@
 
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
-import i18n from '@/locales/config';
 import authorizationUtil, {
   getAuthorization,
   redirectToLogin,
@@ -25,68 +24,34 @@ import notification from '@/utils/notification';
 import { getCurrentTenantId, TENANT_HEADER } from '@/utils/tenant-context';
 import axios from 'axios';
 import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
+import {
+  actionLabelFromMethod,
+  describeFailure,
+  describeSessionExpired,
+} from './error-message';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
 
-const FAILED_TO_FETCH = 'Failed to fetch';
-
-export const RetcodeMessage = {
-  200: i18n.t('message.200'),
-  201: i18n.t('message.201'),
-  202: i18n.t('message.202'),
-  204: i18n.t('message.204'),
-  400: i18n.t('message.400'),
-  401: i18n.t('message.401'),
-  403: i18n.t('message.403'),
-  404: i18n.t('message.404'),
-  406: i18n.t('message.406'),
-  410: i18n.t('message.410'),
-  413: i18n.t('message.413'),
-  422: i18n.t('message.422'),
-  500: i18n.t('message.500'),
-  502: i18n.t('message.502'),
-  503: i18n.t('message.503'),
-  504: i18n.t('message.504'),
-};
-export type ResultCode =
-  | 200
-  | 201
-  | 202
-  | 204
-  | 400
-  | 401
-  | 403
-  | 404
-  | 406
-  | 410
-  | 413
-  | 422
-  | 500
-  | 502
-  | 503
-  | 504;
-
 const errorHandler = (error: {
+  config?: { method?: string };
   response: Response;
   message: string;
 }): Response => {
   const { response } = error;
-  if (error.message === FAILED_TO_FETCH) {
-    notification.error({
-      description: i18n.t('message.networkAnomalyDescription'),
-      message: i18n.t('message.networkAnomaly'),
-    });
-  } else {
-    if (response && response.status) {
-      const errorText =
-        RetcodeMessage[response.status as ResultCode] || response.statusText;
-      const { status, url } = response;
-      notification.error({
-        message: `${i18n.t('message.requestError')} ${status}: ${url}`,
-        description: errorText,
-      });
-    }
-  }
+  // 网络断了、超时、HTTP 报错都走同一套说明：只讲原因类别和下一步，
+  // 不把状态码、接口地址、英文原文摆到用户面前。
+  const notice = describeFailure(
+    {
+      status: response?.status,
+      message: error.message,
+    },
+    actionLabelFromMethod(error.config?.method),
+  );
+  notification.error({
+    message: notice.title,
+    description: notice.description,
+    duration: 5,
+  });
   return response ?? { data: { code: 1999 } };
 };
 
@@ -134,7 +99,11 @@ request.interceptors.request.use(
 request.interceptors.response.use(
   async (response) => {
     if (response?.status === 413 || response?.status === 504) {
-      message.error(RetcodeMessage[response?.status as ResultCode]);
+      const notice = describeFailure(
+        { status: response.status },
+        actionLabelFromMethod(response.config?.method),
+      );
+      message.error(notice.title, { description: notice.description });
     }
 
     if (response.config.responseType === 'blob') {
@@ -152,24 +121,27 @@ request.interceptors.response.use(
 
     const skipErrorNotification = (response.config as any)
       ?.skipGlobalErrorNotification;
-    if (data?.code === 100 && !skipErrorNotification) {
-      message.error(data?.message);
-    } else if (data?.code === 401) {
+    if (data?.code === 401) {
       if (!isRedirecting) {
         isRedirecting = true;
+        const notice = describeSessionExpired();
         notification.error({
-          message: data?.message,
-          description: data?.message,
+          message: notice.title,
+          description: notice.description,
           duration: 3,
         });
         authorizationUtil.removeAll();
         redirectToLogin();
       }
     } else if (data?.code !== 0 && !skipErrorNotification) {
+      const notice = describeFailure(
+        { code: data?.code, message: data?.message },
+        actionLabelFromMethod(response.config?.method),
+      );
       notification.error({
-        message: `${i18n.t('message.hint')} : ${data?.code}`,
-        description: data?.message,
-        duration: 3,
+        message: notice.title,
+        description: notice.description,
+        duration: 5,
       });
     }
     return response;
@@ -180,11 +152,10 @@ request.interceptors.response.use(
     if (status === 401) {
       if (!isRedirecting) {
         isRedirecting = true;
-        const messageText =
-          error?.response?.data?.message || RetcodeMessage[401];
+        const notice = describeSessionExpired();
         notification.error({
-          message: messageText,
-          description: messageText,
+          message: notice.title,
+          description: notice.description,
           duration: 3,
         });
         authorizationUtil.removeAll();

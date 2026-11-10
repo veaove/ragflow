@@ -24,7 +24,6 @@ import {
   TENANT_HEADER,
 } from '@/utils/tenant-context';
 import { ResponseType } from '@/interfaces/database/base';
-import i18n from '@/locales/config';
 import authorizationUtil, {
   getAuthorization,
   redirectToLogin,
@@ -32,14 +31,17 @@ import authorizationUtil, {
 import notification from '@/utils/notification';
 import { RequestMethod, extend } from 'umi-request';
 import { convertTheKeysOfTheObjectToSnake, isFormData } from './common-util';
+import {
+  actionLabelFromMethod,
+  describeFailure,
+  describeSessionExpired,
+} from './error-message';
 import { setCachedLlmList } from './llm-cache';
 import { addTenantParams } from './llm-util';
 import {
   isSuperUserDeniedMessage,
   markSuperUserDenied,
 } from './super-user-store';
-
-const FAILED_TO_FETCH = 'Failed to fetch';
 
 /**
  * API URL path → 中文模块名映射。
@@ -131,87 +133,47 @@ function notifyPermissionDenied(url: string, backendMessage?: string) {
   });
 }
 
-export const RetcodeMessage = {
-  200: i18n.t('message.200'),
-  201: i18n.t('message.201'),
-  202: i18n.t('message.202'),
-  204: i18n.t('message.204'),
-  400: i18n.t('message.400'),
-  401: i18n.t('message.401'),
-  403: i18n.t('message.403'),
-  404: i18n.t('message.404'),
-  406: i18n.t('message.406'),
-  410: i18n.t('message.410'),
-  413: i18n.t('message.413'),
-  422: i18n.t('message.422'),
-  500: i18n.t('message.500'),
-  502: i18n.t('message.502'),
-  503: i18n.t('message.503'),
-  504: i18n.t('message.504'),
-};
-export type ResultCode =
-  | 200
-  | 201
-  | 202
-  | 204
-  | 400
-  | 401
-  | 403
-  | 404
-  | 406
-  | 410
-  | 413
-  | 422
-  | 500
-  | 502
-  | 503
-  | 504;
-
 const errorHandler = (error: {
   response: Response;
   message: string;
 }): Response => {
   const { response } = error;
-  if (error.message === FAILED_TO_FETCH) {
-    notification.error({
-      description: i18n.t('message.networkAnomalyDescription'),
-      message: i18n.t('message.networkAnomaly'),
-    });
-  } else {
-    if (response && response.status) {
-      // 403 = 权限不足。普通成员（role=normal）打开管理类页面、或租户里没有
-      // 某个资源时后端就会返回它 —— 这是预期结果，不是故障。
-      // 弹一条友好的中文提示，5 秒内同一模块只弹一次避免刷屏。
-      if (response.status === 403) {
-        // 后端 body 里可能已经有友好中文提示（如 "当前角色没有「数据源」模块的操作权限"）
-        // 尝试读出来，如果读不到就用我们自己拼的
-        response
-          .clone()
-          .json()
-          .then((body) => {
-            // 平台超管（is_superuser=1）调主站接口必回这条 403。它不是
-            // 「角色权限没配」，补 role_permission 也修不好 —— 请求层要把它
-            // 单独识别出来交给根布局整页提示，不能再弹「该功能」权限不足。
-            if (isSuperUserDeniedMessage(body?.message)) {
-              markSuperUserDenied();
-              return;
-            }
-            notifyPermissionDenied(response.url, body?.message);
-          })
-          .catch(() => {
-            notifyPermissionDenied(response.url);
-          });
-        return response;
-      }
-      const errorText =
-        RetcodeMessage[response.status as ResultCode] || response.statusText;
-      const { status, url } = response;
-      notification.error({
-        message: `${i18n.t('message.requestError')} ${status}: ${url}`,
-        description: errorText,
+  // 403 = 权限不足。普通成员（role=normal）打开管理类页面、或租户里没有
+  // 某个资源时后端就会返回它 —— 这是预期结果，不是故障。
+  // 弹一条友好的中文提示，5 秒内同一模块只弹一次避免刷屏。
+  if (response?.status === 403) {
+    // 后端 body 里可能已经有友好中文提示（如 "当前角色没有「数据源」模块的操作权限"）
+    // 尝试读出来，如果读不到就用我们自己拼的
+    response
+      .clone()
+      .json()
+      .then((body) => {
+        // 平台超管（is_superuser=1）调主站接口必回这条 403。它不是
+        // 「角色权限没配」，补 role_permission 也修不好 —— 请求层要把它
+        // 单独识别出来交给根布局整页提示，不能再弹「该功能」权限不足。
+        if (isSuperUserDeniedMessage(body?.message)) {
+          markSuperUserDenied();
+          return;
+        }
+        notifyPermissionDenied(response.url, body?.message);
+      })
+      .catch(() => {
+        notifyPermissionDenied(response.url);
       });
-    }
+    return response;
   }
+
+  // 断网、超时、HTTP 报错走同一套说明：只讲原因类别和下一步，不把状态码、
+  // 接口地址、英文原文摆到用户面前。
+  const notice = describeFailure({
+    status: response?.status,
+    message: error.message,
+  });
+  notification.error({
+    message: notice.title,
+    description: notice.description,
+    duration: 5,
+  });
   return response ?? { data: { code: 1999 } };
 };
 
@@ -256,7 +218,11 @@ request.interceptors.request.use((url: string, options: any) => {
 
 request.interceptors.response.use(async (response: Response, options) => {
   if (response?.status === 413 || response?.status === 504) {
-    message.error(RetcodeMessage[response?.status as ResultCode]);
+    const notice = describeFailure(
+      { status: response.status },
+      actionLabelFromMethod(options?.method),
+    );
+    message.error(notice.title, { description: notice.description });
   }
 
   // Handle HTTP 401
@@ -264,15 +230,10 @@ request.interceptors.response.use(async (response: Response, options) => {
     if (!isRedirecting) {
       isRedirecting = true;
 
-      const data = await response
-        .clone()
-        .json()
-        .catch(() => ({}));
-
-      const messageText = data?.message || RetcodeMessage[401];
+      const notice = describeSessionExpired();
       notification.error({
-        message: messageText,
-        description: messageText,
+        message: notice.title,
+        description: notice.description,
         duration: 3,
       });
       authorizationUtil.removeAll();
@@ -303,14 +264,13 @@ request.interceptors.response.use(async (response: Response, options) => {
     }
   }
 
-  if (data?.code === 100) {
-    message.error(data?.message);
-  } else if (data?.code === 401) {
+  if (data?.code === 401) {
     if (!isRedirecting) {
       isRedirecting = true;
+      const notice = describeSessionExpired();
       notification.error({
-        message: data?.message,
-        description: data?.message,
+        message: notice.title,
+        description: notice.description,
         duration: 3,
       });
       authorizationUtil.removeAll();
@@ -322,23 +282,17 @@ request.interceptors.response.use(async (response: Response, options) => {
     // 权限不足——后端可能打 108/403，也可能误打 103（OperatingError），
     // 所以统一用 message 文本识别。弹友好的中文提示，5 秒内同一模块只弹一次。
     notifyPermissionDenied(response?.url, data?.message);
-  } else if (data?.code === 404 && !skipErrorCodes?.includes(data?.code)) {
-    // 404 有两层含义：资源真的没了，或者资源层把「无权访问」收敛成了
-    // 404 Resource not found。原样甩给用户等于没说，这里把两种可能都讲清。
-    notification.error({
-      message: '资源不存在或无权访问',
-      description: `${i18n.t('message.404')}若该资源确实存在，说明当前账号没有操作它的权限，请联系所有者或本租户管理员调整授权。（${i18n.t('message.requestError')} 404）`,
-      duration: 5,
-    });
   } else if (data?.code !== 0 && !skipErrorCodes?.includes(data?.code)) {
-    // 标题用后端给的人话，错误码退到说明里给支持用：以前把「错误 : 404」放在
-    // 标题上，弹框第一眼全是代码。
+    // 404 也走这里：后端会把「无权访问」收敛成 404 Resource not found，
+    // describeFailure 的说明同时讲清「内容没了」和「没权限」两种可能。
+    const notice = describeFailure(
+      { code: data?.code, message: data?.message },
+      actionLabelFromMethod(options?.method),
+    );
     notification.error({
-      message: data?.message || `${i18n.t('message.requestError')} ${data?.code}`,
-      description: data?.message
-        ? `${i18n.t('message.requestError')} ${data?.code}`
-        : undefined,
-      duration: 3,
+      message: notice.title,
+      description: notice.description,
+      duration: 5,
     });
   }
   return response;

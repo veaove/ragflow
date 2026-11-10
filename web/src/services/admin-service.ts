@@ -19,14 +19,17 @@ import axios from 'axios';
 
 import message from '@/components/ui/message';
 import { Authorization } from '@/constants/authorization';
-import i18n from '@/locales/config';
 import { Routes } from '@/routes';
 import api from '@/utils/api';
 import authorizationUtil, {
   getAuthorization,
 } from '@/utils/authorization-util';
 import { convertTheKeysOfTheObjectToSnake } from '@/utils/common-util';
-import { ResultCode, RetcodeMessage } from '@/utils/request';
+import {
+  actionLabelFromMethod,
+  describeFailure,
+  describeSessionExpired,
+} from '@/utils/error-message';
 import {
   adaptServiceDetail,
   adaptServiceList,
@@ -59,19 +62,24 @@ request.interceptors.response.use(
 
     const { data } = response ?? {};
 
-    if (data?.code === 100) {
-      message.error(data?.message);
-    } else if (data?.code === 401) {
-      message.error(data?.message, {
-        description: data?.message,
+    if (data?.code === 401) {
+      const notice = describeSessionExpired();
+      message.error({
+        message: notice.title,
+        description: notice.description,
       });
 
       authorizationUtil.removeAll();
       history.push(Routes.Admin);
       window.location.reload();
     } else if (data?.code && data.code !== 0) {
-      message.error(`${i18n.t('message.hint')}: ${data?.code}`, {
-        description: data?.message,
+      const notice = describeFailure(
+        { code: data?.code, message: data?.message },
+        actionLabelFromMethod(response.config?.method),
+      );
+      message.error({
+        message: notice.title,
+        description: notice.description,
       });
     }
 
@@ -81,18 +89,11 @@ request.interceptors.response.use(
     const { response } = error;
     const { data } = response ?? {};
 
-    if (error.message === 'Failed to fetch') {
+    if (response?.status === 401 || data?.code === 401) {
+      const notice = describeSessionExpired();
       message.error({
-        description: i18n.t('message.networkAnomalyDescription'),
-        message: i18n.t('message.networkAnomaly'),
-      });
-    } else if (data?.code === 100) {
-      message.error(data?.message);
-    } else if (response.status === 401 || data?.code === 401) {
-      message.error({
-        message: data?.message || response.statusText,
-        description:
-          data?.message || RetcodeMessage[response?.status as ResultCode],
+        message: notice.title,
+        description: notice.description,
         duration: 3,
       });
 
@@ -100,19 +101,26 @@ request.interceptors.response.use(
       history.push(Routes.Admin);
       window.location.reload();
     } else if (data?.code && data.code !== 0) {
+      const notice = describeFailure(
+        { code: data?.code, message: data?.message },
+        actionLabelFromMethod(error?.config?.method),
+      );
       message.error({
-        message: `${i18n.t('message.hint')}: ${data?.code}`,
-        description: data?.message,
+        message: notice.title,
+        description: notice.description,
         duration: 3,
       });
-    } else if (response.status) {
+    } else {
+      // 断网、超时、HTTP 报错：状态码和接口地址只留给日志，不摆到用户面前。
+      const notice = describeFailure(
+        { status: response?.status, message: error?.message },
+        actionLabelFromMethod(error?.config?.method),
+      );
       message.error({
-        message: `${i18n.t('message.requestError')} ${response.status}: ${response.config.url}`,
-        description:
-          RetcodeMessage[response.status as ResultCode] || response.statusText,
+        message: notice.title,
+        description: notice.description,
+        duration: 5,
       });
-    } else if (response.status === 413 || response?.status === 504) {
-      message.error(RetcodeMessage[response?.status as ResultCode]);
     }
 
     throw error;
