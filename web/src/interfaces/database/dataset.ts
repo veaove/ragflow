@@ -65,6 +65,7 @@ export interface IDataset {
    */
   capabilities?: {
     update?: boolean;
+    delete_content?: boolean;
   };
 }
 

@@ -1005,6 +1005,14 @@ func (h *DatasetsHandler) DeleteKnowledgeGraph(c *gin.Context) {
 		return
 	}
 
+	// 删图谱改的是库内容，不是"看一眼"。GetDataset 只要求 Read，只读授权的成员和
+	// 部门管理员都能通过，于是整库图谱能被一个只能查看的人删掉。按 delete_content
+	// 再判一次：能看 ≠ 能删。
+	if err := h.datasetsService.CheckAccess(ctx, permission.Subject{UserID: user.ID}, datasetID, permission.OperationDeleteContent); err != nil {
+		respondPermissionError(c, err, false)
+		return
+	}
+
 	docEngine := engine.Get()
 	if docEngine == nil {
 		common.ResponseWithCodeData(c, common.CodeServerError, nil, "Document engine is not initialized")

@@ -14,13 +14,29 @@
  *  limitations under the License.
  */
 
+import { PermissionDeniedDialog } from '@/components/permission-denied-dialog';
 import KnowledgeGraphView from './knowledge-graph-view';
 import { useDeleteKnowledgeGraph } from './use-delete-graph';
 
 const KnowledgeGraph = () => {
-  const { handleDeleteKnowledgeGraph } = useDeleteKnowledgeGraph();
+  const { handleDeleteKnowledgeGraph, canDelete, deleteDenied, closeDeleteDenied } =
+    useDeleteKnowledgeGraph();
 
-  return <KnowledgeGraphView onDelete={handleDeleteKnowledgeGraph} />;
+  return (
+    <>
+      <KnowledgeGraphView
+        onDelete={handleDeleteKnowledgeGraph}
+        canDelete={canDelete}
+      />
+      <PermissionDeniedDialog
+        open={deleteDenied}
+        title="无法删除知识图谱"
+        description="你对这个知识库只有「可查看」权限，删除知识图谱属于修改库内容，需要「可编辑」授权。图谱仍然可以查看和检索；如需删除或重建，请联系知识库所有者或本租户管理员调整授权。"
+        testId="knowledge-graph-delete-denied"
+        onClose={closeDeleteDenied}
+      />
+    </>
+  );
 };
 
 export default KnowledgeGraph;

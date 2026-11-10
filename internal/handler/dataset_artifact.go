@@ -509,12 +509,17 @@ func (h *DatasetArtifactHandler) GetDocumentClaims(c *gin.Context) {
 
 // DeleteDocumentGraph handles DELETE /documents/<document_id>/structure/graph — delete document structure graph.
 func (h *DatasetArtifactHandler) DeleteDocumentGraph(c *gin.Context) {
-	_, tenantID, _ := h.datasetOwner(c, c.Param("dataset_id"))
+	user, tenantID, _ := h.datasetOwner(c, c.Param("dataset_id"))
 	if tenantID == "" {
 		return
 	}
 	datasetID := c.Param("dataset_id")
 	documentID := c.Param("document_id")
+	// datasetOwner 只要求 Read：只读授权也能进来，但删图谱是改库内容。
+	if err := h.datasetSvc.CheckAccess(c.Request.Context(), permission.Subject{UserID: user.ID}, datasetID, permission.OperationDeleteContent); err != nil {
+		respondPermissionError(c, err, false)
+		return
+	}
 	n, err := h.svc.DeleteDocumentGraph(c.Request.Context(), tenantID, datasetID, documentID)
 	if err != nil {
 		common.ErrorWithCode(c, common.CodeDataError, err.Error())

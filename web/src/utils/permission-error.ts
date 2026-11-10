@@ -37,6 +37,9 @@ const DENIED_MESSAGE_PATTERNS = [
  */
 export function isEditPermissionDenied(result: unknown): boolean {
   if (!result) return false;
+  // 有些调用点（如 useRemoveKnowledgeGraph）只把业务码回传出来，没有响应体。
+  if (typeof result === 'number') return DENIED_CODES.includes(result);
+
   const res = result as {
     status?: number;
     code?: number | string;

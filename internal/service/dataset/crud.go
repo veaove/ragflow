@@ -298,13 +298,14 @@ func (d *DatasetService) GetDataset(ctx context.Context, datasetID, userID strin
 	}
 	data["connectors"] = datasetConnectorsOrEmpty(connectors)
 
-	// capabilities.update：前端据此在点「发布 / 放弃变更」之前就告诉用户没有
-	// 编辑权限，而不是发一次注定被拒的请求、再把人话翻译成错误码。
-	//
-	// 只读授权的成员和部门管理员都能读到详情，但没有写权限。判定必须由资源层
-	// 给出：前端看到「能进这个库」就渲染可点按钮，点下去只会拿到 403。
+	// capabilities 让前端在点之前就说清楚能不能做，而不是发一次注定被拒的请求、
+	// 再把人话翻译成错误码。只读授权的成员和部门管理员都能读到详情，但没有写
+	// 权限；判定必须由资源层给出，前端不得按「能进这个库」自行推断。
+	//   • update：发布 / 放弃变更、保存测试设置；
+	//   • delete_content：删整库知识图谱、删文档结构图谱。
 	data["capabilities"] = map[string]bool{
-		"update": d.CheckAccess(ctx, permission.Subject{UserID: userID}, datasetID, permission.OperationUpdate) == nil,
+		"update":         d.CheckAccess(ctx, permission.Subject{UserID: userID}, datasetID, permission.OperationUpdate) == nil,
+		"delete_content": d.CheckAccess(ctx, permission.Subject{UserID: userID}, datasetID, permission.OperationDeleteContent) == nil,
 	}
 
 	return data, common.CodeSuccess, nil

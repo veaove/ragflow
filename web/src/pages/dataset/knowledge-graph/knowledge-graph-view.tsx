@@ -37,10 +37,16 @@ import SidePanel from './side-panel';
  */
 export function KnowledgeGraphView({
   onDelete,
+  canDelete = true,
   className,
 }: {
   /** 传入时在工具条右侧显示删除入口；Artifacts 内嵌时不传。 */
   onDelete?: () => void;
+  /**
+   * 当前用户能否删图谱。为 false 时点删除不再走「确认删除」——确认了也删不掉，
+   * 直接由调用方给出「没有编辑权限」的说明。
+   */
+  canDelete?: boolean;
   className?: string;
 }) {
   const { t } = useTranslation();
@@ -229,12 +235,7 @@ export function KnowledgeGraphView({
           </Button>
 
           {onDelete && (
-            <ConfirmDeleteDialog onOk={onDelete}>
-              <Button variant="outline" size="sm">
-                <Trash2 />
-                {t('common.delete')}
-              </Button>
-            </ConfirmDeleteDialog>
+            <GraphDeleteTrigger canDelete={canDelete} onDelete={onDelete} />
           )}
         </div>
       </header>
@@ -323,6 +324,39 @@ export function KnowledgeGraphView({
       </div>
     </section>
   );
+}
+
+/**
+ * GraphDeleteTrigger 决定点删除之后发生什么。
+ *
+ * 有编辑权限：照旧先弹「确认删除」。只有可查看权限：连确认框都不给——确认了
+ * 也删不掉，直接交给调用方解释缺哪条授权，省掉一次白点。
+ */
+function GraphDeleteTrigger({
+  canDelete,
+  onDelete,
+}: {
+  canDelete: boolean;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  const trigger = (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={canDelete ? undefined : onDelete}
+      data-testid="knowledge-graph-delete"
+    >
+      <Trash2 />
+      {t('common.delete')}
+    </Button>
+  );
+
+  if (!canDelete) {
+    return trigger;
+  }
+
+  return <ConfirmDeleteDialog onOk={onDelete}>{trigger}</ConfirmDeleteDialog>;
 }
 
 export default KnowledgeGraphView;
