@@ -30,6 +30,8 @@ e2e/
     ├── 85-exclude-flow.spec.ts # 排除的正向链路（建/删临时库，需 E2E_ALLOW_WRITE=1）
     ├── 87-file-deny.spec.ts    # 文件级排除（建库 + 传 2 个文件 + 删库，同上开关）
     ├── 90-matrix.spec.ts       # 角色×资源×操作 矩阵回归（三档受限身份 + 租户管理员口径）
+    ├── 91-role-boundary.spec.ts# 三个受限身份登录/矩阵闸门/可见性子集/授权树收窄（只读）
+    ├── 92-role-grant-write.spec.ts # 角色授予→变更→回收 + 资源可查看/可编辑/部门授权（需 E2E_ALLOW_WRITE=1）
     ├── 95-idor.spec.ts         # 存在性不泄露：不存在的 id 与别人的 id 必须同一文案
     ├── 96-grant-orphans.spec.ts# 孤儿规则：指向已删资源的授权不进「按成员」视角
     ├── 97-visibility-parity.spec.ts # 五类资源可见范围与授权能力一致（D7 回归）
@@ -46,6 +48,11 @@ e2e/
 - 已知缺陷用 `test.fixme` 或「断言当前行为」的 FINDING 用例固化，不写 `test.skip`，
   修复后用例变红提醒更新。
 - 需要真正写入的用例必须显式开 `E2E_ALLOW_WRITE=1`，并先建后删。
+- 三个受限身份的请求必须显式带 `X-Tenant-ID`：他们注册时各有一个个人租户，服务端
+  「默认租户」对写请求可能判到那里（在那里他们是 owner，矩阵豁免），会测出假放行；
+  读接口又是跨租户并集，于是列表正常、闸门判的却是另一个租户。`91` 的 `headers()` 就是这么做的。
+- 资源授权的主体只有 **user / department / team** 三种，没有「角色」主体；角色只通过
+  矩阵（资格）间接生效。
 
 ## 已知缺陷
 
@@ -58,6 +65,7 @@ e2e/
 | D3 | 质检规则未按资源授权过滤，按租户返回 | 成员 `GET /qc/rules` 拿到 9 条规则 | FINDING 用例；规则归属应用对成员不可见，规则本身仍可读 | `8ba40d72e`：普通成员收窄到可见 chat/canvas 应用，管理层保持全量 |
 | D4 | 内置角色矩阵可被空写覆盖，随后被静默回填 | `PUT /roles/:id/permissions` 提交 `{permissions: []}` 返回成功，下次 `ListRoles` 又按 `ConsoleModules` 补回默认行 | 不写成用例（要写线上数据）；`dao.backfillBuiltinRolePermissions` 无法区分「模块新增」与「管理员撤销」 | `8ba40d72e`：保存时补满 25 行（false 也落库），Owner 矩阵拒绝写入 |
 | D5 | 内置角色可被改名，而多处逻辑按名字匹配 | `PUT /roles/:id` 无 `is_builtin` 保护；`EnsureTenantAdminRole` / backfill 按 `name` 查 | 前端已禁用编辑，接口层未拦；同上，只记录 | `8ba40d72e`：`UpdateRole` 拒绝内置角色 |
+| D8 | 部门管理员被当成租户管理层：能写全租户资源授权、能读全部 18 个库 | `e2e-dept` 的 `user_tenant.role` 是 `admin`（role_id 却是「部门管理员」）；`PUT /grants/dataset/{ghost}` 返回 `code=102 资源不存在` 说明已穿过管理层闸门 | `91` 的 FINDING 用例断言当前行为；`92` 因此改用 `member` 跑 read/edit 阶梯、`plain` 做反面对照 | 未修。`UpdateMember` 只写 `role_id` 不动 `role` 枚举，新租户里正常分配的部门管理员是 `normal` 反而写不了授权 —— 需要先定口径（枚举与角色对齐，或判定只认 role_id） |
 
 修复的单测结论：`/root/rf-verify` 全量 `./build.sh --test` → **0 FAIL / 131 packages ok**（2026-11-03）。
 E2E 里的 D1–D5 回归断言要等这次后端发版后才转绿，它们是发版的验收条件。
@@ -70,9 +78,12 @@ npm install
 npx playwright install chromium   # 首次
 npm run seed                      # 首次/换环境：建 admin/dept/plain 三个账号
 npm run auth                      # 生成 .auth/*.json（seed 之后必须重跑）
-npm test                          # 全部
+npm test                          # 全部（写用例自动 skip）
 npm run test:matrix               # 单个 spec
 npm run report                    # 看 HTML 报告
+
+# 写入链路（建临时角色 + 临时知识库，跑完自动清理）
+E2E_ALLOW_WRITE=1 npx playwright test specs/92-role-grant-write.spec.ts
 ```
 
 登录态失效（token 被顶掉）时重跑 `npm run auth`，或删掉 `.auth/*.json` 交给

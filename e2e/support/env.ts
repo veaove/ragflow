@@ -86,6 +86,17 @@ export const RESOURCES = {
   privateMemory: '华夏基金',
 } as const;
 
+/**
+ * 部门：资源授权的三种主体之一（user / department / team）。
+ *
+ * 归属关系来自 seed-accounts：e2e-plain 在培训部，e2e-dept、hjzd@hjzd、
+ * 123456789@qq.com 在技术部。部门级授权靠这组归属做正/反对照。
+ */
+export const DEPARTMENTS = {
+  tech: { id: 'cae44908d6d14a90affc3d529b6e23f6', name: '技术部' },
+  training: { id: '0847f456cd30455e8d5009b1f247d6e6', name: '培训部' },
+} as const;
+
 /** 每个账号的登录态文件（由 scripts/auth.mjs 生成）。 */
 export const authFile = (name: AccountName) =>
   path.resolve(__dirname, '..', '.auth', `${name}.json`);
