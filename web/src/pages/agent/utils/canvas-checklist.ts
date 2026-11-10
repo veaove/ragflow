@@ -60,7 +60,10 @@ export type CanvasChecklistInputs = {
   editedNodeFormIds: string[];
   memoryIds?: Set<string>;
   modelValidIds?: Set<string>;
-  staleDatasetIds?: Set<string>;
+  /** Dataset ids the current user cannot use: deleted, cross-tenant, or not
+   * readable. Ids that merely hold no chunks are not included — an empty
+   * binding does not break a run. */
+  unavailableDatasetIds?: Set<string>;
   compilationTemplateGroupIds?: Set<string>;
   variables?: Record<string, any>;
 };
@@ -330,12 +333,12 @@ function resolveRetrievalFrom(params: Record<string, any>): RetrievalFrom {
 function collectRetrievalBindingIssues(
   params: Record<string, any> | undefined,
   target: IssueTarget,
-  inputs: Pick<CanvasChecklistInputs, 'memoryIds' | 'staleDatasetIds'>,
+  inputs: Pick<CanvasChecklistInputs, 'memoryIds' | 'unavailableDatasetIds'>,
 ): CanvasIssue[] {
   if (!params || !isPlainObject(params)) {
     return [];
   }
-  const { memoryIds, staleDatasetIds } = inputs;
+  const { memoryIds, unavailableDatasetIds } = inputs;
   const issues: CanvasIssue[] = [];
   const datasetIds = params.dataset_ids ?? params.kb_ids;
   const isMemory = resolveRetrievalFrom(params) === RetrievalFrom.Memory;
@@ -354,16 +357,22 @@ function collectRetrievalBindingIssues(
       messageKey: 'flow.retrievalMemoryMissing',
     });
   }
+  // Partial knowledge base access (the default) lets the run continue with the
+  // datasets the user can use, so an unusable binding does not block publishing.
+  // Only an explicit "every binding must be usable" configuration makes it a
+  // blocking problem.
+  const allowsPartialKb = params.allow_partial_kb !== false;
   if (
-    staleDatasetIds &&
+    !allowsPartialKb &&
+    unavailableDatasetIds &&
     !isMemory &&
     Array.isArray(datasetIds) &&
-    datasetIds.some((id: string) => staleDatasetIds.has(id))
+    datasetIds.some((id: string) => unavailableDatasetIds.has(id))
   ) {
     issues.push({
       ...target,
       type: CanvasIssueType.InvalidVariable,
-      messageKey: 'chat.datasetUnavailable',
+      messageKey: 'chat.datasetUnavailableStrict',
     });
   }
   if (
@@ -399,7 +408,7 @@ export function collectCanvasIssues({
   editedNodeFormIds,
   memoryIds,
   modelValidIds,
-  staleDatasetIds,
+  unavailableDatasetIds,
   compilationTemplateGroupIds,
   variables,
 }: CanvasChecklistInputs): CanvasIssue[] {
@@ -523,7 +532,7 @@ export function collectCanvasIssues({
       issues.push(
         ...collectRetrievalBindingIssues(form, target, {
           memoryIds,
-          staleDatasetIds,
+          unavailableDatasetIds,
         }),
       );
     }
@@ -564,7 +573,7 @@ export function collectCanvasIssues({
             issues.push(
               ...collectRetrievalBindingIssues(tool?.params, toolTarget, {
                 memoryIds,
-                staleDatasetIds,
+                unavailableDatasetIds,
               }),
             );
           }

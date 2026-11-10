@@ -9,16 +9,11 @@ import { RerankCandidatesCountFormField } from '@/components/rerank-candidates-c
 
 import { TopNFormField } from '@/components/top-n-item';
 import { Form } from '@/components/ui/form';
-import {
-  useRevalidateStaleDatasetIds,
-  useStaleDatasetFormSchema,
-} from '@/hooks/use-stale-dataset-validation';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { t } from 'i18next';
 import { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
-import { useParams } from 'react-router';
 import { z } from 'zod';
 import { useOwnerTenantId } from '../../../context';
 import { DescriptionField } from '../../components/description-field';
@@ -43,24 +38,16 @@ const RetrievalForm = () => {
   const defaultValues = omit(useValues(), 'top_k');
 
   const ownerTenantId = useOwnerTenantId();
-  const { id: canvasID } = useParams();
-  const { formSchema, datasetsFetched } = useStaleDatasetFormSchema(
-    FormSchema,
-    defaultValues?.dataset_ids,
-    { canvasID },
-  );
 
   const form = useForm({
     defaultValues: defaultValues,
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(FormSchema),
     mode: 'onChange',
   });
 
   const hideKnowledgeGraphField = useHideKnowledgeGraphField(form);
 
   useWatchFormChange(form);
-
-  useRevalidateStaleDatasetIds(form, datasetsFetched);
 
   return (
     <Form {...form}>

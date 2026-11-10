@@ -17,7 +17,7 @@
 import { ModelTypeMap } from '@/components/model-tree-select';
 import { useFetchAgent } from '@/hooks/use-agent-request';
 import { useFetchAllCompilationTemplateGroups } from '@/hooks/use-compilation-template-group-request';
-import { useStaleDatasetIds } from '@/hooks/use-knowledge-request';
+import { useDatasetAvailability } from '@/hooks/use-knowledge-request';
 import { useModelValidIds } from '@/hooks/use-llm-request';
 import { useFetchAllMemoryList } from '@/hooks/use-memory-request';
 import { RAGFlowNodeType } from '@/interfaces/database/agent';
@@ -31,8 +31,8 @@ import {
 } from '../utils/canvas-checklist';
 
 // Every dataset binding on the canvas, including Agent-embedded Retrieval
-// tools, so a single lookup settles staleness for all of them. Variable
-// references mixed into the arrays are dropped inside useStaleDatasetIds.
+// tools, so a single lookup settles availability for all of them. Variable
+// references mixed into the arrays are dropped inside useDatasetAvailability.
 function collectAllDatasetIds(nodes: RAGFlowNodeType[]): string[] {
   const ids: string[] = [];
   for (const node of nodes) {
@@ -92,7 +92,9 @@ export function useCanvasChecklist({
     isError: templateGroupsError,
   } = useFetchAllCompilationTemplateGroups(ownerTenantId);
   const datasetIds = useMemo(() => collectAllDatasetIds(nodes), [nodes]);
-  const { staleDatasetIds, settled: datasetsSettled } = useStaleDatasetIds(
+  // Only the unresolvable ids reach the checklist: a binding that merely holds
+  // no chunks does not break a run, and partial access tolerates the rest.
+  const { unavailableIds, settled: datasetsSettled } = useDatasetAvailability(
     datasetIds,
     canvasID,
   );
@@ -115,7 +117,7 @@ export function useCanvasChecklist({
       // llm_id. Hold the check back instead of reporting a false canvas-wide
       // outage.
       modelValidIds: modelsFetched && !modelsError ? modelValidIds : undefined,
-      staleDatasetIds: datasetsSettled ? staleDatasetIds : undefined,
+      unavailableDatasetIds: datasetsSettled ? unavailableIds : undefined,
       // The groups query fetches only the first page (page_size: 100) — a
       // full page means some groups live beyond it, so hold off instead of
       // misreporting them as inaccessible. Gate on isFetched: initialData
@@ -139,7 +141,7 @@ export function useCanvasChecklist({
       modelsError,
       modelValidIds,
       datasetsSettled,
-      staleDatasetIds,
+      unavailableIds,
       templateGroups,
       templateGroupsFetched,
       templateGroupsError,

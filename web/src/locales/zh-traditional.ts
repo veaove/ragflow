@@ -635,6 +635,14 @@ export default {
       setAnOpenerTip: '您想如何歡迎您的客戶？',
       knowledgeBases: '知識庫',
       knowledgeBasesMessage: '請選擇',
+      datasetUnavailable:
+        '目前帳號無法存取該知識庫（已刪除或未授權），或該庫暫無 chunk',
+      datasetUnavailableSkip:
+        '部分所選知識庫目前帳號無法存取（已刪除或未授權），檢索時會自動跳過',
+      datasetUnavailableStrict:
+        '部分所選知識庫目前帳號無法存取（已刪除或未授權）；已關閉「部分知識庫可用」，檢索會直接失敗',
+      datasetEmpty:
+        '部分所選知識庫暫無 chunk（可能仍在解析），暫時檢索不到內容',
       knowledgeBasesTip:
         '選擇關聯的知識庫。新建或空的知識庫不會在下拉選單中顯示。',
       system: '系統提示词',

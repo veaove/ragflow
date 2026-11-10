@@ -18,10 +18,6 @@ import {
 import { TopNFormField } from '@/components/top-n-item';
 import { Form } from '@/components/ui/form';
 import { Radio } from '@/components/ui/radio';
-import {
-  useRevalidateStaleDatasetIds,
-  useStaleDatasetFormSchema,
-} from '@/hooks/use-stale-dataset-validation';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { t } from 'i18next';
@@ -133,6 +129,7 @@ export function MemoryDatasetForm() {
           showVariable
           required
           canvasID={canvasID}
+          allowPartialKbName="allow_partial_kb"
         ></KnowledgeBaseFormField>
       )}
     </>
@@ -151,7 +148,6 @@ export function useHideKnowledgeGraphField(form: UseFormReturn<any>) {
 function RetrievalForm({ node }: INextOperatorForm) {
   const { t } = useTranslation();
   const ownerTenantId = useOwnerTenantId();
-  const { id: canvasID } = useParams();
 
   const outputList = useMemo(() => {
     return [
@@ -168,23 +164,15 @@ function RetrievalForm({ node }: INextOperatorForm) {
 
   const defaultValues = useValues(node);
 
-  const { formSchema, datasetsFetched } = useStaleDatasetFormSchema(
-    FormSchema,
-    defaultValues?.dataset_ids,
-    { canvasID },
-  );
-
   const form = useForm({
     defaultValues: defaultValues,
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(FormSchema),
     mode: 'onChange',
   });
 
   const hideKnowledgeGraphField = useHideKnowledgeGraphField(form);
 
   useWatchFormChange(node?.id, form);
-
-  useRevalidateStaleDatasetIds(form, datasetsFetched);
 
   return (
     <Form {...form}>

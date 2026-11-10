@@ -1397,7 +1397,13 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       knowledgeBasesPlaceholder: 'Select value',
       knowledgeBasesMessage: 'Please select',
       datasetUnavailable:
-        'The selected dataset is unavailable (deleted or has no chunks), please re-select',
+        'This dataset is not accessible to the current account (deleted or unauthorized), or holds no chunks',
+      datasetUnavailableSkip:
+        'Some of the selected datasets are not accessible to the current account (deleted or unauthorized); they are skipped during retrieval',
+      datasetUnavailableStrict:
+        'Some of the selected datasets are not accessible to the current account (deleted or unauthorized), and partial knowledge base access is off, so retrieval fails outright',
+      datasetEmpty:
+        'Some of the selected datasets hold no chunks yet (they may still be parsing), so nothing can be retrieved from them',
       knowledgeBasesTip:
         'Select the datasets to associate with this chat assistant. An empty dataset will not appear in the dropdown list.',
       system: 'System prompt',

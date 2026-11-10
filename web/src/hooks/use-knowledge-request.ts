@@ -1147,7 +1147,8 @@ export const useFetchKnowledgeList = (
 /**
  * Fetch datasets by a set of IDs. Used to resolve already-selected datasets
  * that are not present in the first page of the paginated list, e.g. to echo
- * their names in a form field. For staleness checks see `useStaleDatasetIds`.
+ * their names in a form field. For availability checks see
+ * `useDatasetAvailability`.
  *
  * Callers may pass values mixed with variable references (agent forms let
  * users pick variables alongside datasets); those are not resolvable ids and
@@ -1158,7 +1159,11 @@ export const useFetchDatasetsByIds = (ids: string[], canvasID?: string) => {
     () => Array.from(new Set(ids.filter(isDatasetId))).sort(),
     [ids],
   );
-  const { data, isFetching: loading } = useQuery<IDataset[]>({
+  const {
+    data,
+    isFetching: loading,
+    isError: failed,
+  } = useQuery<IDataset[]>({
     queryKey: KnowledgeListKeys.byIds(sortedIds, canvasID),
     enabled: sortedIds.length > 0,
     gcTime: 0,
@@ -1173,42 +1178,83 @@ export const useFetchDatasetsByIds = (ids: string[], canvasID?: string) => {
     },
   });
 
-  return { data, loading };
+  return { data, loading, failed };
+};
+
+export type DatasetAvailability = {
+  /** Persisted ids the lookup resolved to no dataset: deleted, cross-tenant,
+   * or not readable by the caller. The by-ids endpoint drops unreadable
+   * datasets silently, so these three causes are indistinguishable here. */
+  unavailableIds: Set<string>;
+  /** Persisted ids that resolved but hold no chunks, so retrieval returns
+   * nothing from them. */
+  emptyIds: Set<string>;
 };
 
 /**
- * Resolve which of the given persisted dataset ids have gone stale — the
- * dataset no longer exists or has been emptied of chunks. The set stays
- * empty while the lookup is in flight so consumers can hold off validation
- * until it settles; `settled` flips true once the lookup has finished.
+ * Split persisted dataset ids into "cannot be resolved" and "resolved but
+ * empty". The two are separate problems: an unresolved id may just as well be
+ * a dataset another user bound as be a deleted one.
+ *
+ * A failed lookup proves nothing about the ids, so it reports neither instead
+ * of flagging every binding as broken — an error must not read as "all of your
+ * knowledge bases are gone".
  */
-export const useStaleDatasetIds = (
+export const classifyDatasetAvailability = (
+  persistedIds: string[],
+  datasets: IDataset[] | undefined,
+  failed: boolean,
+): DatasetAvailability => {
+  if (failed) {
+    return { unavailableIds: new Set<string>(), emptyIds: new Set<string>() };
+  }
+
+  const resolved = new Map((datasets ?? []).map((x) => [x.id, x]));
+  const unavailableIds = new Set<string>();
+  const emptyIds = new Set<string>();
+
+  persistedIds.forEach((id) => {
+    const dataset = resolved.get(id);
+    if (!dataset) {
+      unavailableIds.add(id);
+    } else if (!(dataset.chunk_count > 0)) {
+      emptyIds.add(id);
+    }
+  });
+
+  return { unavailableIds, emptyIds };
+};
+
+/**
+ * Availability of the given persisted dataset ids. The result stays empty
+ * while the lookup is in flight so consumers can hold off the check until it
+ * settles; `settled` flips true once the lookup has finished.
+ */
+export const useDatasetAvailability = (
   datasetIds?: string[],
   canvasID?: string,
 ) => {
   // Variable references (e.g. `sys.query`) never resolve to datasets, so
   // exclude them up front instead of letting them fall out of the lookup
-  // below and get misreported as stale.
+  // below and get misreported as unavailable.
   const persistedIds = useMemo(
-    () => (datasetIds ?? []).filter(isDatasetId),
+    () => Array.from(new Set((datasetIds ?? []).filter(isDatasetId))),
     [datasetIds],
   );
-  const { data: datasets, loading } = useFetchDatasetsByIds(
+  const { data, loading, failed } = useFetchDatasetsByIds(
     persistedIds,
     canvasID,
   );
 
-  const staleDatasetIds = useMemo(() => {
-    if (loading) {
-      return new Set<string>();
-    }
-    const usableIds = new Set(
-      (datasets ?? []).filter((x) => x.chunk_count > 0).map((x) => x.id),
-    );
-    return new Set(persistedIds.filter((id) => !usableIds.has(id)));
-  }, [datasets, loading, persistedIds]);
+  const availability = useMemo(
+    () =>
+      loading
+        ? { unavailableIds: new Set<string>(), emptyIds: new Set<string>() }
+        : classifyDatasetAvailability(persistedIds, data, failed),
+    [loading, persistedIds, data, failed],
+  );
 
-  return { staleDatasetIds, settled: !loading };
+  return { ...availability, settled: !loading };
 };
 
 //#region tags

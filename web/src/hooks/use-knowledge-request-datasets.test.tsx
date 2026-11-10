@@ -17,6 +17,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import {
+  classifyDatasetAvailability,
+  useDatasetAvailability,
   useFetchDatasetsByIds,
   useFetchKnowledgeList,
 } from './use-knowledge-request';
@@ -34,6 +36,10 @@ jest.mock('@/services/knowledge-service', () => ({
 jest.mock('@/routes', () => ({ Routes: {} }));
 
 const DatasetId = '0cb944c66320448aaae827ba8009ef68';
+const OtherDatasetId = '1cb944c66320448aaae827ba8009ef69';
+
+const makeDataset = (id: string, chunkCount: number) =>
+  ({ id, chunk_count: chunkCount }) as any;
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -70,6 +76,86 @@ describe('useFetchDatasetsByIds', () => {
 
     await waitFor(() => expect(mockListDatasetByIds).toHaveBeenCalled());
     expect(mockListDatasetByIds).toHaveBeenCalledWith([DatasetId], undefined);
+  });
+});
+
+describe('classifyDatasetAvailability', () => {
+  it('reports nothing for ids that resolve with chunks', () => {
+    const result = classifyDatasetAvailability(
+      [DatasetId],
+      [makeDataset(DatasetId, 3)],
+      false,
+    );
+
+    expect(result.unavailableIds.size).toBe(0);
+    expect(result.emptyIds.size).toBe(0);
+  });
+
+  it('separates ids that do not resolve from ids that resolve without chunks', () => {
+    const result = classifyDatasetAvailability(
+      [DatasetId, OtherDatasetId],
+      [makeDataset(OtherDatasetId, 0)],
+      false,
+    );
+
+    // The by-ids endpoint drops datasets the caller cannot read, so a missing
+    // id reads as "unavailable" rather than "deleted".
+    expect([...result.unavailableIds]).toEqual([DatasetId]);
+    expect([...result.emptyIds]).toEqual([OtherDatasetId]);
+  });
+
+  it('reports nothing when the lookup failed', () => {
+    const result = classifyDatasetAvailability(
+      [DatasetId, OtherDatasetId],
+      undefined,
+      true,
+    );
+
+    expect(result.unavailableIds.size).toBe(0);
+    expect(result.emptyIds.size).toBe(0);
+  });
+});
+
+describe('useDatasetAvailability', () => {
+  beforeEach(() => {
+    mockListDatasetByIds.mockClear();
+    mockListDatasetByIds.mockResolvedValue({ data: { data: [] } });
+  });
+
+  it('drops variable references from the lookup', async () => {
+    renderHook(() => useDatasetAvailability(['sys.query', DatasetId]), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(mockListDatasetByIds).toHaveBeenCalled());
+    expect(mockListDatasetByIds).toHaveBeenCalledWith([DatasetId], undefined);
+  });
+
+  it('flags an id the lookup did not resolve', async () => {
+    mockListDatasetByIds.mockResolvedValue({
+      data: { data: [makeDataset(DatasetId, 2)] },
+    });
+
+    const { result } = renderHook(
+      () => useDatasetAvailability([DatasetId, OtherDatasetId]),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect([...result.current.unavailableIds]).toEqual([OtherDatasetId]);
+    expect(result.current.emptyIds.size).toBe(0);
+  });
+
+  it('reports nothing when the lookup request fails', async () => {
+    mockListDatasetByIds.mockRejectedValue(new Error('boom'));
+
+    const { result } = renderHook(() => useDatasetAvailability([DatasetId]), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(result.current.unavailableIds.size).toBe(0);
+    expect(result.current.emptyIds.size).toBe(0);
   });
 });
 

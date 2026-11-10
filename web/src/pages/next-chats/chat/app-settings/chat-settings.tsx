@@ -6,10 +6,6 @@ import { DatasetMetadata } from '@/constants/chat';
 import { useSetModalState } from '@/hooks/common-hooks';
 import { useFetchChat, useUpdateChat } from '@/hooks/use-chat-request';
 import { useFindLlmByUuid } from '@/hooks/use-llm-request';
-import {
-  useRevalidateStaleDatasetIds,
-  useStaleDatasetFormSchema,
-} from '@/hooks/use-stale-dataset-validation';
 import { cn } from '@/lib/utils';
 import {
   removeUselessFieldsFromValues,
@@ -37,10 +33,6 @@ export function ChatSettings({ hasSingleChatBox }: ChatSettingsProps) {
   const { data } = useFetchChat();
 
   const chatSettingSchema = useChatSettingSchema();
-  const { formSchema, datasetsFetched } = useStaleDatasetFormSchema(
-    chatSettingSchema,
-    data?.dataset_ids,
-  );
   const { updateChat, loading } = useUpdateChat();
   const findLlmByUuid = useFindLlmByUuid();
   const { id } = useParams();
@@ -58,10 +50,10 @@ export function ChatSettings({ hasSingleChatBox }: ChatSettingsProps) {
     onAdvancedSettingOpenChange,
   } = useRevealSubmitErrors();
 
-  type FormSchemaType = z.infer<typeof formSchema>;
+  type FormSchemaType = z.infer<typeof chatSettingSchema>;
 
   const form = useForm<FormSchemaType>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(chatSettingSchema),
     // shouldUnregister: false keeps every field mounted in the form state, which
     // includes all nine per-provider *_api_key fields. Switching provider therefore
     // KEEPS the keys already typed for the others and saves them with the dialog —
@@ -154,8 +146,6 @@ export function ChatSettings({ hasSingleChatBox }: ChatSettingsProps) {
       form.reset(nextData as FormSchemaType);
     }
   }, [data, form]);
-
-  useRevalidateStaleDatasetIds(form, datasetsFetched);
 
   return (
     <>

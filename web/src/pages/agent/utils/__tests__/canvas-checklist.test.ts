@@ -796,24 +796,58 @@ describe('collectCanvasIssues: stale resources', () => {
     );
   });
 
-  it('flags a stale dataset on a Retrieval node', () => {
+  it('flags an unusable dataset on a Retrieval node when partial access is off', () => {
     const issues = collect({
       nodes: [
         makeNode('Retrieval:r1', 'Retrieval', {
           retrieval_from: 'dataset',
-          dataset_ids: ['kb-stale'],
+          dataset_ids: ['kb-unavailable'],
+          allow_partial_kb: false,
         }),
       ],
-      staleDatasetIds: new Set(['kb-stale']),
+      unavailableDatasetIds: new Set(['kb-unavailable']),
     });
 
     expect(issues).toContainEqual(
       expect.objectContaining({
         nodeId: 'Retrieval:r1',
         type: CanvasIssueType.InvalidVariable,
-        messageKey: 'chat.datasetUnavailable',
+        messageKey: 'chat.datasetUnavailableStrict',
       }),
     );
+  });
+
+  it('ignores an unusable dataset when partial access is allowed', () => {
+    const issues = collect({
+      nodes: [
+        makeNode('Retrieval:r1', 'Retrieval', {
+          retrieval_from: 'dataset',
+          dataset_ids: ['kb-unavailable'],
+          allow_partial_kb: true,
+        }),
+      ],
+      unavailableDatasetIds: new Set(['kb-unavailable']),
+    });
+
+    expect(
+      issues.filter((x) => x.messageKey.startsWith('chat.dataset')),
+    ).toHaveLength(0);
+  });
+
+  it('ignores an unusable dataset when the node keeps the default partial access', () => {
+    const issues = collect({
+      nodes: [
+        makeNode('Retrieval:r1', 'Retrieval', {
+          retrieval_from: 'dataset',
+          dataset_ids: ['kb-unavailable'],
+        }),
+      ],
+      unavailableDatasetIds: new Set(['kb-unavailable']),
+    });
+
+    expect(
+      issues.filter((x) => x.messageKey.startsWith('chat.dataset')),
+    ).toHaveLength(0);
   });
 });
 

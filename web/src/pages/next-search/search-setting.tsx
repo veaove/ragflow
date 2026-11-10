@@ -32,10 +32,6 @@ import {
 } from '@/components/ui/form';
 import { Spin } from '@/components/ui/spin';
 import { Switch } from '@/components/ui/switch';
-import {
-  useRevalidateStaleDatasetIds,
-  useStaleDatasetFormSchema,
-} from '@/hooks/use-stale-dataset-validation';
 import { useFetchTenantInfo } from '@/hooks/use-user-setting-request';
 import { cn } from '@/lib/utils';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -76,21 +72,11 @@ function SearchSetting({
   const { t } = useTranslation();
   const { formSchema: searchSettingSchema, modelsFetched } =
     useSearchSettingFormSchema();
-  const { formSchema, datasetsFetched } = useStaleDatasetFormSchema(
-    searchSettingSchema,
-    search_config?.kb_ids,
-    { fieldName: 'search_config.kb_ids' },
-  );
   const formMethods = useForm<SearchSettingFormData>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(searchSettingSchema),
     mode: 'onChange',
   });
 
-  useRevalidateStaleDatasetIds(
-    formMethods,
-    datasetsFetched,
-    'search_config.kb_ids',
-  );
   const descriptionDefaultValue = t('search.descriptionValue');
   const resetForm = useCallback(() => {
     formMethods.reset({
@@ -254,6 +240,7 @@ function SearchSetting({
             <KnowledgeBaseFormField
               name="search_config.kb_ids"
               required
+              allowPartialKbName="search_config.allow_partial_kb"
             ></KnowledgeBaseFormField>
             <FormField
               control={formMethods.control}

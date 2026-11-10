@@ -1,8 +1,8 @@
 import { NodeCollapsible } from '@/components/collapse';
 import { RAGFlowAvatar } from '@/components/ragflow-avatar';
 import {
+  useDatasetAvailability,
   useFetchDatasetsByIds,
-  useStaleDatasetIds,
 } from '@/hooks/use-knowledge-request';
 import { useFetchAllMemoryList } from '@/hooks/use-memory-request';
 import { BaseNode } from '@/interfaces/database/agent';
@@ -51,10 +51,13 @@ function InnerRetrievalNode({
     canvasID,
   );
 
-  // Mirror the form's stale-dataset validation: a persisted id referencing a
-  // dataset that has since been deleted or emptied of chunks is flagged on
-  // the node as well. Stays empty while the lookup is in flight.
-  const { staleDatasetIds } = useStaleDatasetIds(persistedDatasetIds, canvasID);
+  // Mirror the form's availability hint: a persisted id that no longer
+  // resolves, or that resolves but holds no chunks, is flagged on the node as
+  // well. Both sets stay empty while the lookup is in flight.
+  const { unavailableIds, emptyIds } = useDatasetAvailability(
+    persistedDatasetIds,
+    canvasID,
+  );
 
   const memoryList = useFetchAllMemoryList(canvasID);
 
@@ -96,9 +99,10 @@ function InnerRetrievalNode({
 
             const item = datasets?.find((y) => id === y.id);
             const label = getLabel(id);
-            // A variable reference (has a label) is never stale; a dataset id
-            // that no longer resolves to a usable dataset is.
-            const isStale = !label && staleDatasetIds.has(id);
+            // A variable reference (has a label) is never flagged; a dataset id
+            // that no longer resolves, or resolves to an empty dataset, is.
+            const isStale =
+              !label && (unavailableIds.has(id) || emptyIds.has(id));
 
             return (
               <div

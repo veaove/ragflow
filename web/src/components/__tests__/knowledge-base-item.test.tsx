@@ -16,6 +16,7 @@
 
 import { DocumentParserType } from '@/constants/knowledge';
 import {
+  useDatasetAvailability,
   useFetchDatasetsByIds,
   useFetchKnowledgeList,
 } from '@/hooks/use-knowledge-request';
@@ -28,6 +29,7 @@ type IDataset = import('@/interfaces/database/dataset').IDataset;
 jest.mock('@/hooks/use-knowledge-request', () => ({
   useFetchKnowledgeList: jest.fn(),
   useFetchDatasetsByIds: jest.fn(),
+  useDatasetAvailability: jest.fn(),
 }));
 
 jest.mock('@/pages/agent/hooks/use-get-begin-query', () => ({
@@ -66,6 +68,12 @@ function renderDisabledOptions(
   jest.mocked(useFetchDatasetsByIds).mockReturnValue({
     data: selectedDatasets,
     loading: false,
+    failed: false,
+  });
+  jest.mocked(useDatasetAvailability).mockReturnValue({
+    unavailableIds: new Set<string>(),
+    emptyIds: new Set<string>(),
+    settled: true,
   });
 
   function Wrapper({ children }: React.PropsWithChildren) {
@@ -209,4 +217,42 @@ describe('dataset embedding selection', () => {
       });
     },
   );
+});
+
+describe('dataset availability hint data', () => {
+  it('surfaces unavailable and empty ids so the field can hint about them', () => {
+    jest.mocked(useFetchKnowledgeList).mockReturnValue({
+      list: [],
+      loading: false,
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      handleScroll: jest.fn(),
+    });
+    jest.mocked(useFetchDatasetsByIds).mockReturnValue({
+      data: [],
+      loading: false,
+      failed: false,
+    });
+    jest.mocked(useDatasetAvailability).mockReturnValue({
+      unavailableIds: new Set(['kb-gone']),
+      emptyIds: new Set(['kb-empty']),
+      settled: true,
+    });
+
+    function Wrapper({ children }: React.PropsWithChildren) {
+      const form = useForm({
+        defaultValues: { dataset_ids: ['kb-gone', 'kb-empty'] },
+      });
+      return <FormProvider {...form}>{children}</FormProvider>;
+    }
+
+    const { result } = renderHook(
+      () => useDisableDifferenceEmbeddingDataset('dataset_ids'),
+      { wrapper: Wrapper },
+    );
+
+    expect([...result.current.unavailableIds]).toEqual(['kb-gone']);
+    expect([...result.current.emptyIds]).toEqual(['kb-empty']);
+  });
 });

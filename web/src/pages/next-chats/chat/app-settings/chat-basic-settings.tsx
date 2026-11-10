@@ -77,6 +77,10 @@ export default function ChatBasicSetting({
       />
       <KnowledgeBaseFormField
         name={prefixName(prefix, 'dataset_ids')}
+        allowPartialKbName={prefixName(
+          prefix,
+          'prompt_config.allow_partial_kb',
+        )}
       ></KnowledgeBaseFormField>
     </div>
   );

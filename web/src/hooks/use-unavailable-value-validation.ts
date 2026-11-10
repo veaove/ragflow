@@ -34,7 +34,8 @@ type UnavailableValueCheck = {
  * Extend a form schema with an availability check on one of its fields
  * (`fieldName`, a dotted path such as `llm_id`): once the referenced-option
  * list has loaded, a persisted value pointing at nothing the current user
- * can use gets flagged. Mirrors use-stale-dataset-validation.
+ * can use gets flagged. Knowledge base bindings are checked separately: they
+ * are only advisory because partial access tolerates an unusable binding.
  */
 export function useUnavailableValueFormSchema<T extends z.ZodTypeAny>(
   schema: T,

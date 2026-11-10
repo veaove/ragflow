@@ -16,6 +16,7 @@
 
 import { DocumentParserType } from '@/constants/knowledge';
 import {
+  useDatasetAvailability,
   useFetchDatasetsByIds,
   useFetchKnowledgeList,
 } from '@/hooks/use-knowledge-request';
@@ -67,6 +68,13 @@ export function useDisableDifferenceEmbeddingDataset(
   // their names back in the form field. A dataset that has been deleted
   // comes back missing and its badge falls back to the raw id.
   const { data: selectedDatasets } = useFetchDatasetsByIds(
+    selectedDatasetIds,
+    canvasID,
+  );
+
+  // The same lookup split by cause: an id that does not resolve at all versus
+  // one that resolves but holds no chunks. Shares the by-ids query above.
+  const { unavailableIds, emptyIds } = useDatasetAvailability(
     selectedDatasetIds,
     canvasID,
   );
@@ -138,6 +146,8 @@ export function useDisableDifferenceEmbeddingDataset(
     searchString,
     handleScroll,
     hasNextPage,
+    unavailableIds,
+    emptyIds,
   };
 }
 
@@ -147,14 +157,24 @@ export function KnowledgeBaseFormField({
   label,
   required = false,
   canvasID,
+  allowPartialKbName,
 }: {
   showVariable?: boolean;
   name?: string;
   label?: ReactNode;
   required?: boolean;
   canvasID?: string;
+  /** Dotted path of the sibling `allow_partial_kb` switch. Absent means the
+   * backend default (partial access allowed), which is what the runtime uses
+   * when the field is missing. */
+  allowPartialKbName?: string;
 }) {
   const { t } = useTranslation();
+  const form = useFormContext();
+  // `watch` keeps the hint in sync with the switch right below the field.
+  const allowsPartialKb = allowPartialKbName
+    ? form.watch(allowPartialKbName) !== false
+    : true;
 
   const {
     datasetOptions,
@@ -163,7 +183,30 @@ export function KnowledgeBaseFormField({
     searchString,
     handleScroll,
     hasNextPage,
+    unavailableIds,
+    emptyIds,
   } = useDisableDifferenceEmbeddingDataset(name, canvasID);
+
+  // Advisory only: the runtime tolerates unusable bindings when partial access
+  // is on, so this must not block saving. Both causes are spelled out instead
+  // of the old "deleted or empty of chunks", which mislabeled a dataset the
+  // current account simply cannot read.
+  const availabilityHint = useMemo(() => {
+    const hints: string[] = [];
+    if (unavailableIds.size > 0) {
+      hints.push(
+        t(
+          allowsPartialKb
+            ? 'chat.datasetUnavailableSkip'
+            : 'chat.datasetUnavailableStrict',
+        ),
+      );
+    }
+    if (emptyIds.size > 0) {
+      hints.push(t('chat.datasetEmpty'));
+    }
+    return hints.join(' ');
+  }, [allowsPartialKb, unavailableIds, emptyIds, t]);
 
   const nextOptions = buildQueryVariableOptionsByShowVariable(showVariable)();
 
@@ -213,6 +256,11 @@ export function KnowledgeBaseFormField({
       tooltip={t('chat.knowledgeBasesTip')}
       required={required}
       label={label ?? t('chat.knowledgeBases')}
+      description={
+        availabilityHint ? (
+          <span className="text-state-error">{availabilityHint}</span>
+        ) : undefined
+      }
     >
       {(field) => (
         <MultiSelect
