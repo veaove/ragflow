@@ -21,8 +21,37 @@ import (
 	"errors"
 	"testing"
 
+	"gorm.io/gorm"
+
 	"ragflow/internal/entity"
 )
+
+// seedOwnerTenant 建一个带活跃 owner 的租户。
+//
+// 资源层加载可见性时要求每个租户有且仅有一个 role=owner 的活跃成员，否则整批
+// 判定直接 ErrInvalidPermission——少了这行，用例会因为「租户没有 owner」失败，
+// 和它在测的读写权限毫无关系。
+func seedOwnerTenant(t *testing.T, db *gorm.DB, tenantID string) string {
+	t.Helper()
+
+	valid := string(entity.StatusValid)
+	enabled := true
+	tenantName := tenantID
+	if err := db.Create(&entity.Tenant{ID: tenantID, Name: &tenantName, Enabled: &enabled}).Error; err != nil {
+		t.Fatalf("seed tenant %s: %v", tenantID, err)
+	}
+	ownerID := "owner-" + tenantID
+	if err := db.Create(&entity.User{ID: ownerID, Email: ownerID + "@example.com"}).Error; err != nil {
+		t.Fatalf("seed owner %s: %v", ownerID, err)
+	}
+	if err := db.Create(&entity.UserTenant{
+		ID: "ut-" + tenantID + "-owner", UserID: ownerID, TenantID: tenantID,
+		Role: "owner", Status: &valid,
+	}).Error; err != nil {
+		t.Fatalf("seed owner membership %s: %v", tenantID, err)
+	}
+	return ownerID
+}
 
 // 只读授权（resource_grant.permission=read）的成员必须能打开变更中心：
 // 列待生效变更、看 diff、跑测试对比都是读操作，早期统一按 update 判定，页面
@@ -37,22 +66,19 @@ func TestChangeSetReadOnlyMemberReadsButCannotWrite(t *testing.T) {
 		kbID     = "kb-cs"
 		memberID = "member-cs"
 	)
+	ownerID := seedOwnerTenant(t, db, tenantID)
 	valid := string(entity.StatusValid)
-	enabled := true
-	tenantName := "变更中心只读"
-	if err := db.Create(&entity.Tenant{ID: tenantID, Name: &tenantName, Enabled: &enabled}).Error; err != nil {
-		t.Fatalf("seed tenant: %v", err)
-	}
+
 	if err := db.Create(&entity.User{ID: memberID, Email: "member-cs@example.com"}).Error; err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 	if err := db.Create(&entity.UserTenant{
-		ID: "ut-cs", UserID: memberID, TenantID: tenantID, Role: "normal", Status: &valid,
+		ID: "ut-cs-member", UserID: memberID, TenantID: tenantID, Role: "normal", Status: &valid,
 	}).Error; err != nil {
 		t.Fatalf("seed membership: %v", err)
 	}
 	if err := db.Create(&entity.Knowledgebase{
-		ID: kbID, TenantID: tenantID, Name: "只读库", CreatedBy: "owner-cs",
+		ID: kbID, TenantID: tenantID, Name: "只读库", CreatedBy: ownerID,
 		Permission: entity.ResourceVisibilityTenantOwner, Status: &valid,
 	}).Error; err != nil {
 		t.Fatalf("seed knowledge base: %v", err)
@@ -108,17 +134,14 @@ func TestChangeSetInvisibleDatasetStaysNotFound(t *testing.T) {
 		kbID     = "kb-hidden"
 		outsider = "outsider-cs"
 	)
+	seedOwnerTenant(t, db, tenantID)
 	valid := string(entity.StatusValid)
-	enabled := true
-	tenantName := "变更中心不可见"
-	if err := db.Create(&entity.Tenant{ID: tenantID, Name: &tenantName, Enabled: &enabled}).Error; err != nil {
-		t.Fatalf("seed tenant: %v", err)
-	}
+
 	if err := db.Create(&entity.User{ID: outsider, Email: "outsider-cs@example.com"}).Error; err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 	if err := db.Create(&entity.UserTenant{
-		ID: "ut-hidden", UserID: outsider, TenantID: tenantID, Role: "normal", Status: &valid,
+		ID: "ut-hidden-member", UserID: outsider, TenantID: tenantID, Role: "normal", Status: &valid,
 	}).Error; err != nil {
 		t.Fatalf("seed membership: %v", err)
 	}
