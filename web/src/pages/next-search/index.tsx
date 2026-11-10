@@ -68,6 +68,7 @@ export default function SearchPage() {
                   (SearchData as ISearchAppDetailProps)?.search_config
                     ?.kb_ids ?? []
                 }
+                searchId={(SearchData as ISearchAppDetailProps)?.id}
               />
             </div>
           )}

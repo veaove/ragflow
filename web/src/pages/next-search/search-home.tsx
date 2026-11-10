@@ -48,6 +48,7 @@ export default function SearchHome({
   canSearch,
   showEmbedLogo,
   kbIds = [],
+  searchId,
 }: {
   isSearching: boolean;
   setIsSearching: Dispatch<SetStateAction<boolean>>;
@@ -58,6 +59,9 @@ export default function SearchHome({
   showEmbedLogo?: boolean;
   /** 当前搜索应用绑定的知识库，用于「相似问题」实时检索。 */
   kbIds?: string[];
+  /** 所属搜索应用 `search_id`：后端据此沿用应用的部分可用口径，否则绑定的库
+   * 只要有一个当前账号读不到，整次检索会被判成权限不足。 */
+  searchId?: string;
 }) {
   const { t } = useTranslation();
 
@@ -106,7 +110,12 @@ export default function SearchHome({
   }, [searchText]);
 
   const { data: similarQuestions, isFetching: similarFetching } = useQuery({
-    queryKey: ['similarQuestions', debouncedQuestion, kbIds.join(',')],
+    queryKey: [
+      'similarQuestions',
+      debouncedQuestion,
+      kbIds.join(','),
+      searchId,
+    ],
     enabled: debouncedQuestion.length >= 2 && kbIds.length > 0,
     // 输入下一个字时先留着上一轮的结果，不要清空重来：清空会让右侧在每次
     // 按键后闪一下「未找到相关问题」，看起来像坏了。
@@ -118,6 +127,9 @@ export default function SearchHome({
         data: {
           question: debouncedQuestion,
           dataset_ids: kbIds,
+          // 带上 search_id 才能让后端按应用的 allow_partial_kb 收敛到可见库；
+          // 否则一个不可读的绑定就会让整次请求返回权限不足。
+          search_id: searchId,
           page: 1,
           page_size: 3,
           similarity_threshold: 0.2,

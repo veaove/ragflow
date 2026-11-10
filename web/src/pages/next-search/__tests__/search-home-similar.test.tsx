@@ -55,6 +55,7 @@ function renderHome(searchText: string) {
         searchText={searchText}
         setSearchText={setSearchText}
         kbIds={['kb-1']}
+        searchId="search-1"
       />
     </QueryClientProvider>,
   );
@@ -94,6 +95,9 @@ describe('SearchHome 相似问题', () => {
         data: expect.objectContaining({
           question: '基金怎么买',
           dataset_ids: ['kb-1'],
+          // 没有 search_id 时后端无法沿用「部分知识库可用」，一个不可读的
+          // 绑定就会把整次相似问题请求判成权限不足。
+          search_id: 'search-1',
           page_size: 3,
         }),
       }),
