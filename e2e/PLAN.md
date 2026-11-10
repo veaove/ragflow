@@ -30,7 +30,11 @@ e2e/
     ├── 85-exclude-flow.spec.ts # 排除的正向链路（建/删临时库，需 E2E_ALLOW_WRITE=1）
     ├── 87-file-deny.spec.ts    # 文件级排除（建库 + 传 2 个文件 + 删库，同上开关）
     ├── 90-matrix.spec.ts       # 角色×资源×操作 矩阵回归（三档受限身份 + 租户管理员口径）
-    └── 95-idor.spec.ts         # 存在性不泄露：不存在的 id 与别人的 id 必须同一文案
+    ├── 95-idor.spec.ts         # 存在性不泄露：不存在的 id 与别人的 id 必须同一文案
+    ├── 96-grant-orphans.spec.ts# 孤儿规则：指向已删资源的授权不进「按成员」视角
+    ├── 97-visibility-parity.spec.ts # 五类资源可见范围与授权能力一致（D7 回归）
+    ├── 98-document-grant-visibility.spec.ts # 文件级排除的信息面：名字/数量/关系都不外泄
+    └── 99-grant-graph.spec.ts   # 授权图谱响应形状、聚焦条与「与列表同源」
 ```
 
 测试方案（范围、用例矩阵、验收标准）见 `docs/e2e-role-grant-test-plan.md`。

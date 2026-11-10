@@ -55,7 +55,11 @@ export type ViewerName = (typeof VIEWERS)[number];
 
 /** 华夏基金租户下用于断言的真实资源。 */
 export const RESOURCES = {
-  /** 18 个库里的一个，owner 独占（permission=me，无授权）。 */
+  /**
+   * 18 个库里的一个，**没有整库授权**（无 dataset grant）。注意它不等于
+   * 「成员完全看不到」：库里挂了文件级授权，成员能读到 43 个文件中的 40 个，
+   * 授权树上的 file_count / exception_count 因此对两个身份不同。
+   */
   privateKb: {
     id: '56c2dfd33efe4a53a340ac81a56321d7',
     name: '07-帮助中心',

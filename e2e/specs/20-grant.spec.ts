@@ -52,9 +52,17 @@ test.describe('资源授权 · 层级与交互', () => {
     await page.waitForLoadState('networkidle');
 
     await page.getByRole('button', { name: '按成员' }).click();
-    await expect(
-      page.getByText(/直接授权|部门|全团队/).first(),
-    ).toBeVisible();
+
+    // 三档来源必须各占一行并带计数；只断言「有一个词出现」抓不到计数丢失。
+    await expect(page.getByText(/^直接授权 \d+$/)).toBeVisible();
+    await expect(page.getByText(/^部门 \d+$/)).toBeVisible();
+    await expect(page.getByText(/^全团队 \d+$/)).toBeVisible();
+
+    // 左侧成员列表要有内容，否则右侧计数是空跑。
+    const memberList = page
+      .locator('aside')
+      .filter({ has: page.getByPlaceholder('搜索成员') });
+    await expect(memberList.locator('li').first()).toBeVisible();
   });
 
   test('接口层：授权树带出文件数与例外数', async ({ request }) => {
@@ -74,8 +82,20 @@ test.describe('资源授权 · 层级与交互', () => {
 
     const help = nodes.find((n) => n.name === RESOURCES.privateKb.name);
     expect(help, '授权树应包含 07-帮助中心').toBeTruthy();
-    expect(help!.file_count).toBe(44);
     expect(Array.isArray(help!.children)).toBe(true);
+    expect(help!.file_count).toBeGreaterThan(0);
+
+    // 树上的文件数必须与库内文档总数一致。不写死数字：库里增删文件时
+    // 用例仍然成立，只有两处口径不一致才会红。
+    const docs = await request.get(
+      `${api.dataset(RESOURCES.privateKb.id)}/documents?page_size=1`,
+      { headers: { Authorization: tokenOf('owner') } },
+    );
+    const docBody = await docs.json();
+    expect(docBody.code).toBe(0);
+    expect(help!.file_count, '授权树文件数与库内文档总数不一致').toBe(
+      docBody.data.total,
+    );
 
     // 库上的授权只有那几条例外，其余都在继承。
     const granted = nodes.find((n) => n.name === RESOURCES.grantedKb.name);
