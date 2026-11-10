@@ -339,11 +339,11 @@ type SearchCompletionPlan struct {
 // would invent content.
 var errNoVisibleSearchDataset = errors.New("no knowledge base in this search is available to the caller")
 
-// searchConfigAllowsPartialKB reports whether a search app may answer from the
+// SearchConfigAllowsPartialKB reports whether a search app may answer from the
 // subset of its bindings the caller can use. It defaults to true; set
 // search_config.allow_partial_kb = false to restore the strict "every binding or
 // nothing" policy.
-func searchConfigAllowsPartialKB(searchConfig map[string]interface{}) bool {
+func SearchConfigAllowsPartialKB(searchConfig map[string]interface{}) bool {
 	if searchConfig == nil {
 		return true
 	}
@@ -395,7 +395,7 @@ func (s *SearchService) PrepareCompletion(ctx context.Context, userID, searchID 
 	// 搜索应用是团队资产，绑定的知识库不一定每个使用者都能打开。默认只收敛到
 	// 调用者可见的库继续检索；allow_partial_kb=false 恢复「任一绑定不可用即拒绝」。
 	subject := permission.Subject{UserID: userID}
-	if searchConfigAllowsPartialKB(searchConfig) {
+	if SearchConfigAllowsPartialKB(searchConfig) {
 		allowed, denied := VisibleDatasetIDs(ctx, subject, datasetIDs)
 		if len(denied) > 0 {
 			common.Warn("search app narrowed to the caller's visible datasets",

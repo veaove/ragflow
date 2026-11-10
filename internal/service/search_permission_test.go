@@ -9,17 +9,17 @@ import (
 // allow_partial_kb 默认必须为 true：存量搜索应用没有这个字段，要让它们立刻
 // 按可见库返回，而不是继续整体失败。
 func TestSearchConfigAllowsPartialKBDefaultsToTrue(t *testing.T) {
-	if !searchConfigAllowsPartialKB(nil) {
-		t.Error("searchConfigAllowsPartialKB(nil) = false, want true")
+	if !SearchConfigAllowsPartialKB(nil) {
+		t.Error("SearchConfigAllowsPartialKB(nil) = false, want true")
 	}
-	if !searchConfigAllowsPartialKB(map[string]interface{}{}) {
-		t.Error("searchConfigAllowsPartialKB(empty) = false, want true")
+	if !SearchConfigAllowsPartialKB(map[string]interface{}{}) {
+		t.Error("SearchConfigAllowsPartialKB(empty) = false, want true")
 	}
-	if !searchConfigAllowsPartialKB(map[string]interface{}{"allow_partial_kb": "true"}) {
-		t.Error("searchConfigAllowsPartialKB(non-bool) = false, want the default true")
+	if !SearchConfigAllowsPartialKB(map[string]interface{}{"allow_partial_kb": "true"}) {
+		t.Error("SearchConfigAllowsPartialKB(non-bool) = false, want the default true")
 	}
-	if searchConfigAllowsPartialKB(map[string]interface{}{"allow_partial_kb": false}) {
-		t.Error("searchConfigAllowsPartialKB(explicit false) = true, want false")
+	if SearchConfigAllowsPartialKB(map[string]interface{}{"allow_partial_kb": false}) {
+		t.Error("SearchConfigAllowsPartialKB(explicit false) = true, want false")
 	}
 }
 

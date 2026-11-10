@@ -123,39 +123,10 @@ func (d *DatasetService) SearchDatasets(ctx context.Context, req *service.Search
 
 	modelFactory := service.NewModelFactory()
 
-	// Access check for all datasets
-	var tenantIDs []string
-	var kbRecords []*entity.Knowledgebase
-	seenTenants := make(map[string]bool)
-	for _, datasetID := range datasetIDs {
-		if err := service.CheckDatasetAccess(ctx, permission.Subject{UserID: userID}, datasetID, permission.OperationUse); err != nil {
-			common.Warn("SearchDatasets access denied", zap.String("datasetID", datasetID), zap.String("userID", userID))
-			_, permissionErr := permissionresponse.Normalize(err)
-			return nil, permissionErr
-		}
-
-		kb, err := d.kbDAO.GetByID(ctx, dao.DB, datasetID)
-		if err != nil || kb == nil {
-			common.Warn("SearchDatasets dataset not found", zap.String("datasetID", datasetID))
-			return nil, fmt.Errorf("dataset %s not found", datasetID)
-		}
-		if !kb.IsEnabled() {
-			common.Warn("SearchDatasets dataset is disabled", zap.String("datasetID", datasetID))
-			return nil, fmt.Errorf("dataset %s is disabled", kb.Name)
-		}
-		if !seenTenants[kb.TenantID] {
-			seenTenants[kb.TenantID] = true
-			tenantIDs = append(tenantIDs, kb.TenantID)
-		}
-		kbRecords = append(kbRecords, kb)
-	}
-
-	// Check if all kbs have the same embedding model
-	if err := service.ValidateDatasetEmbeddingModels(ctx, dao.DB, kbRecords); err != nil {
-		return nil, err
-	}
-
-	// Override request fields with values from saved search config
+	// Override request fields with values from saved search config.
+	// savedSearchConfig 同时决定后面数据集可见性的口径（allow_partial_kb），
+	// 所以这一段必须先于权限判定执行。
+	var savedSearchConfig map[string]interface{}
 	var chatID string
 	if searchID != "" {
 		if d.searchService == nil {
@@ -178,6 +149,7 @@ func (d *DatasetService) SearchDatasets(ctx context.Context, req *service.Search
 			return nil, fmt.Errorf("invalid search_id")
 		}
 		if searchConfig, ok := searchDetail["search_config"].(map[string]interface{}); ok && searchConfig != nil {
+			savedSearchConfig = searchConfig
 			rerankCandidatesCount = 100
 			if scMetadataFilter, ok := searchConfig["meta_data_filter"].(map[string]interface{}); ok {
 				metadataFilter = scMetadataFilter
@@ -223,6 +195,47 @@ func (d *DatasetService) SearchDatasets(ctx context.Context, req *service.Search
 		}
 	}
 	knnNumCandidates = max(knnNumCandidates, knnTopK)
+
+	// 搜索应用是团队资产：它绑定的知识库不一定每个使用者都能打开。
+	// search_config.allow_partial_kb 未被显式关闭时，与
+	// /searches/{id}/completions 同口径——只收敛到调用者可见的库继续检索，
+	// 而不是让一个不可用的绑定把整份检索结果（含 AI 总结引用的切片列表）
+	// 判成权限不足。显式关闭才恢复「任一绑定不可用即拒绝」。
+	allowPartialKB := searchID != "" && service.SearchConfigAllowsPartialKB(savedSearchConfig)
+	scopedDatasetIDs, scopeErr := scopeSearchDatasetIDs(
+		ctx, permission.Subject{UserID: userID}, datasetIDs, allowPartialKB,
+	)
+	if scopeErr != nil {
+		common.Warn("SearchDatasets access denied", zap.String("userID", userID), zap.Error(scopeErr))
+		return nil, scopeErr
+	}
+	datasetIDs = scopedDatasetIDs
+
+	// Resolve the surviving datasets and the tenants they belong to.
+	var tenantIDs []string
+	var kbRecords []*entity.Knowledgebase
+	seenTenants := make(map[string]bool)
+	for _, datasetID := range datasetIDs {
+		kb, err := d.kbDAO.GetByID(ctx, dao.DB, datasetID)
+		if err != nil || kb == nil {
+			common.Warn("SearchDatasets dataset not found", zap.String("datasetID", datasetID))
+			return nil, fmt.Errorf("dataset %s not found", datasetID)
+		}
+		if !kb.IsEnabled() {
+			common.Warn("SearchDatasets dataset is disabled", zap.String("datasetID", datasetID))
+			return nil, fmt.Errorf("dataset %s is disabled", kb.Name)
+		}
+		if !seenTenants[kb.TenantID] {
+			seenTenants[kb.TenantID] = true
+			tenantIDs = append(tenantIDs, kb.TenantID)
+		}
+		kbRecords = append(kbRecords, kb)
+	}
+
+	// Check if all kbs have the same embedding model
+	if err := service.ValidateDatasetEmbeddingModels(ctx, dao.DB, kbRecords); err != nil {
+		return nil, err
+	}
 
 	// If meta_data_filter method is auto/semi_auto, get chat model
 	var chatModelForFilter *modelModule.ChatModel
@@ -356,6 +369,38 @@ func (d *DatasetService) SearchDatasets(ctx context.Context, req *service.Search
 		Labels:  &labels,
 		Total:   retrievalResult.Total,
 	}, nil
+}
+
+// scopeSearchDatasetIDs returns the datasets a retrieval call may read from.
+//
+// allowPartial=false keeps the strict contract: every requested dataset must be
+// usable by the subject, and a single denial fails the call. allowPartial=true
+// keeps only the datasets the subject can use, so a search app bound to a
+// dataset the caller cannot open still answers from the rest (the same
+// "partial knowledge base access" contract the completion path follows).
+// Ids that no longer resolve (deleted datasets) drop out of the partial path
+// because they hold no content; a caller with nothing left is denied outright,
+// there being no corpus to retrieve from.
+func scopeSearchDatasetIDs(ctx context.Context, subject permission.Subject, datasetIDs []string, allowPartial bool) ([]string, error) {
+	if !allowPartial {
+		for _, datasetID := range datasetIDs {
+			if err := service.CheckDatasetAccess(ctx, subject, datasetID, permission.OperationUse); err != nil {
+				common.Warn("SearchDatasets access denied", zap.String("datasetID", datasetID), zap.String("userID", subject.UserID))
+				return nil, err
+			}
+		}
+		return datasetIDs, nil
+	}
+	allowed, denied := service.VisibleDatasetIDs(ctx, subject, datasetIDs)
+	if len(denied) > 0 {
+		common.Warn("SearchDatasets narrowed to the caller's visible datasets",
+			zap.String("userID", subject.UserID), zap.Strings("denied_dataset_ids", denied))
+	}
+	if len(allowed) == 0 {
+		common.Warn("SearchDatasets has no dataset visible to the caller", zap.String("userID", subject.UserID))
+		return nil, permission.ErrPermissionDenied
+	}
+	return allowed, nil
 }
 
 // formatDatasetSearchChunks applies API field names and compilation visibility after parent promotion.
