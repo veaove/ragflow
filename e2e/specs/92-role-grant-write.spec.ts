@@ -240,54 +240,62 @@ test.describe('角色授权与资源授权 · 写入链路', () => {
   // ── 资源授权：可见性 + 操作级别 ─────────────────────────────────────────
 
   /**
-   * 主体选择说明：
-   *   · member（技术员，user_tenant.role=normal）用来跑 read/edit 阶梯，他不在
-   *     管理层，读权限只能来自授权本身；
-   *   · plain（普通成员，培训部）用来做「未授权不可见」的反面对照；
-   *   · dept（部门管理员）**不能**用在这类断言上：他的 user_tenant.role 是
-   *     admin，管理层天然对本租户所有可见资源有读权限，授权前/回收后都能读，
-   *     会把这个用例测成假绿。详见 91 的 FINDING 用例。
+   * 主体选择说明（会随人员的实际配置漂移，改动角色后必须回看这里）：
+   *
+   *   · plain（普通成员，培训部）：**唯一**能用来做「未授权不可见」对照的身份。
+   *   · member（hjzd@hjzd，部门管理员，技术部）：矩阵全开，能走到资源层；但他
+   *     作为部门管理员，对**技术部成员创建**的资源天然只读可见，所以「看得到」
+   *     不能拿他证明授权生效，「改不了」可以。
+   *   · dept（e2e-dept，部门管理员，技术部）：同上。
+   *   · admin（租户管理员）：资源层全放行，只能做正向对照。
+   *
+   * 临时库由 owner 创建，而 owner 在技术部 —— 所以 member/dept 对它始终可见。
    */
   test('授权前：未授权成员读不到临时库，文案与不存在的 id 一致', async ({ request }) => {
     expect(kbID).toBeTruthy();
-    for (const who of ['member', 'plain'] as AccountName[]) {
-      const res = await call(request, 'get', api.dataset(kbID), who);
-      expect(res.code, `${who} 不该读到未授权的库`).not.toBe(0);
-      expect(res.message, `${who} 的拒绝文案泄露了库的存在性`).toBe(phantomMessage);
-    }
+    const res = await call(request, 'get', api.dataset(kbID), 'plain');
+    expect(res.code, 'plain 不该读到未授权的库').not.toBe(0);
+    expect(res.message, '拒绝文案泄露了库的存在性').toBe(phantomMessage);
   });
 
-  test('授予「可查看」：能看库与文件列表，但不能改配置', async ({ request }) => {
+  test('授予「可查看」：普通成员能看库与文件列表，矩阵全开的人仍不能改', async ({
+    request,
+  }) => {
     await grant(request, [
+      { kind: 'user', id: plainID, permission: 'read', effect: 'allow' },
       { kind: 'user', id: memberID, permission: 'read', effect: 'allow' },
     ]);
 
-    const read = await call(request, 'get', api.dataset(kbID), 'member');
-    expect(read.code, `可查看授权后应能读：${read.message}`).toBe(0);
+    // 读：只有 plain 能证明「授权生效」，member 本来就能靠部门管理员看到。
+    const read = await call(request, 'get', api.dataset(kbID), 'plain');
+    expect(read.code, `可查看授权后 plain 应能读：${read.message}`).toBe(0);
 
     const docs = await call(
       request,
       'get',
       `${api.datasetDocuments(kbID)}?page=1&page_size=10`,
-      'member',
+      'plain',
     );
     expect(docs.code, '可查看授权后应能读文件列表').toBe(0);
 
-    // 提交当前值：即便真的放行也不会改动数据，只用来分辨 read / edit。
+    // 写：member 矩阵全开，能到资源层；提交当前值，只用来分辨 read / edit。
     const write = await call(request, 'put', api.dataset(kbID), 'member', { name: kbName });
     expect(write.code, '可查看不该能改库配置').not.toBe(0);
-
-    const hidden = await call(request, 'get', api.dataset(kbID), 'plain');
-    expect(hidden.code, '只授权了 member，plain 不该跟着可见').not.toBe(0);
   });
 
   test('升级为「可编辑」后能改配置，但仍不能删除整个库', async ({ request }) => {
     await grant(request, [
+      { kind: 'user', id: plainID, permission: 'edit', effect: 'allow' },
       { kind: 'user', id: memberID, permission: 'edit', effect: 'allow' },
     ]);
 
     const write = await call(request, 'put', api.dataset(kbID), 'member', { name: kbName });
     expect(write.code, `可编辑后应能改配置：${write.message}`).toBe(0);
+
+    // 两层 AND：资源层给了 edit，plain 仍会被「知识库」模块闸门挡在更前面。
+    const gated = await call(request, 'put', api.dataset(kbID), 'plain', { name: kbName });
+    expect(gated.status, 'plain 应被模块闸门拦住（资源层放行不代表能调接口）').toBe(403);
+    expect(gated.message).toContain('知识库');
 
     // 成员操作集里没有 delete：编辑权不等于所有权。
     const del = await call(request, 'delete', api.datasets, 'member', { ids: [kbID] });
@@ -297,30 +305,50 @@ test.describe('角色授权与资源授权 · 写入链路', () => {
     expect(still.code, '库被删掉了，说明删除权越界').toBe(0);
   });
 
-  test('部门级授权：整条用户授权撤掉后，技术部成员仍可见，培训部不可见', async ({
-    request,
-  }) => {
-    // 用「只保留部门授权」替换掉上一步的 user 授权，可见性来源就只剩部门。
+  test('部门级授权：给培训部之后 plain 可见', async ({ request }) => {
     await grant(request, [
-      { kind: 'department', id: DEPARTMENTS.tech.id, permission: 'read', effect: 'allow' },
+      { kind: 'department', id: DEPARTMENTS.training.id, permission: 'read', effect: 'allow' },
     ]);
 
-    const member = await call(request, 'get', api.dataset(kbID), 'member');
-    expect(member.code, '技术部成员（hjzd@hjzd）应通过部门授权看到').toBe(0);
-
     const plain = await call(request, 'get', api.dataset(kbID), 'plain');
-    expect(plain.code, '培训部成员不该看到技术部的授权').not.toBe(0);
-    expect(plain.message, '培训部成员的拒绝文案泄露了库的存在性').toBe(phantomMessage);
+    expect(plain.code, `培训部授权后 plain 应能看到：${plain.message}`).toBe(0);
   });
 
-  test('回收全部授权：可见性与操作权限同时消失', async ({ request }) => {
+  /**
+   * 团队级授权的两级差异 —— 对应「全团队可查看却改不了」的报障。
+   *
+   * 部门管理员不在管理层，对别人建的内容只能靠授权拿写权限；所以团队规则是
+   * read 时他改不了、是 edit 时才能改。这条把「可查看 ≠ 可编辑」钉在团队主体上，
+   * 避免再被界面上的错误级别标签带偏。
+   */
+  test('团队级：可查看只能看，切成可编辑才能改', async ({ request }) => {
+    await grant(request, [{ kind: 'team', id: '', permission: 'read', effect: 'allow' }]);
+    for (const who of ['member', 'dept'] as AccountName[]) {
+      const res = await call(request, 'put', api.dataset(kbID), who, { name: kbName });
+      expect(res.code, `${who} 在团队「可查看」下不该能改`).not.toBe(0);
+    }
+
+    await grant(request, [{ kind: 'team', id: '', permission: 'edit', effect: 'allow' }]);
+    for (const who of ['member', 'dept'] as AccountName[]) {
+      const res = await call(request, 'put', api.dataset(kbID), who, { name: kbName });
+      expect(res.code, `${who} 在团队「可编辑」下应该能改：${res.message}`).toBe(0);
+    }
+  });
+
+  test('回收全部授权：普通成员回到不可见，部门管理员仍只读可见', async ({
+    request,
+  }) => {
     await grant(request, []);
 
-    for (const who of ['member', 'plain'] as AccountName[]) {
-      const res = await call(request, 'get', api.dataset(kbID), who);
-      expect(res.code, `${who} 在回收后仍能读到库`).not.toBe(0);
-      expect(res.message, `${who} 的回收后文案不一致`).toBe(phantomMessage);
-    }
+    const plain = await call(request, 'get', api.dataset(kbID), 'plain');
+    expect(plain.code, 'plain 在回收后仍能读到库').not.toBe(0);
+    expect(plain.message, '回收后的拒绝文案与未授权时不一致').toBe(phantomMessage);
+
+    // 部门管理员语义：本部门成员创建的内容只读可见，与有没有授权无关。
+    const member = await call(request, 'get', api.dataset(kbID), 'member');
+    expect(member.code, '部门管理员对本部门创建的内容应保持只读可见').toBe(0);
+    const write = await call(request, 'put', api.dataset(kbID), 'member', { name: kbName });
+    expect(write.code, '部门管理员不该因为可见就拿到写权限').not.toBe(0);
   });
 
   /**
@@ -344,13 +372,12 @@ test.describe('角色授权与资源授权 · 写入链路', () => {
       const readBack = await call(request, 'get', api.dataset(kbID), 'owner');
       expect(readBack.data?.permission, `可见范围没有落库：${tier}`).toBe(tier);
 
-      for (const who of ['member', 'plain'] as AccountName[]) {
-        const res = await call(request, 'get', api.dataset(kbID), who);
-        expect(
-          res.code,
-          `${tier} 档下 ${who} 仍不可见；若档位已接入判定，请更新这条 FINDING 与文案`,
-        ).not.toBe(0);
-      }
+      const plain = await call(request, 'get', api.dataset(kbID), 'plain');
+      expect(
+        plain.code,
+        `${tier} 档下 plain 仍不可见；若档位已接入判定，请更新这条 FINDING 与文案`,
+      ).not.toBe(0);
+
       for (const who of ['admin', 'dept'] as AccountName[]) {
         const res = await call(request, 'get', api.dataset(kbID), who);
         expect(res.code, `${tier} 档下管理层 ${who} 应可见`).toBe(0);

@@ -53,6 +53,12 @@ e2e/
   读接口又是跨租户并集，于是列表正常、闸门判的却是另一个租户。`91` 的 `headers()` 就是这么做的。
 - 资源授权的主体只有 **user / department / team** 三种，没有「角色」主体；角色只通过
   矩阵（资格）间接生效。
+- 身份配置会漂移，改角色后要回看用例口径：`hjzd@hjzd` 在 2026-11-10 被从「技术员」
+  改成「部门管理员」。部门管理员对**本部门成员创建**的资源天然只读可见，所以
+  `92` 里「未授权不可见」一律用 `plain`（培训部普通成员）做对照，`member` 只能用来
+  证明「改不了 / 能改」。
+- 部门管理员在 policy 层**不是**租户管理员：`isTenantAdmin` 只认 `role=owner` 或内置
+  「租户管理员」角色；`role=admin` 枚举只影响控制台写接口（D8）。
 
 ## 已知缺陷
 
@@ -65,7 +71,7 @@ e2e/
 | D3 | 质检规则未按资源授权过滤，按租户返回 | 成员 `GET /qc/rules` 拿到 9 条规则 | FINDING 用例；规则归属应用对成员不可见，规则本身仍可读 | `8ba40d72e`：普通成员收窄到可见 chat/canvas 应用，管理层保持全量 |
 | D4 | 内置角色矩阵可被空写覆盖，随后被静默回填 | `PUT /roles/:id/permissions` 提交 `{permissions: []}` 返回成功，下次 `ListRoles` 又按 `ConsoleModules` 补回默认行 | 不写成用例（要写线上数据）；`dao.backfillBuiltinRolePermissions` 无法区分「模块新增」与「管理员撤销」 | `8ba40d72e`：保存时补满 25 行（false 也落库），Owner 矩阵拒绝写入 |
 | D5 | 内置角色可被改名，而多处逻辑按名字匹配 | `PUT /roles/:id` 无 `is_builtin` 保护；`EnsureTenantAdminRole` / backfill 按 `name` 查 | 前端已禁用编辑，接口层未拦；同上，只记录 | `8ba40d72e`：`UpdateRole` 拒绝内置角色 |
-| D8 | 部门管理员被当成租户管理层：能写全租户资源授权、能读全部 18 个库 | `e2e-dept` 的 `user_tenant.role` 是 `admin`（role_id 却是「部门管理员」）；`PUT /grants/dataset/{ghost}` 返回 `code=102 资源不存在` 说明已穿过管理层闸门 | `91` 的 FINDING 用例断言当前行为；`92` 因此改用 `member` 跑 read/edit 阶梯、`plain` 做反面对照 | 未修。`UpdateMember` 只写 `role_id` 不动 `role` 枚举，新租户里正常分配的部门管理员是 `normal` 反而写不了授权 —— 需要先定口径（枚举与角色对齐，或判定只认 role_id） |
+| D8 | 部门管理员能写全租户资源授权 | `e2e-dept` 的 `user_tenant.role` 是 `admin`（role_id 却是「部门管理员」）；`PUT /grants/dataset/{ghost}` 返回 `code=102 资源不存在`，说明已穿过 handler 的管理层闸门 | `91` 的 FINDING 用例断言当前行为；`92` 因此改用 `plain` 做可见性对照 | 未修。`UpdateMember` 只写 `role_id` 不动 `role` 枚举，新租户里正常分配的部门管理员是 `normal` 反而写不了授权 —— 需要先定口径（枚举与角色对齐，或判定只认 role_id）。注意 policy 层不认 `role=admin`，资源访问仍按部门管理员收窄 |
 | D9 | 三档可见范围不参与判定：owner / tenant_owner / platform 对同一身份行为完全一致 | 临时库依次切三档，member/plain 始终不可见、admin/dept 始终可见；`tieredAccess` 只读「创建者 / 显式授权 / 部门管理员」，列表 SQL 唯一读 `permission` 的是历史 `team` 分支（迁移后无命中） | `92` 的 FINDING 用例固化当前行为；`entity/visibility.go` 的文档写的是三层递进，与实现不符 | 未修。要真落地需让档位决定「哪些管理角色放行」，并同步列表 SQL 与前端文案 |
 
 修复的单测结论：`/root/rf-verify` 全量 `./build.sh --test` → **0 FAIL / 131 packages ok**（2026-11-03）。
