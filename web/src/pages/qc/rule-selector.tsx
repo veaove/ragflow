@@ -29,7 +29,7 @@ import { ExternalLink } from 'lucide-react';
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { toast } from 'sonner';
+import { toast } from '@/utils/toast';
 
 const matchModeLabel: Record<string, string> = {
   contains: '包含',

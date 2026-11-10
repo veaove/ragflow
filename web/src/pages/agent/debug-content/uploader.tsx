@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { useUploadAgentFile } from '@/hooks/use-agent-request';
 import { Upload, X } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/utils/toast';
 
 type FileUploadDirectUploadProps = {
   value: Record<string, any> | Record<string, any>[];

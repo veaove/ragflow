@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConsoleGuard } from '@/components/console-guard';
+import { toast } from '@/utils/toast';
 import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { Button } from '@/components/ui/button';
 import {
@@ -160,7 +161,9 @@ export default function ConsoleOrganization() {
         if (selectedDept === node.id) setSelectedDept('');
         queryClient.invalidateQueries({ queryKey: ['console/departments'] });
       } catch {
-        window.alert('该部门下还有子部门或成员，请先移走后再删除');
+        toast.error('删除部门失败', {
+          description: '该部门下还有子部门或成员，请先移走后再删除',
+        });
       }
     },
     [queryClient, selectedDept, tenantId],

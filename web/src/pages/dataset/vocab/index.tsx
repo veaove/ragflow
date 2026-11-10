@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
-import { toast } from 'sonner';
+import { toast } from '@/utils/toast';
 
 import {
   type ISynonymGroup,

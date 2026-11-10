@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConsoleGuard } from '@/components/console-guard';
+import { toast } from '@/utils/toast';
 import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { Button } from '@/components/ui/button';
 import {
@@ -228,7 +229,9 @@ export default function ConsoleMembers() {
         await removeConsoleMember(tenantId, m.id);
         queryClient.invalidateQueries({ queryKey: ['console/members'] });
       } catch {
-        window.alert('移除失败：只有租户管理员可以移除成员');
+        toast.error('移除失败', {
+          description: '只有租户管理员可以移除成员',
+        });
       }
     },
     [queryClient, tenantId],
@@ -266,7 +269,7 @@ export default function ConsoleMembers() {
       await resetMemberPassword(tenantId, pwTarget.id, rsaPsw(pwValue) || '');
       setPwTarget(null);
       setPwValue('');
-      window.alert('密码已重置');
+      toast.success('密码已重置');
     } catch (e: any) {
       setPwError(e?.message ?? '重置失败');
     }

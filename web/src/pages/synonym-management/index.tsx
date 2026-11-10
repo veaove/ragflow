@@ -47,7 +47,7 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/utils/toast';
 
 type DomainFilter = SynonymDomain | 'all';
 

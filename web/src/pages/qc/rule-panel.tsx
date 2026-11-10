@@ -54,7 +54,7 @@ import {
   updateQcRule,
 } from '@/services/qc-service';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/utils/toast';
 import { RuleReferencesDialog } from './rule-references-dialog';
 
 const PAGE_SIZE = 10;

@@ -14,9 +14,9 @@
  *  limitations under the License.
  */
 
-import { ExternalToast, toast } from 'sonner';
+import { toast } from '@/utils/toast';
 
-const defaultConfig: ExternalToast = { duration: 4000, position: 'top-right' };
+const defaultConfig = { duration: 4000, position: 'top-right' as const };
 
 type NotificationOptions = {
   message: string;
@@ -24,51 +24,27 @@ type NotificationOptions = {
   duration?: number;
 };
 
+/**
+ * notification 保留 message/description 两段结构，交给 `@/utils/toast` 决定形态：
+ * 成功 / 信息仍是角落提示，错误与警告统一成「标题 + 说明」的弹框。
+ */
+function emit(
+  level: 'success' | 'info' | 'error' | 'warning',
+  options: NotificationOptions,
+) {
+  const config = {
+    ...defaultConfig,
+    description: options.description,
+    duration: options.duration ? options.duration * 1000 : defaultConfig.duration,
+  };
+  toast[level](options.message, config);
+}
+
 const notification = {
-  success: (options: NotificationOptions) => {
-    const messageText = options.description
-      ? `${options.message}\n${options.description}`
-      : options.message;
-    toast.success(messageText, {
-      ...defaultConfig,
-      duration: options.duration
-        ? options.duration * 1000
-        : defaultConfig.duration,
-    });
-  },
-  error: (options: NotificationOptions) => {
-    const messageText = options.description
-      ? `${options.message}\n${options.description}`
-      : options.message;
-    toast.error(messageText, {
-      ...defaultConfig,
-      duration: options.duration
-        ? options.duration * 1000
-        : defaultConfig.duration,
-    });
-  },
-  warning: (options: NotificationOptions) => {
-    const messageText = options.description
-      ? `${options.message}\n${options.description}`
-      : options.message;
-    toast.warning(messageText, {
-      ...defaultConfig,
-      duration: options.duration
-        ? options.duration * 1000
-        : defaultConfig.duration,
-    });
-  },
-  info: (options: NotificationOptions) => {
-    const messageText = options.description
-      ? `${options.message}\n${options.description}`
-      : options.message;
-    toast.info(messageText, {
-      ...defaultConfig,
-      duration: options.duration
-        ? options.duration * 1000
-        : defaultConfig.duration,
-    });
-  },
+  success: (options: NotificationOptions) => emit('success', options),
+  error: (options: NotificationOptions) => emit('error', options),
+  warning: (options: NotificationOptions) => emit('warning', options),
+  info: (options: NotificationOptions) => emit('info', options),
 };
 
 export default notification;

@@ -1,4 +1,6 @@
-import { ExternalToast, toast } from 'sonner';
+import { ExternalToast } from 'sonner';
+
+import { toast } from '@/utils/toast';
 
 const configuration: ExternalToast = { duration: 2500, position: 'top-center' };
 
@@ -8,36 +10,41 @@ type MessageOptions = {
   duration?: number;
 };
 
+/**
+ * message 是轻提示的兼容层。
+ *
+ * 具体落到哪种形态由 `@/utils/toast` 决定：成功 / 进行中仍是角落提示，失败与
+ * 警告统一弹框。这里只负责把两种调用写法（字符串、{message, description}）
+ * 归一成「标题 + 说明」，别在调用点和转换层各拼一次说明文字。
+ */
+function normalize(
+  msg: string | MessageOptions,
+  data?: ExternalToast,
+): { title: string; data: ExternalToast } {
+  if (typeof msg === 'object') {
+    return {
+      title: msg.message,
+      data: {
+        ...configuration,
+        description: msg.description,
+        ...(msg.duration !== undefined ? { duration: msg.duration * 1000 } : {}),
+      },
+    };
+  }
+  return { title: msg, data: { ...configuration, ...data } };
+}
+
 const message = {
   success: (msg: string) => {
     toast.success(msg, configuration);
   },
   error: (msg: string | MessageOptions, data?: ExternalToast) => {
-    let messageText: string;
-    let options: ExternalToast = { ...configuration };
-
-    if (typeof msg === 'object') {
-      // Object-style call: message.error({ message: '...', description: '...', duration: 3 })
-      messageText = msg.message;
-      if (msg.description) {
-        messageText += `\n${msg.description}`;
-      }
-      if (msg.duration !== undefined) {
-        options.duration = msg.duration * 1000; // Convert to milliseconds
-      }
-    } else {
-      // String-style call: message.error('text', { description: '...' })
-      messageText = msg;
-      if (data?.description) {
-        messageText += `\n${data.description}`;
-      }
-      options = { ...options, ...data };
-    }
-
-    toast.error(messageText, options);
+    const normalized = normalize(msg, data);
+    toast.error(normalized.title, normalized.data);
   },
-  warning: (msg: string) => {
-    toast.warning(msg, configuration);
+  warning: (msg: string | MessageOptions, data?: ExternalToast) => {
+    const normalized = normalize(msg, data);
+    toast.warning(normalized.title, normalized.data);
   },
   info: (msg: string) => {
     toast.info(msg, configuration);

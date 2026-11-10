@@ -49,7 +49,7 @@ import {
 } from '@/services/qc-service';
 import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import * as React from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/utils/toast';
 import { QcRulePanel } from './rule-panel';
 
 const PAGE_SIZE = 20;

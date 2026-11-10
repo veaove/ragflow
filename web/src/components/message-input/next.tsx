@@ -39,7 +39,7 @@ import { CircleStop, Globe, Paperclip, Send, Upload, X } from 'lucide-react';
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
+import { toast } from '@/utils/toast';
 import storage from '@/utils/authorization-util';
 import { SelectWithSearch } from '../originui/select-with-search';
 import { AudioButton } from '../ui/audio-button';

@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '@/utils/toast';
 
 import {
   type IGenerateCandidate,

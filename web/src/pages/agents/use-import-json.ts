@@ -1,4 +1,3 @@
-import { useToast } from '@/components/hooks/use-toast';
 import message from '@/components/ui/message';
 import { AgentCategory } from '@/constants/agent';
 import { FileMimeType } from '@/constants/common';
@@ -18,7 +17,6 @@ export const useHandleImportJsonFile = () => {
     showModal: showFileUploadModal,
   } = useSetModalState();
   const { t } = useTranslation();
-  const { toast } = useToast();
   const { loading, setAgent } = useSetAgent();
 
   const onFileUploadOk = useCallback(
@@ -26,7 +24,7 @@ export const useHandleImportJsonFile = () => {
       if (fileList.length > 0) {
         const file = fileList[0];
         if (file.type !== FileMimeType.Json) {
-          toast({ title: t('flow.jsonUploadTypeErrorMessage') });
+          message.error(t('flow.jsonUploadTypeErrorMessage'));
           return;
         }
 
@@ -52,7 +50,7 @@ export const useHandleImportJsonFile = () => {
         }
       }
     },
-    [setAgent, t, toast],
+    [setAgent, t],
   );
 
   return {

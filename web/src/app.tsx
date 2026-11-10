@@ -14,8 +14,8 @@
  *  limitations under the License.
  */
 
+import { AppNoticeHost } from '@/components/app-notice-host';
 import { Toaster as Sonner } from '@/components/ui/sonner';
-import { Toaster } from '@/components/ui/toaster';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { configResponsive } from 'ahooks';
 import dayjs from 'dayjs';
@@ -85,7 +85,8 @@ function Root({ children }: React.PropsWithChildren) {
 
       <Sonner position="top-right" expand richColors closeButton />
 
-      <Toaster />
+      {/* 红 / 黄提示统一走这个弹框，任何页面和请求层都能弹。 */}
+      <AppNoticeHost />
     </>
   );
 }

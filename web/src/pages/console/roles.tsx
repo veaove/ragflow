@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConsoleGuard } from '@/components/console-guard';
+import { toast } from '@/utils/toast';
 import { useConsolePermissions } from '@/hooks/use-console-permissions';
 import { Button } from '@/components/ui/button';
 import {
@@ -295,7 +296,7 @@ export default function ConsoleRoles() {
       setNewDesc('');
       queryClient.invalidateQueries({ queryKey: ['console/roles'] });
     } catch {
-      window.alert('创建失败：角色名可能已存在');
+      toast.error('创建角色失败', { description: '角色名可能已存在' });
     }
   }, [newDesc, newName, queryClient, tenantId]);
 
@@ -312,7 +313,7 @@ export default function ConsoleRoles() {
         setRenamingId('');
         queryClient.invalidateQueries({ queryKey: ['console/roles'] });
       } catch {
-        window.alert('重命名失败：角色名可能已存在');
+        toast.error('重命名失败', { description: '角色名可能已存在' });
       }
     },
     [queryClient, tenantId],

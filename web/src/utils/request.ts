@@ -323,9 +323,13 @@ request.interceptors.response.use(async (response: Response, options) => {
     // 所以统一用 message 文本识别。弹友好的中文提示，5 秒内同一模块只弹一次。
     notifyPermissionDenied(response?.url, data?.message);
   } else if (data?.code !== 0 && !skipErrorCodes?.includes(data?.code)) {
+    // 标题用后端给的人话，错误码退到说明里给支持用：以前把「错误 : 404」放在
+    // 标题上，弹框第一眼全是代码。
     notification.error({
-      message: `${i18n.t('message.hint')} : ${data?.code}`,
-      description: data?.message,
+      message: data?.message || `${i18n.t('message.requestError')} ${data?.code}`,
+      description: data?.message
+        ? `${i18n.t('message.requestError')} ${data?.code}`
+        : undefined,
       duration: 3,
     });
   }
