@@ -558,7 +558,7 @@ export function GrantGraph({ tenantId, viewerId }: GrantGraphProps) {
         opacity={active ? 0.9 : 0.28}
       >
         <title>
-          {`${edge.subjectName} → ${edge.resourceName} · ${edge.effect === 'deny' ? '拒绝' : '允许'} · ${edge.permission === 'read' ? '只读' : '可编辑'}`}
+          {`${edge.subjectName} → ${edge.resourceName} · ${edge.effect === 'deny' ? '拒绝' : '允许'} · ${edge.permission === 'read' ? '可查看' : '可编辑'}`}
         </title>
       </path>
     );

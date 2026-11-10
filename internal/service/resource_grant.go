@@ -91,6 +91,10 @@ func normalizeGrantEffect(v string) string {
 
 // strongerGrantPermission 返回两个级别里更强的那个（edit > read）。
 // 用于合并同一主体的多行历史授权，避免"部门只读 + 个人可编辑"被读成只读。
+//
+// 两个入参都必须来自真实规则（grantAggregate.seen 为真）：空串在
+// normalizeGrantPermission 里等价于 edit，拿聚合器的零值当入参会把结果
+// 恒定成 edit。
 func strongerGrantPermission(a, b string) string {
 	if normalizeGrantPermission(a) == GrantPermissionEdit ||
 		normalizeGrantPermission(b) == GrantPermissionEdit {
@@ -302,18 +306,28 @@ func (s *ResourceGrantService) tenantName(ctx context.Context, tenantID string) 
 type grantAggregate struct {
 	permission string
 	effect     string
+	// seen 表示 permission 已经取自一行真实规则。零值不能当作「空级别」参与
+	// 合并：normalizeGrantPermission 把空串按 edit 处理（历史行没有级别列），
+	// 聚合器初始值一起走这条规则，就会把每一条 read 规则都读成 edit —— 线上
+	// 表现为「明明给了可查看，列表里显示可编辑」。
+	seen bool
 }
 
 // merge 收敛同一个主体的多行规则：deny 压过 allow，同级取更强的 permission。
 func (a grantAggregate) merge(row *entity.ResourceGrant) grantAggregate {
 	if a.effect == entity.GrantEffectDeny || normalizeGrantEffect(row.Effect) == entity.GrantEffectDeny {
 		// deny 不可逆：命中过一条，这个主体就是被排除，再多的 allow 也不
-		// 会把展示（和判定）拉回"允许"。
-		return grantAggregate{effect: entity.GrantEffectDeny, permission: a.permission}
+		// 会把展示（和判定）拉回"允许"。排除不记级别，保留已聚合的值。
+		return grantAggregate{effect: entity.GrantEffectDeny, permission: a.permission, seen: a.seen}
+	}
+	permission := normalizeGrantPermission(row.Permission)
+	if !a.seen {
+		return grantAggregate{effect: entity.GrantEffectAllow, permission: permission, seen: true}
 	}
 	return grantAggregate{
 		effect:     entity.GrantEffectAllow,
-		permission: strongerGrantPermission(a.permission, row.Permission),
+		permission: strongerGrantPermission(a.permission, permission),
+		seen:       true,
 	}
 }
 

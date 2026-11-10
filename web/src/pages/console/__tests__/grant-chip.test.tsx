@@ -20,7 +20,7 @@ describe('GrantChip', () => {
     expect(chip.className).toContain('text-state-error');
   });
 
-  it('允许按级别区分只读与可编辑', () => {
+  it('允许按级别区分可查看与可编辑', () => {
     expect(
       grantChipLabel({
         kind: 'user',
@@ -29,7 +29,7 @@ describe('GrantChip', () => {
         permission: 'read',
         effect: 'allow',
       }),
-    ).toBe('张三(只读)');
+    ).toBe('张三(可查看)');
     expect(
       grantChipLabel({
         kind: 'department',

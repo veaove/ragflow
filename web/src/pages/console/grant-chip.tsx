@@ -1,16 +1,19 @@
 import type { GrantSubject } from '@/services/console-service';
 
 /**
- * 授权标签：允许按级别区分（只读 / 可编辑），排除（不可见）单独标红。
+ * 授权标签：允许按级别区分（可查看 / 可编辑），排除（不可见）单独标红。
  *
  * 文案与配色只在这里定义。资源授权页的平铺列表、知识库详情里的「子项例外」、
  * 以及「查看全部文件」弹窗都渲染同一批规则 —— 三处各写一遍时，`已排除`
  * 的措辞和颜色迟早会漂移，最后同一份数据在两个页面看起来像两件事。
+ *
+ * 级别文案与授权弹窗、按成员视角统一为「可查看 / 可编辑」：同一份规则在弹窗
+ * 里叫可查看、在列表里叫只读，用户会以为是两回事。
  */
 export function grantChipLabel(grant: GrantSubject): string {
   const name = grant.kind === 'team' ? '全团队' : grant.name;
   if (grant.effect === 'deny') return `${name}(已排除)`;
-  return `${name}${grant.permission === 'read' ? '(只读)' : '(可编辑)'}`;
+  return `${name}${grant.permission === 'read' ? '(可查看)' : '(可编辑)'}`;
 }
 
 export function GrantChip({ grant }: { grant: GrantSubject }) {
