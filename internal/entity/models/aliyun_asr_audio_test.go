@@ -19,6 +19,7 @@ package models
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"strings"
 	"testing"
 )
 
@@ -28,7 +29,9 @@ import (
 func buildTestWAV(sampleRate, channels uint16, frames int) []byte {
 	bits := uint16(16)
 	blockAlign := channels * bits / 8
-	byteRate := sampleRate * blockAlign
+	// Widen before multiplying: 44100 * 4 overflows uint16 and would write a
+	// bogus byteRate into the fmt chunk.
+	byteRate := uint32(sampleRate) * uint32(blockAlign)
 	dataLen := frames * int(blockAlign)
 
 	out := make([]byte, 0, 44+dataLen)
@@ -112,6 +115,65 @@ func TestAliyunASRSegmentsSplitsLongWAV(t *testing.T) {
 	}
 	if totalFrames != 600 {
 		t.Errorf("frames across segments = %d, want 600 (no sample lost)", totalFrames)
+	}
+}
+
+func TestAliyunASRPayloadErrorBoundary(t *testing.T) {
+	// EncodedLen rounds up to whole 4-character groups, so the largest payload
+	// whose base64 form still fits the ceiling is exactly
+	// aliyunASRMaxPayloadBytes. One sample frame past it must be refused
+	// instead of being sent as a request the provider answers with a 400.
+	audio := make([]byte, aliyunASRMaxPayloadBytes+3)
+	fits := audio[:aliyunASRMaxPayloadBytes]
+	if err := aliyunASRPayloadError(fits); err != nil {
+		t.Fatalf("payload at the byte budget was refused: %v", err)
+	}
+	err := aliyunASRPayloadError(audio)
+	if err == nil {
+		t.Fatal("payload above the byte budget was accepted")
+	}
+	if !strings.Contains(err.Error(), "single-request limit") {
+		t.Fatalf("error %q does not explain the provider limit", err)
+	}
+}
+
+func TestAliyunASRSegmentsSplitsOnSizeNotOnlyDuration(t *testing.T) {
+	// 44.1kHz stereo 16-bit for 100s is 17.6MB: far under the 300s duration
+	// cap but above the 15MB byte budget. This is the case the duration-only
+	// split sent as one oversized request and the provider rejected with
+	// "String value length ... exceeds the maximum allowed".
+	wav := buildTestWAV(44100, 2, 100*44100)
+	parsed, ok := parseAliyunWAV(wav)
+	if !ok {
+		t.Fatal("test wav did not parse")
+	}
+	if d := parsed.durationSeconds(); d > aliyunASRMaxDurationSeconds {
+		t.Fatalf("fixture is %.0fs, want under the %ds cap so only size forces the split", d, aliyunASRMaxDurationSeconds)
+	}
+	if parsed.fileSize() <= aliyunASRMaxPayloadBytes {
+		t.Fatalf("fixture is %d bytes, want above the %d-byte budget", parsed.fileSize(), aliyunASRMaxPayloadBytes)
+	}
+
+	segments := aliyunASRSegments(wav, "wav")
+	if len(segments) < 2 {
+		t.Fatalf("segments = %d, want the size-only case split", len(segments))
+	}
+	totalFrames := 0
+	for i, segment := range segments {
+		if encoded := base64.StdEncoding.EncodedLen(len(segment.Audio)); encoded > aliyunASRMaxPayloadChars {
+			t.Errorf("segment %d encodes to %d characters, above the provider limit", i, encoded)
+		}
+		if want := int64(0); i == 0 && segment.StartMS != want {
+			t.Errorf("segment %d StartMS = %d, want %d", i, segment.StartMS, want)
+		}
+		piece, ok := parseAliyunWAV(segment.Audio)
+		if !ok {
+			t.Fatalf("segment %d is not a parseable wav", i)
+		}
+		totalFrames += len(piece.data) / piece.blockAlign
+	}
+	if want := 100 * 44100; totalFrames != want {
+		t.Errorf("frames across segments = %d, want %d (no sample lost)", totalFrames, want)
 	}
 }
 
