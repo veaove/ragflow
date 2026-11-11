@@ -14,8 +14,9 @@
 // limitations under the License.
 //
 
-// Media dispatch runs image OCR and optional vision enhancement, audio
-// transcription, and video dispatch at the component layer.
+// Media dispatch runs image OCR with optional vision enhancement and audio
+// transcription at the component layer. Video dispatch lives in
+// video_dispatch.go and reuses the ASR and vision resolution helpers here.
 
 package component
 
@@ -44,39 +45,6 @@ import (
 
 	"gorm.io/gorm"
 )
-
-// Video dispatch: IMAGE2TEXT vision chat ---
-
-func maybeDispatchVideo(
-	ctx context.Context,
-	db *gorm.DB,
-	fileType utility.FileType,
-	filename string,
-	binary []byte,
-	inputs map[string]any,
-	setups map[string]schema.ParserSetup,
-) (parser.ParseResult, bool, error) {
-	if fileType != utility.FileTypeVIDEO {
-		return parser.ParseResult{}, false, nil
-	}
-	if _, ok := setups["video"]; !ok {
-		return parser.ParseResult{}, false, nil
-	}
-
-	// Video parsing is intentionally not implemented yet: the underlying
-	// video-analysis capability is pending. The previously-shipped path sent a
-	// video_url data URI, but no model driver honors it — OpenAI-compatible
-	// drivers only accept image_url (the block is ignored), and Gemini's
-	// googleMessageParts only accepts text/image_url and silently drops
-	// video_url. Returning an explicit error is safer than silently producing
-	// a description from the prompt text alone. The real implementation must
-	// be provider-specific (OpenAI-compatible: frame extraction -> image_url;
-	// Gemini: raw-bytes inline_data; Qwen: file://).
-	// When video analysis is implemented, it emits standard Text JSON items:
-	// [{"text": transcript, "doc_type_kwd": "text"}] with output_format "json".
-	return parser.ParseResult{}, true,
-		fmt.Errorf("Parser: video parsing is not yet supported; underlying video analysis capability is pending")
-}
 
 // Image dispatch: OCR, or the document text of an SVG, followed by optional
 // IMAGE2TEXT enhancement.
@@ -263,25 +231,7 @@ func describeImage(
 		return "", []string{"image VLM enhancement skipped: tenant ID is missing"}
 	}
 
-	// Use the selected description model or the tenant default.
-	modelRef := vision.modelID
-	var driver modelModule.ModelDriver
-	var modelName string
-	var apiConfig *modelModule.APIConfig
-	var err error
-	if modelRef != "" {
-		driver, modelName, apiConfig, _, err = resolveModelConfig(ctx, db, tenantID, entity.ModelTypeImage2Text, modelRef)
-		if err != nil {
-			common.Warn("media dispatch image: per-call VLM resolve failed, falling back to tenant default",
-				zap.String("modelRef", modelRef), zap.String("tenant", tenantID), zap.Error(err))
-			driver, modelName, apiConfig, _, err = resolveTenantModelByType(ctx, db, tenantID, entity.ModelTypeImage2Text)
-		}
-	} else {
-		driver, modelName, apiConfig, _, err = resolveTenantModelByType(ctx, db, tenantID, entity.ModelTypeImage2Text)
-	}
-	if err == nil && driver == nil {
-		err = fmt.Errorf("no usable vision model")
-	}
+	driver, modelName, apiConfig, err := resolveVisionModelConfig(ctx, db, tenantID, vision.modelID, "media dispatch image")
 	if err != nil {
 		return "", []string{fmt.Sprintf("image VLM enhancement skipped: model unavailable: %v", err)}
 	}
@@ -294,6 +244,53 @@ func describeImage(
 	if v := firstNonEmpty(vision.systemPrompt, getStringOr(setup, "system_prompt", "")); v != "" {
 		prompt = v
 	}
+	vlmText, err := describeWithVision(ctx, driver, modelName, apiConfig, dataURI, prompt)
+	if err != nil {
+		return "", []string{fmt.Sprintf("image VLM enhancement failed: %v", err)}
+	}
+	return vlmText, nil
+}
+
+// resolveVisionModelConfig resolves the IMAGE2TEXT model a capture should use:
+// the explicitly selected model when it resolves, otherwise the tenant default.
+func resolveVisionModelConfig(
+	ctx context.Context,
+	db *gorm.DB,
+	tenantID string,
+	modelRef string,
+	logLabel string,
+) (modelModule.ModelDriver, string, *modelModule.APIConfig, error) {
+	if modelRef != "" {
+		driver, modelName, apiConfig, _, err := resolveModelConfig(ctx, db, tenantID, entity.ModelTypeImage2Text, modelRef)
+		if err == nil && driver != nil {
+			return driver, modelName, apiConfig, nil
+		}
+		if err == nil {
+			err = fmt.Errorf("no usable vision model")
+		}
+		common.Warn(logLabel+": per-call VLM resolve failed, falling back to tenant default",
+			zap.String("modelRef", modelRef), zap.String("tenant", tenantID), zap.Error(err))
+	}
+	driver, modelName, apiConfig, _, err := resolveTenantModelByType(ctx, db, tenantID, entity.ModelTypeImage2Text)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	if driver == nil {
+		return nil, "", nil, fmt.Errorf("no usable vision model")
+	}
+	return driver, modelName, apiConfig, nil
+}
+
+// describeWithVision sends one image to a vision model and returns its caption.
+// It is the shared tail of image enhancement and video key-frame description.
+func describeWithVision(
+	ctx context.Context,
+	driver modelModule.ModelDriver,
+	modelName string,
+	apiConfig *modelModule.APIConfig,
+	dataURI string,
+	prompt string,
+) (string, error) {
 	messages := []modelModule.Message{{
 		Role: "user",
 		Content: []interface{}{
@@ -305,14 +302,12 @@ func describeImage(
 	chatModel := modelModule.NewChatModel(driver, &modelName, apiConfig)
 	resp, err := chatModel.ChatWithMessages(ctx, messages, &modelModule.ChatConfig{Vision: &visionFlag}, nil)
 	if err != nil {
-		return "", []string{fmt.Sprintf("image VLM enhancement failed: %v", err)}
+		return "", err
 	}
-	vlmText := ""
 	if resp != nil && resp.Answer != nil {
-		vlmText = strings.TrimSpace(*resp.Answer)
+		return strings.TrimSpace(*resp.Answer), nil
 	}
-
-	return vlmText, nil
+	return "", nil
 }
 
 // Audio dispatch: SPEECH2TEXT transcription ---
@@ -343,27 +338,11 @@ func maybeDispatchAudio(
 			fmt.Errorf("parser: audio requires tenant_id")
 	}
 
-	modelRef := configuredAudioModelID(setup)
-	var driver modelModule.ModelDriver
-	var modelName string
-	var apiConfig *modelModule.APIConfig
-	var err error
-	if modelRef != "" {
-		driver, modelName, apiConfig, _, err = resolveModelConfig(ctx, db, tenantID, entity.ModelTypeSpeech2Text, modelRef)
-		if err != nil {
-			common.Warn("media dispatch audio: per-call VLM resolve failed, falling back to tenant default",
-				zap.String("modelRef", modelRef), zap.String("tenant", tenantID), zap.Error(err))
-			driver, modelName, apiConfig, _, err = resolveTenantModelByType(ctx, db, tenantID, entity.ModelTypeSpeech2Text)
-		}
-	} else {
-		driver, modelName, apiConfig, _, err = resolveTenantModelByType(ctx, db, tenantID, entity.ModelTypeSpeech2Text)
-	}
+	asrModel, err := resolveASRModel(ctx, db, tenantID, setup, "media dispatch audio")
 	if err != nil {
 		return parser.ParseResult{}, true,
 			fmt.Errorf("parser: audio speech2text model: %w", err)
 	}
-
-	asrModel := modelModule.NewASRModel(driver, &modelName, apiConfig)
 
 	// Dual-track ("一问一答") mode. A stereo WAV exported by a contact-centre
 	// recorder carries one speaker per channel, which can be transcribed and
@@ -399,6 +378,38 @@ func maybeDispatchAudio(
 		OutputFormat: "json",
 		JSON:         []parser.DocItem{parser.NewTextJSONItem(transcription)},
 	}, true, nil
+}
+
+// resolveASRModel resolves the SPEECH2TEXT model a media payload should use:
+// the explicitly selected model when it resolves, otherwise the tenant default.
+// Shared by the audio and video dispatch paths.
+func resolveASRModel(
+	ctx context.Context,
+	db *gorm.DB,
+	tenantID string,
+	setup schema.ParserSetup,
+	logLabel string,
+) (*modelModule.ASRModel, error) {
+	modelRef := configuredAudioModelID(setup)
+	if modelRef != "" {
+		driver, modelName, apiConfig, _, err := resolveModelConfig(ctx, db, tenantID, entity.ModelTypeSpeech2Text, modelRef)
+		if err == nil && driver != nil {
+			return modelModule.NewASRModel(driver, &modelName, apiConfig), nil
+		}
+		if err == nil {
+			err = fmt.Errorf("no usable speech2text model")
+		}
+		common.Warn(logLabel+": per-call ASR resolve failed, falling back to tenant default",
+			zap.String("modelRef", modelRef), zap.String("tenant", tenantID), zap.Error(err))
+	}
+	driver, modelName, apiConfig, _, err := resolveTenantModelByType(ctx, db, tenantID, entity.ModelTypeSpeech2Text)
+	if err != nil {
+		return nil, err
+	}
+	if driver == nil {
+		return nil, fmt.Errorf("no usable speech2text model")
+	}
+	return modelModule.NewASRModel(driver, &modelName, apiConfig), nil
 }
 
 // audioDialogueSettings is the dual-track configuration of the audio family
@@ -595,38 +606,4 @@ func writeTempAudio(ext string, data []byte) (string, error) {
 		return "", err
 	}
 	return tmp.Name(), nil
-}
-
-// videoMIME maps common video filename extensions to MIME types
-// for constructing base64 data URIs. Retained as a reference for the
-// future real video-parsing implementation (provider-specific frame
-// extraction / inline_data / file://); not currently used because
-// maybeDispatchVideo returns an explicit unsupported error.
-func videoMIME(filename string) string {
-	dot := strings.LastIndex(filename, ".")
-	if dot == -1 {
-		return "video/mp4"
-	}
-	switch strings.ToLower(filename[dot+1:]) {
-	case "mp4":
-		return "video/mp4"
-	case "avi":
-		return "video/x-msvideo"
-	case "mkv":
-		return "video/x-matroska"
-	case "mov":
-		return "video/quicktime"
-	case "wmv":
-		return "video/x-ms-wmv"
-	case "flv":
-		return "video/x-flv"
-	case "webm":
-		return "video/webm"
-	case "mpeg", "mpg":
-		return "video/mpeg"
-	case "3gp":
-		return "video/3gpp"
-	default:
-		return "video/mp4"
-	}
 }

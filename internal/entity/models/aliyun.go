@@ -710,8 +710,12 @@ func (a *AliyunModel) TranscribeAudio(ctx context.Context, modelName *string, fi
 
 	transcripts := make([]string, 0, 1)
 	sentences := make([]ASRSentence, 0, 8)
-	for index, segment := range aliyunASRSegments(audio, format) {
-		text, segmentSentences, err := a.transcribeSegment(ctx, url, *modelName, *file, format, segment, contextText, options, apiConfig)
+	segments := aliyunASRSegments(audio, format)
+	for _, segment := range segments {
+		if err := aliyunASRPayloadError(segment.Audio); err != nil {
+			return nil, err
+		}
+		text, segmentSentences, err := a.transcribeSegment(ctx, url, *modelName, *file, format, segment.Audio, contextText, options, apiConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -721,10 +725,11 @@ func (a *AliyunModel) TranscribeAudio(ctx context.Context, modelName *string, fi
 		// Segment timings are relative to the segment; shift them onto the
 		// recording's timeline so callers can interleave two channel
 		// transcripts (dual-track calls) or anchor a sentence in the source.
-		offsetMS := int64(index) * aliyunASRSegmentSeconds * 1000
+		// The offset is the segment's real start, not index*fixed length: the
+		// byte budget shortens segments on high-bitrate recordings.
 		for _, sentence := range segmentSentences {
-			sentence.BeginMS += offsetMS
-			sentence.EndMS += offsetMS
+			sentence.BeginMS += segment.StartMS
+			sentence.EndMS += segment.StartMS
 			if strings.TrimSpace(sentence.Text) == "" {
 				continue
 			}

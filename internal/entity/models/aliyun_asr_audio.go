@@ -18,7 +18,9 @@ package models
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"path/filepath"
 	"strings"
 )
@@ -30,11 +32,32 @@ const (
 	// process (300s)"), which is why long recordings are split client side.
 	aliyunASRMaxDurationSeconds = 300
 
-	// aliyunASRSegmentSeconds keeps every request well under the cap and small
-	// enough to send as base64: a 120s 8kHz/16-bit WAV is ~1.9MB instead of the
-	// ~7.5MB the whole recording would take.
+	// aliyunASRMaxPayloadChars bounds one request's audio payload. DashScope
+	// parses the request body with Jackson's default 28,000,000-character
+	// string limit and answers 400 InvalidParameter
+	// ("String value length (28049408) exceeds the maximum allowed
+	// (28000000, from StreamReadConstraints.getMaxStringLength())") for
+	// anything longer. The budget sits below that ceiling because the audio
+	// travels as a base64 data URL inside a JSON string.
+	aliyunASRMaxPayloadChars = 20_000_000
+
+	// aliyunASRMaxPayloadBytes is the raw audio size whose base64 form still
+	// fits aliyunASRMaxPayloadChars (base64 expands by 4/3).
+	aliyunASRMaxPayloadBytes = aliyunASRMaxPayloadChars * 3 / 4
+
+	// aliyunASRSegmentSeconds is the preferred segment length. It is an upper
+	// bound only: a high-bitrate recording reaches aliyunASRMaxPayloadBytes
+	// sooner (44.1kHz stereo 16-bit PCM is 176,400 B/s, so 120s would already
+	// be 21MB and blow the character ceiling), so the byte budget shortens it.
 	aliyunASRSegmentSeconds = 120
 )
+
+// aliyunASRSegment is one request payload plus the point on the recording's
+// timeline it starts at, so per-sentence timings can be shifted back.
+type aliyunASRSegment struct {
+	Audio   []byte
+	StartMS int64
+}
 
 // aliyunAudioFormat maps a filename to the audio format DashScope expects in
 // parameters.format. The provider cannot sniff the container out of the data
@@ -50,20 +73,38 @@ func aliyunAudioFormat(filename string) string {
 	return ""
 }
 
-// aliyunASRSegments returns the payloads to transcribe. A PCM WAV longer than
-// the provider cap is split into valid WAV segments; anything else is sent as a
-// single payload, because cutting a compressed container without decoding it
-// would produce an unplayable fragment.
-func aliyunASRSegments(audio []byte, format string) [][]byte {
+// aliyunASRSegments returns the payloads to transcribe. A PCM WAV that either
+// runs past the provider's duration cap or encodes to a request body above the
+// provider's string ceiling is split into valid WAV segments; anything else is
+// sent as a single payload, because cutting a compressed container without
+// decoding it would produce an unplayable fragment.
+func aliyunASRSegments(audio []byte, format string) []aliyunASRSegment {
 	if format != "wav" {
-		return [][]byte{audio}
+		return []aliyunASRSegment{{Audio: audio}}
 	}
 	wav, ok := parseAliyunWAV(audio)
-	if !ok || wav.durationSeconds() <= aliyunASRMaxDurationSeconds {
-		// Unparseable or short enough: send as-is and let the provider decide.
-		return [][]byte{audio}
+	if !ok {
+		// Unparseable: send as-is and let the provider decide.
+		return []aliyunASRSegment{{Audio: audio}}
 	}
-	return wav.split(aliyunASRSegmentSeconds)
+	if wav.durationSeconds() <= aliyunASRMaxDurationSeconds && wav.fileSize() <= aliyunASRMaxPayloadBytes {
+		return []aliyunASRSegment{{Audio: audio}}
+	}
+	return wav.split(aliyunASRSegmentSeconds, aliyunASRMaxPayloadBytes)
+}
+
+// aliyunASRPayloadError reports audio that cannot be sent at all: the payload
+// is not a splittable WAV and one request would still exceed the provider's
+// string ceiling. Returning this instead of the provider's 400 keeps the cause
+// (and the fix) visible to the operator.
+func aliyunASRPayloadError(audio []byte) error {
+	encoded := base64.StdEncoding.EncodedLen(len(audio))
+	if encoded <= aliyunASRMaxPayloadChars {
+		return nil
+	}
+	return fmt.Errorf(
+		"audio payload is %d bytes (%.1f MiB, ~%d base64 characters), above the speech-to-text provider's single-request limit of %d characters; convert it to a 16kHz mono WAV so it can be segmented, or transcribe a shorter clip",
+		len(audio), float64(len(audio))/(1<<20), encoded, aliyunASRMaxPayloadChars)
 }
 
 // aliyunWAV is the handful of fields needed to cut a WAV into playable pieces.
@@ -117,23 +158,43 @@ func (w *aliyunWAV) durationSeconds() float64 {
 	return float64(len(w.data)) / float64(w.byteRate)
 }
 
-// split cuts the data chunk into segmentSeconds pieces, aligned to whole sample
-// frames so no sample is truncated.
-func (w *aliyunWAV) split(segmentSeconds int) [][]byte {
+// headerSize is the RIFF header encode() rebuilds around a segment's frames.
+func (w *aliyunWAV) headerSize() int {
+	return 12 + 8 + len(w.fmtChunk) + 8
+}
+
+// fileSize is the size of the canonical WAV encode() would produce for the
+// whole data chunk, i.e. what base64 sees once the payload is sent.
+func (w *aliyunWAV) fileSize() int {
+	return w.headerSize() + len(w.data)
+}
+
+// split cuts the data chunk into pieces no longer than segmentSeconds and no
+// larger than maxBytes once encoded, aligned to whole sample frames so no
+// sample is truncated. A fixed segment length is not enough on its own: the
+// provider limits the request body, not the clock, so a 44.1kHz stereo
+// recording hits that limit long before segmentSeconds elapses.
+func (w *aliyunWAV) split(segmentSeconds, maxBytes int) []aliyunASRSegment {
 	step := w.byteRate * segmentSeconds
+	if budget := maxBytes - w.headerSize(); budget > 0 && step > budget {
+		step = budget
+	}
 	if w.blockAlign > 1 {
 		step -= step % w.blockAlign
 	}
 	if step <= 0 {
-		return [][]byte{w.encode(w.data)}
+		return []aliyunASRSegment{{Audio: w.encode(w.data)}}
 	}
-	segments := make([][]byte, 0, len(w.data)/step+1)
+	segments := make([]aliyunASRSegment, 0, len(w.data)/step+1)
 	for start := 0; start < len(w.data); start += step {
 		end := start + step
 		if end > len(w.data) {
 			end = len(w.data)
 		}
-		segments = append(segments, w.encode(w.data[start:end]))
+		segments = append(segments, aliyunASRSegment{
+			Audio:   w.encode(w.data[start:end]),
+			StartMS: int64(start) * 1000 / int64(w.byteRate),
+		})
 	}
 	return segments
 }

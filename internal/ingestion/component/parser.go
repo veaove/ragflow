@@ -518,9 +518,9 @@ func (c *ParserComponent) Invoke(ctx context.Context, db *gorm.DB, inputs map[st
 
 	var handledMedia bool
 	if !handledVision {
-		// Video dispatch: IMAGE2TEXT vision chat.
-		// Mirrors Python's _video().
-		dispatched, handledMedia, visionErr = maybeDispatchVideo(ctx, db, fileTypeExt, filename, binary, inputs, setups)
+		// Video dispatch: ffmpeg audio track -> SPEECH2TEXT, key frames ->
+		// IMAGE2TEXT, merged by timestamp.
+		dispatched, handledMedia, visionErr = maybeDispatchVideo(ctx, db, fileTypeExt, filename, binary, inputs, setups, c.vision)
 		if visionErr != nil {
 			return nil, visionErr
 		}
@@ -622,6 +622,10 @@ func resolveParserNormalizationSource(dispatched parser.ParseResult) string {
 
 func reportParserWarnings(ctx context.Context, warnings []string) {
 	for _, warning := range warnings {
+		// Progress messages are dropped once the pipeline log is terminal, so
+		// also log the warning; otherwise a partially successful parse leaves
+		// no trace of why some content is missing.
+		common.Warn("Parser: " + warning)
 		runtime.ReportProgressMessage(ctx, "Parser", "WARNING: "+warning)
 	}
 }

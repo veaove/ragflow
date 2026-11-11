@@ -17,6 +17,7 @@
 package models
 
 import (
+	"encoding/base64"
 	"encoding/binary"
 	"testing"
 )
@@ -50,13 +51,13 @@ func buildTestWAV(sampleRate, channels uint16, frames int) []byte {
 
 func TestAliyunAudioFormat(t *testing.T) {
 	cases := map[string]string{
-		"clip.mp3":          "mp3",
-		"clip.WAV":          "wav",
-		"legacy.wave":       "wav",
-		"meeting.m4a":       "m4a",
-		"voice.ogg":         "ogg",
-		"unknown":           "",
-		"weird.txt":         "",
+		"clip.mp3":            "mp3",
+		"clip.WAV":            "wav",
+		"legacy.wave":         "wav",
+		"meeting.m4a":         "m4a",
+		"voice.ogg":           "ogg",
+		"unknown":             "",
+		"weird.txt":           "",
 		"/data/audio/fl.flac": "flac",
 	}
 	for filename, want := range cases {
@@ -74,7 +75,7 @@ func TestAliyunASRSegmentsKeepsShortAndCompressedAudioWhole(t *testing.T) {
 	// A compressed container is never cut: slicing it would lose frame sync.
 	mp3 := []byte("ID3....")
 	segments := aliyunASRSegments(mp3, "mp3")
-	if len(segments) != 1 || string(segments[0]) != string(mp3) {
+	if len(segments) != 1 || string(segments[0].Audio) != string(mp3) {
 		t.Fatalf("mp3 segments = %d, want the original payload once", len(segments))
 	}
 	// Unparseable audio is passed through untouched.
@@ -94,7 +95,7 @@ func TestAliyunASRSegmentsSplitsLongWAV(t *testing.T) {
 
 	totalFrames := 0
 	for i, segment := range segments {
-		parsed, ok := parseAliyunWAV(segment)
+		parsed, ok := parseAliyunWAV(segment.Audio)
 		if !ok {
 			t.Fatalf("segment %d is not a parseable wav", i)
 		}
@@ -104,9 +105,54 @@ func TestAliyunASRSegmentsSplitsLongWAV(t *testing.T) {
 		if len(parsed.fmtChunk) != 16 {
 			t.Errorf("segment %d fmt chunk = %d bytes, want 16", i, len(parsed.fmtChunk))
 		}
+		if want := int64(i) * aliyunASRSegmentSeconds * 1000; segment.StartMS != want {
+			t.Errorf("segment %d StartMS = %d, want %d", i, segment.StartMS, want)
+		}
 		totalFrames += len(parsed.data) / parsed.blockAlign
 	}
 	if totalFrames != 600 {
 		t.Errorf("frames across segments = %d, want 600 (no sample lost)", totalFrames)
+	}
+}
+
+func TestAliyunWAVSplitRespectsByteBudget(t *testing.T) {
+	// One second of 44.1kHz stereo 16-bit PCM is 176,400 bytes. With a 60,000
+	// byte request budget the split must shorten the segment well below the
+	// 120s preference — that is the case a fixed-length split got wrong.
+	wav, ok := parseAliyunWAV(buildTestWAV(44100, 2, 44100))
+	if !ok {
+		t.Fatal("test wav did not parse")
+	}
+	const budget = 60_000
+	segments := wav.split(aliyunASRSegmentSeconds, budget)
+	if len(segments) < 2 {
+		t.Fatalf("segments = %d, want the payload split by bytes", len(segments))
+	}
+
+	totalBytes := 0
+	previousStart := int64(-1)
+	for i, segment := range segments {
+		encoded := base64.StdEncoding.EncodedLen(len(segment.Audio))
+		if encoded > aliyunASRMaxPayloadChars {
+			t.Errorf("segment %d encodes to %d characters, above the provider limit", i, encoded)
+		}
+		if len(segment.Audio) > budget {
+			t.Errorf("segment %d is %d bytes, above the %d-byte budget", i, len(segment.Audio), budget)
+		}
+		if segment.StartMS <= previousStart {
+			t.Errorf("segment %d StartMS = %d, want it after %d", i, segment.StartMS, previousStart)
+		}
+		previousStart = segment.StartMS
+		parsed, ok := parseAliyunWAV(segment.Audio)
+		if !ok {
+			t.Fatalf("segment %d is not a parseable wav", i)
+		}
+		if len(parsed.data)%parsed.blockAlign != 0 {
+			t.Errorf("segment %d data length %d is not frame aligned to %d", i, len(parsed.data), parsed.blockAlign)
+		}
+		totalBytes += len(parsed.data)
+	}
+	if totalBytes != len(wav.data) {
+		t.Errorf("data bytes across segments = %d, want %d (no sample lost)", totalBytes, len(wav.data))
 	}
 }

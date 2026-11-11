@@ -47,3 +47,7 @@ func renderFigureVisionLanguage(prompt, language string) string {
 func defaultImageVisionPrompt(language string) string {
 	return "Describe this image in detail. Respond in " + normalizeVisionLanguage(language) + ". Preserve all visible text in its original language; do not translate it."
 }
+
+func defaultVideoVisionPrompt(language string) string {
+	return "This is a key frame sampled from a video. Describe what is happening in detail, including the scene, people, objects, actions, and any visible on-screen text, so the description can stand in for the video in a text index. Respond in " + normalizeVisionLanguage(language) + ". Preserve all visible text in its original language; do not translate it."
+}
