@@ -1063,6 +1063,7 @@ export default {
       action: '操作',
       addToKnowledge: '鏈接知識庫',
       pleaseSelect: '請選擇',
+      rootFolder: '根目錄（移出文件夾）',
       newFolder: '新建文件夾',
       uploadFile: '上傳文件',
       parseOnCreation: '創建時解析',
