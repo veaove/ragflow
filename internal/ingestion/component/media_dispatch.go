@@ -346,10 +346,11 @@ func maybeDispatchAudio(
 
 	// Dual-track ("一问一答") mode. A stereo WAV exported by a contact-centre
 	// recorder carries one speaker per channel, which can be transcribed and
-	// re-interleaved by time into labelled turns. The switch is off unless the
-	// setup turns it on, and every other shape (mono, compressed container,
-	// unsupported bit depth) falls through to the whole-file transcription
-	// below, so enabling it never loses a file.
+	// re-interleaved by time into labelled turns. The setup defaults to auto:
+	// dispatchAudioDialogue tries the split and reports handled=false for every
+	// other shape (mono, compressed container, unsupported bit depth), so the
+	// whole-file transcription below stays the fallback and no file is lost.
+	// An explicit dialogue_split:false skips the attempt entirely.
 	if settings := audioDialogueSetup(setup); settings.enabled {
 		if result, handled, err := dispatchAudioDialogue(ctx, binary, asrModel, settings); handled {
 			return result, true, err
@@ -420,24 +421,34 @@ type audioDialogueSettings struct {
 	rightRole string
 }
 
-// audioDialogueSetup reads the dual-track settings off a Parser setup. The
-// switch is only honoured when it is explicitly true, so a knowledge base
-// saved before the option existed keeps the whole-file transcription.
+// audioDialogueSetup reads the dual-track settings off a Parser setup. When the
+// option is absent the runtime runs in auto mode: dispatchAudioDialogue decides
+// whether the payload is a splittable dual-track WAV and falls back to the
+// whole-file transcription otherwise, so a knowledge base saved before the
+// option existed gains the behaviour without losing mono or compressed audio.
+// An explicit false is the escape hatch that forces the old whole-file path.
 func audioDialogueSetup(setup schema.ParserSetup) audioDialogueSettings {
 	settings := audioDialogueSettings{
+		enabled:   true,
 		leftRole:  audioSpeakerRole(getStringOr(setup, "left_speaker", ""), "坐席"),
 		rightRole: audioSpeakerRole(getStringOr(setup, "right_speaker", ""), "客户"),
+	}
+	raw, configured := setup["dialogue_split"]
+	if !configured || raw == nil {
+		return settings
 	}
 	// Configs reach the runtime as JSON, so the flag is normally a bool; accept
 	// the string spellings too because a hand-written API payload can carry
 	// either.
-	switch raw := setup["dialogue_split"].(type) {
+	switch value := raw.(type) {
 	case bool:
-		settings.enabled = raw
+		settings.enabled = value
 	case string:
-		switch strings.ToLower(strings.TrimSpace(raw)) {
+		switch strings.ToLower(strings.TrimSpace(value)) {
 		case "true", "1", "yes", "on":
 			settings.enabled = true
+		case "false", "0", "no", "off":
+			settings.enabled = false
 		}
 	}
 	return settings

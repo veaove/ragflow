@@ -1329,11 +1329,12 @@ func TestMaybeDispatchAudioDialogueSplitToleratesMutedChannel(t *testing.T) {
 	}
 }
 
-func TestMaybeDispatchAudioDialogueSplitDisabledByDefault(t *testing.T) {
+func TestMaybeDispatchAudioDialogueDefaultsToAuto(t *testing.T) {
 	withAudioDialogueDriver(t, &audioDialogueDriver{})
 
-	// No dialogue_split key at all: the historical whole-file transcription,
-	// one item, no labels.
+	// No dialogue_split key at all: a stereo dual-track WAV is split without
+	// anyone flipping a switch, which is what knowledge bases saved before the
+	// option existed need.
 	res, _, err := maybeDispatchAudio(
 		t.Context(),
 		dao.DB,
@@ -1346,11 +1347,46 @@ func TestMaybeDispatchAudioDialogueSplitDisabledByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("maybeDispatchAudio: %v", err)
 	}
+	want := []string{
+		"坐席：您好请问有什么可以帮您",
+		"客户：我的车无法启动仪表盘显示故障灯",
+		"坐席：已经为您记录了",
+	}
+	if len(res.JSON) != len(want) {
+		t.Fatalf("JSON len = %d, want %d turns: %+v", len(res.JSON), len(want), res.JSON)
+	}
+	for i := range want {
+		if text, _ := res.JSON[i].ToMap()["text"].(string); text != want[i] {
+			t.Errorf("item %d = %q, want %q", i, text, want[i])
+		}
+	}
+}
+
+func TestMaybeDispatchAudioDialogueExplicitFalseStaysWholeFile(t *testing.T) {
+	withAudioDialogueDriver(t, &audioDialogueDriver{})
+
+	// Explicitly off is the escape hatch: even a splittable stereo WAV keeps the
+	// historical whole-file transcription with no speaker labels.
+	setups := defaultSetups()
+	setups["audio"]["dialogue_split"] = false
+
+	res, _, err := maybeDispatchAudio(
+		t.Context(),
+		dao.DB,
+		utility.FileTypeAURAL,
+		"call.wav",
+		buildDialogueWAV(2),
+		map[string]any{"tenant_id": "t1"},
+		setups,
+	)
+	if err != nil {
+		t.Fatalf("maybeDispatchAudio: %v", err)
+	}
 	if len(res.JSON) != 1 {
-		t.Fatalf("JSON len = %d, want 1", len(res.JSON))
+		t.Fatalf("JSON len = %d, want 1 whole-file item", len(res.JSON))
 	}
 	if text, _ := res.JSON[0].ToMap()["text"].(string); strings.Contains(text, "坐席：") {
-		t.Errorf("text = %q, want no speaker labels when the switch is off", text)
+		t.Errorf("text = %q, want no speaker labels when the switch is explicitly off", text)
 	}
 }
 
@@ -1363,9 +1399,9 @@ func TestAudioDialogueSetup(t *testing.T) {
 		right   string
 	}{
 		{
-			name:    "absent",
+			name:    "absent means auto",
 			setup:   schema.ParserSetup{},
-			enabled: false,
+			enabled: true,
 			left:    "坐席",
 			right:   "客户",
 		},
@@ -1386,6 +1422,20 @@ func TestAudioDialogueSetup(t *testing.T) {
 		{
 			name:    "string flag from a hand-written payload",
 			setup:   schema.ParserSetup{"dialogue_split": "true"},
+			enabled: true,
+			left:    "坐席",
+			right:   "客户",
+		},
+		{
+			name:    "string false from a hand-written payload",
+			setup:   schema.ParserSetup{"dialogue_split": "false"},
+			enabled: false,
+			left:    "坐席",
+			right:   "客户",
+		},
+		{
+			name:    "unrecognised string keeps auto",
+			setup:   schema.ParserSetup{"dialogue_split": "auto"},
 			enabled: true,
 			left:    "坐席",
 			right:   "客户",
