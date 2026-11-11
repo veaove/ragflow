@@ -119,6 +119,20 @@ func (s *FileService) listFiles(ctx context.Context, userID, tenantID, pfID stri
 		return nil, permission.ErrResourceNotFound
 	}
 
+	// Folder rows have no document of their own, so report the knowledge bases
+	// their documents are linked to. Without this the 知识库 column is blank for
+	// every dataset folder.
+	folderIDs := make([]string, 0, len(files))
+	for _, file := range files {
+		if file.Type == FileTypeFolder {
+			folderIDs = append(folderIDs, file.ID)
+		}
+	}
+	folderKBs, err := s.file2DocumentDAO.GetKBInfoByParentIDs(ctx, dao.DB, folderIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	// Process files to add additional info, deduplicating by ID as a safety net
 	// against any leftover duplicate rows (e.g. duplicate 'skills' or '.knowledgebase' folders).
 	fileResponses := make([]map[string]interface{}, 0, len(files))
@@ -140,7 +154,9 @@ func (s *FileService) listFiles(ctx context.Context, userID, tenantID, pfID stri
 			if err == nil {
 				fileInfo.HasChildFolder = hasChild
 			}
-			fileInfo.KbsInfo = []map[string]interface{}{}
+			if kbsInfo, ok := folderKBs[file.ID]; ok {
+				fileInfo.KbsInfo = kbsInfo
+			}
 		} else {
 			// Get KB info for non-folder files
 			kbsInfo, err := s.file2DocumentDAO.GetKBInfoByFileID(ctx, dao.DB, file.ID)

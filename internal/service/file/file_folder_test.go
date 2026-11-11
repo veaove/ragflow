@@ -680,3 +680,45 @@ func TestMoveFilesSingleFolderWithSubtreeStillMoves(t *testing.T) {
 	movedA := childByName(t, "D", "A")
 	childByName(t, movedA.ID, "B")
 }
+
+// A folder has no document of its own, so the 知识库 column is filled from the
+// knowledge bases its documents belong to.
+func TestFileService_ListFilesFillsFolderKnowledgeBase(t *testing.T) {
+	setupFolderTestDB(t)
+	ctx := context.Background()
+
+	rows := []any{
+		&entity.File{ID: "R", ParentID: "R", TenantID: "tenant-1", Name: "/", Type: FileTypeFolder},
+		&entity.File{ID: "kb-folder", ParentID: "R", TenantID: "tenant-1", CreatedBy: "user-1", Name: "技术部", Type: FileTypeFolder, SourceType: string(entity.FileSourceKnowledgebase)},
+		&entity.File{ID: "plain-folder", ParentID: "R", TenantID: "tenant-1", CreatedBy: "user-1", Name: "杂项", Type: FileTypeFolder},
+		&entity.File{ID: "doc-file", ParentID: "kb-folder", TenantID: "tenant-1", CreatedBy: "user-1", Name: "案例.pdf", Type: "pdf", Location: sptr("案例.pdf")},
+		&entity.Knowledgebase{ID: "kb-1", TenantID: "tenant-1", Name: "技术部", EmbdID: "BAAI/bge-large-zh-v1.5", CreatedBy: "user-1"},
+		&entity.Document{ID: "doc-1", KbID: "kb-1", ParserID: "naive", ParserConfig: entity.JSONMap{}, SourceType: "local", Type: "pdf", CreatedBy: "user-1", Suffix: "pdf"},
+		&entity.File2Document{ID: "f2d-1", FileID: sptr("doc-file"), DocumentID: sptr("doc-1")},
+	}
+	for _, row := range rows {
+		if err := dao.DB.Create(row).Error; err != nil {
+			t.Fatalf("seed %T: %v", row, err)
+		}
+	}
+
+	resp, err := testFileService().ListFiles(ctx, "tenant-1", "R", 1, 10, nil, "")
+	if err != nil {
+		t.Fatalf("ListFiles: %v", err)
+	}
+
+	kbsByName := make(map[string][]map[string]interface{}, len(resp.Files))
+	for _, file := range resp.Files {
+		name, _ := file["name"].(string)
+		kbs, _ := file["kbs_info"].([]map[string]interface{})
+		kbsByName[name] = kbs
+	}
+
+	got := kbsByName["技术部"]
+	if len(got) != 1 || got[0]["kb_id"] != "kb-1" || got[0]["kb_name"] != "技术部" {
+		t.Fatalf("技术部 kbs_info = %+v, want the linked knowledge base", got)
+	}
+	if got := kbsByName["杂项"]; len(got) != 0 {
+		t.Fatalf("folder without linked documents kbs_info = %+v, want empty", got)
+	}
+}

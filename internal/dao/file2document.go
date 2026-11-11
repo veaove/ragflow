@@ -62,6 +62,46 @@ func (dao *File2DocumentDAO) GetKBInfoByFileID(ctx context.Context, db *gorm.DB,
 	return results, nil
 }
 
+// GetKBInfoByParentIDs returns the distinct knowledge bases linked to the
+// documents directly under each parent folder, keyed by parent folder ID.
+// Folders carry no document of their own, so this is how a folder row reports
+// which knowledge base its contents belong to.
+func (dao *File2DocumentDAO) GetKBInfoByParentIDs(ctx context.Context, db *gorm.DB, parentIDs []string) (map[string][]map[string]interface{}, error) {
+	result := make(map[string][]map[string]interface{}, len(parentIDs))
+	if len(parentIDs) == 0 {
+		return result, nil
+	}
+
+	rows, err := db.WithContext(ctx).Model(&entity.File{}).
+		Select("file.parent_id, knowledgebase.id, knowledgebase.name").
+		Joins("JOIN file2document ON file2document.file_id = file.id").
+		Joins("JOIN document ON document.id = file2document.document_id").
+		Joins("JOIN knowledgebase ON knowledgebase.id = document.kb_id").
+		Where("file.parent_id IN ?", parentIDs).
+		Group("file.parent_id, knowledgebase.id, knowledgebase.name").
+		Order("file.parent_id, knowledgebase.name").
+		Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var parentID, kbID, kbName string
+		if err = rows.Scan(&parentID, &kbID, &kbName); err != nil {
+			return nil, err
+		}
+		result[parentID] = append(result[parentID], map[string]interface{}{
+			"kb_id":   kbID,
+			"kb_name": kbName,
+		})
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // GetByFileID gets file2document mappings by file ID
 func (dao *File2DocumentDAO) GetByFileID(ctx context.Context, db *gorm.DB, fileID string) ([]*entity.File2Document, error) {
 	var mappings []*entity.File2Document
