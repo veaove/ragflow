@@ -240,8 +240,6 @@ export default {
       disabled: '禁用',
       action: '動作',
       parsingStatus: '解析狀態',
-      parsingStatusTip:
-        '文件解析時間取決於多種因素。如果啟用了知識圖譜、RAPTOR、自動問題提取、自動關鍵詞提取等功能，解析時間將會顯著延長。如果解析進度條長時間未更新，請參考這兩條常見問題解答FAQ：https://ragflow.io/docs/dev/faq#why-does-my-document-parsing-stall-at-under-one-percent。',
       processBeginAt: '流程開始於',
       processDuration: '過程持續時間',
       progressMsg: '進度消息',
@@ -282,7 +280,7 @@ export default {
       toMessage: '缺少結束頁碼（不包含）',
       layoutRecognize: 'PDF解析器',
       layoutRecognizeTip:
-        '使用視覺模型進行 PDF 布局分析，以更好地識別文檔結構，找到標題、文字塊、圖像和表格的位置。若選擇 Naive 選項，則只能取得 PDF 的純文字。請注意此功能僅適用於 PDF 文檔，對其他文檔不生效。如需更多資訊，請參閱 https://ragflow.io/docs/dataset_configuration#document-parsing-configuration。',
+        '使用視覺模型進行 PDF 布局分析，以更好地識別文檔結構，找到標題、文字塊、圖像和表格的位置。若選擇 Naive 選項，則只能取得 PDF 的純文字。請注意此功能僅適用於 PDF 文檔，對其他文檔不生效。',
       taskPageSize: '任務頁面大小',
       taskPageSizeMessage: '請輸入您的任務頁面大小！',
       taskPageSizeTip: `如果使用佈局識別，PDF 文件將被分成連續的組。佈局分析將在組之間並行執行，以提高處理速度。“任務頁面大小”決定組的大小。頁面大小越大，將頁面之間的連續文本分割成不同塊的機會就越低。`,
@@ -310,11 +308,10 @@ export default {
       childrenDelimiterTip:
         '支持多字符作為分隔符，多字符用兩個反引號 \\`\\` 分隔符包裹。若配置成：\\n`##`; 系統將首先使用換行符、兩個#號以及分號先對文本進行分割，隨後再對分得的小文本塊按照「建議文字塊大小」設定的大小進行拼裝。在設定文字分段標識符前請確保理解上述文字分段切片機制。',
       html4excel: '表格轉HTML',
-      html4excelTip: `與 General 切片方法配合使用。未開啟狀態下，表格檔案（XLSX、XLS（Excel 97-2003）會按行解析為鍵值對。開啟後，表格檔案會被解析為 HTML 表格。若原始表格超過 12 行，系統會自動按每 12 行拆分為多個 HTML 表格。欲了解更多資訊，請參閱 https://ragflow.io/docs/dataset_configuration#other-format-processing-configuration。`,
       autoKeywords: '自動關鍵字擷取數',
-      autoKeywordsTip: `自動為每個文字區塊中提取 N 個關鍵詞，以提升查詢精度。請注意：此功能採用「系統模型設定」中設定的預設聊天模型提取關鍵詞，因此也會產生更多 Token 消耗。此外，你也可以手動更新生成的關鍵詞。詳情請參見 https://ragflow.io/docs/dataset_configuration#content-enhancement-configuration。`,
+      autoKeywordsTip: `自動為每個文字區塊中提取 N 個關鍵詞，以提升查詢精度。請注意：此功能採用「系統模型設定」中設定的預設聊天模型提取關鍵詞，因此也會產生更多 Token 消耗。此外，你也可以手動更新生成的關鍵詞。`,
       autoQuestions: '自動問題擷取數',
-      autoQuestionsTip: `為了提高排名分數，請使用「系統模型設定」中定義的聊天模型，為每個知識庫區塊提取 N 個問題。 請注意：這會消耗額外的 token。 結果可在區塊列表中查看和編輯。 問題提取錯誤不會阻止分塊過程； 空結果將被添加到原始區塊。詳情請參見 https://ragflow.io/docs/dataset_configuration#content-enhancement-configuration。 `,
+      autoQuestionsTip: `為了提高排名分數，請使用「系統模型設定」中定義的聊天模型，為每個知識庫區塊提取 N 個問題。 請注意：這會消耗額外的 token。 結果可在區塊列表中查看和編輯。 問題提取錯誤不會阻止分塊過程； 空結果將被添加到原始區塊。`,
       redo: '是否清空已有 {{chunkNum}}個 chunk？',
       setMetaData: '設定元數據',
       pleaseInputJson: '請輸入JSON',
@@ -496,8 +493,6 @@ export default {
 <i>不符合上述規則的文字行將被忽略。</i>
 `,
       useRaptor: '使用 RAPTOR 文件增強策略',
-      useRaptorTip:
-        '啟用 RAPTOR 以用於多跳問答任務。詳情請參見：https://ragflow.io/docs/knowledge_compilation/built_in_templates_and_dedicated_configuration#tree',
       prompt: '提示詞',
       promptMessage: '提示詞是必填項',
       promptText: `请請總結以下段落。 小心數字，不要編造。 段落如下：
@@ -519,7 +514,7 @@ export default {
       maxClusterTip: '最多可創建的聚類數。',
       entityTypes: '實體類型',
       pageRank: 'PageRank 權重',
-      pageRankTip: `知識庫檢索時，你可以為特定知識庫設置較高的 PageRank 分數，該知識庫中匹配文本塊的混合相似度得分會自動疊加 PageRank 分數，從而提升排序權重。詳見 https://ragflow.io/docs/dataset_configuration#basic-information。`,
+      pageRankTip: `知識庫檢索時，你可以為特定知識庫設置較高的 PageRank 分數，該知識庫中匹配文本塊的混合相似度得分會自動疊加 PageRank 分數，從而提升排序權重。`,
       tagName: '標籤',
       frequency: '頻次',
       frequencyMinMessage: '頻次最小為 {{min}}',
@@ -529,18 +524,6 @@ export default {
       tagTable: '表',
       tagSet: '標籤庫',
       topnTags: 'Top-N 標籤',
-      tagSetTip: `
-      <p>請選擇一個或多個標籤集或標籤知識庫，用於對知識庫中的每個文本塊進行標記。</p>
-      <p>對這些文本塊的查詢也將自動關聯相應標籤。</p>
-      <p>此功能基於文本相似度，能夠為數據集的文本塊批量添加更多領域知識，從而顯著提高檢索準確性。該功能還能提升大量文本塊的操作效率。</p>
-      <p>為了更好地理解標籤集的作用，以下是標籤集和關鍵詞之間的主要區別：</p>
-      <ul>
-        <li>標籤集是一個由用戶定義和管理的封閉集，而自動生成的關鍵詞屬於開放集合。</li>
-        <li>在給你的知識庫文本塊批量打標籤之前，你需要先生成標籤集作為樣本。</li>
-        <li>自動關鍵詞功能中的關鍵詞由 LLM 生成，此過程相對耗時，並且會產生一定的 Token 消耗。</li>
-      </ul>
-      <p>詳情請參閱 https://ragflow.io/docs/dataset_configuration#basic-information。</p>
- `,
       tags: '標籤',
       addTag: '增加標籤',
       paddleocrOptions: 'PaddleOCR 選項',
@@ -556,8 +539,6 @@ export default {
       paddleocrSelectAlgorithm: '選擇算法',
       paddleocrModelNamePlaceholder: '例如：paddleocr-環境-1',
       useGraphRag: '提取知識圖譜',
-      useGraphRagTip:
-        '基於知識庫內所有切好的文本塊構建知識圖譜，用以提升多跳和複雜問題回答的正確率。請注意：構建知識圖譜將消耗大量 token 和時間。詳見 https://ragflow.io/docs/knowledge_compilation/built_in_templates_and_dedicated_configuration#graph。',
       graphRagMethod: '方法',
       graphRagMethodTip: `Light：實體和關係提取提示來自 GitHub - HKUDS/LightRAG：“LightRAG：簡單快速的檢索增強生成”<br>
  一般：實體和關係擷取提示來自 GitHub - microsoft/graphrag：基於模組化圖形的檢索增強生成 (RAG) 系統，<br>
@@ -659,7 +640,7 @@ export default {
       variable: '變量',
       variableTip: `你可以透過對話 API，並配合變數設定來動態調整大模型的系統提示詞。
       {knowledge}為系統預留變數，代表從指定知識庫召回的文本塊。
-     「系統提示詞」中的所有變數都必須用大括號{}括起來。詳見 https://ragflow.io/docs/chat_configuration#system-prompt。`,
+     「系統提示詞」中的所有變數都必須用大括號{}括起來。`,
       add: '新增',
       key: '關鍵字',
       optional: '可選的',
@@ -745,7 +726,6 @@ export default {
       allowPartialKb: '部分知識庫可用',
       allowPartialKbTip:
         '助手綁定的知識庫中有目前使用者無權存取時，仍用有權限的知識庫作答，而不是直接報錯。關閉後，只要有一個綁定知識庫無權存取就拒絕本次提問。',
-      howUseId: '如何使用聊天ID？',
       description: '助理描述',
       descriptionPlaceholder:
         '例如 你是一個專業的簡曆助手，隻能回答簡曆的問題。',
@@ -1491,7 +1471,6 @@ export default {
       input: '輸入',
       output: '輸出',
       parameter: '參數',
-      howUseId: '如何使用Agent ID？',
       content: '內容',
       operationResults: '運行結果',
       autosaved: '已自動儲存',

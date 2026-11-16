@@ -461,7 +461,7 @@ window.addEventListener('message',e=>{
                       name="widgetFooterLink"
                       label={t('chat.widgetFooterLink')}
                     >
-                      <Input placeholder="https://ragflow.io"></Input>
+                      <Input placeholder="https://example.com"></Input>
                     </RAGFlowFormItem>
                     <FormField
                       control={form.control}
@@ -638,18 +638,6 @@ window.addEventListener('message',e=>{
             <span>{token} </span>
             <CopyToClipboard text={token}></CopyToClipboard>
           </div>
-          <a
-            className="cursor-pointer text-accent-primary inline-block"
-            href={
-              isAgent
-                ? 'https://ragflow.io/docs/dev/http_api_reference#create-session-with-agent'
-                : 'https://ragflow.io/docs/dev/http_api_reference#create-session-with-chat-assistant'
-            }
-            target="_blank"
-            rel="noreferrer"
-          >
-            {t(`${isAgent ? 'flow' : 'chat'}.howUseId`)}
-          </a>
         </section>
       </DialogContent>
     </Dialog>

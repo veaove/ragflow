@@ -790,8 +790,6 @@ export default {
       disabled: '禁用',
       action: '操作',
       parsingStatus: '解析状态',
-      parsingStatusTip:
-        '文本解析的时间取决于诸多因素。如果开启了 Graph、RAPTOR、自动问题提取、自动关键词提取等功能，时间会更长。如果解析进度条长时间不更新，也可以参考这两条 FAQ：https://ragflow.io/docs/dev/faq#why-does-my-document-parsing-stall-at-under-one-percent。',
       processBeginAt: '开始于',
       processDuration: '持续时间',
       progressMsg: '进度',
@@ -834,7 +832,7 @@ export default {
       pageRangeToInvalid: '结束页码必须为不小于起始页码的整数',
       layoutRecognize: 'PDF解析器',
       layoutRecognizeTip:
-        '使用视觉模型进行 PDF 布局分析，以更好地识别文档结构，找到标题、文本块、图像和表格的位置。 如果选择 Naive 选项，则只能获取 PDF 的纯文本。请注意该功能只适用于 PDF 文档，对其他文档不生效。欲了解更多信息，请参阅 https://ragflow.io/docs/dataset_configuration#document-parsing-configuration。',
+        '使用视觉模型进行 PDF 布局分析，以更好地识别文档结构，找到标题、文本块、图像和表格的位置。 如果选择 Naive 选项，则只能获取 PDF 的纯文本。请注意该功能只适用于 PDF 文档，对其他文档不生效。',
       taskPageSize: '任务页面大小',
       taskPageSizeMessage: '请输入任务页面大小！',
       taskPageSizeTip: `如果使用布局识别，PDF 文件将被分成连续的组。 布局分析将在组之间并行执行，以提高处理速度。 “任务页面大小”决定组的大小。 页面大小越大，将页面之间的连续文本分割成不同块的机会就越低。`,
@@ -867,11 +865,10 @@ export default {
       delimiterPreviewCount: '（{{count}}）',
 
       html4excel: '表格转 HTML',
-      html4excelTip: `与 General 切片方法配合使用。未开启状态下，表格文件（XLSX、XLS（Excel 97-2003））会按行解析为键值对。开启后，表格文件会被解析为 HTML 表格。若原始表格超过 12 行，系统会自动按每 12 行拆分为多个 HTML 表格。欲了解更多详情，请参阅 https://ragflow.io/docs/dataset_configuration#other-format-processing-configuration。`,
       autoKeywords: '自动关键词提取数',
-      autoKeywordsTip: `自动为每个文本块中提取 N 个关键词，用以提升查询精度。请注意：该功能采用在“配置”中指定的索引模型提取关键词，因此也会产生更多 Token 消耗。另外，你也可以手动更新生成的关键词。详情请见 https://ragflow.io/docs/dataset_configuration#content-enhancement-configuration。`,
+      autoKeywordsTip: `自动为每个文本块中提取 N 个关键词，用以提升查询精度。请注意：该功能采用在“配置”中指定的索引模型提取关键词，因此也会产生更多 Token 消耗。另外，你也可以手动更新生成的关键词。`,
       autoQuestions: '自动问题提取数',
-      autoQuestionsTip: `利用在“配置”中指定的索引模型 对知识库的每个文本块提取 N 个问题以提高其排名得分。请注意，开启后将消耗额外的 Token。您可以在块列表中查看、编辑结果。如果自动问题提取发生错误，不会妨碍整个分块过程，只会将空结果添加到原始文本块。详情请见 https://ragflow.io/docs/dataset_configuration#content-enhancement-configuration。`,
+      autoQuestionsTip: `利用在“配置”中指定的索引模型 对知识库的每个文本块提取 N 个问题以提高其排名得分。请注意，开启后将消耗额外的 Token。您可以在块列表中查看、编辑结果。如果自动问题提取发生错误，不会妨碍整个分块过程，只会将空结果添加到原始文本块。`,
       autoTags: '自动标签提取数',
       redo: '是否清空已有 {{chunkNum}}个 Chunk？',
       setMetaData: '设置元数据',
@@ -1154,8 +1151,6 @@ export default {
 <i>不符合上述规则的文本行将被忽略。</i>
 `,
       useRaptor: '使用召回增强 RAPTOR 策略',
-      useRaptorTip:
-        'RAPTOR 常应用于复杂的多跳问答任务。如需打开，请跳转至知识库的文件页面，点击生成 > RAPTOR 开启。详见: https://ragflow.io/docs/knowledge_compilation/built_in_templates_and_dedicated_configuration#tree。',
       prompt: '提示词',
       promptMessage: '提示词是必填项',
       promptText: `请在不编造事实、不改变数字的前提下总结以下段落。
@@ -1193,7 +1188,7 @@ export default {
       createTemplate: '创建模板',
       scopeFile: '文件',
       pageRank: '页面排名',
-      pageRankTip: `知识库检索时，你可以为特定知识库设置较高的 PageRank 分数，该知识库中匹配文本块的混合相似度得分会自动叠加 PageRank 分数，从而提升排序权重。详见 https://ragflow.io/docs/dataset_configuration#basic-information。`,
+      pageRankTip: `知识库检索时，你可以为特定知识库设置较高的 PageRank 分数，该知识库中匹配文本块的混合相似度得分会自动叠加 PageRank 分数，从而提升排序权重。`,
       tagName: '标签',
       tagMessage: '请选择标签',
       frequency: '频次',
@@ -1204,23 +1199,9 @@ export default {
       tagTable: '表',
       tagSet: '标签集',
       topnTags: 'Top-N 标签',
-      tagSetTip: `
-      <p> 请选择一个或多个标签集或标签知识库，用于对知识库中的每个文本块进行标记。</p>
-      <p>对这些文本块的查询也将自动关联相应标签。 </p>
-      <p>此功能基于文本相似度，能够为知识库的文本块批量添加更多领域知识，从而显著提高检索准确性。该功能还能提升大量文本块的操作效率。</p>
-      <p>为了更好地理解标签集的作用，以下是标签集和关键词之间的主要区别：</p>
-      <ul>
-      <li>标签集是一个由用户定义和管理的封闭集，而自动生成的关键词属于开放集合。 </li>
-      <li>在给知识库文本块批量打标签之前，需要先生成标签集作为样本。 </li>
-      <li>自动关键词提取功能中的关键词由 LLM 生成，此过程相对耗时，并且会产生一定的 Token 消耗。 </li>
-      </ul>
-      <p> 详见：https://ragflow.io/docs/dataset_configuration#basic-information </p>
-      `,
       tags: '标签',
       addTag: '增加标签',
       useGraphRag: '提取 Graph',
-      useGraphRagTip:
-        '基于知识库内所有切好的文本块构建 Graph，用以提升多跳和复杂问题回答的正确率。请注意：构建 Graph 将消耗大量 Token 和时间。详见 https://ragflow.io/docs/knowledge_compilation/built_in_templates_and_dedicated_configuration#graph。',
       graphRagMethod: '方法',
       graphRagMethodTip: `Light：Entities 和 Relations 提取提示来自 GitHub - HKUDS/LightRAG：“LightRAG：简单快速的检索增强生成”<br>
 General：Entities 和 Relations 提取提示来自 GitHub - microsoft/graphrag：基于图的模块化检索增强生成 (RAG) 系统<br>
@@ -1344,7 +1325,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       variable: '变量',
       variableTip: `你可以通过对话 API，并配合变量设置来动态调整大模型的系统提示词。
       {knowledge}为系统预留变量，代表从指定知识库召回的文本块。
-      “系统提示词”中的所有变量都必须用大括号{}括起来。详见 https://ragflow.io/docs/chat_configuration#system-prompt。`,
+      “系统提示词”中的所有变量都必须用大括号{}括起来。`,
       add: '新增',
       key: '关键字',
       variableKeyMessage: '请输入变量 key',
@@ -1469,7 +1450,6 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       allowPartialKb: '部分知识库可用',
       allowPartialKbTip:
         '助手绑定的知识库中有当前用户无权访问的库时，仍用有权限的库作答，而不是直接报错。关闭后，只要有一个绑定库无权访问就拒绝本次提问。',
-      howUseId: '如何使用聊天 ID？',
       description: '助理描述',
       descriptionPlaceholder: '我是一个聊天助手。',
       useKnowledgeGraph: '使用 Graph',
@@ -3453,7 +3433,6 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       input: '输入',
       output: '输出',
       parameter: '参数',
-      howUseId: '如何使用Agent ID？',
       content: '内容',
       operationResults: '运行结果',
       autosaved: '已自动保存',
@@ -3530,7 +3509,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       userPrompt: '用户提示词',
       tagFile: '标签文件',
       tagFileTip:
-        '根据所选标签文件，为每个文本块自动提取最多 N 个相关标签，以提高检索准确性。标签提取可能调用模型并产生额外的 Token 消耗。如果提取失败，原始文本块仍会保留。详情请见 https://ragflow.io/docs/dataset_configuration#content-enhancement-configuration。',
+        '根据所选标签文件，为每个文本块自动提取最多 N 个相关标签，以提高检索准确性。标签提取可能调用模型并产生额外的 Token 消耗。如果提取失败，原始文本块仍会保留。',
       prompt: '提示词',
       promptMessage: '提示词是必填项',
       promptTip:

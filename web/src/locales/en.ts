@@ -852,8 +852,6 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       disabled: 'Disable',
       action: 'Action',
       parsingStatus: 'Parsing status',
-      parsingStatusTip:
-        'Document parsing time varies based on several factors. Enabling features like Knowledge Graph, RAPTOR, Auto Question Extraction, or Auto Keyword Extraction will significantly increase processing time. If the progress bar stalls, please consult these two FAQs: https://ragflow.io/docs/dev/faq#why-does-my-document-parsing-stall-at-under-one-percent.',
       processBeginAt: 'Begin at',
       processDuration: 'Duration',
       progressMsg: 'Progress',
@@ -934,11 +932,10 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       delimiterPreviewCount: '({{count}})',
 
       html4excel: 'Excel to HTML',
-      html4excelTip: `Use with the General chunking method. When disabled, spreadsheets (XLSX or XLS(Excel 97-2003)) in the dataset will be parsed into key-value pairs. When enabled, they will be parsed into HTML tables, splitting every 12 rows if the original table has more than 12 rows. See https://ragflow.io/docs/dataset_configuration#other-format-processing-configuration for details.`,
       autoKeywords: 'Number of keywords to extract',
-      autoKeywordsTip: `Automatically extract N keywords for each chunk to increase their ranking for queries containing those keywords. Be aware that extra tokens will be consumed by the indexing model specified in 'Configuration'. You can check or update the added keywords for a chunk from the chunk list. For details, see https://ragflow.io/docs/dataset_configuration#content-enhancement-configuration.`,
+      autoKeywordsTip: `Automatically extract N keywords for each chunk to increase their ranking for queries containing those keywords. Be aware that extra tokens will be consumed by the indexing model specified in 'Configuration'. You can check or update the added keywords for a chunk from the chunk list.`,
       autoQuestions: 'Auto-question number',
-      autoQuestionsTip: `Automatically extract N questions for each chunk to increase their ranking for queries containing those questions. You can check or update the added questions for a chunk from the chunk list. This feature will not disrupt the chunking process if an error occurs, except that it may add an empty result to the original chunk. Be aware that extra tokens will be consumed by the indexing model specified in 'Configuration'. For details, see https://ragflow.io/docs/dataset_configuration#content-enhancement-configuration.`,
+      autoQuestionsTip: `Automatically extract N questions for each chunk to increase their ranking for queries containing those questions. You can check or update the added questions for a chunk from the chunk list. This feature will not disrupt the chunking process if an error occurs, except that it may add an empty result to the original chunk. Be aware that extra tokens will be consumed by the indexing model specified in 'Configuration'.`,
       autoTags: 'Auto-tags',
       redo: 'Do you want to clear the existing {{chunkNum}} chunks?',
       setMetaData: 'Set metadata',
@@ -1226,8 +1223,6 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
 <i>Lines of texts that fail to follow the above rules will be ignored.</i>
 `,
       useRaptor: 'RAPTOR',
-      useRaptorTip:
-        'RAPTOR can be used for multi-hop question-answering tasks. Navigate to the Files page, click Generate > RAPTOR to enable it. See https://ragflow.io/docs/knowledge_compilation/built_in_templates_and_dedicated_configuration#tree for details.',
       prompt: 'Prompt',
       promptTip:
         'Use the system prompt to describe the task for the LLM, specify how it should respond, and outline other miscellaneous requirements. The system prompt is often used in conjunction with keys (variables), which serve as various data inputs for the LLM. Use a forward slash `/` or the (x) button to show the keys to use.',
@@ -1266,7 +1261,7 @@ Paragraphs:
       scopeFile: 'File',
       vietnamese: 'Vietnamese',
       pageRank: 'Page rank',
-      pageRankTip: `You can assign a higher PageRank score to specific datasets during retrieval. The corresponding score is added to the hybrid similarity scores of retrieved chunks from these datasets, increasing their ranking. See https://ragflow.io/docs/dataset_configuration#basic-information for details.`,
+      pageRankTip: `You can assign a higher PageRank score to specific datasets during retrieval. The corresponding score is added to the hybrid similarity scores of retrieved chunks from these datasets, increasing their ranking.`,
       tagName: 'Tag',
       tagMessage: 'Please select a tag',
       frequency: 'Frequency',
@@ -1276,23 +1271,10 @@ Paragraphs:
       tagCloud: 'Cloud',
       tagTable: 'Table',
       tagSet: 'Tag sets',
-      tagSetTip: `
-     <p> Select one or multiple tag datasets to auto-tag chunks in your dataset. See https://ragflow.io/docs/dataset_configuration#basic-information for details.</p>
-<p>The user query will also be auto-tagged.</p>
-This auto-tagging feature enhances retrieval by adding another layer of domain-specific knowledge to the existing dataset.
-<p>Difference between auto-tag and auto-keyword:</p>
-<ul>
-  <li>A tag dataset is a user-defined close set, whereas keywords extracted by the LLM can be regarded as an open set.</li>
-  <li>You must upload tag sets in specified formats before running the auto-tag feature.</li>
-  <li>The auto-keyword feature is dependent on the LLM and consumes a significant number of tokens.</li>
-</ul>
-      `,
       topnTags: 'Top-N tags',
       tags: 'Tags',
       addTag: 'Add tag',
       useGraphRag: 'Knowledge graph',
-      useGraphRagTip:
-        'Construct a knowledge graph over file chunks of the current dataset to enhance multi-hop question-answering involving nested logic. See https://ragflow.io/docs/knowledge_compilation/built_in_templates_and_dedicated_configuration#graph for details.',
       graphRagMethod: 'Method',
       graphRagMethodTip: `
       Light: (Default) Use prompts provided by github.com/HKUDS/LightRAG to extract entities and relationships. This option consumes fewer tokens, less memory, and fewer computational resources.</br>
@@ -1434,7 +1416,7 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       rerankCandidatesCountValidation:
         'Rerank candidates must be greater than or equal to Top N.',
       variable: 'Variable',
-      variableTip: `Used together with RAGFlow's chat assistant management APIs, variables can help develop more flexible system prompt strategies. The defined variables will be used by 'System prompt' as part of the prompts for the LLM. {knowledge} is a reserved special variable representing chunks retrieved from specified dataset(s), and all variables should be enclosed in curly braces {} in the 'System prompt'. See https://ragflow.io/docs/chat_configuration#system-prompt for details.`,
+      variableTip: `Used together with RAGFlow's chat assistant management APIs, variables can help develop more flexible system prompt strategies. The defined variables will be used by 'System prompt' as part of the prompts for the LLM. {knowledge} is a reserved special variable representing chunks retrieved from specified dataset(s), and all variables should be enclosed in curly braces {} in the 'System prompt'.`,
       add: 'Add',
       key: 'Key',
       variableKeyMessage: 'Please input the variable key',
@@ -1561,7 +1543,6 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
       allowPartialKb: 'Partial knowledge base access',
       allowPartialKbTip:
         'When some bound knowledge bases are not accessible to the current user, answer from the accessible ones instead of failing the request. Turn this off to reject the request unless every bound knowledge base is accessible.',
-      howUseId: 'How to use chat ID?',
       description: 'Description of assistant',
       descriptionPlaceholder: "I'm a chat assistant.",
       useKnowledgeGraph: 'Use knowledge graph',
@@ -3869,7 +3850,6 @@ Best for: Documents with flowing, contextually connected content — such as boo
       input: 'Input',
       output: 'Output',
       parameter: 'Parameter',
-      howUseId: 'How to use agent ID?',
       content: 'Content',
       operationResults: 'Operation results',
       autosaved: 'Autosaved',
@@ -3929,7 +3909,7 @@ This delimiter is used to split the input text into several text pieces echo of 
       userPrompt: 'User prompt',
       tagFile: 'Tag file',
       tagFileTip:
-        'Automatically extracts up to N relevant tags for each chunk based on the selected tag file to improve retrieval accuracy. Tag extraction may invoke a model and consume additional tokens. If extraction fails, the original chunk will be preserved. For details, see https://ragflow.io/docs/dataset_configuration#content-enhancement-configuration.',
+        'Automatically extracts up to N relevant tags for each chunk based on the selected tag file to improve retrieval accuracy. Tag extraction may invoke a model and consume additional tokens. If extraction fails, the original chunk will be preserved.',
       addCategory: 'Add category',
       categoryName: 'Category name',
       nextStep: 'Next step',

@@ -20,7 +20,6 @@ import {
   setCurrentTenantId,
 } from '@/utils/tenant-context';
 import { BellButton } from './bell-button';
-import { MobileMenuFooter } from './mobile-menu-footer';
 import { MobileNavbar } from './mobile-nav-drawer';
 import ThemeButton from './theme-button';
 import { LucideChevronDown, LucideCheck, LucideLanguages } from 'lucide-react';
@@ -78,9 +77,7 @@ export function Header({
       <div className="flex min-w-0 items-center gap-2">
         {/* 窄屏才需要汉堡：宽屏导航在左侧固定栏 */}
         <div className="lg:hidden">
-          <MobileNavbar
-            renderFooter={(close) => <MobileMenuFooter onClose={close} />}
-          />
+          <MobileNavbar />
         </div>
       </div>
 
