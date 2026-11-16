@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { GrantDetailPanel } from '../grant-detail-panel';
-import { GrantDialog } from '../grant-dialog';
+import { GrantDialog } from '@/components/grant-dialog';
 import { GrantTree, findGrantNode } from '../grant-tree';
 
 jest.mock('@/services/console-service', () => ({

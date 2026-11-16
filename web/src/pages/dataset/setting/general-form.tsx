@@ -19,7 +19,7 @@ import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { useOwnerTenantId } from '../contexts/knowledge-base-context';
 import { EmbeddingModelItem } from './embedding-model-form-field';
-import { PermissionFormField } from './permission-form-field';
+import { VisibilityScopeField } from './visibility-scope-field';
 
 export function GeneralForm() {
   const form = useFormContext();
@@ -128,7 +128,7 @@ export function GeneralForm() {
           );
         }}
       />
-      <PermissionFormField></PermissionFormField>
+      <VisibilityScopeField />
       <EmbeddingModelItem
         isEdit={true}
         ownerTenantId={ownerTenantId}

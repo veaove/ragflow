@@ -1079,7 +1079,7 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       embeddingModelTip:
         'The default embedding model used by the dataset. Once the dataset has chunks, when switching the embedding model, the system randomly samples a few chunks for a compatibility check, re-embeds them with the new embedding model, and computes cosine similarity between the new and old vectors. Switching is allowed only when the average similarity of the sample is ≥ 0.9. Otherwise, you must delete all chunks in the dataset before you can change it.',
       permissionsTip:
-        "If it is set to 'Team', all your team members will be able to manage the dataset.",
+        'Visible scope has three tiers: owner / tenant managers / platform admins. Ordinary members are in none of them and must be granted one by one in "Set visible scope".',
       chunkTokenNumberTip:
         'It kind of sets the token threshold for a creating a chunk. A segment with fewer tokens than this threshold will be combined with the following segments until the token count exceeds the threshold, at which point a chunk is created. No new chunk is created unless a delimiter is encountered, even if the threshold is exceeded.',
       chunkMethod: 'Chunking method',

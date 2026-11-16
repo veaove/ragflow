@@ -58,7 +58,6 @@ export const useFetchDatasetSettingOnMount = (
       ...pick(knowledgeDetails, [
         'description',
         'name',
-        'permission',
         'language',
         'connectors',
         'pagerank',

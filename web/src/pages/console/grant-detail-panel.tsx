@@ -24,7 +24,7 @@ import {
 } from '@/services/console-service';
 
 import { GrantChips } from './grant-chip';
-import { GrantTarget, VISIBILITY_OPTIONS } from './grant-dialog';
+import { GrantTarget, VISIBILITY_OPTIONS } from '@/components/grant-dialog';
 import { GrantKeys } from './grant-keys';
 import { GrantSummaryBadge } from './grant-tree';
 

@@ -399,7 +399,7 @@ def step_04_set_dataset_settings(
 
         page.get_by_test_id("ds-settings-basic-description-input").fill("Dataset setting playwright description")
         try:
-            select_combobox_option(page, "ds-settings-basic-permissions-select")
+            select_combobox_option(page, "ds-settings-visibility-select")
         except Exception:
             page.keyboard.press("Escape")
 

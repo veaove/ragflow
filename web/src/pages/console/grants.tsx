@@ -4,7 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ConsoleGuard } from '@/components/console-guard';
-import { useConsolePermissions } from '@/hooks/use-console-permissions';
+import {
+  GrantDialog,
+  GrantTarget,
+  VISIBILITY_OPTIONS,
+  defaultScopeLabel,
+} from '@/components/grant-dialog';
+import { useGrantSubjectOptions } from '@/hooks/use-grant-subject-options';
 import { Input } from '@/components/ui/input';
 import { RAGFlowPagination } from '@/components/ui/ragflow-pagination';
 import {
@@ -17,16 +23,12 @@ import {
 } from '@/components/ui/table';
 import { useFetchTenantInfo, useFetchUserInfo } from '@/hooks/use-user-setting-request';
 import {
-  ConsoleMember,
-  DepartmentNode,
   GrantExceptionItem,
   GrantKindOption,
   GrantResource,
   GrantSubject,
   GrantTreeNode,
   GrantVisibility,
-  fetchConsoleMembers,
-  fetchDepartments,
   fetchGrantKinds,
   fetchGrantTree,
   fetchGrants,
@@ -38,12 +40,6 @@ import { GrantBoundaryHint } from './grant-boundary-hint';
 import { GrantChips } from './grant-chip';
 import { GrantDetailPanel } from './grant-detail-panel';
 import { GrantGraph } from './grant-graph';
-import {
-  GrantDialog,
-  GrantTarget,
-  VISIBILITY_OPTIONS,
-  defaultScopeLabel,
-} from './grant-dialog';
 import { GrantKeys } from './grant-keys';
 import { GrantMemberView } from './grant-member-view';
 import { GrantTree, findGrantNode, findGrantNodePath } from './grant-tree';
@@ -169,49 +165,8 @@ export default function ConsoleGrants() {
 
   const [editing, setEditing] = useState<GrantTarget | null>(null);
 
-  // 部门树 / 成员列表分别归「组织架构」「用户管理」模块。只授了「资源授权」
-  // 的角色不该为了选主体而吃两个 403 —— 各自无权限时跳过请求，下拉留空。
-  const { canView } = useConsolePermissions();
-
-  const { data: deptData } = useQuery({
-    queryKey: ['console/departments', tenantId],
-    enabled: !!tenantId && canView('organization'),
-    queryFn: async () => {
-      const res = await fetchDepartments(tenantId as string);
-      return res?.data?.data ?? { departments: [] };
-    },
-  });
-  const departments: DepartmentNode[] = deptData?.departments ?? [];
-
-  const { data: memberData } = useQuery({
-    queryKey: ['console/members-for-grant', tenantId],
-    enabled: !!tenantId && canView('member'),
-    queryFn: async () => {
-      const res = await fetchConsoleMembers(tenantId as string, {
-        page: 1,
-        page_size: 200,
-      });
-      return res?.data?.data ?? { members: [], total: 0 };
-    },
-  });
-  const members: ConsoleMember[] = memberData?.members ?? [];
-
-  const flatDepts = useMemo(() => {
-    const out: { id: string; name: string }[] = [];
-    const walk = (nodes: DepartmentNode[], depth = 0) => {
-      nodes.forEach((n) => {
-        out.push({ id: n.id, name: `${'　'.repeat(depth)}${n.name}` });
-        if (n.children?.length) walk(n.children, depth + 1);
-      });
-    };
-    walk(departments);
-    return out;
-  }, [departments]);
-
-  const subjectOptions = {
-    departments: flatDepts,
-    members: members.map((m) => ({ id: m.id, name: m.nickname || m.email })),
-  };
+  // 部门树 / 成员列表分别归「组织架构」「用户管理」模块，取不到就留空。
+  const { members, options: subjectOptions } = useGrantSubjectOptions(tenantId);
 
   // Tab 清单来自后端注册表：新增一类可授权资源只需后端登记，前端自动出现。
   const { data: kindData } = useQuery({
