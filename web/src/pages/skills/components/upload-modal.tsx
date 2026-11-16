@@ -662,7 +662,7 @@ const UploadModal: React.FC<UploadModalProps> = ({
       );
 
       // 4. Upload to RAGFlow
-      setGitProgress('Uploading to RAGFlow...');
+      setGitProgress('Uploading to 和君知识库...');
       const skillName =
         validation.name || repo.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 

@@ -765,7 +765,7 @@ export default {
       testSetting: '测试设置',
       retrievalTesting: '知识检索测试',
       retrievalTestingDescription:
-        '进行检索测试，检查 RAGFlow 是否能够为大语言模型（LLM）恢复预期的内容。',
+        '进行检索测试，检查和君知识库是否能够为大语言模型（LLM）恢复预期的内容。',
       Parse: '解析',
       dataset: '知识库',
       testing: '检索测试',
@@ -800,7 +800,7 @@ export default {
       testingSettingsSaved: '保存成功',
       similarityThreshold: '相似度阈值',
       similarityThresholdTip:
-        'RAGFlow 在检索时会使用加权关键词相似度与加权向量余弦相似度的组合；选择重排序模型时，则使用加权关键词相似度与加权重排序分数的组合。此参数用于设置用户查询与文本块之间的相似度阈值。相似度分数低于此阈值的文本块将从结果中排除。默认阈值为 20，也就是说，只有混合相似度分数达到 20 或以上的文本块才会被检索。如果向量相似度权重设置为 0，则此阈值不适用。',
+        '和君知识库在检索时会使用加权关键词相似度与加权向量余弦相似度的组合；选择重排序模型时，则使用加权关键词相似度与加权重排序分数的组合。此参数用于设置用户查询与文本块之间的相似度阈值。相似度分数低于此阈值的文本块将从结果中排除。默认阈值为 20，也就是说，只有混合相似度分数达到 20 或以上的文本块才会被检索。如果向量相似度权重设置为 0，则此阈值不适用。',
       keywordSimilarityWeight: '关键词相似度权重',
       keywordSimilarityWeightTip:
         '此项用于设置混合相似度分数中的关键词相似度权重。向量与关键词相似度权重的总和必须等于 1.0。',
@@ -1108,7 +1108,7 @@ export default {
       简历有多种格式，就像一个人的个性一样，但我们经常必须将它们组织成结构化数据，以便于搜索。
       </p><p>
       我们不是将简历分块，而是将简历解析为结构化数据。 作为 HR，你可以扔掉所有的简历，
-      您只需与<i>'RAGFlow'</i>交谈即可列出所有符合资格的候选人。
+      您只需与<i>'和君知识库'</i>交谈即可列出所有符合资格的候选人。
       </p>
         `,
       table: `支持<p><b>XLSX</b>和<b>CSV/TXT</b>格式文件。</p><p>
@@ -1414,7 +1414,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       widgetSubtitle: '副标题',
       widgetSubtitlePlaceholder: '我们通常即时回复',
       widgetFooterText: '页脚文字',
-      widgetFooterTextPlaceholder: 'Powered by RAGFlow',
+      widgetFooterTextPlaceholder: 'Powered by 和君知识库',
       widgetFooterLink: '页脚跳转链接',
       widgetAccentColor: '强调色',
       widgetBackgroundColor: '背景色',
@@ -1716,8 +1716,8 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
       sitemapFollowPdfLinksTip: '同时索引已抓取 HTML 页面中链接的 PDF 文件。',
       sitemapRestrictPdfToDomainTip: '仅跟随与 sitemap 同域名下的 PDF 链接。',
       sitemapUserAgentTip:
-        '每次请求发送的 User-Agent 请求头。留空则使用 RAGFlow-SitemapConnector/1.0。',
-      sitemapBatchSizeTip: '每批抓取并发送到 RAGFlow 的页面数量。',
+        '每次请求发送的 User-Agent 请求头。留空则使用系统默认值。',
+      sitemapBatchSizeTip: '每批抓取并发送到和君知识库的页面数量。',
       azure_devopsDescription: '连接 Azure DevOps 以同步仓库文件和拉取请求。',
       bitbucketDescription: '连接 Bitbucket，同步 PR 内容。',
       bitbucketTopWorkspaceTip:
@@ -2168,7 +2168,7 @@ NER：使用 spaCy NER 和基于规则的关键词提取来抽取 Entities 和 R
         '默认的tts模型会被用于在对话过程中请求语音生成时使用。如未显示可选模型，请前往“模型供应商”页面，确认你的模型供应商是否提供该模型。',
       embeddingModel: 'Embedding',
       embeddingModelTip:
-        '所有新创建的知识库使用的默认 Embedding 模型。如未显示可选模型，请检查你是否在使用 RAGFlow slim 版(不含 Embedding 模型)；或前往“模型供应商”页面，确认你的模型供应商是否提供该模型。',
+        '所有新创建的知识库使用的默认 Embedding 模型。如未显示可选模型，请检查当前部署是否为精简版（不含 Embedding 模型）；或前往“模型供应商”页面，确认你的模型供应商是否提供该模型。',
       img2txtModel: 'VLM',
       img2txtModelTip:
         '所有新创建的知识库都将使用默认的 VLM 模型。 它可以描述图片或视频。如未显示可选模型，请前往“模型供应商”页面，确认你的模型供应商是否提供该模型。',
@@ -4063,7 +4063,7 @@ Tokenizer 会根据所选方式将内容存储为对应的数据结构。`,
       navBrand: '管理后端',
       profile: '个人中心',
       logout: '退出登录',
-      title: 'RAGFlow',
+      title: '标题',
       confirm: '确定',
       close: '关闭',
       yes: '是',
