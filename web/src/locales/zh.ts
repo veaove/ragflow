@@ -717,6 +717,8 @@ export default {
       applyDatasetConfig: '应用知识库的最新配置',
       applyDatasetConfigTip:
         '用知识库当前的解析配置覆盖该文件的设置。取消勾选则沿用该文件已有的配置。',
+      bulkReparseTip:
+        '将清空所选文件已有的分块，并用知识库当前的解析配置重新解析。已完成解析的文件只有重新解析才会应用新的配置，所以这一步不能跳过。',
       parseFile: '解析文件',
       emptyMetadata: '无元数据',
       localUpload: '本地上传',
