@@ -224,8 +224,14 @@ func (s *DocumentService) applyDatasetParserConfig(ctx context.Context, doc *ent
 	if !documentFollowsDatasetSelection(doc, kb) {
 		return nil
 	}
-	isPipeline := doc.PipelineID != nil && strings.TrimSpace(*doc.PipelineID) != ""
-	dslJSON, err := service.LoadPipelineDSL(ctx, isPipeline, doc.ParserID, doc.PipelineID)
+	// The dataset's selection is authoritative here: the config rebuilt below is
+	// keyed by the component ids of the dataset's DSL, so it has to be loaded from
+	// that same DSL. Loading the document's own (stale) selection drops every node
+	// the document never carried — notably a Compiler added after the file was
+	// uploaded, which is what left re-parsed files without any compiled artifacts.
+	kbPipelineID := pipelineSelectionID(kb.PipelineID)
+	isPipeline := kbPipelineID != ""
+	dslJSON, err := service.LoadPipelineDSL(ctx, isPipeline, kb.ParserID, kb.PipelineID)
 	if err != nil {
 		return fmt.Errorf("load pipeline dsl for document %s: %w", doc.ID, err)
 	}
@@ -241,12 +247,20 @@ func (s *DocumentService) applyDatasetParserConfig(ctx context.Context, doc *ent
 	if tenant, tenantErr := dao.NewTenantDAO().GetByID(ctx, dao.DB, kb.TenantID); tenantErr == nil && tenant != nil {
 		rebuilt = service.ApplyComponentScopedParserConfig(rebuilt, tenant.LLMID)
 	}
-	if err := s.documentDAO.UpdateByID(ctx, dao.DB, doc.ID, map[string]interface{}{
-		"parser_config": rebuilt,
-	}); err != nil {
+	updates := map[string]interface{}{"parser_config": rebuilt}
+	// A file uploaded before the dataset bound a pipeline still carries the
+	// builtin selection. The rebuilt config above uses the dataset pipeline's
+	// component ids, so the selection has to be persisted with it — otherwise the
+	// ingestion task keeps running the builtin DSL, which has no node for those
+	// ids and therefore never compiles anything.
+	if pipelineSelectionID(doc.PipelineID) != kbPipelineID {
+		updates["pipeline_id"] = kb.PipelineID
+	}
+	if err := s.documentDAO.UpdateByID(ctx, dao.DB, doc.ID, updates); err != nil {
 		return fmt.Errorf("update parser_config for document %s: %w", doc.ID, err)
 	}
 	doc.ParserConfig = rebuilt
+	doc.PipelineID = kb.PipelineID
 	return nil
 }
 
@@ -254,11 +268,22 @@ func (s *DocumentService) applyDatasetParserConfig(ctx context.Context, doc *ent
 // dataset's parser or pipeline. A file switched to another parser through the
 // per-document "change parser" flow owns its own config, so the dataset's
 // settings must not overwrite it.
+//
+// A document without a pipeline while the dataset has one is ambiguous: it is
+// either a file uploaded before the dataset bound that pipeline, or a file
+// explicitly switched back to a builtin parser. Re-parsing with "apply dataset
+// config" states that the dataset wins, so such a document follows it; callers
+// that must keep the builtin instead clear that option.
 func documentFollowsDatasetSelection(doc *entity.Document, kb *entity.Knowledgebase) bool {
 	if !strings.EqualFold(strings.TrimSpace(doc.ParserID), strings.TrimSpace(kb.ParserID)) {
 		return false
 	}
-	return pipelineSelectionID(doc.PipelineID) == pipelineSelectionID(kb.PipelineID)
+	docPipeline := pipelineSelectionID(doc.PipelineID)
+	kbPipeline := pipelineSelectionID(kb.PipelineID)
+	if docPipeline == kbPipeline {
+		return true
+	}
+	return docPipeline == ""
 }
 
 // pipelineSelectionID normalizes an optional canvas id for comparison: nil and

@@ -102,6 +102,139 @@ func TestApplyDatasetParserConfigKeepsFileSpecificSelection(t *testing.T) {
 	}
 }
 
+// compilerCanvasDSL is a custom pipeline whose only user-facing node is a
+// Compiler, so a rebuilt config that keeps it proves the DSL came from the
+// canvas rather than from a builtin parser.
+func compilerCanvasDSL() entity.JSONMap {
+	return entity.JSONMap{
+		"components": map[string]any{
+			"File": map[string]any{
+				"obj": map[string]any{"component_name": "File", "params": map[string]any{}},
+			},
+			compilerNodeID: map[string]any{
+				"obj": map[string]any{
+					"component_name": "Compiler",
+					"params":         map[string]any{"compilation_template_group_id": "group-default"},
+				},
+			},
+		},
+	}
+}
+
+const compilerNodeID = "Compiler:Compile1"
+
+// TestApplyDatasetParserConfigFollowsDatasetPipeline covers the reported
+// symptom: the dataset bound a pipeline with a Compiler after its files were
+// uploaded, so every document still ran the builtin parser and re-parsing
+// produced no compiled artifacts. Applying the dataset config must move the
+// document onto the dataset pipeline — both the config (keyed by the canvas
+// component ids) and the persisted selection the task runs.
+func TestApplyDatasetParserConfigFollowsDatasetPipeline(t *testing.T) {
+	ctx := t.Context()
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+
+	canvasID := "canvas-compiler"
+	if err := db.Create(&entity.UserCanvas{
+		ID:       canvasID,
+		UserID:   "user-1",
+		TenantID: "user-1",
+		DSL:      compilerCanvasDSL(),
+	}).Error; err != nil {
+		t.Fatalf("create canvas: %v", err)
+	}
+
+	insertTestKB(t, "kb-docs", "user-1", 0, 0, 0)
+	kb := &entity.Knowledgebase{
+		ID:         "kb-docs",
+		TenantID:   "user-1",
+		ParserID:   "general",
+		PipelineID: sptr(canvasID),
+		ParserConfig: entity.JSONMap{
+			compilerNodeID: map[string]any{"compilation_template_group_id": "group-1"},
+		},
+	}
+	doc := &entity.Document{
+		ID:           "doc-stale",
+		KbID:         kb.ID,
+		CreatedBy:    "user-1",
+		ParserID:     "general",
+		PipelineID:   nil,
+		ParserConfig: entity.JSONMap{"GeneralChunker:SixApplesFall": map[string]any{}},
+	}
+	if err := db.Create(doc).Error; err != nil {
+		t.Fatalf("create document: %v", err)
+	}
+
+	svc := testDocumentService(t)
+	if err := svc.applyDatasetParserConfig(ctx, doc, kb); err != nil {
+		t.Fatalf("applyDatasetParserConfig() error = %v", err)
+	}
+
+	node, ok := doc.ParserConfig[compilerNodeID].(map[string]any)
+	if !ok {
+		t.Fatalf("compiler node missing from rebuilt config: %#v", doc.ParserConfig)
+	}
+	if got := node["compilation_template_group_id"]; got != "group-1" {
+		t.Fatalf("compilation_template_group_id = %#v, want group-1", got)
+	}
+	if doc.PipelineID == nil || *doc.PipelineID != canvasID {
+		t.Fatalf("document pipeline_id = %v, want %q", doc.PipelineID, canvasID)
+	}
+
+	stored := &entity.Document{}
+	if err := db.Where("id = ?", doc.ID).First(stored).Error; err != nil {
+		t.Fatalf("reload document: %v", err)
+	}
+	if stored.PipelineID == nil || *stored.PipelineID != canvasID {
+		t.Fatalf("persisted pipeline_id = %v, want %q", stored.PipelineID, canvasID)
+	}
+}
+
+// TestApplyDatasetParserConfigKeepsOtherPipeline guards the escape hatch: a file
+// bound to a different pipeline owns its own config and must not be moved onto
+// the dataset's pipeline.
+func TestApplyDatasetParserConfigKeepsOtherPipeline(t *testing.T) {
+	ctx := t.Context()
+	db := setupServiceTestDB(t)
+	pushServiceDB(t, db)
+
+	insertTestKB(t, "kb-docs", "user-1", 0, 0, 0)
+	kb := &entity.Knowledgebase{
+		ID:         "kb-docs",
+		TenantID:   "user-1",
+		ParserID:   "general",
+		PipelineID: sptr("canvas-dataset"),
+		ParserConfig: entity.JSONMap{
+			compilerNodeID: map[string]any{"compilation_template_group_id": "group-1"},
+		},
+	}
+	own := entity.JSONMap{"Parser:Mine": map[string]any{}}
+	doc := &entity.Document{
+		ID:           "doc-own",
+		KbID:         kb.ID,
+		CreatedBy:    "user-1",
+		ParserID:     "general",
+		PipelineID:   sptr("canvas-own"),
+		ParserConfig: own,
+	}
+	if err := db.Create(doc).Error; err != nil {
+		t.Fatalf("create document: %v", err)
+	}
+
+	svc := testDocumentService(t)
+	if err := svc.applyDatasetParserConfig(ctx, doc, kb); err != nil {
+		t.Fatalf("applyDatasetParserConfig() error = %v", err)
+	}
+
+	if doc.PipelineID == nil || *doc.PipelineID != "canvas-own" {
+		t.Fatalf("document pipeline_id = %v, want canvas-own preserved", doc.PipelineID)
+	}
+	if _, ok := doc.ParserConfig["Parser:Mine"]; !ok {
+		t.Fatalf("document config was replaced: %#v", doc.ParserConfig)
+	}
+}
+
 func assertChunkTokenSize(t *testing.T, config entity.JSONMap, want any) {
 	t.Helper()
 	node, ok := config[audioOneChunkerID].(map[string]any)
