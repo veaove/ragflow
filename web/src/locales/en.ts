@@ -773,8 +773,6 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       applyDatasetConfig: 'Apply the latest dataset settings',
       applyDatasetConfigTip:
         'Overwrite this file with the dataset current parse settings. Clear the checkbox to keep the settings already stored on this file.',
-      bulkReparseTip:
-        'This clears the existing chunks of the selected files and re-parses them with the dataset current parse settings. Files parsed before a settings change only pick it up through a re-parse, so this step cannot be skipped.',
       parseFile: 'Parse file',
       emptyMetadata: 'No metadata',
       metadataField: 'Metadata field',

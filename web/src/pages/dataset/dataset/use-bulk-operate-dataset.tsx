@@ -56,28 +56,6 @@ export function useBulkOperateDataset({
   const canEdit = can('dataset', 'edit');
   const canDelete = can('dataset', 'delete');
 
-  // 批量解析一律清空旧分块并应用知识库当前配置：不传 delete 时后端会跳过所有
-  // 已完成解析的文件，不传 apply_kb 时文件仍用上传时的 parser_config 快照。
-  // 两者叠加会让"先解析文件、后配置 Compiler/分块参数"的调整对已有文件完全失效，
-  // 界面上却提示操作成功。
-  const confirmAndStartParse = useCallback(
-    (ids: string[]) => {
-      Modal.confirm({
-        title: t('knowledgeDetails.parseFile'),
-        content: t('knowledgeDetails.bulkReparseTip'),
-        okText: t('common.confirm'),
-        cancelText: t('common.cancel'),
-        onOk: () =>
-          runDocumentByIds({
-            documentIds: ids,
-            run: 1,
-            option: { delete: true, apply_kb: true },
-          }),
-      });
-    },
-    [runDocumentByIds, t],
-  );
-
   const runDocument = useCallback(
     async (run: number) => {
       const nonVirtualKeys = selectedRowKeys.filter(
@@ -136,12 +114,12 @@ export function useBulkOperateDataset({
             okText: t('knowledgeDetails.parseValidFiles'),
             cancelText: t('common.cancel'),
             closable: false,
-            onOk: () => confirmAndStartParse(validIds),
+            onOk: async () => {
+              await runDocumentByIds({ documentIds: validIds, run });
+            },
           });
           return;
         }
-        confirmAndStartParse(nonVirtualKeys);
-        return;
       }
 
       await runDocumentByIds({
@@ -149,14 +127,7 @@ export function useBulkOperateDataset({
         run,
       });
     },
-    [
-      documents,
-      runDocumentByIds,
-      selectedRowKeys,
-      t,
-      findDocumentParseGaps,
-      confirmAndStartParse,
-    ],
+    [documents, runDocumentByIds, selectedRowKeys, t, findDocumentParseGaps],
   );
 
   // Wired straight to the run button's onClick: keep it parameterless so the
